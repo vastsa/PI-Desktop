@@ -102,6 +102,8 @@ export type RacpHostOperations = {
    * is scoped to the connection that set it: `disconnect` must drop it.
    */
   workspaceGit?: {
+    /** Non-forced removal protects unpublished commits even if the checkout is missing. */
+    safeRemoval?: boolean;
     setCredential(input: { installationId: string; token: string }, owner: { deviceId: string; connectionId: string }): Promise<void>;
     clearCredential(owner: { deviceId: string; connectionId: string }): Promise<void>;
     repository(input: { repository: WorkspaceGitRepository }): Promise<{ path: string; cloned: boolean }>;

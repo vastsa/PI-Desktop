@@ -30,15 +30,16 @@ describe("owner workspace tools", () => {
     const dir = await directory();
     const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
     const host: HostRpc = { async call<T>(method: string, params: Record<string, unknown> = {}) { calls.push({ method, params }); return { ok: true, content: "" } as T; } };
-    const lookups: Array<[string, string]> = [];
-    const tools = createWorkspaceTools(() => host, { gitProxyUrlFor: (connectionId, sessionId) => {
-      lookups.push([connectionId, sessionId]);
+    const lookups: Array<[string, string, string]> = [];
+    const tools = createWorkspaceTools(() => host, { gitProxyUrlFor: (connectionId, sessionId, path) => {
+      lookups.push([connectionId, sessionId, path]);
       return sessionId === "local-session" && connectionId === "connection-a" ? "http://127.0.0.1:4321/handle/" : undefined;
     } });
-    await tools.execute(input(dir), owner);
-    await tools.execute({ ...input(dir), sessionId: "other-session" }, owner);
-    await tools.execute({ ...input(dir), toolCallId: "call-2" }, { ...owner, connectionId: "connection-b" });
-    expect(lookups).toEqual([["connection-a", "local-session"], ["connection-a", "other-session"], ["connection-b", "local-session"]]);
+    const bash = { ...input(dir), toolName: "Bash", args: { command: "git status" } };
+    await tools.execute(bash, owner);
+    await tools.execute({ ...bash, sessionId: "other-session" }, owner);
+    await tools.execute({ ...bash, toolCallId: "call-2" }, { ...owner, connectionId: "connection-b" });
+    expect(lookups).toEqual([["connection-a", "local-session", calls[0]?.params.path], ["connection-a", "other-session", calls[0]?.params.path], ["connection-b", "local-session", calls[0]?.params.path]]);
     expect(calls[0]?.params.gitProxyUrl).toBe("http://127.0.0.1:4321/handle/");
     // host-core still gets the hashed session id, not the raw one.
     expect(calls[0]?.params.sessionId).not.toBe("local-session");

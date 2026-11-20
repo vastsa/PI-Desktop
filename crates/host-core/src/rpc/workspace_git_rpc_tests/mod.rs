@@ -195,6 +195,7 @@ async fn prepare_clones_then_creates_the_worktree_and_reports_phases_in_order() 
             "baseBranch": "main",
             "workBranch": "pi-desktop/8b54618f6bc1",
             "path": path,
+            "checkoutPresent": true,
             "mainPath": f.main_path(),
             "baseCommit": f.remote.head("main"),
             "createdAt": worktree["createdAt"],
@@ -881,20 +882,40 @@ async fn unknown_jobs_and_methods_are_typed_errors_through_the_dispatcher() {
 }
 
 #[tokio::test]
-async fn a_record_whose_directory_is_gone_is_prepared_again() {
+async fn a_missing_checkout_preserves_the_local_branch() {
     let f = Fixture::new();
     f.prepare("session-1", "main").await;
     let path = f.worktree_path("session-1");
+    let head = commit_file(&path, "unpushed.txt", "precious");
     std::fs::remove_dir_all(&path).unwrap();
-    let error = f
+    let status = f
         .call("workspaceGit.status", f.session("session-1"))
         .await
-        .unwrap_err();
-    assert_eq!(code(&error), "WORKSPACE_GIT_NOT_FOUND");
-    let worktree = f.prepare("session-1", "develop").await;
-    assert_eq!(worktree["baseBranch"], "develop");
-    assert!(path.join("develop.txt").is_file());
+        .unwrap();
+    assert_eq!(status["worktree"]["checkoutPresent"], false);
+    assert_eq!(status["unpushedCommits"], 1);
+    assert_eq!(status["aheadOfBase"], 1);
+    let mut remove = f.session("session-1");
+    // Only the legacy, explicitly forced method can discard local commits.
+    remove["force"] = json!(true);
+    let result = f.call("workspaceGit.removeSafely", remove).await.unwrap();
+    assert_eq!(result["removed"], false);
+    assert_eq!(result["unpushedCommits"], 1);
+    let worktree = f.prepare("session-1", "main").await;
+    assert_eq!(worktree["baseBranch"], "main");
+    assert_eq!(rev_parse(&path, "HEAD"), head);
     assert_eq!(worktree_count(&f.main_path()), 2);
+}
+
+#[tokio::test]
+async fn a_restore_only_request_cannot_create_a_new_registration() {
+    let f = Fixture::new();
+    let mut params = f.prepare_params("session-1", "main");
+    params["restoreOnly"] = json!(true);
+    let error = f.call("workspaceGit.prepare", params).await.unwrap_err();
+    assert_eq!(code(&error), "WORKSPACE_GIT_NOT_FOUND");
+    assert!(!f.worktree_path("session-1").exists());
+    assert!(!f.main_path().exists());
 }
 
 /// Branch names follow git's rules, not an allowlist: a name GitHub lists must

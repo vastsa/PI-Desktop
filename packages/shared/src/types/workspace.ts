@@ -1,3 +1,4 @@
+import type { RepositoryProject } from "./remote-sessions";
 import type { ProjectMemory } from "./filesystem.js";
 
 /** Shared public types grouped by the owning application domain. */
@@ -45,6 +46,7 @@ export type ProjectGroupRoot = {
 };
 
 export type ProjectGroupRecord = {
+  repository?: RepositoryProject;
   remote?: RemoteWorkspace;
   id: string;
   name: string;

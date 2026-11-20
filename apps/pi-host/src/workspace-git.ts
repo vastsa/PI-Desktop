@@ -41,7 +41,11 @@ function hostError(error: unknown): never {
   if (error instanceof RacpError) throw error;
   const code = (error as { data?: { errorCode?: string } })?.data?.errorCode ?? (error as { errorCode?: string })?.errorCode;
   const message = error instanceof Error ? error.message : String(error);
-  if (code?.startsWith("WORKSPACE_GIT_")) throw new RacpError(code, message);
+  if (code?.startsWith("WORKSPACE_GIT_")) {
+    const jobId = (error as { data?: { jobId?: unknown } })?.data?.jobId;
+    throw new RacpError(code, message, { details: typeof jobId === "string" ? { jobId } : undefined });
+  }
+  if (code === "METHOD_NOT_FOUND") throw new RacpError(code, message);
   if (code === "INVALID_ARGUMENT" || code === "INVALID_PARAMS") throw new RacpError("INVALID_ARGUMENT", message);
   if (code === "HOST_UNAVAILABLE" || code === "HOST_SHUTTING_DOWN") throw new RacpError("AGENT_UNAVAILABLE", message, { retriable: true });
   throw new RacpError("INTERNAL", message, { details: code ? { code } : undefined });
@@ -51,14 +55,15 @@ export function createWorkspaceGit(deps: {
   getHost: () => HostRpc | null;
   workspacesRoot: string;
   proxy: GitCredentialProxy;
-}): WorkspaceGitOperations & { proxyUrlFor(connectionId: string, sessionId: string): string | undefined } {
+}): WorkspaceGitOperations & { proxyUrlFor(connectionId: string, sessionId: string): string | undefined; proxyUrlForPath(connectionId: string, sessionId: string, path: string): Promise<string | undefined> } {
   const { getHost, workspacesRoot, proxy } = deps;
   /** The installation a live connection last named; it selects that connection's scopes. */
   const installationOf = new Map<string, string>();
   /** Live connections that set a token, per installation. The token lives while one remains. */
   const holders = new Map<string, Set<string>>();
   /** Proxy address per `(installation, session)` scope. */
-  const scopeUrls = new Map<string, string>();
+  const scopes = new Map<string, { url: string; repository: WorkspaceGitRepository }>();
+  const preparations = new Map<string, { jobId: string; installationId: string; sessionId: string }>();
   const closed = new Set<string>();
   const scopeKey = (installationId: string, sessionId: string) => JSON.stringify([installationId, sessionId]);
   const unavailable = () => new RacpError("AGENT_UNAVAILABLE", "host-core is not running", { retriable: true });
@@ -67,7 +72,7 @@ export function createWorkspaceGit(deps: {
   async function call<T>(method: string, params: Record<string, unknown>): Promise<T> {
     const host = getHost();
     if (!host) throw unavailable();
-    const result = await host.call<T>(method, { workspacesRoot, ...params }).catch(hostError);
+    const result = await host.call<T>(method, { ...params, workspacesRoot }).catch(hostError);
     if (getHost() !== host) throw unavailable();
     return result;
   }
@@ -78,7 +83,7 @@ export function createWorkspaceGit(deps: {
       repository: { owner: repository.owner, name: repository.name },
       workBranch: workspaceGitWorkBranch(installationId, sessionId),
     });
-    scopeUrls.set(scopeKey(installationId, sessionId), url);
+    scopes.set(scopeKey(installationId, sessionId), { url, repository });
     return url;
   }
 
@@ -102,6 +107,7 @@ export function createWorkspaceGit(deps: {
   }
 
   return {
+    safeRemoval: true,
     async setCredential(input, owner) {
       if (!getHost()) throw unavailable();
       attach(owner, input.installationId);
@@ -127,13 +133,32 @@ export function createWorkspaceGit(deps: {
     async prepare(input, owner) {
       if (!getHost()) throw unavailable();
       attach(owner, input.installationId);
+      const key = scopeKey(input.installationId, input.sessionId);
+      const scope = scopes.get(key);
+      if (scope && (scope.repository.owner !== input.repository.owner || scope.repository.name !== input.repository.name)) {
+        const pending = preparations.get(key);
+        if (pending) {
+          const job = await call<Awaited<ReturnType<WorkspaceGitOperations["job"]>>>("workspaceGit.job", { jobId: pending.jobId })
+            .catch((error: RacpError) => {
+              if (error.code !== "WORKSPACE_GIT_JOB_NOT_FOUND") throw error;
+              return null;
+            });
+          if (job?.state === "running") throw new RacpError("WORKSPACE_GIT_BUSY", "a git job for this session is still running", { details: { jobId: pending.jobId } });
+        }
+        const worktree = (await listWorktrees(input.installationId)).find((candidate) => candidate.sessionId === input.sessionId);
+        if (worktree && (worktree.repository.owner !== input.repository.owner || worktree.repository.name !== input.repository.name)) {
+          throw new RacpError("INVALID_ARGUMENT", "the session already belongs to a repository");
+        }
+      }
       const url = registerScope(input.installationId, input.sessionId, input.repository);
-      return call("workspaceGit.prepare", { gitProxy: { url }, ...input });
+      const result = await call<Awaited<ReturnType<WorkspaceGitOperations["prepare"]>>>("workspaceGit.prepare", { ...input, gitProxy: { url } });
+      preparations.set(key, { jobId: result.jobId, sessionId: input.sessionId, installationId: input.installationId });
+      return result;
     },
     async push(input, owner) {
       if (!getHost()) throw unavailable();
       attach(owner, input.installationId);
-      let url = scopeUrls.get(scopeKey(input.installationId, input.sessionId));
+      let url = scopes.get(scopeKey(input.installationId, input.sessionId))?.url;
       if (!url) {
         const worktree = (await listWorktrees(input.installationId)).find((candidate) => candidate.sessionId === input.sessionId);
         if (!worktree) throw new RacpError("WORKSPACE_GIT_NOT_FOUND", "this host has no worktree for the session");
@@ -142,7 +167,18 @@ export function createWorkspaceGit(deps: {
       return call("workspaceGit.push", { gitProxy: { url }, installationId: input.installationId, sessionId: input.sessionId });
     },
     async job(input) {
-      return call("workspaceGit.job", { jobId: input.jobId });
+      const result = await call<Awaited<ReturnType<WorkspaceGitOperations["job"]>>>("workspaceGit.job", { jobId: input.jobId });
+      if (result.state === "running" || result.kind !== "prepare") return result;
+      for (const [key, pending] of preparations) {
+        if (pending.jobId !== input.jobId) continue;
+        preparations.delete(key);
+        if (result.state !== "succeeded") {
+          scopes.delete(key);
+          proxy.unregister(pending.installationId, pending.sessionId);
+        }
+        break;
+      }
+      return result;
     },
     async cancelJob(input) {
       await call("workspaceGit.jobCancel", { jobId: input.jobId });
@@ -151,11 +187,16 @@ export function createWorkspaceGit(deps: {
       return call("workspaceGit.status", { installationId: input.installationId, sessionId: input.sessionId });
     },
     async remove(input) {
-      const result = await call<Awaited<ReturnType<WorkspaceGitOperations["remove"]>>>("workspaceGit.remove", {
-        installationId: input.installationId, sessionId: input.sessionId, force: input.force,
-      });
+      const session = { installationId: input.installationId, sessionId: input.sessionId };
+      // An older host-core does not recognize the guarded method. Its legacy
+      // removal must never be used for an unattended request.
+      const result = await (input.force
+        ? call<Awaited<ReturnType<WorkspaceGitOperations["remove"]>>>("workspaceGit.remove", { ...session, force: true })
+        : call<Awaited<ReturnType<WorkspaceGitOperations["remove"]>>>("workspaceGit.removeSafely", session));
       if (result.removed) {
-        scopeUrls.delete(scopeKey(input.installationId, input.sessionId));
+        const key = scopeKey(input.installationId, input.sessionId);
+        scopes.delete(key);
+        preparations.delete(key);
         proxy.unregister(input.installationId, input.sessionId);
       }
       return result;
@@ -169,9 +210,17 @@ export function createWorkspaceGit(deps: {
       installationOf.delete(connectionId);
       release(connectionId);
     },
+    async proxyUrlForPath(connectionId, sessionId, path) {
+      const { scope } = await call<{ scope: { installationId: string; sessionId: string; repository: WorkspaceGitRepository } | null }>("workspaceGit.scopeForPath", { path });
+      // Absence leaves host-core's no-credential rewrite in effect. A
+      // workspace under another installation cannot borrow its token.
+      if (!scope) return undefined;
+      if (scope.sessionId !== sessionId || scope.installationId !== installationOf.get(connectionId)) return proxy.unauthorizedUrl?.();
+      return registerScope(scope.installationId, scope.sessionId, scope.repository);
+    },
     proxyUrlFor(connectionId, sessionId) {
       const installationId = installationOf.get(connectionId);
-      return installationId ? scopeUrls.get(scopeKey(installationId, sessionId)) : undefined;
+      return installationId ? scopes.get(scopeKey(installationId, sessionId))?.url : undefined;
     },
   };
 }

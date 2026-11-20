@@ -1,3 +1,5 @@
+import { useRepositoryProjects } from "../features/chat/session-target/use-repository-projects";
+import { useSessionTargetStore } from "../features/chat/session-target/session-target-store";
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
 import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
@@ -271,6 +273,9 @@ export function Sidebar({
   const openProjects = useAppStore((s) => s.openProjects);
   const openProjectPathsState = useAppStore((s) => s.openProjectPaths);
   const activeProjectPathState = useAppStore((s) => s.activeProjectPath);
+  const { projects: repositoryProjects, hostLabels } = useRepositoryProjects(
+    openProjects.some((item) => item.path.startsWith("remote-project:")),
+  );
   const projectMeta = useAppStore((s) => s.projectMeta);
   const projectCollapsed = useAppStore((s) => s.projectCollapsed);
   const sessionMeta = useAppStore((s) => s.sessionMeta);
@@ -1597,7 +1602,15 @@ export function Sidebar({
   };
 
   const createProjectSession = async (path: string) => {
-    await createSession({ projectPath: path });
+    const repository = repositoryProjects[path];
+    if (!repository) {
+      await createSession({ projectPath: path });
+      return;
+    }
+    await clearProject();
+    useSessionTargetStore.getState().preselect(`default:${repository.hostKey}`, repository);
+    setPage("chat");
+    focusComposer();
   };
 
   const openProjectPicker = async () => {
@@ -2281,6 +2294,9 @@ export function Sidebar({
   });
 
   const renderProjectGroup = (entry: ProjectEntry) => {
+    const repository = repositoryProjects[entry.path];
+    const hostLabel = repository && (hostLabels[repository.hostKey] ?? repository.hostKey);
+    const label = repository ? `${repository.owner}/${repository.name}` : entry.name;
     const collapsedProject = entry.meta.collapsed ?? projectCollapsed[entry.key] ?? false;
     const projectId = projectDomId(entry.key);
     const isMenuOpen = projectMenu === entry.key;
@@ -2387,7 +2403,7 @@ export function Sidebar({
             type="button"
             id={projectId}
             className="sidebar-session-group-title project-toggle"
-            tooltip={entry.displayPath ?? entry.path}
+            tooltip={hostLabel ? `${label} · ${hostLabel}` : entry.displayPath ?? entry.path}
             tooltipDelayMs={500}
             tooltipClassName="ui-tooltip-path"
             ariaLabel={entry.name}
@@ -2425,7 +2441,8 @@ export function Sidebar({
             ) : (
               <IconFolder size={13} aria-hidden />
             )}
-            <span>{entry.name}</span>
+            <span>{label}</span>
+            {hostLabel && <span className="thread-item-source">{hostLabel}</span>}
             {showRunBadge ? <ProjectRunBadge summary={runSummary} /> : null}
             {showRunCount ? <ProjectRunCount summary={runSummary} /> : null}
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}

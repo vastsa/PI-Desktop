@@ -422,12 +422,6 @@ mod worktree_environment {
         .join("|")
     }
 
-    fn ambient_git_config() -> String {
-        ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"]
-            .map(ambient)
-            .join("|")
-    }
-
     async fn register(state: &Arc<Mutex<AppState>>, root: &Path, variables: &[(&str, &str)]) {
         let guard = state.lock().await;
         registry::insert(
@@ -517,8 +511,7 @@ mod worktree_environment {
         assert_eq!(
             plain,
             format!(
-                "from-record|{root_text}|/w/repos/github.com/octo/repo|{}|{}",
-                ambient_git_config(),
+                "from-record|{root_text}|/w/repos/github.com/octo/repo|5|url.pi-workspace-no-credential:///octo/repo.git.insteadOf|https://github.com/octo/repo.git|{}",
                 ambient("GIT_DIR")
             )
         );
@@ -592,8 +585,7 @@ mod worktree_environment {
         assert_eq!(
             probe(&state, &tx, &root, "forbidden", None).await,
             format!(
-                "kept|{root_text}|/w/repos/github.com/octo/repo|{}|{}",
-                ambient_git_config(),
+                "kept|{root_text}|/w/repos/github.com/octo/repo|5|url.pi-workspace-no-credential:///octo/repo.git.insteadOf|https://github.com/octo/repo.git|{}",
                 ambient("GIT_DIR")
             )
         );

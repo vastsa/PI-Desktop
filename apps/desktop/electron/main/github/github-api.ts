@@ -58,6 +58,7 @@ export type GitHubApi = {
     token: string,
     repository: GitHubRepositoryRef,
     head: string,
+    state?: "open" | "all",
   ): Promise<GitHubPullRequestSummary | null>;
   createPullRequest(
     token: string,
@@ -491,18 +492,19 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
       return list;
     },
 
-    async findPullRequest(token, repository, head) {
+    async findPullRequest(token, repository, head, state = "all") {
       const path = repositoryPath(repository);
       const branch = branchName(head);
       const { response, json } = await request(token, "GET", `${path}/pulls`, {
-        state: "all",
+        state,
         head: `${repository.owner}:${branch}`,
         per_page: "5",
       });
       if (!Array.isArray(json)) throw unreadable(response.status);
       const open = json.find((raw) => (raw as { state?: unknown } | null)?.state === "open");
-      const chosen =
-        open ?? [...json].sort((left, right) => createdAt(right) - createdAt(left))[0];
+      const chosen = state === "open"
+        ? open
+        : open ?? [...json].sort((left, right) => createdAt(right) - createdAt(left))[0];
       if (chosen === undefined) return null;
       const summary = toPullRequest(chosen);
       if (!summary) throw unreadable(response.status);

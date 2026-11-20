@@ -28,3 +28,5 @@ export * from "./types/config-sync.js";
 export * from "./types/live-voice.js";
 export * from "./types/launcher.js";
 export * from "./types/github-connector.js";
+
+export type * from "./types/remote-sessions";

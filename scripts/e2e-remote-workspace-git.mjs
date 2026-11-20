@@ -28,6 +28,9 @@ const { createGitCredentialProxy } = await import("../apps/pi-host/dist/git-cred
 const { workspaceGitWorkBranch } = await import("../apps/pi-host/dist/workspace-git.js");
 const { createRemoteHostsBoot } = await import("../apps/desktop/electron/main/bootstrap/remote-hosts.ts");
 const { createBackendRouter } = await import("../apps/desktop/electron/main/remote/backend-router.ts");
+const { createSessionWorkspaces } = await import("../apps/desktop/electron/main/remote/session-workspaces.ts");
+const { createSessionWorkspaceGit } = await import("../apps/desktop/electron/main/remote/session-workspace-git.ts");
+const { createRemoteWorkspaceToolRelay } = await import("../apps/desktop/electron/main/remote/remote-workspace-tools.ts");
 const { startGitHttpFixture } = await import("./e2e/git-http-fixture.mjs");
 
 assert.ok(process.env.PI_HOST_CORE_BINARY, "PI_HOST_CORE_BINARY must name the current candidate Rust binary");
@@ -60,7 +63,7 @@ async function step(name, action) {
   console.log(`ok - ${name}`);
 }
 
-let fixture; let host; let proxy; let binding; let server; let boot;
+let fixture; let host; let proxy; let binding; let server; let boot; let localHost; let repositorySessions;
 const hostLogs = [];
 let token = FIXTURE_TOKEN;
 const deadline = setTimeout(() => { console.error(`FAILED - ${currentStep}: remote workspace git acceptance exceeded 180s`); process.exit(1); }, 180_000);
@@ -294,6 +297,13 @@ try {
     const { job } = await pollJob(jobId);
     assert.deepEqual([job.state, job.error?.code], ["failed", "WORKSPACE_GIT_AUTH_REQUIRED"]);
     assert.equal(fixture.requests.length, seen);
+    boot.workspaceGit.setCredentialProvider(null);
+    await boot.reconnectHost(HOST);
+    const reconnected = await bash("session-b", b.path, "git fetch 2>&1");
+    assert.notEqual(reconnected.exitCode, 0, reconnected.output);
+    assert.match(reconnected.output, /terminal prompts disabled|Authentication failed|could not read Username|error: 401/i);
+    assert.equal(fixture.requests.length, seen, "a fresh unauthenticated connection also cannot contact GitHub");
+    boot.workspaceGit.setCredentialProvider(async () => token);
   });
 
   await step("8 the token is nowhere on the host's disk, in a URL, or in a log", async () => {
@@ -317,6 +327,160 @@ try {
     assert.equal(/127\.0\.0\.1|insteadOf|credential/i.test(config), false, config);
   });
 
+  await step("9 create a repository session, run setup, and relay tools to the bound checkout", async () => {
+    token = FIXTURE_TOKEN;
+    await boot.workspaceGit.refreshCredential();
+    localHost = new HostProcess({ binaryPath: resolve(process.env.PI_HOST_CORE_BINARY), dataDir: join(root, "local-host"), onStderr: (text) => hostLogs.push(String(text)) });
+    await localHost.handshake();
+    const call = (method, params) => localHost.call(method, params);
+    const events = [];
+    const requests = new Map();
+    let lastPullRequestNumber = 0;
+    let lookupError = null;
+    const connector = {
+      status: async () => ({ connected: true }),
+      findPullRequest: async (_repository, head, state) => {
+        assert.equal(state, "open");
+        if (lookupError) throw lookupError;
+        return requests.get(head) ?? null;
+      },
+      createPullRequest: async (_repository, input) => {
+        assert.ok(remoteHasBranch(input.head), "the branch is on the remote before opening its PR");
+        const number = ++lastPullRequestNumber;
+        const result = { number, url: `https://github.com/octo/repo/pull/${number}`, state: "open", ...input };
+        requests.set(input.head, result);
+        return result;
+      },
+    };
+    const emit = (channel, payload) => events.push({ channel, payload });
+    let online = true;
+    let safeRemoval = true;
+    const removalCalls = [];
+    // The real transport remains available so the same Host can reconnect
+    // immediately. Inject the typed offline result at the desktop Host port.
+    const offline = () => Object.assign(new Error("fixture host offline"), { errorCode: "AGENT_UNAVAILABLE" });
+    const gitPort = { ...boot.workspaceGit,
+      status: (...args) => online ? boot.workspaceGit.status(...args) : Promise.reject(offline()),
+      supportsSafeRemoval: (key) => safeRemoval && boot.workspaceGit.supportsSafeRemoval(key),
+      remove: (...args) => {
+        removalCalls.push(args);
+        return online ? boot.workspaceGit.remove(...args) : Promise.reject(offline());
+      },
+    };
+    const hostPort = () => ({ ...boot, workspaceGit: gitPort });
+    const workspaces = createSessionWorkspaces({ call, hosts: hostPort, connector, emit, log: (message, error) => hostLogs.push(`${message}: ${error}`) });
+    repositorySessions = workspaces;
+    const repositoryGit = createSessionWorkspaceGit({ call, workspaces, connector, emit });
+    const environment = await workspaces.upsert({
+      hostKey: HOST, name: "Fixture setup", variables: [{ name: "E2E_SETUP_VALUE", value: "setup-value" }],
+      setupScript: 'printf "%s" "$E2E_SETUP_VALUE" > setup.txt',
+    });
+    const { projectPath } = await workspaces.resolve({ environmentId: environment.id, repository, defaultBranch: "main" });
+    assert.equal((await workspaces.resolve({ environmentId: environment.id, repository, defaultBranch: "main" })).projectPath, projectPath);
+    const { session } = await call("session.create", { projectPath, mode: "agent" });
+    const { session: unbound } = await call("session.create", { projectPath, mode: "agent" });
+    let relayCalls = 0;
+    const relay = createRemoteWorkspaceToolRelay(localHost, {
+      getBoot: () => boot, isCurrent: () => true, isTurnDispatchable: () => true, log: () => {},
+    });
+    const off = localHost.onNotification((method, params) => {
+      if (method === "tools.remoteExecute") { relayCalls++; void relay.execute(params); }
+      if (method === "tools.remoteAbort") relay.cancel(params);
+      if (method === "permissions.request") void call("permissions.resolve", { requestId: params.requestId, decision: "allow-once" });
+    });
+    try {
+      const read = (sessionId) => call("tools.execute", { sessionId, turnId: "local-tool-turn", toolCallId: "read-setup", toolName: "Read", mode: "agent", args: { path: "setup.txt" } });
+      await assert.rejects(read(unbound.id), (error) => error.data?.errorCode === "REMOTE_WORKSPACE_NOT_READY");
+      assert.equal(relayCalls, 0);
+      await workspaces.start({ sessionId: session.id, environmentId: environment.id, repository, baseBranch: "main" });
+      await workspaces.waitUntilReady(session.id);
+      const { session: ready } = await call("session.get", { id: session.id, messageLimit: 1 });
+      assert.equal(ready.remoteRepository.state, "ready");
+      assert.equal(ready.remoteRepository.setup.status, "ok");
+      assert.equal(await readFile(join(ready.remoteWorkspace.path, "setup.txt"), "utf8"), "setup-value");
+      const result = await read(session.id);
+      assert.ok(result.ok, JSON.stringify(result));
+      assert.match(JSON.stringify(result), /setup-value/);
+      assert.equal(relayCalls, 1);
+      assert.ok(!existsSync(join(workspacesRoot, "repos/github.com/octo/repo/setup.txt")));
+      const committedInSession = await bash(session.id, ready.remoteWorkspace.path, "git add setup.txt && git -c user.name='PI E2E' -c user.email=pi-e2e@example.invalid commit -qm setup");
+      assert.equal(committedInSession.exitCode, 0, committedInSession.output);
+      const { session: child } = await call("session.fork", { sessionId: session.id });
+      await workspaces.ensureSession(child.id, session.id);
+      await workspaces.waitUntilReady(child.id);
+      const childBinding = await workspaces.binding(child.id);
+      assert.equal(git(childBinding.path, "rev-parse", "HEAD"), git(ready.remoteWorkspace.path, "rev-parse", "HEAD"));
+      assert.equal(boot.workspaceGit.supportsSafeRemoval(HOST), true);
+      // A deleted directory is explicit on the wire. Reconnecting restores
+      // the session from its actual work branch even if its environment is gone.
+      const head = git(ready.remoteWorkspace.path, "rev-parse", "HEAD");
+      await workspaces.removeEnvironment(environment.id);
+      await rm(ready.remoteWorkspace.path, { recursive: true });
+      const missingCheckout = await boot.workspaceGit.status(HOST, session.id);
+      assert.equal(missingCheckout.worktree.checkoutPresent, false);
+      assert.equal(missingCheckout.unpushedCommits, 1);
+      await workspaces.resume(HOST);
+      await workspaces.waitUntilReady(session.id);
+      assert.equal(git(ready.remoteWorkspace.path, "rev-parse", "HEAD"), head);
+
+      const pr = await repositoryGit.create(session.id, { title: "Fixture PR", body: "", draft: true });
+      assert.equal(pr.number, 1);
+      assert.equal((await repositoryGit.create(session.id, { title: "Ignored duplicate", body: "", draft: false })).title, "Fixture PR");
+      lookupError = new Error("fixture GitHub lookup unavailable");
+      await assert.rejects(repositoryGit.find(session.id), /lookup unavailable/);
+      assert.equal((await workspaces.binding(session.id)).pullRequest.number, 1);
+      lookupError = null;
+      requests.set(pr.head, { ...pr, state: "closed" });
+      assert.equal(await repositoryGit.find(session.id), null);
+      assert.equal((await workspaces.binding(session.id)).pullRequest, null);
+      const replacement = await repositoryGit.create(session.id, { title: "Replacement PR", body: "", draft: false });
+      assert.equal(replacement.number, 2);
+      assert.equal((await workspaces.binding(session.id)).pullRequest.number, 2);
+
+      await writeFile(join(ready.remoteWorkspace.path, "dirty.txt"), "pending work");
+      const preflight = await repositoryGit.preflight(session.id);
+      assert.deepEqual(preflight, { kind: "atRisk", uncommittedFiles: 1, unpushedCommits: 0 });
+      await assert.rejects(repositoryGit.beforeDelete(session.id, false), (error) => error.errorCode === "CONFLICT");
+      assert.ok(existsSync(join(ready.remoteWorkspace.path, "dirty.txt")));
+      await repositoryGit.beforeDelete(session.id, true);
+      await call("session.delete", { id: session.id });
+      assert.equal(await workspaces.binding(session.id), null);
+      assert.ok(!existsSync(ready.remoteWorkspace.path));
+      assert.ok(remoteHasBranch(pr.head));
+      assert.ok(events.some(({ payload }) => payload.remoteRepository?.state === "preparing"));
+      assert.ok(events.some(({ payload }) => payload.remoteRepository?.state === "ready"));
+      // Losing the original job (such as during a Host restart) still
+      // recovers the canonical checkout through the Host's worktree list.
+      await rm(childBinding.path, { recursive: true });
+      await workspaces.update(child.id, { state: "preparing", jobId: "job-lost-after-restart" });
+      await workspaces.resume(HOST);
+      await workspaces.waitUntilReady(child.id);
+      assert.equal((await workspaces.binding(child.id)).path, childBinding.path);
+      assert.equal(git(childBinding.path, "rev-parse", "HEAD"), head);
+
+      online = false;
+      assert.deepEqual(await repositoryGit.preflight(child.id), { kind: "unknown" });
+      await repositoryGit.beforeDelete(child.id, true);
+      await call("session.delete", { id: child.id });
+      assert.equal((await call("sessionWorkspace.pendingRemoval.list", { hostKey: HOST })).removals.length, 1);
+      assert.ok(existsSync(childBinding.path));
+      online = true;
+      const recovered = createSessionWorkspaceGit({ call, workspaces, connector, emit });
+      safeRemoval = false;
+      const beforeLegacyReconcile = removalCalls.length;
+      await recovered.reconcile(HOST);
+      assert.equal(removalCalls.length, beforeLegacyReconcile, "legacy hosts never receive automatic removal requests");
+      assert.ok(existsSync(childBinding.path));
+      safeRemoval = true;
+      await recovered.reconcile(HOST);
+      assert.ok(!existsSync(childBinding.path));
+      await recovered.reconcile(HOST);
+      assert.deepEqual((await call("sessionWorkspace.pendingRemoval.list", { hostKey: HOST })).removals, []);
+    } finally {
+      off?.();
+    }
+  });
+
   await boot.removeHost(HOST);
   console.log("PASS remote git worktrees: clone, isolated worktrees, fork, proxied push, foreign-ref refusal, guarded removal, fail-closed without credential, no token at rest");
 } catch (error) {
@@ -325,6 +489,8 @@ try {
   process.exitCode = 1;
 } finally {
   clearTimeout(deadline);
+  repositorySessions?.dispose();
+  await localHost?.dispose().catch(() => undefined);
   await boot?.closeAll().catch(() => undefined);
   server?.close();
   await binding?.close().catch(() => undefined);

@@ -119,11 +119,8 @@ impl JobTable {
         session_id: &str,
     ) -> Result<(String, watch::Receiver<bool>), WorkspaceGitError> {
         self.prune(Instant::now());
-        if self.is_running(installation_id, session_id) {
-            return Err(WorkspaceGitError::new(
-                "WORKSPACE_GIT_BUSY",
-                "a git job for this session is still running",
-            ));
+        if let Some(job_id) = self.running_job(installation_id, session_id) {
+            return Err(WorkspaceGitError::busy(job_id));
         }
         let (cancel, cancelled) = watch::channel(false);
         let job_id = self.insert(kind, installation_id, session_id, cancel);
@@ -173,12 +170,20 @@ impl JobTable {
         job_id
     }
 
+    #[cfg(test)]
     pub fn is_running(&self, installation_id: &str, session_id: &str) -> bool {
-        self.entries.values().any(|entry| {
-            entry.job.state == JobState::Running
-                && entry.key.0 == installation_id
-                && entry.key.1 == session_id
-        })
+        self.running_job(installation_id, session_id).is_some()
+    }
+
+    pub fn running_job(&self, installation_id: &str, session_id: &str) -> Option<&str> {
+        self.entries
+            .values()
+            .find(|entry| {
+                entry.job.state == JobState::Running
+                    && entry.key.0 == installation_id
+                    && entry.key.1 == session_id
+            })
+            .map(|entry| entry.job.job_id.as_str())
     }
 
     pub fn set_phase(&mut self, job_id: &str, phase: JobPhase) {

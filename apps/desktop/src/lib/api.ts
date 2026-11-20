@@ -94,6 +94,15 @@ import type {
   PluginReviewTicker,
   ProjectRecord,
   ProjectGroupRecord,
+  GitHubPullRequestSummary,
+  LeftoverWorktree,
+  RemoteEnvironment,
+  RemoteEnvironmentInput,
+  RemoteSessionDeletePreflight,
+  RemoteSessionGitStatus,
+  RemoteSessionTarget,
+  RemoteSessionWorkspaceStart,
+  SessionRemoteRepository,
   ProjectMemory,
   ProjectMemoryEntry,
   ProjectWorkspace,
@@ -416,6 +425,7 @@ export type BackgroundTaskOutput = {
 export type CreateSessionInput = Partial<SessionSummary> & {
   /** Run the session in its own git worktree (ADR 0329). */
   isolated?: boolean;
+  deferRemoteWorkspace?: boolean;
 };
 
 function normalizeSession(session: SessionSummary): SessionSummary {
@@ -553,6 +563,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
     jevEnabled?: unknown;
+      githubAgentTools?: unknown;
     smoothStreaming?: unknown;
     sidebarRunningIndicators?: unknown;
     sidebarRunningBadge?: unknown;
@@ -611,6 +622,9 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     throw Object.assign(new Error("scheduledTasksEnabled is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
+  }
+  if (Object.hasOwn(value, "githubAgentTools") && typeof value.githubAgentTools !== "boolean") {
+    throw Object.assign(new Error("githubAgentTools is invalid"), { errorCode: "INVALID_ARGUMENT" });
   }
   if (
     Object.prototype.hasOwnProperty.call(value, "jevEnabled") &&
@@ -859,7 +873,7 @@ export const api = {
     invoke<SessionCollaborationSummary>(IPC.invoke.sessionCollaboration, { sessionId }),
   getSessionUsageCost: (sessionId: string) =>
     invoke<import("@pi-desktop/shared").SessionUsageCost>(IPC.invoke.sessionUsageCost, { sessionId }),
-  deleteSession: (id: string) => invoke(IPC.invoke.sessionDelete, id),
+  deleteSession: (id: string, forceRemoteWorkspace?: boolean) => invoke(IPC.invoke.sessionDelete, id, { forceRemoteWorkspace }),
   getSessionScratchPath: (sessionId: string) =>
     invoke<{ path: string }>(IPC.invoke.sessionGetScratchPath, { sessionId }),
   openSessionScratchPath: (sessionId: string) =>
@@ -1100,6 +1114,28 @@ export const api = {
     invoke<GitHubRepositoryList>(IPC.invoke.githubRepositories, input),
   listGithubBranches: (repository: GitHubRepositoryRef) =>
     invoke<GitHubBranchList>(IPC.invoke.githubBranches, repository),
+  listEnvironments: () => invoke<{ environments: RemoteEnvironment[] }>(IPC.invoke.environmentsList),
+  upsertEnvironment: (input: RemoteEnvironmentInput) => invoke<{ environment: RemoteEnvironment }>(IPC.invoke.environmentsUpsert, input),
+  removeEnvironment: (id: string) => invoke<{ ok: boolean }>(IPC.invoke.environmentsRemove, id),
+  resolveRemoteSessionTarget: (input: RemoteSessionTarget) => invoke<{ projectPath: string }>(IPC.invoke.remoteSessionTargetResolve, input),
+  startRemoteSessionWorkspace: (input: RemoteSessionWorkspaceStart) => invoke<{ remoteRepository: SessionRemoteRepository }>(IPC.invoke.remoteSessionWorkspaceStart, input),
+  retryRemoteSessionWorkspace: (id: string) => invoke<{ remoteRepository: SessionRemoteRepository }>(IPC.invoke.remoteSessionWorkspaceRetry, id),
+  remoteSessionGitStatus: (id: string) => invoke<{ status: RemoteSessionGitStatus }>(IPC.invoke.remoteSessionGitStatus, id),
+  pushRemoteSession: (id: string) => invoke<{ status: RemoteSessionGitStatus }>(IPC.invoke.remoteSessionPush, id),
+  findRemoteSessionPullRequest: (id: string) => invoke<{ pullRequest: GitHubPullRequestSummary | null }>(IPC.invoke.remoteSessionPullRequestFind, id),
+  createRemoteSessionPullRequest: (input: { sessionId: string; title: string; body: string; draft: boolean }) =>
+    invoke<{ pullRequest: GitHubPullRequestSummary }>(IPC.invoke.remoteSessionPullRequestCreate, input),
+  remoteSessionDeletePreflight: (id: string) => invoke<RemoteSessionDeletePreflight>(IPC.invoke.remoteSessionDeletePreflight, id),
+  listRemoteLeftoverWorktrees: (hostKey: string) => invoke<{ worktrees: LeftoverWorktree[] }>(IPC.invoke.remoteLeftoverWorktreesList, hostKey),
+  removeRemoteLeftoverWorktree: (hostKey: string, id: string) => invoke<{ ok: boolean }>(IPC.invoke.remoteLeftoverWorktreesRemove, hostKey, id),
+  onRemoteSessionWorkspaceChanged: (callback: (event: { sessionId: string; remoteRepository: SessionRemoteRepository | null }) => void) =>
+    window.piDesktop?.on?.(IPC.event.remoteSessionWorkspaceChanged, (value) =>
+      callback(value as { sessionId: string; remoteRepository: SessionRemoteRepository | null })) ?? (() => undefined),
+  onRemoteSessionPushProgress: (callback: (event: { sessionId: string; progress?: { percent?: number } }) => void) =>
+    window.piDesktop?.on?.(IPC.event.remoteSessionPushProgress, (value) =>
+      callback(value as { sessionId: string; progress?: { percent?: number } })) ?? (() => undefined),
+  onEnvironmentsChanged: (callback: () => void) =>
+    window.piDesktop?.on?.(IPC.event.environmentsChanged, callback) ?? (() => undefined),
   getProject: () =>
     invoke<{ workspace: ProjectWorkspace | null }>(IPC.invoke.projectGet),
   getSidebarPreferences: () => invoke<unknown>(IPC.invoke.sidebarPreferencesGet),

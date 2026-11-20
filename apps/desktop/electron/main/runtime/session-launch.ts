@@ -1,3 +1,4 @@
+import { getBuiltinGitHubMcp } from "../github/builtin-mcp";
 import { join } from "node:path";
 import {
   capabilitiesFromModelConfig,
@@ -113,7 +114,14 @@ export function createSessionLaunchRuntime({
       const result = await runtimeState.host!.call<{ servers: McpServerRecord[] }>("mcp.active", {
         projectPath: projectPath ?? null,
       });
-      const servers = result.servers ?? [];
+      const records = result.servers ?? [];
+      const githubMcp = getBuiltinGitHubMcp();
+      const servers = githubMcp ? await (async () => {
+        const configured = await runtimeState.host!.call<{ servers: McpServerRecord[] }>("mcp.list", {
+          level: "all", projectPath: projectPath ?? null,
+        });
+        return githubMcp.merge(records, [...records, ...(configured.servers ?? [])]);
+      })().catch(() => records) : records;
       // Each workspace keeps its own active list; refreshing this one must not
       // take another project's servers away from a turn running there.
       userMcp.setRecords(servers, projectPath ?? null);

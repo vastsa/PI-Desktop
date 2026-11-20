@@ -57,8 +57,12 @@ Host gains a mutation capability. Hence this record.
    The stored remote stays the GitHub URL, so a Host restart on a new port
    needs no rewrite. The rewrite is delivered as environment-carried git
    configuration (`GIT_CONFIG_COUNT`), not `-c`, to host-run git and to the
-   Agent's Bash alike, so the handle is not readable in the process list. git
-   2.31 or newer is therefore required.
+   Agent's Bash. Git 2.31 or newer is required. Git can expose the handle in
+   `git remote-http` process arguments, `.git/FETCH_HEAD`, and command output.
+   The proxy is loopback-only, checks the connecting user on Linux, scopes
+   handles to a repository and work branch, and rotates them on credential
+   replacement. The workspaces root, `repos`, and `worktrees` use mode 0700
+   on Unix.
 
 5. **A handle is scoped to one repository and one branch.** The proxy attaches
    the credential only to the smart-HTTP endpoints (and the two Git LFS

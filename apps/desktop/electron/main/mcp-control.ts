@@ -475,6 +475,19 @@ export const MCP_CONTROL_BLOCKED_CHANNEL_KEYS = [
   // The GitHub connector moves and spends the user's GitHub token, and its
   // read channels enumerate private repositories. None of that belongs to a
   // local control client.
+  "environmentsList",
+  "environmentsUpsert",
+  "environmentsRemove",
+  "remoteSessionTargetResolve",
+  "remoteSessionWorkspaceStart",
+  "remoteSessionWorkspaceRetry",
+  "remoteSessionGitStatus",
+  "remoteSessionPush",
+  "remoteSessionPullRequestFind",
+  "remoteSessionPullRequestCreate",
+  "remoteSessionDeletePreflight",
+  "remoteLeftoverWorktreesList",
+  "remoteLeftoverWorktreesRemove",
   "githubConnectorStatus",
   "githubConnectorLoginStart",
   "githubConnectorLoginCancel",

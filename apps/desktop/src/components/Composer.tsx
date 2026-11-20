@@ -1,3 +1,5 @@
+import { SessionTargetRow } from "../features/chat/session-target/SessionTargetRow";
+import { WorkspacePreparationStatus } from "../features/chat/session-target/WorkspacePreparationStatus";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import { inheritedSessionModelBinding } from "../lib/session-model";
 import {
@@ -458,7 +460,8 @@ export function Composer({
     pasting,
     activeFileReferences,
     t,
-    sendPrompt,
+    sendPrompt: (content, snapshot, sessionId, accepted) =>
+      sendPrompt(content, snapshot, sessionId, accepted, variant === "home"),
     steerPrompt,
     sendQueuedNow,
     queuedPrompts,
@@ -561,6 +564,8 @@ export function Composer({
             Native Pi session is read-only: {activeSessionSummary?.readOnlyReason ?? "continuation unavailable"}.
           </div>
         ) : null}
+        {activeSessionId && activeSessionSummary?.remoteRepository && <WorkspacePreparationStatus key={activeSessionId}
+          sessionId={activeSessionId} workspace={activeSessionSummary.remoteRepository} />}
         <ComposerStatus
           t={t}
           queuedPrompts={queuedPrompts}
@@ -667,6 +672,7 @@ export function Composer({
             workSessionId={activeSessionId ?? undefined}
             workSessionLabel={activeSessionSummary?.title}
           />
+          {variant === "home" && !activeSessionSummary?.remoteRepository && <SessionTargetRow />}
         </div>
       </div>
     </div>

@@ -73,6 +73,7 @@ impl WorktreeRecord {
             "baseBranch": self.base_branch,
             "workBranch": self.work_branch,
             "path": self.path,
+            "checkoutPresent": crate::session_worktrees::remove::is_real_dir(Path::new(&self.path)),
             "mainPath": self.main_path,
             "baseCommit": self.base_commit,
             "createdAt": self.created_at,
@@ -161,6 +162,18 @@ pub fn set_setup(
     record.setup_status = status;
     record.setup_log_tail = log_tail;
     insert(db, &record)
+}
+
+/// A setup process cannot outlive the host-core that started it.
+pub fn recover_interrupted_setups(db: &Database) -> Result<()> {
+    for mut record in all(db)? {
+        if record.setup_status == SetupStatus::Running {
+            record.setup_status = SetupStatus::Failed;
+            record.setup_log_tail = Some("Setup was interrupted when the host stopped.".into());
+            insert(db, &record)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

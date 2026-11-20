@@ -43,7 +43,18 @@ pub enum Phase {
 /// The git directory of a main checkout: the key for serializing every
 /// repository-changing step, shared by all of its worktrees.
 pub fn common_dir(main_path: &Path) -> PathBuf {
-    main_path.join(".git")
+    let git_dir = main_path.join(".git");
+    if let Ok(canonical) = crate::workspace::simple_canonicalize(&git_dir) {
+        return canonical;
+    }
+    // A new clone does not have a git directory yet. Canonicalize the
+    // existing parent so a symlinked workspaces root uses the same lock.
+    match (main_path.parent(), main_path.file_name()) {
+        (Some(parent), Some(name)) => crate::workspace::simple_canonicalize(parent)
+            .map(|parent| parent.join(name).join(".git"))
+            .unwrap_or(git_dir),
+        _ => git_dir,
+    }
 }
 
 /// Make sure `main_path` is a clone of `remote_url` with current remote refs:

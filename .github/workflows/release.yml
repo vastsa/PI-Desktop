@@ -16,8 +16,8 @@
 # MACOS_SIGN_RELEASE is 'true'. The Windows and Linux desktop steps are kept
 # too; no matrix row selects them.
 #
-# It also builds the headless `pi-host` bundle for both Linux architectures the
-# desktop publishes and publishes each as
+# The workflow also builds headless `pi-host` bundles for Linux x64 and arm64
+# and publishes each as
 # pi-host-<version>-linux-<arch>.tar.gz plus a .sha256 sidecar. The desktop's
 # SSH bootstrap downloads that asset at the desktop's version and verifies the
 # published checksum before installing on the remote machine (rollout
@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       sign_macos:
-        description: 'Sign and notarize macOS artifacts (default true; set false only for unsigned debug artifacts)'
+        description: 'Sign and notarize when the repository permits it through MACOS_SIGN_RELEASE'
         required: false
         default: true
         type: boolean
@@ -180,7 +180,7 @@ jobs:
         # must not self-publish on tag builds (no token; softprops owns it).
         # The explicit architecture keeps the package and native Rust sidecar
         # aligned with the runner selected by this matrix entry.
-        run: pnpm --filter @pi-desktop/desktop run ${{ matrix.dist }} -- --${{ matrix.arch }}
+        run: pnpm --filter @pi-desktop/desktop run ${{ matrix.dist }} --${{ matrix.arch }}
 
       - name: Package unsigned macOS installer
         if: matrix.platform == 'macos' && env.MACOS_SIGN_RELEASE != 'true'
@@ -290,7 +290,7 @@ jobs:
           # PI_SIGNING_TIMEOUT_SECONDS instead of waiting for the job timeout.
           node scripts/macos-signing-watchdog.mjs \
             --label "dist:mac-${{ matrix.arch }}" \
-            -- pnpm --filter @pi-desktop/desktop run dist:mac -- --${{ matrix.arch }} \
+            -- pnpm --filter @pi-desktop/desktop run dist:mac --${{ matrix.arch }} \
               -c.mac.forceCodeSigning=true \
               -c.mac.notarize=true
 

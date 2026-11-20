@@ -130,7 +130,7 @@ test("the sidebar renders both affordances from the resolved switches", async ()
   assert.match(sidebar, /const runSummary = summarizeProjectRuns\(/);
   assert.match(sidebar, /showRunBadge \? <ProjectRunBadge summary=\{runSummary\} \/>/);
   assert.match(sidebar, /showRunRail \? <ProjectRunRail summary=\{runSummary\} \/>/);
-  assert.match(sidebar, /\{entry\.name\}<\/span>[\s\S]{0,220}ProjectRunBadge/);
+  assert.match(sidebar, /\{label\}<\/span>[\s\S]{0,220}ProjectRunBadge/);
   // The rail's count is the badge's stand-in, so the header must gate it on the
   // exclusive flag instead of the rail switch.
   assert.match(sidebar, /showRunCount \? <ProjectRunCount summary=\{runSummary\} \/>/);

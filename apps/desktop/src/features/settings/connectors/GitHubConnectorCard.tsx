@@ -16,7 +16,7 @@ import type { GitHubConnectorStatus } from "@pi-desktop/shared";
 import { api } from "../../../lib/api";
 import type { OAuthLoginSession } from "../../../lib/oauth-login-session";
 import { useAppStore } from "../../../stores/app-store";
-import { Button, Checkbox, Field, HelpIcon, PasswordInput } from "../../../components/ui";
+import { Button, Checkbox, Field, HelpIcon, PasswordInput, SettingsToggle } from "../../../components/ui";
 import { IconTriangleAlert, IconUser } from "../../../components/icons";
 import { OAuthLoginDialog } from "../../../components/settings/OAuthLoginDialog";
 import { SettingsDisclosure } from "../../../components/settings/SettingsDisclosure";
@@ -48,6 +48,27 @@ function Avatar({ url }: { url?: string }) {
       {!source || failed ? <IconUser size={16} /> : null}
     </span>
   );
+}
+
+function GitHubAgentToolsSwitch({ refresh, onError }: { refresh(): Promise<void>; onError(error: unknown): void }) {
+  const { t } = useTranslation();
+  const enabled = useAppStore((state) => state.settings?.githubAgentTools !== false);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    const current = useAppStore.getState().settings;
+    if (!current) return;
+    setSaving(true);
+    try {
+      const settings = { ...current, githubAgentTools: !enabled };
+      await api.setSettings(settings);
+      useAppStore.setState({ settings });
+      await refresh();
+    } catch (error) { onError(error); }
+    finally { setSaving(false); }
+  }
+  return <SettingsRow title={t("settings.connectors.github.agentTools")} description={t("settings.connectors.github.agentToolsHelp")}>
+    <SettingsToggle label={t("settings.connectors.github.agentTools")} checked={enabled} disabled={saving} onChange={() => void save()} />
+  </SettingsRow>;
 }
 
 export function GitHubConnectorCard() {
@@ -195,6 +216,10 @@ export function GitHubConnectorCard() {
             </p>
           </>
         ) : null}
+
+        {connected && !needsReauth && (status?.agentTools === "shadowed"
+          ? <p>{t("settings.connectors.github.agentToolsShadowed")}</p>
+          : <GitHubAgentToolsSwitch refresh={refresh} onError={fail} />)}
 
         {status && (!connected || needsReauth) ? (
           <>

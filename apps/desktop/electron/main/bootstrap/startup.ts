@@ -25,6 +25,8 @@ import { applyNetworkProxyFromAppSettings } from "../network-proxy";
 import { readCloseBehavior } from "../window-preferences";
 import { createAgentHostBridge, type AgentHostBridge } from "../agent-host-bridge";
 import { createBackendRouter, type BackendRouter } from "../remote/backend-router";
+import { createInstallationIdentity } from "../installation-identity";
+import { getRemoteRepositorySessions } from "../ipc/repository-session-ipc";
 import { createRemoteHostsBoot, setActiveRemoteHostsBoot } from "./remote-hosts";
 import {
   createMcpControlController,
@@ -265,11 +267,18 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       router: state.backendRouter,
       emit: sendToRenderer,
       getLocalHost: getHost,
+      getInstallationId: createInstallationIdentity(async (method, params) => {
+        const host = getHost();
+        if (!host) throw new Error("local host unavailable");
+        return host.call(method, params);
+      }),
       clientInfo: { name: APP_NAME, version: APP_VERSION },
       log: (level, message, data) =>
         logger.app("runtime", level, message, { data: formatRemoteLogData(data) }),
     });
     setActiveRemoteHostsBoot(remoteHostsBoot);
+    const remoteRepositories = getRemoteRepositorySessions();
+    if (remoteRepositories) remoteHostsBoot.workspaceGit.setCredentialProvider(() => remoteRepositories.connector.token());
     // Boot in the background: a slow or unreachable host must not delay the
     // first window. Failures for individual hosts are logged inside `open()`.
     void remoteHostsBoot.open().then((opened) => {

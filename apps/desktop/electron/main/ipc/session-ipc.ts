@@ -92,6 +92,7 @@ export type SessionIpcDependencies = {
   registrar: IpcRegistrar;
   getHost: () => HostProcess | null;
   getSidecar: () => AgentSidecar | null;
+  getRepositorySessions?: typeof import("./repository-session-ipc").getRemoteRepositorySessions;
   dataDir: string;
   activeTurns: ReadonlyMap<string, string>;
   sessionProjects: Map<string, string | null>;
@@ -115,6 +116,7 @@ export function registerSessionIpc({
   registrar,
   getHost,
   getSidecar,
+  getRepositorySessions,
   dataDir,
   activeTurns,
   sessionProjects,
@@ -247,10 +249,18 @@ export function registerSessionIpc({
     const mode = input.mode ?? "agent";
     const modeSnapshot = await modeCatalog.snapshotFor(mode);
     const { providers, defaults } = await sessionCapabilityContext();
+    const { deferRemoteWorkspace, ...sessionInput } = input;
     const res = await currentHost.call<{ session?: (RuntimeSession & { id?: string }) | null }>(
       "session.create",
-      { ...input, mode, modeSnapshot },
+      { ...sessionInput, mode, modeSnapshot },
     );
+    if (res.session?.id && res.session.projectPath?.startsWith("remote-project:") && deferRemoteWorkspace !== true) {
+      const repositorySessions = getRepositorySessions?.();
+      await repositorySessions?.workspaces.ensureSession(res.session.id).catch((error) =>
+        logger.app("session", "warn", "Could not prepare repository session", { data: { error: String(error) } }));
+      const remoteRepository = await repositorySessions?.workspaces.get(res.session.id).catch(() => null);
+      if (remoteRepository) res.session.remoteRepository = remoteRepository;
+    }
     logger.app("session", "info", "session created", { sessionId: res.session?.id });
     if (!res.session) return res;
     return { ...res, session: enrichSession(res.session, providers, defaults) };
@@ -318,6 +328,13 @@ export function registerSessionIpc({
         throw error;
       }
       if (!result.session) return result;
+      if (result.session.id && result.session.projectPath?.startsWith("remote-project:")) {
+        const repositorySessions = getRepositorySessions?.();
+        await repositorySessions?.workspaces.ensureSession(result.session.id, sessionId).catch((error) =>
+          logger.app("session", "warn", "Could not prepare forked repository session", { data: { error: String(error) } }));
+        const remoteRepository = await repositorySessions?.workspaces.get(result.session.id).catch(() => null);
+        if (remoteRepository) result.session.remoteRepository = remoteRepository;
+      }
       logger.app("session", "info", "session forked", {
         sessionId: (result.session as { id?: string }).id,
         data: { sourceSessionId: sessionId },
@@ -419,7 +436,7 @@ export function registerSessionIpc({
     }
     return { ...result, session: enrichSession(result.session, providers, defaults) };
   });
-  handle(IPC.invoke.sessionDelete, async (id: string) => {
+  handle(IPC.invoke.sessionDelete, async (id: string, options?: { forceRemoteWorkspace?: boolean }) => {
     if (id.startsWith("native-pi:")) {
       throw Object.assign(new Error("Native Pi sessions cannot be deleted from PI-Desktop"), {
         errorCode: ErrorCodes.INVALID_ARGUMENT,
@@ -438,6 +455,8 @@ export function registerSessionIpc({
           errorCode: ErrorCodes.AGENT_BUSY,
         });
       }
+      const repositorySessions = getRepositorySessions?.();
+      await repositorySessions?.git.beforeDelete(id, options?.forceRemoteWorkspace === true);
       const res = await host.call("session.delete", { id });
       await persistenceOutbox.dropSession(id);
       forgetTranscriptRewriteHistory(id);

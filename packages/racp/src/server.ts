@@ -182,6 +182,7 @@ export class RacpServer {
       workspaceFiles: Boolean(options.operations.workspaceFiles),
       workspacePluginFiles: Boolean(options.operations.workspacePluginFiles),
       workspaceGit: Boolean(options.operations.workspaceGit),
+      ...(options.operations.workspaceGit?.safeRemoval === true ? { workspaceGitSafeRemoval: true } : {}),
       notifications: false,
       bindings: ["RACP-WS"],
     };

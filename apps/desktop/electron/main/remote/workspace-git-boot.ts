@@ -33,10 +33,11 @@ export type WorkspaceGitBoot = {
   refreshCredential(): Promise<void>;
   /** Whether the host offers git workspaces; realigns it once when it does not. */
   supported(hostKey: string): Promise<boolean>;
+  supportsSafeRemoval(hostKey: string): boolean;
   repository(hostKey: string, repository: WorkspaceGitRepository): Promise<{ path: string; cloned: boolean }>;
   prepare(hostKey: string, input: {
     sessionId: string; repository: WorkspaceGitRepository; baseBranch: string;
-    fromSessionId?: string; environment?: WorkspaceGitEnvironment;
+    fromSessionId?: string; environment?: WorkspaceGitEnvironment; restoreOnly?: boolean;
   }): Promise<{ jobId: string }>;
   push(hostKey: string, sessionId: string): Promise<{ jobId: string }>;
   job(hostKey: string, jobId: string): Promise<WorkspaceGitJob>;
@@ -50,7 +51,7 @@ export type WorkspaceGitBoot = {
 export type WorkspaceGitHost = {
   adapter: {
     client: { request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> };
-    workspaceCapabilities?(): { workspaceGit?: boolean } | undefined;
+    workspaceCapabilities?(): { workspaceGit?: boolean; workspaceGitSafeRemoval?: boolean } | undefined;
   };
 };
 
@@ -111,14 +112,13 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
   async function pushCredential(hostKey: string): Promise<void> {
     const current = provider;
     const host = deps.connectedHost(hostKey);
-    if (!current || !host || !advertises(host)) return;
-    let token: string | null;
+    if (!host || !advertises(host)) return;
+    let token: string | null = null;
     try {
-      token = await current();
+      token = await current?.() ?? null;
     } catch {
       // The provider's error may quote what it failed to read; keep only the fact.
-      deps.log("warn", "git credential provider failed; the remote host has no git credential", { hostKey });
-      return;
+      deps.log("warn", "git credential provider failed; clearing the remote credential", { hostKey });
     }
     if (provider !== current || deps.connectedHost(hostKey) !== host) return;
     try {
@@ -129,11 +129,13 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
       }
       if (!credentialTransportAllowed(deps.record(hostKey))) {
         refused.add(hostKey);
+        await host.adapter.client.request("workspace/gitCredentialClear", {}, REQUEST_TIMEOUT_MS);
         deps.log("warn", "git credential not sent: the remote host is not reached over SSH, wss, or loopback", { hostKey, code: ErrorCodes.WORKSPACE_GIT_TRANSPORT_REFUSED });
         return;
       }
       refused.delete(hostKey);
       const installationId = await deps.getInstallationId();
+      if (provider !== current || deps.connectedHost(hostKey) !== host) return;
       await host.adapter.client.request("workspace/gitCredentialSet", { installationId, token }, REQUEST_TIMEOUT_MS);
     } catch (error) {
       // Only the code: a message could echo the request.
@@ -160,7 +162,7 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
     return host;
   }
 
-  async function call<T>(hostKey: string, method: string, params: (installationId: string) => Record<string, unknown>, options: { needsCredential?: boolean } = {}): Promise<T> {
+  async function call<T>(hostKey: string, method: string, params: (installationId: string) => Record<string, unknown>, options: { needsCredential?: boolean; needsSafeRemoval?: boolean } = {}): Promise<T> {
     const host = await capableHost(hostKey);
     let installationId: string;
     try {
@@ -175,6 +177,10 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
         throw fail(ErrorCodes.WORKSPACE_GIT_TRANSPORT_REFUSED, "the GitHub credential is only sent to a host reached over SSH, wss://, or a loopback ws:// address");
       }
       if (deps.connectedHost(hostKey) !== host) throw unavailable();
+    }
+    if (deps.connectedHost(hostKey) !== host) throw unavailable();
+    if (options.needsSafeRemoval && host.adapter.workspaceCapabilities?.()?.workspaceGitSafeRemoval !== true) {
+      throw fail(ErrorCodes.HOST_VERSION_MISMATCH, "Upgrade pi-host to enable safe worktree removal");
     }
     const result = await host.adapter.client.request<T>(method, params(installationId), REQUEST_TIMEOUT_MS);
     if (deps.connectedHost(hostKey) !== host) throw unavailable();
@@ -204,6 +210,10 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
       await realignment;
       return advertises(deps.connectedHost(hostKey));
     },
+    supportsSafeRemoval(hostKey) {
+      const capabilities = deps.connectedHost(hostKey)?.adapter.workspaceCapabilities?.();
+      return capabilities?.workspaceGit === true && capabilities.workspaceGitSafeRemoval === true;
+    },
     repository(hostKey, repository) {
       return call(hostKey, "workspace/gitRepository", () => ({ repository: { owner: repository.owner, name: repository.name } }));
     },
@@ -214,8 +224,9 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
         repository: { owner: input.repository.owner, name: input.repository.name },
         baseBranch: input.baseBranch,
         ...(input.fromSessionId !== undefined ? { fromSessionId: input.fromSessionId } : {}),
+        ...(input.restoreOnly === true ? { restoreOnly: true } : {}),
         ...(input.environment !== undefined ? { environment: input.environment } : {}),
-      }), { needsCredential: true });
+      }), { needsCredential: !input.restoreOnly });
     },
     push(hostKey, sessionId) {
       return call(hostKey, "workspace/gitPush", (installationId) => ({ installationId, sessionId }), { needsCredential: true });
@@ -230,7 +241,7 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
       return call(hostKey, "workspace/gitStatus", (installationId) => ({ installationId, sessionId }));
     },
     remove(hostKey, sessionId, force) {
-      return call(hostKey, "workspace/gitRemove", (installationId) => ({ installationId, sessionId, force }));
+      return call(hostKey, "workspace/gitRemove", (installationId) => ({ installationId, sessionId, force }), { needsSafeRemoval: !force });
     },
     async list(hostKey) {
       const result = await call<{ worktrees?: WorkspaceGitWorktree[] }>(hostKey, "workspace/gitList", (installationId) => ({ installationId }));

@@ -46,6 +46,8 @@ export type GitCredentialProxy = {
   /** Returns `http://127.0.0.1:<port>/<handle>/`; the same scope keeps its handle until the next credential set. */
   register(scope: GitProxyScope): string;
   unregister(installationId: string, sessionId: string): void;
+  /** An unauthenticated connection gets a URL that only answers 401. */
+  unauthorizedUrl?(): string | undefined;
 };
 
 type ProxyLog = (level: "info" | "warn", message: string, data?: unknown) => void;
@@ -62,6 +64,7 @@ const HANDLE = /^[0-9a-f]{64}$/u;
 const SAFE_PATH = /^(?:\/[A-Za-z0-9._~-]+)+\/?$/u;
 const SAFE_QUERY = /^[A-Za-z0-9._~=&-]*$/u;
 const REFUSED_DRAIN_MS = 30_000;
+const INSPECTION_IDLE_MS = 30_000;
 
 /** Never forwarded to GitHub: the client's own credentials, and hop-by-hop headers. */
 const DROPPED_REQUEST_HEADERS = new Set([
@@ -106,6 +109,8 @@ function inspectReceivePack(req: IncomingMessage, workBranch: string): Promise<I
       req.off("data", onData);
       req.off("end", onEnd);
       req.off("error", onError);
+      req.off("aborted", onError);
+      clearTimeout(idle);
       req.pause();
       resolve(result);
     };
@@ -140,13 +145,16 @@ function inspectReceivePack(req: IncomingMessage, workBranch: string): Promise<I
       }
     };
     const onData = (chunk: Buffer) => {
+      idle.refresh();
       buffered.push(chunk);
       size += chunk.length;
       check(false);
     };
     const onEnd = () => check(true);
     const onError = () => settle({ ok: false, reason: "the request was interrupted" });
+    const idle = setTimeout(() => settle({ ok: false, reason: "the push stalled before its ref updates were complete" }), INSPECTION_IDLE_MS).unref();
     req.on("data", onData);
+    req.on("aborted", onError);
     req.on("end", onEnd);
     req.on("error", onError);
   });
@@ -182,6 +190,7 @@ export function createGitCredentialProxy(options: {
   const tokens = new Map<string, string>();
   const scopes = new Map<string, GitProxyScope>();
   const handles = new Map<string, string>();
+  const unauthorizedHandle = randomBytes(32).toString("hex");
   const scopeKey = (installationId: string, sessionId: string) => JSON.stringify([installationId, sessionId]);
   let server: Server | null = null;
   let port = 0;
@@ -233,6 +242,9 @@ export function createGitCredentialProxy(options: {
     const query = mark < 0 ? undefined : raw.slice(mark + 1);
     const slash = rawPath.indexOf("/", 1);
     const candidate = slash < 0 ? rawPath.slice(1) : rawPath.slice(1, slash);
+    if (candidate === unauthorizedHandle) {
+      return refuse(req, res, 401, "pi-host git proxy: no GitHub credential for this connection");
+    }
     const scope = HANDLE.test(candidate) ? scopes.get(candidate) : undefined;
     if (!scope) {
       log("warn", "git proxy request with an unknown handle");
@@ -341,8 +353,16 @@ export function createGitCredentialProxy(options: {
         handleId = randomBytes(32).toString("hex");
         handles.set(key, handleId);
       }
+      const existing = scopes.get(handleId);
+      if (existing && existing.repository.owner === scope.repository.owner
+        && existing.repository.name === scope.repository.name && existing.workBranch === scope.workBranch) {
+        return `http://127.0.0.1:${port}/${handleId}/`;
+      }
       scopes.set(handleId, { installationId: scope.installationId, sessionId: scope.sessionId, repository: { owner: scope.repository.owner, name: scope.repository.name }, workBranch: scope.workBranch });
       return `http://127.0.0.1:${port}/${handleId}/`;
+    },
+    unauthorizedUrl() {
+      return server ? `http://127.0.0.1:${port}/${unauthorizedHandle}/` : undefined;
     },
     unregister(installationId, sessionId) {
       const key = scopeKey(installationId, sessionId);

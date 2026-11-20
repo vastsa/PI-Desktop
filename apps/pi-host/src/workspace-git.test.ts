@@ -67,7 +67,7 @@ describe("pi-host workspace git", () => {
         case "workspaceGit.job": return job;
         case "workspaceGit.jobCancel": return { ok: true };
         case "workspaceGit.status": return status;
-        case "workspaceGit.remove": return { removed: false, uncommittedFiles: 2, unpushedCommits: 1 };
+        case "workspaceGit.removeSafely": return { removed: false, uncommittedFiles: 2, unpushedCommits: 1 };
         case "workspaceGit.list": return { worktrees: [worktree("session-1")] };
         default: throw new Error(`unexpected ${method}`);
       }
@@ -83,13 +83,13 @@ describe("pi-host workspace git", () => {
     expect(await f.git.list({ installationId: INSTALLATION })).toEqual([worktree("session-1")]);
     expect(f.calls.map((call) => call.method)).toEqual([
       "workspaceGit.repository", "workspaceGit.prepare", "workspaceGit.push", "workspaceGit.job", "workspaceGit.jobCancel",
-      "workspaceGit.status", "workspaceGit.remove", "workspaceGit.list",
+      "workspaceGit.status", "workspaceGit.removeSafely", "workspaceGit.list",
     ]);
     for (const call of f.calls) expect(call.params.workspacesRoot, call.method).toBe(ROOT);
     expect(f.calls[0]?.params).toEqual({ workspacesRoot: ROOT, repository });
     expect(f.calls[3]?.params).toEqual({ workspacesRoot: ROOT, jobId: "job-1" });
     expect(f.calls[5]?.params).toEqual({ workspacesRoot: ROOT, ...session });
-    expect(f.calls[6]?.params).toEqual({ workspacesRoot: ROOT, ...session, force: false });
+    expect(f.calls[6]?.params).toEqual({ workspacesRoot: ROOT, ...session });
     expect(f.calls[7]?.params).toEqual({ workspacesRoot: ROOT, installationId: INSTALLATION });
   });
 
@@ -191,9 +191,21 @@ describe("pi-host workspace git", () => {
     ]);
   });
 
+  it("does not fall back to legacy removal when host-core lacks guarded removal", async () => {
+    const f = fixture((method) => {
+      if (method === "workspaceGit.removeSafely") {
+        throw Object.assign(new Error("method not found"), { data: { errorCode: "METHOD_NOT_FOUND" } });
+      }
+      return { removed: true, uncommittedFiles: 0, unpushedCommits: 0 };
+    });
+    await expect(f.git.remove({ installationId: INSTALLATION, sessionId: "session-1", force: false }))
+      .rejects.toMatchObject({ code: "METHOD_NOT_FOUND" });
+    expect(f.calls.map(({ method }) => method)).toEqual(["workspaceGit.removeSafely"]);
+  });
+
   it("drops the scope once host-core has removed the worktree", async () => {
     let removed = false;
-    const f = fixture((method) => (method === "workspaceGit.remove" ? { removed, uncommittedFiles: 1, unpushedCommits: 0 } : { jobId: "job-1" }));
+    const f = fixture((method) => (["workspaceGit.remove", "workspaceGit.removeSafely"].includes(method) ? { removed, uncommittedFiles: 1, unpushedCommits: 0 } : { jobId: "job-1" }));
     const session = { installationId: INSTALLATION, sessionId: "session-1" };
     await f.git.prepare({ ...session, repository, baseBranch: "main" }, owner);
     await f.git.remove({ ...session, force: false });

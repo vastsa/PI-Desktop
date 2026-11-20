@@ -83,10 +83,9 @@ pub fn parse_proxy_url(value: Option<&Value>) -> Result<Option<String>, Workspac
 /// Environment for a tool rooted at `root`.
 ///
 /// Inside a registered worktree, in order: the record's variables,
-/// `PI_WORKTREE_ROOT`, `PI_PROJECT_ROOT` (the main checkout), and, only when a
-/// proxy URL is given, `GIT_TERMINAL_PROMPT=0` and `network_config` as
-/// environment-carried git configuration. For any other root the result is
-/// empty, whatever `git_proxy_url` says.
+/// `PI_WORKTREE_ROOT`, `PI_PROJECT_ROOT` (the main checkout), and the Git
+/// configuration. Without a live proxy URL the repository is rewritten to
+/// a disabled transport. Other roots keep their existing environment.
 pub fn for_tool(db: &Database, root: &Path, git_proxy_url: Option<&str>) -> Vec<(String, String)> {
     let record = match registry::find_by_path(db, root) {
         Ok(Some(record)) => record,
@@ -105,8 +104,16 @@ pub fn for_tool(db: &Database, root: &Path, git_proxy_url: Option<&str>) -> Vec<
         .collect();
     env.push(("PI_WORKTREE_ROOT".to_string(), record.path.clone()));
     env.push(("PI_PROJECT_ROOT".to_string(), record.main_path.clone()));
-    if let (Some(proxy_url), Ok(repository)) = (git_proxy_url, record.repository.validated()) {
-        let config = network_config(Some(proxy_url), &repository);
+    if let Ok(repository) = record.repository.validated() {
+        let proxy_url = git_proxy_url.unwrap_or("pi-workspace-no-credential:///");
+        let mut config = network_config(Some(proxy_url), &repository);
+        if git_proxy_url.is_none() {
+            config.push((
+                "protocol.pi-workspace-no-credential.allow".to_string(),
+                "never".to_string(),
+            ));
+        }
+        env.push(("GIT_ASKPASS".to_string(), String::new()));
         env.push(("GIT_TERMINAL_PROMPT".to_string(), "0".to_string()));
         env.push(("GIT_CONFIG_COUNT".to_string(), config.len().to_string()));
         for (index, (key, value)) in config.into_iter().enumerate() {
@@ -180,14 +187,19 @@ mod tests {
             ("PI_WORKTREE_ROOT", root),
             ("PI_PROJECT_ROOT", "/w/repos/github.com/octo/repo.js"),
         ];
-        assert_eq!(pairs(&for_tool(&db, Path::new(root), None)), expected);
-        // A directory inside the worktree is still that worktree.
+        let env = for_tool(&db, Path::new(root), None);
+        assert!(pairs(&env).starts_with(&expected));
+        assert!(pairs(&env).contains(&(
+            "GIT_CONFIG_KEY_4",
+            "protocol.pi-workspace-no-credential.allow"
+        )));
+        assert!(pairs(&env).contains(&("GIT_CONFIG_VALUE_4", "never")));
         let nested = Path::new(root).join("packages/app");
-        assert_eq!(pairs(&for_tool(&db, &nested, None)), expected);
+        assert_eq!(for_tool(&db, &nested, None), env);
     }
 
     #[test]
-    fn the_git_proxy_rewrite_is_added_only_when_a_proxy_is_given() {
+    fn a_live_proxy_replaces_the_disabled_transport() {
         let (_dir, db) = database();
         let root = "/w/worktrees/github.com/octo/repo.js/8b54618f6bc1";
         register(&db, root, &[("MY_VAR", "one")]);
@@ -201,6 +213,7 @@ mod tests {
                 ("MY_VAR", "one"),
                 ("PI_WORKTREE_ROOT", root),
                 ("PI_PROJECT_ROOT", "/w/repos/github.com/octo/repo.js"),
+                ("GIT_ASKPASS", ""),
                 ("GIT_TERMINAL_PROMPT", "0"),
                 ("GIT_CONFIG_COUNT", "4"),
                 ("GIT_CONFIG_KEY_0", key.as_str()),
@@ -292,14 +305,11 @@ mod tests {
             ],
         );
         let env = for_tool(&db, Path::new(root), None);
-        assert_eq!(
-            pairs(&env),
-            [
-                ("KEEP", "yes"),
-                ("PI_WORKTREE_ROOT", root),
-                ("PI_PROJECT_ROOT", "/w/repos/github.com/octo/repo.js"),
-            ]
-        );
+        assert!(pairs(&env).starts_with(&[
+            ("KEEP", "yes"),
+            ("PI_WORKTREE_ROOT", root),
+            ("PI_PROJECT_ROOT", "/w/repos/github.com/octo/repo.js"),
+        ]));
     }
 
     #[test]

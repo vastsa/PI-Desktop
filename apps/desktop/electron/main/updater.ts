@@ -10,7 +10,7 @@
  *  - Windows ZIP / legacy portable (`piDistribution = "zip"` or
  *    `PORTABLE_EXECUTABLE_FILE`) → notify + link. The
  *    NSIS installer must not replace a no-install run.
- *  - Linux deb (no $APPIMAGE in env) → notify + link.
+ *  - Linux deb (no $APPIMAGE in env) and unsigned macOS → notify + link.
  *  - Unpackaged dev runs → disabled (no app-update.yml in resources).
  *
  * The installer download cache lives in the user cache directory rather than

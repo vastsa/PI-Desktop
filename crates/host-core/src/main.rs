@@ -21,6 +21,7 @@ mod plugin_sessions;
 mod plugin_usage;
 mod plugins;
 mod providers;
+mod remote_sessions;
 mod review;
 mod rpc;
 mod scheduled;

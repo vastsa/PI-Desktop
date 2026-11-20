@@ -3,17 +3,23 @@
 use super::*;
 use crate::db::{Database, RemoteWorkspace};
 
-fn remote_workspace_of(
+pub(super) fn remote_workspace_of(
     state: &AppState,
     summary: &sessions::SessionSummary,
 ) -> Result<Option<RemoteWorkspace>, JsonRpcError> {
-    summary
-        .project_path
-        .as_deref()
-        .map(|path| state.db.remote_workspace_for_path(path))
-        .transpose()
-        .map(Option::flatten)
-        .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))
+    let Some(path) = summary.project_path.as_deref() else {
+        return Ok(None);
+    };
+    let (remote, repository_project) = crate::remote_sessions::scope(&state.db, &summary.id, path)
+        .map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))?;
+    if remote.is_none() && repository_project {
+        return Err(rpc_err(
+            1027,
+            "repository session worktree is not ready",
+            "REMOTE_WORKSPACE_NOT_READY",
+        ));
+    }
+    Ok(remote)
 }
 
 /// The remote binding of a session that must exist.
@@ -44,11 +50,20 @@ pub(super) fn session_remote_workspace_optional(
 }
 
 pub(super) fn decorate_session(db: &Database, mut value: Value) -> Result<Value, JsonRpcError> {
-    if let Some(path) = value.get("projectPath").and_then(Value::as_str) {
-        if let Some(remote) = db
-            .remote_workspace_for_path(path)
-            .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?
-        {
+    if let (Some(path), Some(id)) = (
+        value.get("projectPath").and_then(Value::as_str),
+        value.get("id").and_then(Value::as_str),
+    ) {
+        let (remote, repository_project) = crate::remote_sessions::scope(db, id, path)
+            .map_err(|error| rpc_err(1002, error.to_string(), "INVALID_PARAMS"))?;
+        if repository_project {
+            if let Some(binding) = crate::remote_sessions::bindings::get(db, id)
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?
+            {
+                value["remoteRepository"] = binding.public();
+            }
+        }
+        if let Some(remote) = remote {
             value["remoteWorkspace"] = json!(remote);
         }
     }

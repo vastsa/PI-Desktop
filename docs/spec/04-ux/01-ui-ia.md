@@ -578,3 +578,12 @@ shared capability contract:
 English is the source locale. Shipped translations (zh-CN, zh-TW, Turkish, German, Spanish, French, and
 Korean) cover shell chrome; labels are asserted by US-UI e2e scenarios.
 Copy rules live in [02-i18n-english-first](02-i18n-english-first.md).
+
+## Remote repository sessions
+
+The home composer offers a location picker with This computer and environments
+on paired Hosts. Selecting a remote environment reveals GitHub repository and
+branch pickers. The composer shows preparation and setup status. The session
+top bar shows the Host, repository, work branch, and push and pull request
+actions. Remote Hosts settings includes environment editing and leftover
+worktree management when a Host is paired.

@@ -811,6 +811,11 @@ export function useAppShellRuntime() {
         .catch(() => undefined);
     });
     const offRemoteInteractions = subscribeRemoteInteractions();
+    const offRepositoryWorkspace = api.onRemoteSessionWorkspaceChanged(({ sessionId, remoteRepository }) => {
+      useAppStore.setState((state) => ({
+        sessions: state.sessions.map((session) => session.id === sessionId ? { ...session, remoteRepository: remoteRepository ?? undefined } : session),
+      }));
+    });
     const offSessionsChanged = api.onSessionsChanged((event) => {
       const store = useAppStore.getState();
       const revealImportedProjects =
@@ -987,6 +992,7 @@ export function useAppShellRuntime() {
       offHostStatus();
       offNotificationChanged();
       offComposerSuggestion();
+      offRepositoryWorkspace();
       offSessionsChanged();
       offRemoteInteractions();
       offNotificationActivated();

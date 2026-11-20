@@ -65,6 +65,9 @@ test("the Connectors destination is named and explained in every shipped catalog
       "Disconnecting removes the token from this computer. To revoke it, remove the app in your GitHub settings.",
     "settings.connectors.github.disconnectNoteToken":
       "Disconnecting removes the token from this computer. To revoke it, delete the token in your GitHub settings.",
+    "settings.connectors.github.agentTools": "GitHub tools for the agent",
+    "settings.connectors.github.agentToolsHelp": "Lets the agent read and write issues, pull requests, and comments. Each call asks for approval.",
+    "settings.connectors.github.agentToolsShadowed": "Your configured MCP server named github takes precedence over the built-in server.",
     "settings.connectors.github.allowWorkflow": "Allow changes to GitHub Actions workflow files",
     "settings.connectors.github.allowWorkflowHelp":
       "Adds the workflow scope. Leave off unless the agent needs to edit files under .github/workflows.",

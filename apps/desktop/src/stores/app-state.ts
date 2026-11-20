@@ -249,6 +249,7 @@ export type AppState = {
     draft?: ComposerDraftSnapshot,
     targetSessionId?: string,
     onAccepted?: (sessionId: string) => void,
+    useRemoteTarget?: boolean,
   ) => Promise<boolean>;
   steerPrompt: (content: string, draft?: ComposerDraftSnapshot) => Promise<boolean>;
   enqueuePrompt: (

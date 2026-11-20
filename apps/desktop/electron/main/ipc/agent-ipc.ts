@@ -273,6 +273,9 @@ export function registerAgentIpc({
       messageLimit: 1,
     });
     let session = sessionResult.session;
+    if (session?.projectPath?.startsWith("remote-project:") && !session.remoteWorkspace) {
+      throw Object.assign(new Error("Repository workspace is not ready"), { errorCode: "REMOTE_WORKSPACE_NOT_READY" });
+    }
     if (!session) {
       throw Object.assign(new Error("Session not found"), {
         errorCode: ErrorCodes.NOT_FOUND,

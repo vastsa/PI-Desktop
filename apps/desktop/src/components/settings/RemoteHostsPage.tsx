@@ -1,3 +1,4 @@
+import { RemoteEnvironmentSettings } from "../../features/chat/session-target/RemoteEnvironmentSettings";
 /**
  * Settings destination for paired remote `pi-host` machines (R2b pairing UX,
  * ADR 0286 §Registry).
@@ -615,6 +616,7 @@ export function RemoteHostsPage() {
             </div>
           </OverlayBackdrop>,
         )}
+      <RemoteEnvironmentSettings />
     </div>
   );
 }

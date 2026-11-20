@@ -143,7 +143,7 @@ pub async fn remove_worktree(git: &GitRunner, row: &WorktreeRow) -> Result<(), W
 /// keeps its branch "checked out". Drop only the metadata entry whose
 /// `gitdir` names this worktree, which is what `git worktree prune` would do
 /// for it, without pruning any other worktree.
-pub(super) fn drop_admin_entry(common_dir: &Path, root: &Path) -> io::Result<()> {
+pub(crate) fn drop_admin_entry(common_dir: &Path, root: &Path) -> io::Result<()> {
     let admin = common_dir.join("worktrees");
     let entries = match fs::read_dir(&admin) {
         Ok(entries) => entries,

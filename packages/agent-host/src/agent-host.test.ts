@@ -132,14 +132,14 @@ function envelope(sessionId: string, turnId: string | undefined, event: AgentEve
   return { sessionId, ...(turnId ? { turnId } : {}), ts: Date.parse("2026-09-10T00:00:01.000Z"), event };
 }
 
-function build(options: { permissionMode?: SessionSummary["permissionMode"]; queueStore?: MemoryQueueStore; allowRemoteSessionGrants?: boolean } = {}) {
+function build(options: { permissionMode?: SessionSummary["permissionMode"]; queueStore?: MemoryQueueStore; allowRemoteSessionGrants?: boolean; canDispatchQueued?: (sessionId: string) => Promise<boolean> } = {}) {
   const runtime = new FakeRuntime();
   const sessions = new FakeSessions();
   sessions.summaries.set("s1", summary("s1", options.permissionMode));
   const approvals = new FakeApprovals();
   const clock = new FixedClock();
   const host = new AgentHost({
-    runtime,
+    runtime: options.canDispatchQueued ? Object.assign(runtime, { canDispatchQueued: options.canDispatchQueued }) : runtime,
     sessions,
     approvals,
     clock,
@@ -462,6 +462,23 @@ describe("AgentHost turns", () => {
     });
   });
 
+  it("durably holds the first prompt until the repository workspace is ready", async () => {
+    let ready = false;
+    const queueStore = new MemoryQueueStore();
+    const { host, runtime } = build({ queueStore, canDispatchQueued: async () => ready });
+    const queued = await host.startTurn(owner, {
+      sessionId: "s1", admission: "queue", input: { text: "work here" }, context: { requestId: "repo-first" },
+    });
+    expect(queued.turn.status).toBe("queued");
+    expect(await queueStore.listAll()).toHaveLength(1);
+    expect(runtime.prompts).toHaveLength(0);
+    ready = true;
+    host.kick("s1");
+    await vi.waitFor(() => expect(runtime.prompts).toHaveLength(1));
+    expect(runtime.prompts[0]?.content).toBe("work here");
+    expect(await queueStore.listAll()).toHaveLength(0);
+  });
+
   it("queues behind an active turn, drains in order, and aliases runtime ids", async () => {
     const { host, runtime, received } = build();
     const first = await host.startTurn(controller, { sessionId: "s1", input: { text: "one" }, context: { requestId: "r1" } });
@@ -782,8 +799,11 @@ describe("AgentHost turns", () => {
       inputHash: "h",
       createdAt: 1,
     });
-    const { host, runtime } = build({ queueStore: store });
+    let ready = false;
+    const { host, runtime } = build({ queueStore: store, canDispatchQueued: async () => ready });
     await host.start();
+    ready = true;
+    host.kick("s1");
     const asViewer = await host.attach(viewer, { sessionId: "s1" });
     expect(asViewer.snapshot?.queuedTurns.map((turn) => turn.id)).toEqual(["turn_restored"]);
     await new Promise((resolve) => setTimeout(resolve, 0));

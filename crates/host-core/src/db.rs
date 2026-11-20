@@ -46,7 +46,7 @@ pub(crate) use model::PlanWorkRow;
 pub use model::{Database, ProjectMemoryEntryRecord, ProjectMemoryRecord, ProjectRecord};
 pub use project_groups::{
     ProjectGroupContextRecord, ProjectGroupRecord, ProjectGroupRoot, RemoteWorkspace,
-    REMOTE_PROJECT_PREFIX,
+    MAX_PROJECT_GROUP_NAME_CHARS, REMOTE_PROJECT_PREFIX,
 };
 pub(crate) use repositories::{
     canonical_project_path, normalize_project_path, project_display_name,

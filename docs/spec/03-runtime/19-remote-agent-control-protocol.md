@@ -678,12 +678,24 @@ optional capability `workspaceGit`. A Host without it answers
 checks the capability per call, not at connect time. The protocol version is
 unchanged: these are additive operations.
 
+Unattended removal requires the separate optional `workspaceGitSafeRemoval`
+capability on the current connection. A Host with this capability checks
+unpublished commits even if its worktree directory is missing. pi-host
+dispatches non-forced removal to its host-core guarded operation. An older
+host-core refuses that operation.
+
+Worktree results may include `checkoutPresent`. A false value says the
+registration and branch data remain while the registered directory is
+unavailable. Desktop can send `restoreOnly: true` with `workspace/gitPrepare`
+to restore that registration. The request fails if the registration is gone.
+A missing `checkoutPresent` field leaves the checkout state unknown.
+
 | Operation | Params | Result | Mutation |
 |---|---|---|---|
 | `workspace/gitCredentialSet` | `{ installationId, token }` | `{ ok: true }` | yes |
 | `workspace/gitCredentialClear` | `{}` | `{ ok: true }` | yes |
 | `workspace/gitRepository` | `{ repository }` | `{ path, cloned }` | no |
-| `workspace/gitPrepare` | `{ installationId, sessionId, repository, baseBranch, fromSessionId?, environment? }` | `{ jobId }` | yes |
+| `workspace/gitPrepare` | `{ installationId, sessionId, repository, baseBranch, fromSessionId?, restoreOnly?, environment? }` | `{ jobId }` | yes |
 | `workspace/gitPush` | `{ installationId, sessionId }` | `{ jobId }` | yes |
 | `workspace/gitJob` | `{ jobId }` | `WorkspaceGitJob` | no |
 | `workspace/gitJobCancel` | `{ jobId }` | `{ ok: true }` | yes |

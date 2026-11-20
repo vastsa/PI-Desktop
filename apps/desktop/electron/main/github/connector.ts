@@ -65,12 +65,14 @@ export type GitHubConnector = {
   findPullRequest(
     repository: GitHubRepositoryRef,
     head: string,
+    state?: "open",
   ): Promise<GitHubPullRequestSummary | null>;
   createPullRequest(
     repository: GitHubRepositoryRef,
     input: GitHubPullRequestInput,
   ): Promise<GitHubPullRequestSummary>;
   /** Abort any login in progress and go quiet. Called on shutdown. */
+  cancelPendingLogin(): void;
   dispose(): void;
 };
 
@@ -425,8 +427,11 @@ export function createGitHubConnector(deps: GitHubConnectorDeps): GitHubConnecto
     },
 
     async token() {
-      return (await deps.store.read())?.token ?? null;
+      const credential = await deps.store.read();
+      return credential && credential.token !== rejectedToken ? credential.token : null;
     },
+
+    cancelPendingLogin: abandonLogin,
 
     onChange(listener) {
       listeners.add(listener);
@@ -536,9 +541,9 @@ export function createGitHubConnector(deps: GitHubConnectorDeps): GitHubConnecto
       return spend(credential, (token) => deps.api.listBranches(token, repository));
     },
 
-    async findPullRequest(repository, head) {
+    async findPullRequest(repository, head, ...filter) {
       const credential = await requireCredential();
-      return spend(credential, (token) => deps.api.findPullRequest(token, repository, head));
+      return spend(credential, (token) => deps.api.findPullRequest(token, repository, head, ...filter));
     },
 
     async createPullRequest(repository, input) {

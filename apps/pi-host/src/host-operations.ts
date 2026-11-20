@@ -377,7 +377,7 @@ export function createHostOperations(
     sessions: createSessionCatalog(deps),
     projects: createProjectCatalog(deps),
     workspace: createWorkspaceAccess(deps),
-    workspaceTools: createWorkspaceTools(deps.getHost, workspaceGit ? { gitProxyUrlFor: workspaceGit.proxyUrlFor } : {}),
+    workspaceTools: createWorkspaceTools(deps.getHost, workspaceGit ? { gitProxyUrlFor: workspaceGit.proxyUrlForPath } : {}),
     ...(workspaceGit ? { workspaceGit } : {}),
     workspaceFiles: createWorkspaceFiles(),
     workspacePluginFiles: createWorkspacePluginFiles({

@@ -347,9 +347,10 @@ describe("catalog and roles", () => {
     expect(rolesAllowOperation(["controller", "approver"], "workspace/gitPrepare" as never)).toBe(false);
   });
 
-  it("advertises workspaceGit as an optional server capability", () => {
-    const capabilities = { ...initializeResult.capabilities, workspaceGit: true };
+  it("advertises Git and guarded removal as optional server capabilities", () => {
+    const capabilities = { ...initializeResult.capabilities, workspaceGit: true, workspaceGitSafeRemoval: true };
     expect(Value.Check(RacpInitializeResultSchema, { ...initializeResult, capabilities })).toBe(true);
+    expect(Value.Check(RacpInitializeResultSchema, { ...initializeResult, capabilities: { ...capabilities, workspaceGitSafeRemoval: "yes" } })).toBe(false);
     expect(Value.Check(RacpInitializeResultSchema, initializeResult)).toBe(true);
     expect(Value.Check(RacpInitializeResultSchema, { ...initializeResult, capabilities: { ...capabilities, workspaceGit: "yes" } })).toBe(false);
   });

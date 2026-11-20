@@ -1,3 +1,4 @@
+import { getActiveGitHubConnector } from "./github/connector";
 import { createBackgroundContinuationCoordinator } from "./runtime/background-continuations";
 import {
   app,
@@ -1095,10 +1096,13 @@ app.on("browser-window-created", (_event, window) => {
     window.on("hide", () => {
       void liveCallService.endForWebContents(contentsId, "window-hidden");
     });
+    window.webContents.once("destroyed", () => getActiveGitHubConnector()?.cancelPendingLogin());
     window.webContents.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
+      if (isMainFrame && !_inPlace) getActiveGitHubConnector()?.cancelPendingLogin();
       if (isMainFrame) void liveCallService.endForWebContents(contentsId, "window-navigated", true);
     });
     window.webContents.once("render-process-gone", () => {
+      getActiveGitHubConnector()?.cancelPendingLogin();
       void liveCallService.endForWebContents(contentsId, "renderer-gone", true);
     });
     window.webContents.once("destroyed", () => {

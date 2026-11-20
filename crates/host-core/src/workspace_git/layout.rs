@@ -207,7 +207,7 @@ impl Layout {
         let escapes = workspaces_root
             .components()
             .any(|part| matches!(part, Component::ParentDir));
-        if !absolute || escapes {
+        if !absolute || escapes || workspaces_root.parent().is_none() {
             return Err(WorkspaceGitError::invalid(
                 "workspacesRoot must be an absolute path without `..` segments",
             ));
@@ -217,8 +217,32 @@ impl Layout {
         })
     }
 
-    pub fn root(&self) -> &Path {
-        &self.root
+    pub fn ensure_private_directories(&self) -> Result<(), WorkspaceGitError> {
+        for path in [
+            self.root.clone(),
+            self.root.join("repos"),
+            self.root.join("worktrees"),
+        ] {
+            let mut builder = std::fs::DirBuilder::new();
+            builder.recursive(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+            builder.create(&path)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if !std::fs::symlink_metadata(&path)?.is_dir() && path != self.root {
+                    return Err(WorkspaceGitError::failed(
+                        "workspace storage is not a directory",
+                    ));
+                }
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
+            }
+        }
+        Ok(())
     }
 
     /// The repository's main checkout; sessions never edit it.

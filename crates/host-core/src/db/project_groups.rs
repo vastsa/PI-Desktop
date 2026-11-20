@@ -144,6 +144,15 @@ impl Database {
         name: &str,
         remote: RemoteWorkspace,
     ) -> Result<ProjectGroupRecord> {
+        self.create_remote_project_group_with_metadata(name, remote, None)
+    }
+
+    pub(crate) fn create_remote_project_group_with_metadata(
+        &self,
+        name: &str,
+        remote: RemoteWorkspace,
+        metadata: Option<(&str, &Value)>,
+    ) -> Result<ProjectGroupRecord> {
         remote.validate()?;
         let name = name.trim();
         if name.is_empty() || name.chars().count() > MAX_PROJECT_GROUP_NAME_CHARS {
@@ -184,6 +193,9 @@ impl Database {
             params![primary_path, name, now],
         )?;
         self.kv_set(GROUP_NAMESPACE, &group.id, &serde_json::to_value(&group)?)?;
+        if let Some((namespace, value)) = metadata {
+            self.kv_set(namespace, &group.id, value)?;
+        }
         transaction.commit()?;
         Ok(group)
     }

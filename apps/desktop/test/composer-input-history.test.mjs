@@ -301,7 +301,7 @@ test("accepted history uses sendPrompt's materialized session, not later global 
 test("sendPrompt returns the accepted session for Home history recording", async () => {
   const source = await readStoreModule("slices/queue-slice.ts");
   const sendPrompt = source.slice(
-    source.indexOf("sendPrompt: async (content, draft, requestedSessionId, onAccepted)"),
+    source.indexOf("sendPrompt: async (content, draft, requestedSessionId, onAccepted"),
   );
   assert.ok(sendPrompt.length > 0, "sendPrompt implementation not found");
   assert.match(

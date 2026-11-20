@@ -84,6 +84,7 @@ export type AppSettings = {
   backgroundJobContinuationEnabled?: boolean;
   /** Allow Agent mode to call TypeSafe Jev for explicit structured classifications. */
   jevEnabled?: boolean;
+  githubAgentTools?: boolean;
   /** Prevent idle system sleep while this desktop app runs; off when absent. */
   keepAwakeWhileRunning?: boolean;
   /** Enable scheduled task UI, tools and new runs. Absent means enabled. */

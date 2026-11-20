@@ -1,3 +1,4 @@
+import { RemoteSessionActions } from "../features/chat/session-target/RemoteSessionActions";
 import {
   useEffect,
   useRef,
@@ -317,6 +318,8 @@ export function ConversationTopbar({
       </div>
 
       <div className="ct-right">
+        {activeSessionId && activeSession?.remoteRepository && <RemoteSessionActions key={activeSessionId}
+          sessionId={activeSessionId} sessionTitle={activeSession.title} workspace={activeSession.remoteRepository} />}
         <div className="ct-actions">
           <TooltipButton
             type="button"

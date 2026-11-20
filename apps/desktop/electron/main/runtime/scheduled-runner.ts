@@ -9,10 +9,13 @@ export async function executeScheduledTask(options: {
   automatic: boolean;
   runs: Map<string, string>;
   prompt: (sessionId: string, content: string) => Promise<unknown>;
+  prepareWorkspace?: (sessionId: string) => Promise<void>;
 }): Promise<ScheduledLaunch> {
   const { host, id, automatic, runs, prompt, isCurrent } = options;
   const launch = await host.call<ScheduledLaunch>("scheduled.run", { id, automatic });
   try {
+    if (!isCurrent()) throw new Error("scheduled runtime stopped");
+    await options.prepareWorkspace?.(launch.sessionId);
     if (!isCurrent()) throw new Error("scheduled runtime stopped");
     runs.set(launch.sessionId, launch.runId);
     await prompt(launch.sessionId, launch.prompt);
