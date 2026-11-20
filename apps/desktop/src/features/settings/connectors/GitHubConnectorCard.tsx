@@ -21,6 +21,7 @@ import { IconTriangleAlert, IconUser } from "../../../components/icons";
 import { OAuthLoginDialog } from "../../../components/settings/OAuthLoginDialog";
 import { SettingsDisclosure } from "../../../components/settings/SettingsDisclosure";
 import { SettingsCard, SettingsRow } from "../primitives";
+import { githubAvatarSource } from "./github-avatar";
 import { githubErrorText } from "./github-error-message";
 import { GITHUB_LOGIN_VENDOR, beginGitHubLogin } from "./github-login-session";
 import { useGitHubConnector } from "./use-github-connector";
@@ -37,14 +38,14 @@ function lacksRepoScope(status: GitHubConnectorStatus): boolean {
 
 function Avatar({ url }: { url?: string }) {
   const [failed, setFailed] = useState(false);
-  // Only an https address is loaded; anything else falls back to the glyph.
-  const usable = typeof url === "string" && url.startsWith("https://");
+  // Only GitHub's avatar host is loaded; anything else gets the placeholder.
+  const source = githubAvatarSource(url);
   return (
     <span className="connector-avatar" aria-hidden="true">
-      {usable ? (
-        <img src={url} alt="" hidden={failed} onError={() => setFailed(true)} />
+      {source ? (
+        <img src={source} alt="" hidden={failed} onError={() => setFailed(true)} />
       ) : null}
-      {!usable || failed ? <IconUser size={16} /> : null}
+      {!source || failed ? <IconUser size={16} /> : null}
     </span>
   );
 }

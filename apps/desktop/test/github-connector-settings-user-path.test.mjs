@@ -129,10 +129,12 @@ function Harness() {
 const rootNode = createRoot(document.getElementById("root"));
 flushSync(() => rootNode.render(React.createElement(Harness)));
 
-const frame = () => new Promise(requestAnimationFrame);
-async function settle() { await frame(); await frame(); }
+// A timer, not requestAnimationFrame: a window that is never shown gets about
+// one frame a second, and nothing here needs a paint, only React's commits.
+const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+async function settle() { await tick(); await tick(); }
 async function waitFor(predicate, message) {
-  for (let attempt = 0; attempt < 90; attempt += 1) {
+  for (let attempt = 0; attempt < 250; attempt += 1) {
     await settle();
     const value = predicate();
     if (value) return value;
@@ -303,6 +305,23 @@ window.githubConnectorProbe = async () => {
     canDisconnect: Boolean(button("Disconnect")),
   };
 
+  // 7b) An avatar address that is not GitHub's avatar host is never loaded.
+  const strayAvatars = [];
+  for (const avatarUrl of [
+    "https://evil.example/track.png",
+    "https://avatars.githubusercontent.com.evil.example/u/1",
+  ]) {
+    await remountWith({ ...OCTOCAT, account: { ...OCTOCAT.account, avatarUrl } });
+    await waitFor(() => text().includes("Connected as octocat"), "the account did not appear");
+    strayAvatars.push({
+      noImage: document.querySelectorAll("img").length === 0,
+      placeholderShown: Boolean(document.querySelector(".connector-avatar svg")),
+      notInPage: !document.documentElement.outerHTML.includes(avatarUrl),
+    });
+  }
+  await remountWith({ ...OCTOCAT, needsReauthentication: true });
+  await waitFor(() => button("Connect GitHub"), "the page did not come back");
+
   // 8) Leaving the page while a code waits for approval cancels that login.
   const cancelsBefore = calls("pi-desktop/github/login/cancel").length;
   flushSync(() => button("Connect GitHub").click());
@@ -359,6 +378,7 @@ window.githubConnectorProbe = async () => {
     accepted,
     deviceUnavailable,
     reauthentication,
+    strayAvatars,
     secondStartInput,
     abandonedLoginCancelled,
     cancelButtonCancels,
@@ -503,6 +523,10 @@ app.whenReady().then(async () => {
         canConnectAgain: true,
         canDisconnect: true,
       },
+      strayAvatars: [
+        { noImage: true, placeholderShown: true, notInPage: true },
+        { noImage: true, placeholderShown: true, notInPage: true },
+      ],
       secondStartInput: { allowWorkflowScope: false },
       abandonedLoginCancelled: true,
       cancelButtonCancels: true,
