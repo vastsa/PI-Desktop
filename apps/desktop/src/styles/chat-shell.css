@@ -826,43 +826,6 @@
   border-radius: var(--radius-3xs);
 }
 
-.empty-hero .home-project-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-compact);
-  cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease;
-}
-
-.empty-hero .home-project-chip:hover,
-.empty-hero .home-project-chip[aria-expanded="true"] {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
-}
-
-.empty-hero .home-project-chip:focus-visible {
-  outline: 2px solid var(--ds-focus);
-  outline-offset: 2px;
-}
-
-.empty-hero .home-project-chip:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .empty-hero .home-project-chip {
-    transition: none;
-  }
-}
-
 .home-project-switcher-menu {
   position: fixed;
   top: 0;

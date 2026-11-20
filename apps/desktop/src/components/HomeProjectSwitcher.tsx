@@ -19,7 +19,6 @@ import {
   IconBranch,
   IconChat,
   IconCheck,
-  IconChevronDown,
   IconChevronLeft,
   IconFolder,
   IconNewProject,
@@ -44,19 +43,20 @@ type ProjectMenuEntry = {
 const TEMPORARY_KEY = "temporary";
 
 /**
- * The empty home's project picker. Inside a project it is the underlined
- * project name in the title; for a temporary conversation (or no session) it
- * is a "Choose project" chip under the title. Both list "No project" first so
- * the next task can leave or join a project from the same place (#2455).
+ * The empty home's project picker: the underlined word in the title. In a
+ * project it is the project name; in a temporary conversation it is the scope
+ * word ("temporarily"). Both menus list "No project" first so the next task
+ * can leave or join a project from the same place (#2455).
  */
 export function HomeProjectSwitcher({
   name,
   path,
-  variant = "inline",
+  temporary = false,
 }: {
-  name?: string;
+  name: string;
   path?: string | null;
-  variant?: "inline" | "chip";
+  /** The trigger is the temporary home's scope word rather than a project. */
+  temporary?: boolean;
 }) {
   const { t } = useTranslation();
   const openProjectPaths = useAppStore((state) => state.openProjectPaths);
@@ -110,7 +110,7 @@ export function HomeProjectSwitcher({
   );
   const activeKey = isRemoteSession(activeSession) && activeSession?.remoteHostKey && activeSession.remoteProjectId
     ? `remote:${remoteProjectKey(activeSession.remoteHostKey, activeSession.remoteProjectId)}`
-    : normalizeProjectPath(activeProjectPath ?? path) || (variant === "chip" ? TEMPORARY_KEY : "");
+    : normalizeProjectPath(activeProjectPath ?? path) || (temporary ? TEMPORARY_KEY : "");
   const cloneTarget = parseGitCloneUrl(cloneUrl, {
     allowInsecureHttp: allowInsecureUserEndpoints(settings),
   });
@@ -282,22 +282,7 @@ export function HomeProjectSwitcher({
           setCloneUrl("");
           setOpen(true);
         };
-        return variant === "chip" ? (
-          <button
-            ref={ref}
-            type="button"
-            className="home-project-chip"
-            data-testid="home-project-switcher"
-            aria-haspopup="menu"
-            aria-expanded={open}
-            disabled={busy}
-            onClick={toggle}
-          >
-            <IconFolder size={14} aria-hidden />
-            <span>{t("project.chooseProject")}</span>
-            <IconChevronDown size={13} aria-hidden />
-          </button>
-        ) : (
+        return (
           <button
             ref={ref}
             type="button"
@@ -305,8 +290,8 @@ export function HomeProjectSwitcher({
             data-testid="home-project-switcher"
             aria-haspopup="menu"
             aria-expanded={open}
-            aria-label={`${t("project.switchProject")}: ${name ?? ""}`}
-            title={(workspace?.path === path ? workspace?.remote?.path : undefined) || path || t("project.switchProject")}
+            aria-label={`${t("project.switchProject")}: ${temporary ? t("project.noProject") : name}`}
+            title={temporary ? t("project.noProjectHint") : (workspace?.path === path ? workspace?.remote?.path : undefined) || path || t("project.switchProject")}
             disabled={busy}
             onClick={toggle}
           >

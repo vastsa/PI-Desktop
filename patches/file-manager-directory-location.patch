@@ -1,19 +1,19 @@
 diff --git a/views-src/package.json b/views-src/package.json
-index 11e5d31..8823964 100644
+index d232a0f..c0bad73 100644
 --- a/views-src/package.json
 +++ b/views-src/package.json
-@@ -20,7 +20,8 @@
-     "verify:menu": "node verify-context-menu.mjs",
-     "verify:remote": "node verify-remote.mjs",
+@@ -22,7 +22,8 @@
      "verify:tree": "node verify-tree.mjs",
--    "verify": "node verify-roots.mjs && node verify-jail.mjs && node verify-highlight.mjs && node verify-markdown.mjs && node verify-viewers.mjs && node verify-editors.mjs && node verify-git.mjs && node verify-watch.mjs && node verify-pdf.mjs && node verify-context-menu.mjs && node verify-remote.mjs && node verify-tree.mjs"
+     "verify:theme": "node verify-theme.mjs",
+     "verify:file-lines": "node verify-file-lines.mjs",
+-    "verify": "node verify-roots.mjs && node verify-jail.mjs && node verify-highlight.mjs && node verify-markdown.mjs && node verify-viewers.mjs && node verify-editors.mjs && node verify-git.mjs && node verify-watch.mjs && node verify-pdf.mjs && node verify-context-menu.mjs && node verify-remote.mjs && node verify-tree.mjs && node verify-theme.mjs && node verify-file-lines.mjs"
 +    "verify:host-open": "node verify-host-open.mjs",
-+    "verify": "node verify-roots.mjs && node verify-jail.mjs && node verify-highlight.mjs && node verify-markdown.mjs && node verify-viewers.mjs && node verify-editors.mjs && node verify-git.mjs && node verify-watch.mjs && node verify-pdf.mjs && node verify-context-menu.mjs && node verify-remote.mjs && node verify-tree.mjs && node verify-host-open.mjs"
++    "verify": "node verify-roots.mjs && node verify-jail.mjs && node verify-highlight.mjs && node verify-markdown.mjs && node verify-viewers.mjs && node verify-editors.mjs && node verify-git.mjs && node verify-watch.mjs && node verify-pdf.mjs && node verify-context-menu.mjs && node verify-remote.mjs && node verify-tree.mjs && node verify-theme.mjs && node verify-file-lines.mjs && node verify-host-open.mjs"
    },
    "dependencies": {
      "@codemirror/autocomplete": "^6.18.4",
 diff --git a/views-src/src/App.tsx b/views-src/src/App.tsx
-index 6627d80..46b008b 100644
+index 30afb33..98b5349 100644
 --- a/views-src/src/App.tsx
 +++ b/views-src/src/App.tsx
 @@ -15,7 +15,12 @@ import { openInBuiltInBrowser, openWithDefaultApp, openWithEditor, revealInFileM
@@ -106,10 +106,10 @@ index 6627d80..46b008b 100644
          })();
        };
 diff --git a/views-src/src/i18n.ts b/views-src/src/i18n.ts
-index 02e9279..d157a69 100644
+index 736ebc5..c2502da 100644
 --- a/views-src/src/i18n.ts
 +++ b/views-src/src/i18n.ts
-@@ -222,6 +222,7 @@ export const COPY_TABLES = {
+@@ -231,6 +231,7 @@ export const COPY_TABLES = {
      errExists: "An entry with that name already exists.",
      errName: "That name is not allowed.",
      errNotFound: "That path no longer exists.",
@@ -117,7 +117,7 @@ index 02e9279..d157a69 100644
      errUnsupported: "This host does not support that operation.",
      errNoBridge: "This page must be opened inside PI-Desktop.",
      changes: "Changes",
-@@ -467,6 +468,7 @@ export const COPY_TABLES = {
+@@ -484,6 +485,7 @@ export const COPY_TABLES = {
      errExists: "同名条目已存在。",
      errName: "该名称不被允许。",
      errNotFound: "该路径已不存在。",
@@ -155,10 +155,10 @@ index 95ac38a..a412a57 100644
   * 订阅两条投递路径，把去重后的请求交给 onRequest。返回取消函数。
   */
 diff --git a/views-src/src/lib/rpc.ts b/views-src/src/lib/rpc.ts
-index 52af46b..c2f5155 100644
+index 39c513a..225dd14 100644
 --- a/views-src/src/lib/rpc.ts
 +++ b/views-src/src/lib/rpc.ts
-@@ -481,6 +481,11 @@ export function failureMessage(failure: Failure, t: T): string {
+@@ -495,6 +495,11 @@ export function failureMessage(failure: Failure, t: T): string {
        return t("sqliteOffsetLimit");
      case "GIT_UNAVAILABLE":
        return t("gitUnavailable");

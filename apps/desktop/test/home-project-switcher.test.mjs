@@ -75,14 +75,13 @@ test("home project switcher trigger is the underlined name without a chevron", (
   );
 });
 
-test("home project switcher lists No project first and has a chip for temporary homes (#2455)", () => {
+test("home project switcher lists No project first; a temporary home underlines its scope (#2455)", () => {
   assert.match(switcher, /key: TEMPORARY_KEY, name: temporaryLabel/);
   assert.match(switcher, /if \(project\.temporary\) return selectTemporary\(\);/);
   assert.match(switcher, /await newSession\(\{ projectPath: null \}\)/);
-  assert.match(switcher, /className="home-project-chip"/);
-  assert.match(switcher, /t\("project\.chooseProject"\)/);
-  // A temporary or projectless home offers the chip; a project home keeps
-  // the underlined name in its title.
-  assert.match(chatSurface, /\{heroProject \? null : <HomeProjectSwitcher variant="chip" \/>\}/);
-  assert.match(styles, /\.empty-hero \.home-project-chip \{[\s\S]*?border-radius:\s*var\(--radius-full\);/);
+  // No extra control under the title: the scope word in the title is the trigger.
+  assert.doesNotMatch(switcher, /home-project-chip/);
+  assert.doesNotMatch(styles, /home-project-chip/);
+  assert.match(chatSurface, /<HomeProjectSwitcher temporary name=\{t\("chat\.temporaryScope"\)\} \/>/);
+  assert.match(chatSurface, /t\("chat\.emptyTitleTemporaryScoped", \{ scope: marker \}\)/);
 });

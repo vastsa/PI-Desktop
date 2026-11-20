@@ -62,29 +62,23 @@ test("the file view is a sandboxed page over the public bridge", () => {
 });
 
 test("the file manager search panel remains readable in both themes", () => {
-  assert.match(
-    viewBundle,
-    /\.cm-editor \.cm-panel\.cm-search \.cm-textfield\{[^}]*background:var\(--surface\);color:var\(--fg\);caret-color:var\(--fg\)/,
-  );
-  assert.match(
-    viewBundle,
-    /\.cm-editor \.cm-panel\.cm-search \.cm-button\{[^}]*background:var\(--surface-hover\);color:var\(--fg\)/,
-  );
+  const fields = viewBundle.match(/\.cm-editor \.cm-panel:is\(\.cm-search,\s*\.cm-dialog\) \.cm-textfield\{([^}]+)\}/)?.[1];
+  const buttons = viewBundle.match(/\.cm-editor \.cm-panel:is\(\.cm-search,\s*\.cm-dialog\) \.cm-button\{([^}]+)\}/)?.[1];
+  assert.ok(fields?.includes("background:var(--surface)"));
+  assert.ok(fields?.includes("color:var(--fg)"));
+  assert.ok(fields?.includes("caret-color:var(--fg)"));
+  assert.ok(buttons?.includes("background:var(--surface-hover)"));
+  assert.ok(buttons?.includes("color:var(--fg)"));
 });
 
-test("the vendored copy stays traceable to its upstream release", () => {
+test("the vendored copy stays traceable to its upstream tag and Desktop patches", () => {
   assert.match(upstream, /github\.com\/Tioit-Wang\/pi-desktop-plugin-file-manager/);
-  assert.match(upstream, /92ccff9b7c1102d1664915c44ae1e5f3bb5c56a6/);
-  assert.match(upstream, /f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1/);
-  // The bundled hotfix is intentionally newer than its upstream base while
-  // remaining below the next stable upstream release.
+  assert.match(upstream, /90cfc010a3f9d02ac612055eea065d3c822d4977/);
   const tag = upstream.match(/`v(\d+\.\d+\.\d+)`/);
   assert.ok(tag, "UPSTREAM.md must name the vendored base tag");
-  assert.equal(tag[1], "0.9.0");
-  assert.equal(manifest.version, "0.9.1-pi.2");
-  assert.match(upstream, /Not published; no marketplace artifact/);
-  // Every upstream or locally rebuilt file hashes to a recorded value, so a
-  // silent edit cannot pass as the released artifact or documented patch.
+  assert.equal(tag[1], "0.9.1");
+  assert.equal(manifest.version, tag[1]);
+  // Every upstream or locally rebuilt file hashes to its recorded value.
   for (const file of [
     "main.js",
     "remote-workspace.js",
