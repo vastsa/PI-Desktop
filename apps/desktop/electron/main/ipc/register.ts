@@ -21,6 +21,8 @@ import { registerPluginUiIpc } from "./plugin-ui-ipc";
 import { registerPluginLauncherIpc } from "./plugin-launcher-ipc";
 import { registerComputerIpc } from "./computer-ipc";
 import { registerJevIpc } from "./jev-ipc";
+import { bootGitHubConnector } from "../github/connector-boot";
+import { registerGitHubConnectorIpc } from "./github-connector-ipc";
 import { registerModesIpc } from "./modes-ipc";
 import type { ModeServices } from "../runtime/mode-services";
 import { registerProviderIpc } from "./provider-ipc";
@@ -345,6 +347,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
   });
   registerJevIpc({ registrar, logger });
+  registerGitHubConnectorIpc({
+    registrar,
+    connector: bootGitHubConnector({ getHost, sendToRenderer, safeOpenExternal, logger }),
+  });
   registerModesIpc({ registrar, catalog: dependencies.modeServices.catalog, runs: dependencies.modeServices.runs });
   registerComputerIpc({ registrar, getHost, publishGrant: publishComputerGrant });
   registerWorktreeIpc({
