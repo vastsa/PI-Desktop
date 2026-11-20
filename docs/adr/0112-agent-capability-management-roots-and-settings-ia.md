@@ -38,14 +38,23 @@ disabled records.
 ### 4. Management lives under Settings > Agent
 
 Skills, MCP, and Subagents are three independent Settings destinations rather
-than tabs, and Extensions keeps only Installed and Marketplace.
+than tabs, and Extensions keeps only Installed and Marketplace. Subagents keep
+one global storage column; their editor selects activation in all projects or
+selected projects without creating project-local documents, and changing scope
+does not enable a disabled subagent.
 
 ### 5. Protocol queries are explicit
 
 Capability list, read, remove, import, and enable calls carry `level` and, when
 needed, `projectPath`, and a project-level request without `projectPath` is
 invalid; runtime activation merges `mcp.active` and `skills.active` for the
-selected project, while subagent activation is global-only.
+selected project, and `agents.active` filters global subagent documents by
+app-local project scope. Scope metadata lives in its own
+`agent-capabilities/subagent-scopes.json` so older enablement writers do not
+erase it; missing entries stay globally active, older application versions
+cannot enforce scopes, and config sync neither captures nor applies them because
+they name folders on one device. Builtin subagents and plugins keep their own
+activation and do not read these scopes.
 
 ## Consequences
 

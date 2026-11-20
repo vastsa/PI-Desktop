@@ -41,6 +41,6 @@ back on needs no document.
 ## Alternatives
 
 - A tombstone document under `~/.agents/subagents`: rejected, it writes a file
-  the user never asked for and shows up in the Global group.
+  the user never asked for and shows up in the Custom group.
 - State in `agent-capabilities/subagents.json`: rejected, the scan-time prune
   would delete a builtin exclusion as it was written.

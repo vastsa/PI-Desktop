@@ -756,7 +756,7 @@ window; opening a normal panel afterward must still work.
   `maxTurns: 2` next to a valid `description` and `tools`, a second document
   that spells the same key `max-turns: 2`, and a third that never mentions it.
 - **Steps**: 1) Open Settings → Subagents and confirm every row in the
-  Built-in and Global groups renders with its tool grant and that no
+  Built-in and Custom groups renders with its tool grant and that no
   turn-limit field exists anywhere in the page or the editor's Advanced
   disclosure. 2) Delegate to `legacy-worker` and let it make more than two
   tool-calling turns. 3) Read the document back through the settings API and
@@ -1580,7 +1580,7 @@ window; opening a normal panel afterward must still work.
      with localized names, `Task(<handle>)` copy, tool grants, a Built-in
      badge, **Copy as mine**, and an enablement switch in the on position.
      Confirm none of those rows has Reveal or Delete.
-  2. Confirm the Global group still shows localized `settings.subagentsEmpty`
+  2. Confirm the Custom group still shows localized `settings.subagentsEmpty`
      copy and the New subagent action.
   3. Switch `fixer` off from its Built-in row. Confirm the row dims with its
      switch off, the toast names it, nothing appears in `~/.agents/subagents`,

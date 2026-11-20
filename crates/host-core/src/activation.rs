@@ -57,7 +57,6 @@ impl ActivationScope {
     ///
     /// A project-scoped extension stays inactive in a session with no project:
     /// "these projects" is a claim about projects, and no workspace is not one.
-    #[allow(dead_code)]
     pub fn matches(&self, project_path: Option<&str>) -> bool {
         match self.mode {
             ActivationMode::Global => true,
@@ -93,7 +92,6 @@ fn same_path(a: &str, b: &str) -> bool {
 
 /// True when `target` is the scoped directory or sits underneath it, so scoping
 /// to a monorepo root covers sessions opened on a package inside it.
-#[allow(dead_code)]
 pub fn project_path_matches(entry: &str, target: &str) -> bool {
     let scoped = normalize_project_path(entry);
     let target = normalize_project_path(target);
@@ -108,7 +106,10 @@ pub fn project_path_matches(entry: &str, target: &str) -> bool {
     } else {
         format!("{scoped}/")
     };
-    target.len() > prefix.len() && same_path(&target[..prefix.len()], &prefix)
+    // Compare whole strings: a byte offset taken from `prefix` can fall inside
+    // a multibyte character of `target`, and slicing there panics.
+    let (target, prefix) = (target.to_lowercase(), prefix.to_lowercase());
+    target.len() > prefix.len() && target.starts_with(&prefix)
 }
 
 #[cfg(test)]
@@ -147,6 +148,16 @@ mod tests {
     #[test]
     fn empty_project_list_matches_nothing() {
         assert!(!projects(&[]).matches(Some("/repo")));
+    }
+
+    #[test]
+    fn multibyte_paths_match_by_character() {
+        // `/code/web/` is ten bytes long; byte ten sits inside '文' in the
+        // sibling path, so a byte-offset slice of it cannot be taken.
+        assert!(!projects(&["/code/web"]).matches(Some("/code/中文项目")));
+        assert!(projects(&["/code/中文"]).matches(Some("/code/中文/子目录")));
+        assert!(!projects(&["/code/中文"]).matches(Some("/code/中文项目")));
+        assert!(projects(&["/Users/Ärger"]).matches(Some("/users/ärger/src")));
     }
 
     #[test]

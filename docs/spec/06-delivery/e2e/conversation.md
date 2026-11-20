@@ -4768,6 +4768,35 @@ renderer's durable transcript reads. No real model or provider is contacted.
   cross-session isolation and uncooperative cancellation remaining pending;
   `e2e-subagent-parent-error.mjs` covers explicit cancellation/resume semantics.
 
+## User subagent project scope (#1431)
+
+- Load choices from the durable project groups used by the sidebar, including
+  groups absent from the legacy single-folder project list. Selecting Projects
+  does not automatically select the current folder.
+- The list groups user subagents under **Custom** (`~/.agents/subagents`), not
+  a global level label; each row badge shows Everywhere or its project count.
+- Edit a disabled user subagent, select Projects, choose the current project A
+  and a second project B, then save. Reopen and verify the scope and that the
+  subagent remains disabled. Scope choices do not include Off; enablement stays
+  on the list row toggle. Project choices expand inline below the scope selector,
+  inside the scrolling editor rather than in a floating overlay.
+  Switch to Everywhere and back: selections survive. While Projects has no
+  folder selected, the editor warns that the subagent stays inactive.
+- Through real host RPC, verify a project-only definition is absent from other
+  projects and a projectless catalog, but present in the selected project and
+  its descendants. A sibling folder whose name contains multibyte characters
+  answers promptly and does not match. Global definitions remain available.
+  Verify the resulting runtime loader catalog, restart persistence, rename,
+  disable, and delete.
+- Sync two devices: a scoped definition arrives without its scope, and each
+  device keeps its own scope across later syncs.
+- Coverage: `apps/desktop/test/subagent-project-scope.test.mjs` (isolated Electron
+  settings interaction with IPC fixtures),
+  `scripts/e2e-subagent-project-scope.mjs` (real host and runtime loader; no model
+  or external provider), and the host-core test
+  `subagent_project_scope_stays_on_its_device` (two devices, local S3 fixture).
+  Builtin subagents and plugins keep their own activation and ignore these scopes.
+
 ## Regenerate archival during quit
 
 - Regenerate a completed answer and quit as soon as the terminal event arrives.
