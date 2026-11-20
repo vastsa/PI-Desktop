@@ -235,6 +235,7 @@ import {
   effectiveModelContextWindow,
   estimateOutputCapInputTokens,
   requestTranscript,
+  supportsMidConversationSystemMessages,
   truncateTextWithinOutputCap,
 } from "./output-cap.js";
 import {
@@ -7494,19 +7495,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const remaining = Math.max(0, budget.hardLimit - budget.tokens);
     const reminder = this.claimContextBudgetReminder(remaining, budget);
     if (!reminder) return context;
-    const legacyContext = context as AgentContext & { systemPrompt?: string };
-    const systemPrompt =
-      typeof legacyContext.systemPrompt === "string"
-        ? `${legacyContext.systemPrompt}\n\n${reminder}`
-        : undefined;
-    return {
-      ...context,
-      ...(systemPrompt ? { systemPrompt } : {}),
-      messages: [
-        ...context.messages,
-        { role: "system", content: "", sections: { [CONTEXT_BUDGET_SECTION]: reminder }, timestamp: Date.now() },
-      ],
-    } as AgentContext;
+    // The reminder changes on every claim, so it must never reach the request
+    // prefix (issue #2458). A system section stays at the tail only where the
+    // adapter keeps mid-conversation system messages; elsewhere pi-ai folds it
+    // into the leading system message and invalidates the whole prefix cache.
+    // There it rides as a request-only user message appended at the tail,
+    // like steering, and is neither persisted nor carried into the next run.
+    const message: AgentMessage = supportsMidConversationSystemMessages(this.model)
+      ? { role: "system", content: "", sections: { [CONTEXT_BUDGET_SECTION]: reminder }, timestamp: Date.now() }
+      : { role: "user", content: [{ type: "text", text: reminder }], timestamp: Date.now() };
+    return { ...context, messages: [...context.messages, message] };
   }
 
   private claimContextBudgetReminder(

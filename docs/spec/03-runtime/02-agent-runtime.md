@@ -623,12 +623,17 @@ and testable.
 
 **Model-facing surface.** `new_context` takes no parameters and starts a new
 context window at the next turn boundary; it never clears or resets environment
-state. Two budget reminders are appended to the current turn's system prompt,
-each at most once per checkpoint window and reset when a checkpoint is
+state. Two budget reminders are appended to the tail of the current turn's
+request, each at most once per checkpoint window and reset when a checkpoint is
 installed: one when the remaining budget falls to
 `clamp(hardLimit * 0.15, 8k, 32k)`, asking the model to start closing out, and
 one at 2,000 tokens remaining, telling it to write down whatever must survive.
-Neither reminder is persisted or shown in the transcript.
+A reminder never rewrites the request prefix (issue #2458): where the model
+keeps mid-conversation system messages in place it is a `context_budget` system
+section that expires at the next checkpoint; elsewhere, because pi-ai folds
+every system update into the leading system message, it is a request-only user
+message that is neither persisted nor carried into the next run. Neither
+reminder is shown in the transcript.
 
 The hard boundary is the model context window minus request headroom. Automatic
 compaction starts at 90% of `hardLimit`; this deterministic margin is not
