@@ -608,6 +608,26 @@ test("settings compact pickers hug the current label on the shared menu select",
   );
 });
 
+test("settings model pickers widen past the compact control cap", async () => {
+  // "Provider · vendor/model-id" labels were clipped by the 240px row control
+  // and the 280px menu; model pickers opt into a wider column.
+  assert.match(
+    stylesSource,
+    /\.settings-row-control:has\(> \.settings-model-select\),\s*\.settings-row > \.settings-model-select\s*\{[^}]*max-width:\s*min\(400px, 60%\)/s,
+  );
+  assert.match(
+    stylesSource,
+    /\.settings-menu-select-menu\s*\{[^}]*max-width:\s*min\(440px, calc\(100vw - 48px\)\)/s,
+  );
+  for (const path of [
+    "../src/components/settings/ImageGenerationModelRow.tsx",
+    "../src/features/settings/computer-use/ComputerUseSettings.tsx",
+  ]) {
+    const source = await readFile(new URL(path, import.meta.url), "utf8");
+    assert.match(source, /className="[^"]*settings-model-select[^"]*"/, path);
+  }
+});
+
 test("native select menus keep readable theme colors across the app on Windows", () => {
   assert.match(
     stylesSource,

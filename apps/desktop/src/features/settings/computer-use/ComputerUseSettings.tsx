@@ -131,6 +131,7 @@ export function ComputerUseSettings({
         <>
           <SettingsRow title={t("computerUse.model")}>
             <SettingsMenuSelect
+              className="settings-model-select"
               label={t("computerUse.model")}
               value={selectedModel}
               onChange={(next) => {
