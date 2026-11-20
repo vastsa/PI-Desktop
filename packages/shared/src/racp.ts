@@ -14,6 +14,15 @@
 import Type from "typebox";
 
 import { ErrorCodes } from "./errors.js";
+import {
+  WorkspaceGitCredentialSetSchema,
+  WorkspaceGitJobRefSchema,
+  WorkspaceGitListSchema,
+  WorkspaceGitPrepareSchema,
+  WorkspaceGitRemoveSchema,
+  WorkspaceGitRepositoryRequestSchema,
+  WorkspaceGitSessionRefSchema,
+} from "./racp-workspace-git.js";
 import type { AgentEvent } from "./types.js";
 
 type Static<T extends Type.TSchema> = Type.Static<T>;
@@ -478,6 +487,7 @@ export const RacpServerCapabilitiesSchema = Type.Object({
   workspaceTools: Type.Optional(Type.Boolean()),
   workspaceFiles: Type.Optional(Type.Boolean()),
   workspacePluginFiles: Type.Optional(Type.Boolean()),
+  workspaceGit: Type.Optional(Type.Boolean()),
   notifications: Type.Boolean(),
   bindings: Type.Array(Type.Union([Type.Literal("RACP-WS"), Type.Literal("RACP-HTTP"), Type.Literal("RACP-GRPC")])),
 });
@@ -620,6 +630,17 @@ export const RACP_OPERATIONS = {
   "workspace/toolShell": { role: "owner", profile: "remote-host", mutation: false },
   "workspace/files": { role: "owner", profile: "remote-host", mutation: false },
   "workspace/pluginFiles": { role: "owner", profile: "remote-host", mutation: false },
+  /** Git workspaces on the Host (D687); schemas live in `racp-workspace-git.ts`. */
+  "workspace/gitCredentialSet": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/gitCredentialClear": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/gitRepository": { role: "owner", profile: "remote-host", mutation: false },
+  "workspace/gitPrepare": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/gitPush": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/gitJob": { role: "owner", profile: "remote-host", mutation: false },
+  "workspace/gitJobCancel": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/gitStatus": { role: "owner", profile: "remote-host", mutation: false },
+  "workspace/gitRemove": { role: "owner", profile: "remote-host", mutation: true },
+  "workspace/gitList": { role: "owner", profile: "remote-host", mutation: false },
   "terminal/open": { role: "controller", profile: "remote-host", mutation: true },
   "terminal/input": { role: "controller", profile: "remote-host", mutation: true },
   "terminal/resize": { role: "controller", profile: "remote-host", mutation: true },
@@ -852,6 +873,15 @@ export const RACP_ERROR_CODES = {
   CAPABILITY_UNAVAILABLE: { retriable: false },
   REMOTE_PATH_NOT_FOUND: { retriable: false },
   REMOTE_PATH_FORBIDDEN: { retriable: false },
+  WORKSPACE_GIT_UNAVAILABLE: { retriable: false },
+  WORKSPACE_GIT_AUTH_REQUIRED: { retriable: false },
+  WORKSPACE_GIT_REPOSITORY_NOT_FOUND: { retriable: false },
+  WORKSPACE_GIT_BRANCH_NOT_FOUND: { retriable: false },
+  WORKSPACE_GIT_NOT_FOUND: { retriable: false },
+  WORKSPACE_GIT_BUSY: { retriable: false },
+  WORKSPACE_GIT_JOB_NOT_FOUND: { retriable: false },
+  WORKSPACE_GIT_FAILED: { retriable: false },
+  WORKSPACE_GIT_TRANSPORT_REFUSED: { retriable: false },
   FORBIDDEN: { retriable: false },
   PROTOCOL_MISMATCH: { retriable: false },
   METHOD_NOT_FOUND: { retriable: false },
@@ -920,5 +950,12 @@ export const RACP_SCHEMAS = {
   RemoteError: RacpRemoteErrorSchema,
   Limits: RacpLimitsSchema,
   Policy: RacpPolicySchema,
+  WorkspaceGitCredentialSet: WorkspaceGitCredentialSetSchema,
+  WorkspaceGitRepositoryRequest: WorkspaceGitRepositoryRequestSchema,
+  WorkspaceGitPrepare: WorkspaceGitPrepareSchema,
+  WorkspaceGitSessionRef: WorkspaceGitSessionRefSchema,
+  WorkspaceGitRemove: WorkspaceGitRemoveSchema,
+  WorkspaceGitJobRef: WorkspaceGitJobRefSchema,
+  WorkspaceGitList: WorkspaceGitListSchema,
 } as const;
 export type RacpSchemaName = keyof typeof RACP_SCHEMAS;

@@ -1,6 +1,8 @@
 import { createWorkspaceFiles } from "./workspace-files.js";
 import { createWorkspacePluginFiles } from "./plugin-workspace-files.js";
 import { createWorkspaceTools } from "./workspace-tools.js";
+import { createWorkspaceGit } from "./workspace-git.js";
+import type { GitCredentialProxy } from "./git-credential-proxy.js";
 import { readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
@@ -76,6 +78,12 @@ export type HostOperationsDeps = {
   browseRoot?: string;
   /** Host credentials and persistence must never be exposed through plugin reads. */
   dataDir?: string;
+  /**
+   * Git workspaces (D687) are offered only when both are given: where
+   * repositories and worktrees live, and the started credential proxy.
+   */
+  workspacesRoot?: string;
+  gitProxy?: GitCredentialProxy;
 };
 
 function requireHost(getHost: () => HostRpc | null): HostRpc {
@@ -362,11 +370,15 @@ export function createWorkspaceAccess(
 export function createHostOperations(
   deps: HostOperationsDeps,
 ): Omit<RacpHostOperations, "terminal"> {
+  const workspaceGit = deps.workspacesRoot && deps.gitProxy
+    ? createWorkspaceGit({ getHost: deps.getHost, workspacesRoot: deps.workspacesRoot, proxy: deps.gitProxy })
+    : undefined;
   return {
     sessions: createSessionCatalog(deps),
     projects: createProjectCatalog(deps),
     workspace: createWorkspaceAccess(deps),
-    workspaceTools: createWorkspaceTools(deps.getHost),
+    workspaceTools: createWorkspaceTools(deps.getHost, workspaceGit ? { gitProxyUrlFor: workspaceGit.proxyUrlFor } : {}),
+    ...(workspaceGit ? { workspaceGit } : {}),
     workspaceFiles: createWorkspaceFiles(),
     workspacePluginFiles: createWorkspacePluginFiles({
       browseRoot: deps.browseRoot ?? homedir(),

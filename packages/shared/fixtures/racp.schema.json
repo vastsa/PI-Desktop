@@ -2225,6 +2225,9 @@
           "workspacePluginFiles": {
             "type": "boolean"
           },
+          "workspaceGit": {
+            "type": "boolean"
+          },
           "notifications": {
             "type": "boolean"
           },
@@ -2455,5 +2458,204 @@
         "minimum": 1
       }
     }
+  },
+  "WorkspaceGitCredentialSet": {
+    "type": "object",
+    "required": [
+      "installationId",
+      "token"
+    ],
+    "properties": {
+      "installationId": {
+        "type": "string",
+        "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+      },
+      "token": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096,
+        "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+      }
+    },
+    "additionalProperties": false
+  },
+  "WorkspaceGitRepositoryRequest": {
+    "type": "object",
+    "required": [
+      "repository"
+    ],
+    "properties": {
+      "repository": {
+        "type": "object",
+        "required": [
+          "owner",
+          "name"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,37}[A-Za-z0-9_])?$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^(?!\\.{1,2}$)(?!.*\\.git$)[A-Za-z0-9._-]{1,100}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "WorkspaceGitPrepare": {
+    "type": "object",
+    "required": [
+      "installationId",
+      "sessionId",
+      "repository",
+      "baseBranch"
+    ],
+    "properties": {
+      "installationId": {
+        "type": "string",
+        "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+      },
+      "sessionId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "repository": {
+        "type": "object",
+        "required": [
+          "owner",
+          "name"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,37}[A-Za-z0-9_])?$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^(?!\\.{1,2}$)(?!.*\\.git$)[A-Za-z0-9._-]{1,100}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "baseBranch": {
+        "type": "string",
+        "pattern": "^(?![-/])(?!@$)(?![\\s\\S]*(?:\\.\\.|//|@\\{|/\\.))(?![\\s\\S]*(?:/|\\.|\\.lock)$)[^\\u0000-\\u0020\\u007f~^:?*\\[\\\\\\ud800-\\udfff]{1,244}$"
+      },
+      "fromSessionId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "environment": {
+        "type": "object",
+        "required": [
+          "variables"
+        ],
+        "properties": {
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "value"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^(?!(?:PATH|HOME|SHELL|USER|LOGNAME|PWD|OLDPWD|IFS|ENV|BASH_ENV|PROMPT_COMMAND|NODE_OPTIONS|ELECTRON_RUN_AS_NODE)$)(?!GIT_|PI_|LD_|DYLD_|BASH_FUNC_)[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                },
+                "value": {
+                  "type": "string",
+                  "maxLength": 8192
+                }
+              },
+              "additionalProperties": false
+            },
+            "maxItems": 64
+          },
+          "setupScript": {
+            "type": "string",
+            "maxLength": 65536
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "WorkspaceGitSessionRef": {
+    "type": "object",
+    "required": [
+      "installationId",
+      "sessionId"
+    ],
+    "properties": {
+      "installationId": {
+        "type": "string",
+        "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+      },
+      "sessionId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "additionalProperties": false
+  },
+  "WorkspaceGitRemove": {
+    "type": "object",
+    "required": [
+      "installationId",
+      "sessionId",
+      "force"
+    ],
+    "properties": {
+      "installationId": {
+        "type": "string",
+        "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+      },
+      "sessionId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "force": {
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false
+  },
+  "WorkspaceGitJobRef": {
+    "type": "object",
+    "required": [
+      "jobId"
+    ],
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
+    "additionalProperties": false
+  },
+  "WorkspaceGitList": {
+    "type": "object",
+    "required": [
+      "installationId"
+    ],
+    "properties": {
+      "installationId": {
+        "type": "string",
+        "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+      }
+    },
+    "additionalProperties": false
   }
 }

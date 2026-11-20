@@ -14,7 +14,13 @@ const MAX_SEEN = 4096;
 const MAX_BYTES = 1024 * 1024;
 
 /** Tool-only owner service. No provider, session or project persistence is needed. */
-export function createWorkspaceTools(getHost: () => HostRpc | null): NonNullable<RacpHostOperations["workspaceTools"]> {
+export function createWorkspaceTools(
+  getHost: () => HostRpc | null,
+  options: {
+    /** The session's git proxy address, when the connection has a git worktree scope for it. */
+    gitProxyUrlFor?: (connectionId: string, sessionId: string) => string | undefined;
+  } = {},
+): NonNullable<RacpHostOperations["workspaceTools"]> {
   const active = new Map<string, Active>();
   const seen = new Set<string>();
   const id = (owner: Owner, sessionId: string) => createHash("sha256").update(JSON.stringify([owner.deviceId, sessionId])).digest("hex");
@@ -41,8 +47,10 @@ export function createWorkspaceTools(getHost: () => HostRpc | null): NonNullable
         const path = await realpath(input.path).catch(() => undefined);
         if (!path || !(await stat(path)).isDirectory()) throw new RacpError("REMOTE_PATH_NOT_FOUND", "workspace directory is unavailable");
         if (entry.cancelled || getHost() !== host) throw unavailable();
+        // Looked up by the caller's own session id; host-core gets the hashed one.
+        const gitProxyUrl = options.gitProxyUrlFor?.(owner.connectionId, input.sessionId);
         const result = await host.call<WorkspaceToolResult>("tools.workspaceExecute", {
-          ...input, path, sessionId: entry.sessionId,
+          ...input, path, sessionId: entry.sessionId, ...(gitProxyUrl ? { gitProxyUrl } : {}),
         });
         if (entry.cancelled || getHost() !== host) throw unavailable();
         if (!result || typeof result.ok !== "boolean" || !Object.hasOwn(result, "content")

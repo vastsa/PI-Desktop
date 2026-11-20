@@ -26,6 +26,30 @@ describe("owner workspace tools", () => {
     await tools.execute(input(link), { ...owner, deviceId: "another-device" });
     expect(calls[1]?.params.sessionId).not.toBe(calls[0]?.params.sessionId);
   });
+  it("adds the git proxy address only for a session that has one, looked up by the raw session id", async () => {
+    const dir = await directory();
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const host: HostRpc = { async call<T>(method: string, params: Record<string, unknown> = {}) { calls.push({ method, params }); return { ok: true, content: "" } as T; } };
+    const lookups: Array<[string, string]> = [];
+    const tools = createWorkspaceTools(() => host, { gitProxyUrlFor: (connectionId, sessionId) => {
+      lookups.push([connectionId, sessionId]);
+      return sessionId === "local-session" && connectionId === "connection-a" ? "http://127.0.0.1:4321/handle/" : undefined;
+    } });
+    await tools.execute(input(dir), owner);
+    await tools.execute({ ...input(dir), sessionId: "other-session" }, owner);
+    await tools.execute({ ...input(dir), toolCallId: "call-2" }, { ...owner, connectionId: "connection-b" });
+    expect(lookups).toEqual([["connection-a", "local-session"], ["connection-a", "other-session"], ["connection-b", "local-session"]]);
+    expect(calls[0]?.params.gitProxyUrl).toBe("http://127.0.0.1:4321/handle/");
+    // host-core still gets the hashed session id, not the raw one.
+    expect(calls[0]?.params.sessionId).not.toBe("local-session");
+    expect(Object.hasOwn(calls[1]!.params, "gitProxyUrl")).toBe(false);
+    expect(Object.hasOwn(calls[2]!.params, "gitProxyUrl")).toBe(false);
+    // Without the option the call is exactly what it was.
+    const plain: Array<Record<string, unknown>> = [];
+    const plainHost: HostRpc = { async call<T>(_method: string, params: Record<string, unknown> = {}) { plain.push(params); return { ok: true, content: "" } as T; } };
+    await createWorkspaceTools(() => plainHost).execute(input(dir), owner);
+    expect(Object.keys(plain[0]!).sort()).toEqual(["args", "path", "sessionId", "toolCallId", "toolName", "turnId"]);
+  });
   it("rejects unknown tools, relative paths, oversized args and unavailable roots without RPC", async () => {
     let calls = 0;
     const host: HostRpc = { async call<T>() { calls++; return {} as T; } };

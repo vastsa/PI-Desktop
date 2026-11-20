@@ -70,6 +70,7 @@ export * from "./startup-animation.js";
 export * from "./radial-menu.js";
 export * from "./sidebar-modules.js";
 export * from "./racp.js";
+export * from "./racp-workspace-git.js";
 export * from "./trusted-extensions.js";
 export * from "./provider-retry.js";
 export * from "./message-stream.js";

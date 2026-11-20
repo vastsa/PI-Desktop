@@ -6,6 +6,7 @@ import type {
   WorkspaceDiff,
   WorkspaceToolExecute, WorkspaceToolAbort, WorkspaceToolResult, CommandShellOption, WorkspaceFilesRequest,
   WorkspacePluginFilesRequest, WorkspacePluginFilesResult,
+  WorkspaceGitJob, WorkspaceGitPrepare, WorkspaceGitRemoveResult, WorkspaceGitRepository, WorkspaceGitStatus, WorkspaceGitWorktree,
 } from "@pi-desktop/shared";
 
 /**
@@ -94,6 +95,23 @@ export type RacpHostOperations = {
     execute(input: WorkspaceToolExecute, owner: { deviceId: string; connectionId: string }): Promise<WorkspaceToolResult>;
     abort(input: WorkspaceToolAbort, owner: { deviceId: string; connectionId: string }): Promise<void>;
     shell(): Promise<CommandShellOption>;
+    disconnect(connectionId: string): Promise<void>;
+  };
+  /**
+   * Owner-only git workspaces (D687). Inputs arrive validated. The credential
+   * is scoped to the connection that set it: `disconnect` must drop it.
+   */
+  workspaceGit?: {
+    setCredential(input: { installationId: string; token: string }, owner: { deviceId: string; connectionId: string }): Promise<void>;
+    clearCredential(owner: { deviceId: string; connectionId: string }): Promise<void>;
+    repository(input: { repository: WorkspaceGitRepository }): Promise<{ path: string; cloned: boolean }>;
+    prepare(input: WorkspaceGitPrepare, owner: { deviceId: string; connectionId: string }): Promise<{ jobId: string }>;
+    push(input: { installationId: string; sessionId: string }, owner: { deviceId: string; connectionId: string }): Promise<{ jobId: string }>;
+    job(input: { jobId: string }): Promise<WorkspaceGitJob>;
+    cancelJob(input: { jobId: string }): Promise<void>;
+    status(input: { installationId: string; sessionId: string }): Promise<WorkspaceGitStatus>;
+    remove(input: { installationId: string; sessionId: string; force: boolean }): Promise<WorkspaceGitRemoveResult>;
+    list(input: { installationId: string }): Promise<WorkspaceGitWorktree[]>;
     disconnect(connectionId: string): Promise<void>;
   };
   /** Owner-only: revoke a paired device (spec `session/revoke`). */

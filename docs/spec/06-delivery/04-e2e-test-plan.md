@@ -286,6 +286,8 @@ identify the platform validation still needed.
 | C — Conversation & stream (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | E — Tools & permissions (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | D (surfaces) / Quality — Remote-host Add and Pair form disclosure | E2E-REMOTE-HOST-settings-compact-inventory |
+| Post-MVP remote control (git workspaces on a paired Host) | E2E-REMOTE-repo-session-prepares-isolated-worktree |
+| Security (git credential proxy on a paired Host) | E2E-REMOTE-git-proxy-rejects-foreign-ref |
 | E — Tools & permissions (capability level move) | E2E-CAPABILITY-move-across-levels |
 | F — Persistence (capability level move) | E2E-CAPABILITY-move-across-levels |
 | Quality (capability level move) | E2E-CAPABILITY-move-across-levels |

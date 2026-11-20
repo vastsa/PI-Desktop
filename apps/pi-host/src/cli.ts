@@ -30,6 +30,7 @@ async function main(): Promise<void> {
         "  --host-core <path>        pi-desktop-host-core binary",
         "  --sidecar <path>          agent sidecar entry",
         "  --browse-root <dir>       folder-picker root (default home)",
+        "  --workspaces-root <dir>   cloned repositories and session worktrees (default ~/pi-workspaces)",
         "  --log-level <level>       info | warn | error",
         "",
       ].join("\n"),

@@ -284,6 +284,20 @@ export const ErrorCodes = {
   REMOTE_PATH_NOT_FOUND: "REMOTE_PATH_NOT_FOUND",
   /** A Host-side path is outside what the principal may reach. */
   REMOTE_PATH_FORBIDDEN: "REMOTE_PATH_FORBIDDEN",
+  /** The Host has no usable git (missing, or older than 2.31). */
+  WORKSPACE_GIT_UNAVAILABLE: "WORKSPACE_GIT_UNAVAILABLE",
+  /** GitHub refused the request: the Host holds no credential, or it is not sufficient. */
+  WORKSPACE_GIT_AUTH_REQUIRED: "WORKSPACE_GIT_AUTH_REQUIRED",
+  WORKSPACE_GIT_REPOSITORY_NOT_FOUND: "WORKSPACE_GIT_REPOSITORY_NOT_FOUND",
+  WORKSPACE_GIT_BRANCH_NOT_FOUND: "WORKSPACE_GIT_BRANCH_NOT_FOUND",
+  /** The Host has no worktree for this installation and session. */
+  WORKSPACE_GIT_NOT_FOUND: "WORKSPACE_GIT_NOT_FOUND",
+  /** A git job for the same session is still running. */
+  WORKSPACE_GIT_BUSY: "WORKSPACE_GIT_BUSY",
+  WORKSPACE_GIT_JOB_NOT_FOUND: "WORKSPACE_GIT_JOB_NOT_FOUND",
+  WORKSPACE_GIT_FAILED: "WORKSPACE_GIT_FAILED",
+  /** The Host is not reached over SSH, `wss://`, or loopback; the credential was not sent. */
+  WORKSPACE_GIT_TRANSPORT_REFUSED: "WORKSPACE_GIT_TRANSPORT_REFUSED",
   PAIRING_FAILED: "PAIRING_FAILED",
   PAIRING_TOKEN_EXPIRED: "PAIRING_TOKEN_EXPIRED",
   /** The Host does not advertise the capability the operation needs. */

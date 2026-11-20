@@ -667,6 +667,131 @@ the mutation did or did not run; inspect remote state before an explicit retry.
 This is a Desktop execution error mapping, not a new wire method or an
 exactly-once guarantee. Read/Glob/Grep retain their ordinary failure mapping.
 
+#### Git workspaces (`workspaceGit`, D687)
+
+A paired Host can clone a GitHub repository once and give each Desktop session
+its own git worktree and work branch
+([ADR remote-git-workspaces](../../adr/remote-git-workspaces.md)). The
+operations are owner-only, in the remote-host profile, and advertised by the
+optional capability `workspaceGit`. A Host without it answers
+`CAPABILITY_UNAVAILABLE` and keeps serving every other operation; Desktop
+checks the capability per call, not at connect time. The protocol version is
+unchanged: these are additive operations.
+
+| Operation | Params | Result | Mutation |
+|---|---|---|---|
+| `workspace/gitCredentialSet` | `{ installationId, token }` | `{ ok: true }` | yes |
+| `workspace/gitCredentialClear` | `{}` | `{ ok: true }` | yes |
+| `workspace/gitRepository` | `{ repository }` | `{ path, cloned }` | no |
+| `workspace/gitPrepare` | `{ installationId, sessionId, repository, baseBranch, fromSessionId?, environment? }` | `{ jobId }` | yes |
+| `workspace/gitPush` | `{ installationId, sessionId }` | `{ jobId }` | yes |
+| `workspace/gitJob` | `{ jobId }` | `WorkspaceGitJob` | no |
+| `workspace/gitJobCancel` | `{ jobId }` | `{ ok: true }` | yes |
+| `workspace/gitStatus` | `{ installationId, sessionId }` | `WorkspaceGitStatus` | no |
+| `workspace/gitRemove` | `{ installationId, sessionId, force }` | `WorkspaceGitRemoveResult` | yes |
+| `workspace/gitList` | `{ installationId }` | `{ worktrees: WorkspaceGitWorktree[] }` | no |
+
+Request schemas are closed objects in
+`packages/shared/src/racp-workspace-git.ts`; the result types are exported
+from the same module. Field rules:
+
+- `repository` is `{ owner, name }`. `owner` is 1 to 39 characters of
+  `[A-Za-z0-9_-]` that neither start nor end with `-` (the underscore is what
+  Enterprise Managed User logins carry). `name` is 1 to 100 characters of
+  `[A-Za-z0-9._-]`, not `.` or `..`, not ending in `.git`. Only
+  `https://github.com/<owner>/<name>.git` is ever cloned.
+- `baseBranch` follows git's reference-name rules rather than an allowlist,
+  so every branch GitHub lists is accepted, including `fix/#123`,
+  `release=1.0`, and non-ASCII names. It is 1 to 244 characters. Refused are
+  ASCII control characters, DEL, and the space; any of `~ ^ : ? * [ \`; a
+  leading `-` or `/`; a trailing `/`, `.`, or `.lock`; any of `..`, `//`,
+  `@{`, `/.`; and the single name `@`. A branch name only reaches git as an
+  operand after `--` or inside a full reference name, never through a shell,
+  and never becomes part of a directory name.
+- `installationId` is the Desktop's stable installation UUID. It is an
+  ownership label, not a credential: it keeps one Desktop's listing and
+  cleanup away from another Desktop's worktrees. `sessionId` is 1 to 256
+  characters and is the caller's own session id.
+- `environment` is `{ variables: [{ name, value }], setupScript? }`: at most
+  64 variables, values up to 8192 characters, a script up to 65536
+  characters. A variable name matches `[A-Za-z_][A-Za-z0-9_]{0,127}` and is
+  not `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `PWD`, `OLDPWD`, `IFS`,
+  `ENV`, `BASH_ENV`, `PROMPT_COMMAND`, `NODE_OPTIONS`, or
+  `ELECTRON_RUN_AS_NODE`, and does not start with `GIT_`, `PI_`, `LD_`,
+  `DYLD_`, or `BASH_FUNC_`.
+- `token` is 1 to 4096 characters with no control character. `jobId` is 1 to
+  64 characters.
+
+The Host validates every name again before it creates a directory or starts
+git, and no operation accepts a worktree path: status, remove, list, and push
+read it from the Host's registry.
+
+**Work branch.** A session's branch is `pi-desktop/<id>`, where `<id>` is the
+first 12 lowercase hex characters of
+`SHA-256(installationId + "\n" + sessionId)`. The same `<id>` names the
+worktree directory. Test vector: installation
+`00000000-0000-4000-8000-000000000000` and session `session-1` give
+`8b54618f6bc1`. The layout on the Host is
+`<workspacesRoot>/repos/github.com/<owner>/<repo>` for the main checkout and
+`<workspacesRoot>/worktrees/github.com/<owner>/<repo>/<id>` for a worktree.
+
+**Jobs.** `workspace/gitPrepare` and `workspace/gitPush` return a job id at
+once; `workspace/gitJob` reports it:
+
+```ts
+type WorkspaceGitJob = {
+  jobId: string
+  kind: "prepare" | "push"
+  state: "running" | "succeeded" | "failed" | "cancelled"
+  phase: "queued" | "cloning" | "fetching" | "creatingWorktree" | "runningSetup" | "pushing" | "done"
+  progress?: { percent?: number; detail?: string }
+  worktree?: WorkspaceGitWorktree                  // prepare, on success
+  pushed?: { branch: string; remoteHead: string }  // push, on success
+  error?: { code: string; message: string }
+}
+```
+
+- A prepare ensures the main checkout (clone when absent, otherwise fetch
+  with prune), creates the worktree from `refs/remotes/origin/<baseBranch>`,
+  and runs the environment's setup script when it has one. With
+  `fromSessionId` the worktree instead starts at the current head of that
+  session's work branch on this Host, in the same repository and installation,
+  including commits it never pushed; `baseBranch` is still recorded as given,
+  and a session without a worktree fails the job with
+  `WORKSPACE_GIT_NOT_FOUND`.
+- A prepare for a session that already has a worktree returns a job that is
+  already `succeeded` with that worktree. A prepare, push, or remove while a
+  job for the same `(installationId, sessionId)` is running fails with
+  `WORKSPACE_GIT_BUSY`.
+- A failing setup script does not fail the job. The worktree reports
+  `setup: { status: "failed", logTail }` with the last 16 KiB of output.
+- A failed or cancelled job keeps the phase it stopped in. The Host keeps at
+  most 64 finished jobs for 10 minutes; afterwards, and after a Host restart,
+  the id is `WORKSPACE_GIT_JOB_NOT_FOUND` and `workspace/gitList` is the
+  source of truth.
+- `workspace/gitJobCancel` stops the job's git process and returns once the
+  job has stopped. A cancelled prepare leaves no worktree, record, or branch;
+  the main checkout stays.
+
+**Status and removal.** `WorkspaceGitStatus` carries the worktree, `ahead` and
+`behind` relative to the remote work branch (zero before the first push),
+`uncommittedFiles`, `unpushedCommits` (commits no remote branch contains), and
+`pushedOnce`. `workspace/gitRemove` removes the worktree and its local work
+branch. Without `force`, uncommitted files or unpushed commits make it answer
+`{ removed: false, uncommittedFiles, unpushedCommits }` and change nothing.
+The remote branch is never deleted.
+
+**Credential.** `workspace/gitCredentialSet` hands the Host the GitHub token
+for the calling connection. The Host keeps it in `pi-host` memory only and
+drops it on `workspace/gitCredentialClear` and when that connection closes
+(security §3.7). Desktop sends it again after every connect and reconnect.
+
+**Tool environment.** `workspace/toolExecute` is unchanged on the wire. When
+its root is inside a worktree the Host prepared, Bash also receives the
+worktree's variables, `PI_WORKTREE_ROOT`, `PI_PROJECT_ROOT`, and the git
+configuration that sends the session's repository through the credential
+proxy. Any other root behaves exactly as before.
+
 ### 6.3 Deferred operations
 
 The desktop offers these locally. RACP does not expose them yet; the names
@@ -1257,6 +1382,15 @@ Initial RACP codes are:
 | `CAPABILITY_UNAVAILABLE` | no | The Host does not advertise the capability the operation needs |
 | `REMOTE_PATH_NOT_FOUND` | no | A Host-side path does not exist |
 | `REMOTE_PATH_FORBIDDEN` | no | A Host-side path is outside what the principal may reach |
+| `WORKSPACE_GIT_UNAVAILABLE` | no | The Host has no usable git (missing, or older than 2.31) |
+| `WORKSPACE_GIT_AUTH_REQUIRED` | no | GitHub refused the request: the Host holds no credential for the connection, or it is not sufficient |
+| `WORKSPACE_GIT_REPOSITORY_NOT_FOUND` | no | The repository does not exist or is not visible to the credential |
+| `WORKSPACE_GIT_BRANCH_NOT_FOUND` | no | The base branch does not exist on the remote |
+| `WORKSPACE_GIT_NOT_FOUND` | no | The Host has no worktree for the installation and session |
+| `WORKSPACE_GIT_BUSY` | no | A job for the same session is still running |
+| `WORKSPACE_GIT_JOB_NOT_FOUND` | no | The job id is unknown or its result has expired |
+| `WORKSPACE_GIT_FAILED` | no | A git step failed for another reason; the message carries the tail of git's output |
+| `WORKSPACE_GIT_TRANSPORT_REFUSED` | no | Desktop did not send the credential: the Host is not reached over SSH, `wss://`, or loopback |
 | `INTERNAL` | maybe | Unexpected failure with a trace id |
 
 Implementations MUST map these codes into the shared `AppError` vocabulary
@@ -1353,3 +1487,8 @@ D375 (2026-09-10) re-sequenced the deployments and extended the catalog:
 - queued turns persisted by host-core and held after a restart, the
   30-minute default approval lifetime for remote subscribers, and the
   `applyCeilingToPairedDevices` policy.
+
+D687 (2026-11-20) added the optional `workspaceGit` capability and the ten
+owner-only `workspace/git*` operations of §6.2.1, with their job model, the
+work-branch derivation, and nine `WORKSPACE_GIT_*` error codes. The protocol
+version is unchanged.

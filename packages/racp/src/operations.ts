@@ -4,6 +4,9 @@ import {
   RacpApprovalResponseSchema,
   WorkspaceToolExecuteSchema, WorkspaceToolAbortSchema, WorkspaceFilesRequestSchema,
   WorkspacePluginFilesRequestSchema,
+  WorkspaceGitCredentialClearSchema, WorkspaceGitCredentialSetSchema, WorkspaceGitJobRefSchema, WorkspaceGitListSchema,
+  WorkspaceGitPrepareSchema, WorkspaceGitRemoveSchema, WorkspaceGitRepositoryRequestSchema, WorkspaceGitSessionRefSchema,
+  isEnvironmentVariableName, isGitBranchName, isGitHubOwner, isGitHubRepositoryName,
   RacpCursorSchema,
   RacpInputResponseSchema,
   RacpRequestContextSchema,
@@ -187,6 +190,58 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
     check(Type.Object({}, { additionalProperties: false }), params);
     return { shell: await requireWorkspaceTools(context).shell() };
   });
+
+  // Git workspaces (D687). Owner-only by catalog role; every name is checked
+  // twice, by the closed schema and by the shared validator, before the Host
+  // service (and therefore git) can see it.
+  const requireWorkspaceGit = (context: OperationContext) => {
+    if (!context.operations.workspaceGit || !context.capabilities.workspaceGit) {
+      throw new RacpError("CAPABILITY_UNAVAILABLE", "this Host does not offer git workspaces");
+    }
+    return context.operations.workspaceGit;
+  };
+  const invalidGitName = (field: string) => new RacpError("INVALID_ARGUMENT", `invalid params at /${field}: name is not allowed`);
+  const checkGitRepository = <T extends { repository: { owner: string; name: string } }>(input: T): T => {
+    if (!isGitHubOwner(input.repository.owner)) throw invalidGitName("repository/owner");
+    if (!isGitHubRepositoryName(input.repository.name)) throw invalidGitName("repository/name");
+    return input;
+  };
+  handlers.set("workspace/gitCredentialSet", async (context, params) => {
+    await requireWorkspaceGit(context).setCredential(check(WorkspaceGitCredentialSetSchema, params), toolOwner(context));
+    return { ok: true };
+  });
+  handlers.set("workspace/gitCredentialClear", async (context, params) => {
+    const service = requireWorkspaceGit(context);
+    check(WorkspaceGitCredentialClearSchema, params);
+    await service.clearCredential(toolOwner(context));
+    return { ok: true };
+  });
+  handlers.set("workspace/gitRepository", async (context, params) =>
+    requireWorkspaceGit(context).repository(checkGitRepository(check(WorkspaceGitRepositoryRequestSchema, params))));
+  handlers.set("workspace/gitPrepare", async (context, params) => {
+    const service = requireWorkspaceGit(context);
+    const input = checkGitRepository(check(WorkspaceGitPrepareSchema, params));
+    if (!isGitBranchName(input.baseBranch)) throw invalidGitName("baseBranch");
+    input.environment?.variables.forEach((variable, index) => {
+      if (!isEnvironmentVariableName(variable.name)) throw invalidGitName(`environment/variables/${index}/name`);
+    });
+    return service.prepare(input, toolOwner(context));
+  });
+  handlers.set("workspace/gitPush", async (context, params) =>
+    requireWorkspaceGit(context).push(check(WorkspaceGitSessionRefSchema, params), toolOwner(context)));
+  handlers.set("workspace/gitJob", async (context, params) =>
+    requireWorkspaceGit(context).job(check(WorkspaceGitJobRefSchema, params)));
+  handlers.set("workspace/gitJobCancel", async (context, params) => {
+    await requireWorkspaceGit(context).cancelJob(check(WorkspaceGitJobRefSchema, params));
+    return { ok: true };
+  });
+  handlers.set("workspace/gitStatus", async (context, params) =>
+    requireWorkspaceGit(context).status(check(WorkspaceGitSessionRefSchema, params)));
+  handlers.set("workspace/gitRemove", async (context, params) =>
+    requireWorkspaceGit(context).remove(check(WorkspaceGitRemoveSchema, params)));
+  handlers.set("workspace/gitList", async (context, params) => ({
+    worktrees: await requireWorkspaceGit(context).list(check(WorkspaceGitListSchema, params)),
+  }));
 
   handlers.set("project/list", async (context) => ({ projects: await context.operations.projects.list() }));
   handlers.set("project/register", async (context, params) => {

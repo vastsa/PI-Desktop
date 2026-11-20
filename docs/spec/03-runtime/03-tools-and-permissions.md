@@ -588,6 +588,42 @@ the preview token); it syncs the project branch into the worktree and only
 fast-forwards the project, so conflicts stay in the worktree. Deleting an
 isolated session discards its worktree and branch.
 
+## 4f. Remote git worktrees (ADR remote-git-workspaces)
+
+On a paired remote Host, a session that targets a GitHub repository runs its
+tools in a git worktree the Host prepared for it, at
+`<workspacesRoot>/worktrees/github.com/<owner>/<repo>/<id>` on branch
+`pi-desktop/<id>` (protocol spec 19 §6.2.1). The repository's main checkout at
+`<workspacesRoot>/repos/github.com/<owner>/<repo>` is never a session's tool
+root.
+
+The remote tool operation is unchanged on the wire. When the root of a
+`workspace/toolExecute` call is inside a registered worktree, the Host adds to
+Bash, in this order:
+
+- the worktree's environment variables, as configured for the session's
+  environment. A stored name that is no longer allowed is skipped;
+- `PI_WORKTREE_ROOT` (the worktree) and `PI_PROJECT_ROOT` (the main
+  checkout);
+- when the calling connection has a credential scope for the session,
+  `GIT_TERMINAL_PROMPT=0` and the environment-carried git configuration
+  (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`, `GIT_CONFIG_VALUE_0`) that sends
+  the session's repository through the Host's loopback credential proxy.
+
+The Agent's own `git fetch` and `git push` therefore authenticate without the
+Agent holding a credential, and a push is accepted only for the session's
+work branch (security spec 02 §3.7). A root that is not a registered worktree
+gets none of this and behaves exactly as before, whatever the caller sends.
+
+The environment's setup script runs once in a new worktree, as a Bash tool
+call rooted there with a 30-minute limit and the same environment. It is
+owner-authored configuration and runs without a permission prompt, as the
+local setup command of §4e does. Its failure is reported on the worktree and
+does not make the worktree unusable.
+
+Local permissions and tool admission still precede every remote tool call;
+nothing here removes or weakens a permission prompt.
+
 ## 5. Bash Rules
 
 Host execution baseline:
