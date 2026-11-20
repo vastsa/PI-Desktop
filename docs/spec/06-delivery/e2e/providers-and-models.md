@@ -1067,6 +1067,9 @@ with only Host API controlled. Running-turn configuration remains queued.
      `prompt is too long: N tokens > M maximum` once.
   8. Run a turn where the model calls `new_context` well below the hard budget.
   9. Invoke `/compact` manually while idle.
+  10. Use a saved non-OAuth Responses endpoint whose catalog-owned window is
+      1,050,000, whose discovery record reports 500,000, and whose output cap
+      is 128,000. Report 400,000 occupied tokens and submit a follow-up.
 - **Expected**:
   - The summary request of every checkpoint carries the session's own
     conversation identity: on the Responses-shaped providers
@@ -1083,6 +1086,10 @@ with only Host API controlled. Running-turn configuration remains queued.
     assistant turns compact through `prepareNextTurn` (pi 0.84.4+ skips that
     hook on a terminating turn); a new user prompt still compacts before its
     first provider request.
+  - In step 10, the main session launches with a 500,000-token window and
+    installs a checkpoint before the follow-up request. A smaller manual
+    window still applies, and missing or unlisted discovery falls back to
+    the existing catalog or binding.
   - Every successful compaction adds exactly one divider row to the transcript,
     positioned immediately after the last message that checkpoint covers, and
     raises exactly one warning toast. Two checkpoints produce two rows, in

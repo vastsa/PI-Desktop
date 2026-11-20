@@ -849,6 +849,10 @@ against a live host, and replaying one after the final row would be wrong.
   `complete` (default false). Model rows expose optional `discoveryState`
   (`published` / `unlisted`); omission is unknown. Only complete, nonempty
   snapshots reconcile missing discovered rows, without changing configuration.
+  An optional `endpoint` (`baseUrl`, `apiStyle`) guards the read or write
+  against the current saved provider under the Host lock. A mismatch returns
+  no cached models and performs no write. The optional `reportedContextWindow`
+  records capacity from the endpoint response independently of display metadata.
   See provider-config schema for the conservative refresh and consumer rules.
 - `providers.testConnection`
 
