@@ -3737,6 +3737,10 @@ PowerShell-launched fixture; activation must not restore the native outline.
     the account had none.
   - In step 8 Connect GitHub and the workflow option are replaced by a line
     saying sign-in with a code is not configured; the token path works.
+  - Every failure and the dialog's waiting line are in the app's language.
+    The note under a connected account says to remove the app after a device
+    sign-in and to delete the token after a pasted one. An avatar address
+    outside `avatars.githubusercontent.com` is never loaded.
 - **Automation:** `github-connector.test.mjs` pins the login lifecycle, the
   pasted-token path, re-authentication, caching, and that no emitted payload,
   returned value, or log argument contains the token.
@@ -3744,8 +3748,10 @@ PowerShell-launched fixture; activation must not restore the native outline.
   validation, the main-window restriction, and that results carry only
   contract fields. `github-device-flow.test.mjs`, `github-api.test.mjs`, and
   `github-connector-store.test.mjs` pin polling and expiry, the pinned host
-  and error mapping, and the stored record. `github-login-session.test.mjs`
-  pins the dialog adapter. `github-connector-settings-user-path.test.mjs`
+  and error mapping (including SSO-partial listings and moved repositories),
+  and the stored record. `github-names.test.mjs` pins the name rules.
+  `github-login-session.test.mjs` pins the dialog adapter and the localized
+  error text, and `github-avatar.test.mjs` the avatar host rule. `github-connector-settings-user-path.test.mjs`
   drives the page in an isolated Electron renderer against a mocked preload
   (needs a display; skipped on headless Linux). A device login against real
   GitHub and step 6's quit are manual until the packaged remote harness gains

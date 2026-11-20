@@ -5447,7 +5447,7 @@ See ADR 0344.
   and a state over `pi-desktop/github/*`; those channels accept only the main
   window and are blocked on the local MCP control plane.
 - Requests go to `api.github.com` and `github.com/login/…` only, both
-  constants, with redirects refused. Failures are typed and never cached, and
+  constants, and a redirect is never followed. Failures are typed and never cached, and
   a 401 marks the stored token for re-authentication instead of showing an
   account with no repositories.
 - Scopes are `repo` and `read:org`; `workflow` is an opt-in checkbox.

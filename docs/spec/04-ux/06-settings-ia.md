@@ -797,8 +797,11 @@ GitHub is the first.
   component state, and the renderer never receives a token back.
 - **Connected.** The card shows the avatar, **Connected as `<login>`**, the
   scopes GitHub reported, **Disconnect**, and a line saying that disconnecting
-  removes the token from this computer and that revoking it is done in the
-  user's GitHub settings.
+  removes the token from this computer and how to revoke it: after a device
+  sign-in, by removing the app in the user's GitHub settings; for a pasted
+  token, by deleting the token there. The avatar is loaded only from
+  `avatars.githubusercontent.com`; any other address shows the placeholder
+  glyph.
 - **Missing `repo`.** A token that reports scopes without `repo` shows a
   warning that private repositories and pushes will not work. A fine-grained
   token reports no scopes and shows no warning.
@@ -806,7 +809,9 @@ GitHub is the first.
   keeps the account visible, shows an alert asking the user to connect again,
   and offers the sign-in controls beside Disconnect.
 - Failures of Save token and Disconnect are reported as an error toast; a
-  failed status read shows the message with a Retry action.
+  failed status read shows the message with a Retry action. The dialog's
+  waiting line and every connector failure are shown from the catalog
+  (`errors.GITHUB_*`), not in the main process's English.
 
 ### Agent capability destinations (Skills / MCP / Subagents)
 

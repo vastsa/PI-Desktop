@@ -86,7 +86,7 @@ type StoredGitHubCredential = {
 Only the main-process connector reads this reference, through
 `secrets.getForRuntime`, and only it parses the value. A record that is
 missing, not JSON, of another `version`, or whose `token` is not 1 to 4096
-characters free of whitespace and control characters reads as "not connected";
+printable ASCII characters reads as "not connected";
 a host failure is reported as a failure. No renderer channel returns the
 record or any part of the token: the connector's IPC surface exposes the
 login, name, avatar URL, scopes, and token kind only. The generic

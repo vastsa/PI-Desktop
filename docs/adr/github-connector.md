@@ -51,7 +51,7 @@ which hosts it is sent to are security boundaries, not implementation details.
 5. **Pinned hosts.** REST calls go to `https://api.github.com`; the device
    flow talks to `https://github.com/login/device/code` and
    `https://github.com/login/oauth/access_token`. All three are constants, no
-   caller supplies a host or a URL, redirects are refused, and owner,
+   caller supplies a host or a URL, a redirect is never followed, and owner,
    repository, and branch names are validated before they become a path
    segment or a query value. The page the user is sent to for the device code
    is always `https://github.com/login/device`, whatever the response names.
@@ -96,9 +96,17 @@ which hosts it is sent to are security boundaries, not implementation details.
   pasted-token path accepts.
 - Until the owner registers the OAuth App and sets the client id, sign-in is
   by pasted token only, and Settings says so.
-- Owner and repository names follow the rules the host git capability uses.
-  Names outside them — for example an Enterprise Managed User login containing
-  `_` — are refused before any request.
+- Owner, repository, and branch names follow the rules the host git
+  capability uses, and those accept every name GitHub can list: owners may
+  contain `_` (Enterprise Managed User logins), and branch names follow git's
+  reference-name rules. A name outside them is refused before any request.
+- Because a redirect is never followed, a repository that was renamed or
+  transferred reads as not found until the user picks it again.
+- GitHub can answer a listing with 200 while leaving out an organization
+  whose SAML SSO has not authorized the token. Listings carry `ssoPartial`
+  in that case so a short list is not presented as the whole account.
+- Main writes its messages in English; the renderer shows the catalog's
+  sentence for each `GITHUB_*` code.
 - No SQLite schema change, no host-core protocol change, and no new runtime
   dependency: the connector uses the existing `secrets.*` host methods and the
   process `fetch`, which main already routes through the configured proxy.

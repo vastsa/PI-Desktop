@@ -335,12 +335,13 @@ export const ErrorCodes = {
   GITHUB_AUTH_FAILED: "GITHUB_AUTH_FAILED",
   /** GitHub refused the request (403): missing scope or organization SSO. */
   GITHUB_FORBIDDEN: "GITHUB_FORBIDDEN",
+  /** 404, or a repository GitHub redirects because it was renamed or moved. */
   GITHUB_NOT_FOUND: "GITHUB_NOT_FOUND",
   /** Primary or secondary rate limit. Retriable after `resetAt`. */
   GITHUB_RATE_LIMITED: "GITHUB_RATE_LIMITED",
-  /** The request never got an answer: offline, timeout, or a refused redirect. Retriable. */
+  /** No usable answer: offline, timeout, a 5xx, or a portal in the way. Retriable. */
   GITHUB_NETWORK: "GITHUB_NETWORK",
-  /** A pasted token is malformed or GitHub does not accept it. */
+  /** A pasted token is not printable ASCII, or GitHub does not accept it. */
   GITHUB_INVALID_TOKEN: "GITHUB_INVALID_TOKEN",
   /** This build has no OAuth client id, or the OAuth App has device flow off. */
   GITHUB_DEVICE_FLOW_UNAVAILABLE: "GITHUB_DEVICE_FLOW_UNAVAILABLE",

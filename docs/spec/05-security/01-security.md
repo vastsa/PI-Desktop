@@ -463,14 +463,20 @@ private repository the user can reach. Its boundary:
 - **Pinned hosts.** REST requests go to `https://api.github.com`. Device
   sign-in talks to `https://github.com/login/device/code` and
   `https://github.com/login/oauth/access_token`. The hosts are constants; no
-  caller supplies a host or a URL, and `redirect: "error"` keeps the
-  `Authorization` header from following a redirect. The verification page
+  caller supplies a host or a URL. REST requests use `redirect: "manual"` and
+  the device flow `redirect: "error"`; neither ever follows a redirect, so the
+  `Authorization` header cannot reach another address. The verification page
   opened for the user is always `https://github.com/login/device`, through the
   guarded external-open helper.
-- **Validated inputs.** A token must be 1 to 4096 characters with no
-  whitespace or control characters before it is placed in a header. Owner,
-  repository, and branch names are checked against the host git capability's
-  character rules before they become a path segment or a query value.
+- **Validated inputs.** A token must be 1 to 4096 printable ASCII characters
+  (0x21 to 0x7E) before it is placed in a header. Owner, repository, and
+  branch names are checked against the host git capability's rules — git's
+  reference-name rules for a branch — before they become a path segment or a
+  query value, and are encoded where they land.
+- **Avatar.** The card loads an account avatar only from
+  `https://avatars.githubusercontent.com`; any other address in the stored
+  record shows a placeholder, so a planted record cannot make Settings fetch
+  an arbitrary URL.
 - **Main window only.** The seven `pi-desktop/github/*` invoke channels refuse
   any sender but the main window. They are registered with their sender, so
   they are absent from the internal invoke map that the local MCP control
