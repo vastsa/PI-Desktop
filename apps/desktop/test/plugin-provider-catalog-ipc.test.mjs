@@ -139,3 +139,59 @@ test("the plugin session IPC resets ordering on renderer reload and rejects stal
     { sessionId: "after-newer-push", projectPath: "/work/b" },
   ]);
 });
+
+test("selected transcript text goes only to an opted-in view in the current project and session", async () => {
+  const handlers = new Map();
+  const opened = [];
+  let activeInProject = true;
+  const plugin = {
+    path: "/plugin",
+    permissions: new Set(["ui.view"]),
+    manifest: {
+      id: "test.selection",
+      name: "Selection",
+      contributes: { views: [
+        { id: "excerpt", title: "Excerpt", icon: "branch", entry: "one.html", acceptsTranscriptSelection: true },
+        { id: "other", title: "Other", entry: "other.html" },
+      ] },
+    },
+  };
+  loadPluginUiIpc()({
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    plugins: { listLoaded: () => [plugin], getLoaded: (id) => id === plugin.manifest.id ? plugin : undefined },
+    pluginViews: { open: (request) => opened.push(request) },
+    pluginPanels: {},
+    pluginActiveInProject: () => activeInProject,
+    currentWorkspacePath: () => "/work/a",
+    getUpdaterLocale: () => "en",
+    getPluginPanelTheme: () => ({}),
+    setActivePluginSession: () => {},
+  });
+
+  const list = handlers.get(IPC.invoke.pluginViews);
+  const [excerpt, other] = await list();
+  assert.equal(excerpt.acceptsTranscriptSelection, true);
+  assert.equal(excerpt.icon, "branch");
+  assert.equal(other.acceptsTranscriptSelection, undefined);
+  const open = handlers.get(IPC.invoke.pluginViewOpen);
+  const choose = handlers.get(IPC.invoke.pluginSessionActive);
+  const request = { pluginId: "test.selection", viewId: "excerpt", sessionId: "parent", selection: "line one\n字" };
+  await assert.rejects(open(request), /selection is unavailable/);
+  await choose({ sessionId: "parent" });
+  await assert.rejects(open({ ...request, viewId: "other" }), /selection is unavailable/);
+  await assert.rejects(open({ ...request, selection: "字".repeat(22_000) }), /selection is unavailable/);
+  activeInProject = false;
+  await assert.rejects(open(request), /not active/);
+  activeInProject = true;
+  await open(request);
+  assert.equal(opened.length, 1);
+  const [item] = opened;
+  assert.equal(item.location, undefined);
+  assert.equal(item.selection.sessionId, "parent");
+  assert.equal(item.selection.text, request.selection);
+  assert.equal(item.selection.isCurrentSession(), true);
+  await choose({ sessionId: "other" });
+  assert.equal(item.selection.isCurrentSession(), false);
+  await choose({ sessionId: "parent" });
+  assert.equal(item.selection.isCurrentSession(), false);
+});

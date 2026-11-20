@@ -39,11 +39,11 @@ test("the pointer-anchored menu portals, measures, and closes without trapping f
   assert.match(menuSource, /event\.key !== "ArrowRight"/);
   assert.match(menuSource, /event\.key === "ArrowLeft"/);
   assert.match(menuSource, /role="menu"[\s\S]*aria-label=\{label\}/);
-  assert.match(menuSource, /if \(!request\.items\.length\) return;/);
+  assert.match(menuSource, /if \(!request\.items\.length && !selectionItems\) return;/);
 });
 
 test("the transcript owns one menu and each speaking row can open it", () => {
-  assert.match(transcriptSource, /<TranscriptMenuProvider>/);
+  assert.match(transcriptSource, /<TranscriptMenuProvider\s+sessionId=\{/);
   assert.match(transcriptSource, /onContextMenu=\{onContextMenu\}/);
   assert.match(transcriptSource, /conversationMenuItems\(/);
   assert.match(messageRowSource, /onContextMenu=\{onContextMenu\}/);

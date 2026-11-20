@@ -1872,6 +1872,7 @@ export class DesktopAgentRuntime {
   private extensionTurnIndex = 0;
   /** Headers an extension edited in `before_provider_headers` for the current turn. */
   private extensionProviderHeaders?: Record<string, string>;
+  private extensionProviderRequestId = 0;
   /** Subagent definitions offered through the `Task` tool (ADR 0062). */
   private subagents: SubagentDefinition[];
   private subagentProviders: Record<string, RuntimeProviderConfig>;
@@ -3043,6 +3044,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           tokens: budget.tokens,
           contextWindow: budget.hardLimit,
           percent: budget.hardLimit > 0 ? Math.round((budget.tokens / budget.hardLimit) * 100) : null,
+          autoCompactAt: runtime.compactionEnabled ? automaticCompactionThresholdFor(budget) : null,
         };
       },
       compact: () => {
@@ -9613,6 +9615,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const runner = this.extensionRunner;
     if (!runner) return options;
     const next: SimpleStreamOptions = { ...options };
+    // Notification handlers can finish out of order; this local id never leaves the process.
+    const contextRequestId = ++this.extensionProviderRequestId;
     if (this.extensionProviderHeaders) {
       next.headers = mergeProviderHeaders(options.headers, this.extensionProviderHeaders);
     }
@@ -9620,7 +9624,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       next.onPayload = async (payload, payloadModel) => {
         const base = await options.onPayload?.(payload, payloadModel);
         const current = base ?? payload;
-        const replaced = await runner.emitBeforeProviderRequest(current);
+        const replaced = await runner.emitBeforeProviderRequest(current, { contextRequestId });
         return replaced ?? base;
       };
     }
@@ -9629,6 +9633,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         await options.onResponse?.(response, responseModel);
         void runner.emit("after_provider_response", {
           type: "after_provider_response",
+          contextRequestId,
           response,
           model: model as unknown,
         });

@@ -4908,3 +4908,17 @@ Build two actual runtimes with identical configuration and different scratch dir
   wrapped descriptions; preserve detail navigation, Stop and responsive layout.
 - Qualification: isolated Chromium geometry checks cover this layout regression;
   installed-client and live-provider checks remain separate.
+
+## E2E-PLUGIN-transcript-selection-view
+
+- With an opted-in plugin installed, select part of a message bubble and
+  right-click. The item shows its localized title and host icon. Repeat with
+  no selection, a selection outside the bubble, and the plugin disabled.
+  Each of those menus omits the item.
+- Choose the item on a cold view and again on an already open view. Verify the
+  same docked tab receives one `view:selection` payload per click with the
+  session ID and excerpt only. Escape delivers nothing. Switching sessions
+  while the view is loading discards the pending excerpt.
+- With a side-question plugin, verify the quote preview can be removed
+  atomically and the first explicitly sent prompt contains only the excerpt
+  and the new question. The main conversation and its input remain intact.
