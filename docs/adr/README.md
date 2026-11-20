@@ -423,3 +423,4 @@ git history.
 | plan-approval-session-permission | [Plan approval defaults to the owning Session's permission](plan-approval-session-permission.md) | Accepted; amends ADR 0053 and ADR 0158 |
 | plugin-transcript-selection-views | [Docked views can accept transcript selections](plugin-transcript-selection-views.md) | Accepted (issue #2395) |
 | opt-in-background-job-continuation | [Opt-in background job continuation](opt-in-background-job-continuation.md) | Proposed (#2143) |
+| plugin-turn-observation-model-context-and-suggestion-targets | [Publish turn observations, scoped model context, and Composer suggestion targets](plugin-turn-observation-model-context-and-suggestion-targets.md) | Accepted (#2470) |

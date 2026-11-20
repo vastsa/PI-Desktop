@@ -1,4 +1,4 @@
-# Plugin turn observation, model context, and suggestion targets
+# ADR plugin-turn-observation-model-context-and-suggestion-targets: Publish turn observations, scoped model context, and Composer suggestion targets
 
 ## Status
 
