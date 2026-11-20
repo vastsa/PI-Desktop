@@ -2162,7 +2162,6 @@ sklm: {
     switchProject: "Projeyi değiştir",
     noProject: "Proje yok",
     noProjectHint: "Herhangi bir projeye ait olmayan geçici sohbet",
-    chooseProject: "Proje seç",
     clone: "Git projesi kopyala",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",
     cloneUrlHint: "Depo URL’sini yapıştırın, ardından bir klasör seçin.",

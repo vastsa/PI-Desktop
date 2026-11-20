@@ -2152,7 +2152,6 @@ sklm: {
     "switchProject": "Changer de projet",
     "noProject": "Aucun projet",
     "noProjectHint": "Discussion temporaire hors de tout projet",
-    "chooseProject": "Choisir un projet",
     "clone": "Cloner un projet git",
     "cloneUrlPlaceholder": "https://github.com/org/repo.git",
     "cloneUrlHint": "Collez l’URL du dépôt, puis choisissez un dossier.",

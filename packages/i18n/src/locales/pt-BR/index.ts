@@ -2122,7 +2122,6 @@ export const ptBR = {
     switchProject: "Alternar projeto",
     noProject: "Sem projeto",
     noProjectHint: "Conversa temporária fora de qualquer projeto",
-    chooseProject: "Escolher projeto",
     clone: "Clonar projeto git",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",
     cloneUrlHint: "Cole a URL do repositório e escolha uma pasta.",

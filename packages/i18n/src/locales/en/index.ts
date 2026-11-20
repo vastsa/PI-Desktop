@@ -2172,7 +2172,6 @@ sklm: {
     switchProject: "Switch project",
     noProject: "No project",
     noProjectHint: "Temporary chat outside any project",
-    chooseProject: "Choose project",
     clone: "Clone git project",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",
     cloneUrlHint: "Paste a repository URL, then pick a folder.",
