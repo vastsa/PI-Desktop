@@ -21,6 +21,7 @@ export type SettingsTabId =
   | "instructions"
   | "skills"
   | "mcp"
+  | "connectors"
   | "subagents"
   | "modes"
   | "projects"
@@ -292,6 +293,21 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.capabilityFilterProject",
       "extensions.mcp.test",
       "extensions.mcp.remove",
+    ],
+  },
+  {
+    id: "connectors",
+    labelKey: "settings.nav.connectors",
+    titleKey: "settings.connectors.title",
+    subtitleKey: "settings.connectors.subtitle",
+    group: "agent",
+    keywordKeys: [
+      "settings.connectors.github.name",
+      "settings.connectors.github.connect",
+      "settings.connectors.github.allowWorkflow",
+      "settings.connectors.github.useToken",
+      "settings.connectors.github.tokenLabel",
+      "settings.connectors.github.disconnect",
     ],
   },
   {
