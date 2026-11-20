@@ -41,6 +41,8 @@ const DEFAULT_UPSTREAM = "https://github.com";
 const COMMAND_SECTION_LIMIT = 64 * 1024;
 /** Decoded size the buffered prefix of a gzip body may reach before it is refused. */
 const GZIP_DECODE_LIMIT = 4 * 1024 * 1024;
+/** `0000`: a body that is only this is git's empty probe request. */
+const FLUSH_PACKET_LENGTH = 4;
 const HANDLE = /^[0-9a-f]{64}$/u;
 /** Paths git builds from an owner, a repository, and a fixed endpoint need nothing else. */
 const SAFE_PATH = /^(?:\/[A-Za-z0-9._~-]+)+\/?$/u;
@@ -108,8 +110,16 @@ function inspectReceivePack(req: IncomingMessage, workBranch: string): Promise<I
       if (parsed.malformed) return settle({ ok: false, reason: "the push is not a receive-pack request" });
       if (parsed.refs.some((ref) => ref !== allowed)) return settle({ ok: false, reason: `this session may only push ${allowed}` });
       if (parsed.complete) {
-        if (parsed.refs.length === 0) return settle({ ok: false, reason: "the push names no ref" });
-        return settle({ ok: true, buffered, ended });
+        if (parsed.refs.length > 0) return settle({ ok: true, buffered, ended });
+        // For a pack larger than `http.postBuffer`, git first POSTs a body
+        // that is exactly one flush packet, to settle authentication before
+        // it streams the real request. It carries no command and changes
+        // nothing; refusing it would fail every large push.
+        if (decoded.length === FLUSH_PACKET_LENGTH) {
+          if (ended) return settle({ ok: true, buffered, ended });
+          return;
+        }
+        return settle({ ok: false, reason: "the push names no ref" });
       }
       if (ended || size >= COMMAND_SECTION_LIMIT || decoded.length >= COMMAND_SECTION_LIMIT) {
         return settle({ ok: false, reason: "the push's ref updates did not end within 64 KiB" });

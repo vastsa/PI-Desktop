@@ -270,6 +270,29 @@ describe("git credential proxy", () => {
     expect(up.seen[2]?.headers["content-encoding"]).toBe("gzip");
   });
 
+  it("forwards git's empty probe push, which names no ref", async () => {
+    // For a pack larger than `http.postBuffer` git first POSTs a body that is
+    // one flush packet, to settle authentication before it streams the pack.
+    const up = await upstream();
+    const proxy = await proxyFor(up.url);
+    proxy.setToken(INSTALLATION, TOKEN);
+    const base = proxy.register(scope);
+    const url = `${base}octo/repo.git/git-receive-pack`;
+    expect((await send(url, { method: "POST", headers: RECEIVE_HEADERS, body: FLUSH })).status).toBe(200);
+    expect((await send(url, { method: "POST", headers: { ...RECEIVE_HEADERS, "content-encoding": "gzip" }, body: gzipSync(FLUSH) })).status).toBe(200);
+    expect(up.seen).toHaveLength(2);
+    expect(up.seen[0]?.body.equals(FLUSH)).toBe(true);
+    expect(up.seen[0]?.headers.authorization).toBe(basic);
+    // Anything after the flush is not a probe.
+    expect((await send(url, { method: "POST", headers: RECEIVE_HEADERS, body: Buffer.concat([FLUSH, FLUSH]) })).status).toBe(403);
+    expect((await send(url, { method: "POST", headers: RECEIVE_HEADERS, body: [FLUSH, PACK] })).status).toBe(403);
+    expect(up.seen).toHaveLength(2);
+    // Without a token the probe is refused like any other scoped request.
+    proxy.setToken(INSTALLATION, null);
+    expect((await send(url, { method: "POST", headers: RECEIVE_HEADERS, body: FLUSH })).status).toBe(401);
+    expect(up.seen).toHaveLength(2);
+  });
+
   it("refuses a push that names any other ref before a byte reaches upstream", async () => {
     const up = await upstream();
     const proxy = await proxyFor(up.url);

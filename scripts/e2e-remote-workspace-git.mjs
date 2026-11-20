@@ -230,6 +230,22 @@ try {
     assert.deepEqual([job.state, job.pushed], ["succeeded", { branch: workA, remoteHead: committed }]);
   });
 
+  await step("4b pushes larger than git's post buffer go through", async () => {
+    // Above 1 MiB git first sends an empty probe request, then streams the pack.
+    const commitLarge = (name) => `head -c 3145728 /dev/urandom > ${name} && git add ${name} && git -c user.name='PI E2E' -c user.email=pi-e2e@example.invalid commit -q -m ${name}`;
+    const first = await bash("session-b", b.path, `${commitLarge("large-1.bin")} && git push 2>&1`);
+    assert.equal(first.exitCode, 0, first.output);
+    assert.equal(remoteHead(workB), git(b.path, "rev-parse", "HEAD"), "the agent's large push reached the fixture");
+    const second = await bash("session-b", b.path, commitLarge("large-2.bin"));
+    assert.equal(second.exitCode, 0, second.output);
+    const head = git(b.path, "rev-parse", "HEAD");
+    const { jobId } = await boot.workspaceGit.push(HOST, "session-b");
+    const { job } = await pollJob(jobId);
+    assert.deepEqual([job.state, job.pushed, job.error], ["succeeded", { branch: workB, remoteHead: head }, undefined]);
+    assert.equal(remoteHead(workB), head, "the host's large push reached the fixture");
+    assert.equal(remoteHead("develop"), developHead);
+  });
+
   await step("5 a push to another ref is refused by the proxy (E2E-REMOTE-git-proxy-rejects-foreign-ref)", async () => {
     const receivePacks = () => fixture.requests.filter((request) => request.method === "POST" && request.path.endsWith("/git-receive-pack")).length;
     const before = receivePacks();
