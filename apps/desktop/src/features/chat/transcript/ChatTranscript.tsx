@@ -1,3 +1,4 @@
+import { ThinkingActions } from "./ThinkingActions";
 import { memo, useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanningState, RadialMenuAction, UiMessage } from "@pi-desktop/shared";
@@ -451,6 +452,20 @@ function TranscriptBody({
           onReleaseFollow={releaseFollow}
         />
       ) : null}
+      {sessionId ? <ThinkingActions key={sessionId} sessionId={sessionId} messages={messages} onBeforeChange={() => {
+        const scroller = scrollRef.current;
+        if (!scroller) return;
+        const bounds = scroller.getBoundingClientRect();
+        const visible = (row: HTMLElement) => {
+          const rect = row.getBoundingClientRect();
+          return rect.height > 0 && rect.bottom > bounds.top && rect.top < bounds.bottom;
+        };
+        // Prefer the answer being read over a process header above it: expanding
+        // that header's children moves the answer while the header stays still.
+        const anchor = Array.from(scroller.querySelectorAll<HTMLElement>(".message-row[data-message-id], .assistant-turn-fragment[data-message-id]")).find(visible)
+          ?? Array.from(scroller.querySelectorAll<HTMLElement>(".tool-activity-header, .tool-row-header")).find(visible);
+        if (anchor) disclosureAnchorNotifier(anchor);
+      }} /> : null}
       <div
         className="thread-scroll"
         ref={scrollRef}

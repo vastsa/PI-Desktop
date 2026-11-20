@@ -87,10 +87,13 @@ export function TurnProcess({
   // an explicit user choice stays authoritative. This does not depend on the
   // thinking preference, and a recorded failure keeps an untouched active
   // process open through recovery because it stays active until the turn ends.
+  const thinkingIds = useMemo(() => processParts.flatMap((part) => part.kind === "activity"
+    ? part.items.filter((item) => item.kind === "thinking").map((item) => item.message.id) : []), [processParts]);
   const disclosure = useAutomaticDisclosure(
     isActive,
     revealRequest,
     disclosureKey("turn", turnId),
+    thinkingIds,
   );
   const detailsId = useId();
   const [now, setNow] = useState(Date.now);
