@@ -3946,6 +3946,22 @@ same-name definitions with different IDs do not prevent saving to A. A real
 duplicate name or ID in A still blocks creation; a real duplicate name blocks
 editing. Cover both creating and editing before changing the page selection.
 
+## E2E-ISSUE-2399
+
+In an unbound Agent conversation, call `PluginScaffold` with `panel-basic` and
+`word-to-pdf`, then `PluginCheck` and `PluginPack` on that directory. Files and the
+package must stay under that session's host-owned scratch root, and development
+registration/loading must receive that same plugin path. A second temporary
+session must not share the first session's directory. Project/worktree sessions
+must retain their own root; missing sessions and escaping paths must fail closed.
+Host lookup failures must remain observable. Scratch sources retain the existing
+temporary cleanup lifecycle, not a persistent project guarantee.
+
+Offline coverage: `node --test apps/desktop/test/plugin-dev-workspace.test.mjs`
+executes the production resolver, DI wiring, tool handlers and devkit filesystem
+operations. Host RPC and Electron plugin loading are boundary fixtures; rendered
+Electron and real-host lifecycle verification remain manual/CI coverage.
+
 ## E2E-ISSUE-2184
 
 Load the actual bundled plugin in an isolated workspace. Create a file and Unicode directory, rename and move the file; verify disk entries and response metadata. Invalid create/rename names fail before writing, and duplicate destinations are refused. Coverage: apps/desktop/test/file-manager-mutations.test.mjs. Existing Electron directory-location path also passes.
