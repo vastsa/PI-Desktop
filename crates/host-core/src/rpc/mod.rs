@@ -17,6 +17,7 @@ mod todos;
 mod window_corner_rpc;
 mod window_owner;
 mod window_snap_rpc;
+mod workspace_git_rpc;
 mod worktree_rpc;
 
 #[cfg(test)]
@@ -33,6 +34,8 @@ mod plugin_reviews_rpc_tests;
 mod review_rpc_tests;
 #[cfg(test)]
 mod visualization_tests;
+#[cfg(test)]
+mod workspace_git_rpc_tests;
 
 use std::io::{self, BufRead, BufReader as StdBufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -4139,6 +4142,10 @@ async fn handle_request(
 
         method if method.starts_with("worktree.") => {
             worktree_rpc::handle(&state, method, params).await
+        }
+
+        method if method.starts_with("workspaceGit.") => {
+            workspace_git_rpc::handle(&state, method, params).await
         }
 
         "tools.list" => {

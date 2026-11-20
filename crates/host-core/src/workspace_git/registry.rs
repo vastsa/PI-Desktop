@@ -10,6 +10,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 use super::layout::Repository;
 use crate::db::Database;
@@ -55,6 +56,29 @@ pub struct WorktreeRecord {
     pub setup_status: SetupStatus,
     #[serde(default)]
     pub setup_log_tail: Option<String>,
+}
+
+impl WorktreeRecord {
+    /// The wire shape of `WorkspaceGitWorktree`. The installation id and the
+    /// environment stay on the host: the first is the caller's own label, the
+    /// second is configuration it already has.
+    pub fn wire(&self) -> Value {
+        let mut setup = json!({ "status": self.setup_status });
+        if let Some(tail) = &self.setup_log_tail {
+            setup["logTail"] = json!(tail);
+        }
+        json!({
+            "sessionId": self.session_id,
+            "repository": self.repository,
+            "baseBranch": self.base_branch,
+            "workBranch": self.work_branch,
+            "path": self.path,
+            "mainPath": self.main_path,
+            "baseCommit": self.base_commit,
+            "createdAt": self.created_at,
+            "setup": setup,
+        })
+    }
 }
 
 /// Unambiguous because an installation id is a fixed-length UUID without `:`.

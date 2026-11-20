@@ -9,9 +9,11 @@
 //! per-command URL rewrite.
 
 pub mod environment;
+pub mod jobs;
 pub mod layout;
 pub mod registry;
 pub mod repository;
+pub mod setup;
 pub mod worktree;
 
 #[cfg(test)]

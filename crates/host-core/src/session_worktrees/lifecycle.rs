@@ -459,7 +459,8 @@ pub(super) async fn run_setup(
     }
 }
 
-fn setup_log(content: &serde_json::Value) -> String {
+/// The bounded tail of a setup command's output, as shown in the status row.
+pub(crate) fn setup_log(content: &serde_json::Value) -> String {
     let text = match content {
         serde_json::Value::String(text) => text.clone(),
         value => {

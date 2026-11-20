@@ -56,7 +56,7 @@ pub async fn ensure(
     ctx: &NetworkContext<'_>,
     remote_url: &str,
     main_path: &Path,
-    on_phase: &dyn Fn(Phase),
+    on_phase: &(dyn Fn(Phase) + Send + Sync),
 ) -> Result<(), WorkspaceGitError> {
     let (Some(parent), Some(name)) = (
         main_path.parent(),
@@ -310,7 +310,7 @@ impl Drop for TemporaryClone {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     use super::*;
     use crate::workspace_git::test_support::{rev_parse, Remote};
@@ -325,13 +325,13 @@ mod tests {
         let remote = Remote::new(dir.path());
         let main_path = dir.path().join("root/repos/github.com/octo/repo");
         let git = GitRunner::default();
-        let phases = RefCell::new(Vec::new());
-        let on_phase = |phase: Phase| phases.borrow_mut().push(phase);
+        let phases = Mutex::new(Vec::new());
+        let on_phase = |phase: Phase| phases.lock().unwrap().push(phase);
 
         ensure(&context(&git), &remote.url(), &main_path, &on_phase)
             .await
             .unwrap();
-        assert_eq!(*phases.borrow(), [Phase::Cloning]);
+        assert_eq!(*phases.lock().unwrap(), [Phase::Cloning]);
         assert!(main_path.join(".git").is_dir());
         assert!(main_path.join("README.md").is_file());
         assert_eq!(
@@ -357,7 +357,7 @@ mod tests {
         ensure(&context(&git), &remote.url(), &main_path, &on_phase)
             .await
             .unwrap();
-        assert_eq!(*phases.borrow(), [Phase::Cloning, Phase::Fetching]);
+        assert_eq!(*phases.lock().unwrap(), [Phase::Cloning, Phase::Fetching]);
         assert_eq!(rev_parse(&main_path, "refs/remotes/origin/main"), added);
     }
 

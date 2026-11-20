@@ -40,8 +40,6 @@ mod user_skills;
 mod user_subagents;
 mod visualizations;
 mod workspace;
-// Wired into the RPC surface by the `workspaceGit.*` methods.
-#[allow(dead_code)]
 mod workspace_git;
 
 use std::sync::Arc;

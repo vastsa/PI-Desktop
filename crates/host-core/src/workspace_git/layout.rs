@@ -85,11 +85,6 @@ impl Repository {
     pub fn validated(&self) -> Result<Repository, WorkspaceGitError> {
         Self::parse(&self.owner, &self.name)
     }
-
-    /// `<owner>/<repo>`, for messages.
-    pub fn slug(&self) -> String {
-        format!("{}/{}", self.owner, self.name)
-    }
 }
 
 /// 1 to 244 characters of `[A-Za-z0-9._/@+-]`; no leading `-` or `/`, no
