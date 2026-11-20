@@ -11,6 +11,7 @@ import { Button } from "../../../components/ui";
 import { UpdatesRow } from "../agent-sections";
 import { DeveloperSection } from "../developer-sections";
 import { SettingsCard, SettingsRow } from "../primitives";
+import { useStartupGuideRequest } from "../../startup/startup-guide-request";
 
 export function AboutSettings({
   settings,
@@ -38,6 +39,18 @@ export function AboutSettings({
         saveSettings={saveSettings}
       />
       <SettingsCard>
+        <SettingsRow
+          title={t("settings.startupGuide")}
+          description={t("settings.startupGuideDesc")}
+        >
+          <Button
+            variant="secondary"
+            data-action="replay-startup-guide"
+            onClick={() => useStartupGuideRequest.getState().request()}
+          >
+            {t("settings.openStartupGuide")}
+          </Button>
+        </SettingsRow>
         <SettingsRow title={t("settings.logs")}>
           <Button variant="secondary" onClick={() => void api.openLogs()}>
             {t("settings.openLogs")}

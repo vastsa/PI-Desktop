@@ -18,6 +18,16 @@ function codexToken() {
   return `header.${payload}.sig`;
 }
 
+test("the Codex model list asks as a client new enough for GPT-6.2 (#2411)", () => {
+  // Codex's catalog gives gpt-6.2-sol and gpt-6.2-astra minimal_client_version
+  // 0.166.0; the endpoint hides a model from an older client_version.
+  const [major, minor] = CODEX_MODELS_CLIENT_VERSION.split(".").map(Number);
+  assert.ok(
+    major > 0 || minor >= 166,
+    `client_version ${CODEX_MODELS_CLIENT_VERSION} is older than 0.166.0`,
+  );
+});
+
 test("ChatGPT accounts list models from the Codex endpoint, not /models", () => {
   const request = vendorModelListRequest({
     vendorId: "openai-codex",

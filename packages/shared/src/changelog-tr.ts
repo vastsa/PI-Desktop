@@ -3,6 +3,7 @@ import type { ChangelogEntry } from "./changelog.js";
 export const trEntries: ChangelogEntry[] = [
   {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "OpenAI Fast modunu model başına açın ve öncelikli hizmet istemek için konuşmada /fast kullanın; bu, abonelik limitlerini daha hızlı tüketebilir veya token başına maliyeti artırabilir.",
       "Satır içi görselleştirmeler yeniden kullanılabilir grafik yardımcılarıyla daha hızlı yüklenir; başarısız betikler artık boş kartlar yerine düzeltmeye yardımcı olacak hatalar gösterir.",
@@ -14,6 +15,10 @@ export const trEntries: ChangelogEntry[] = [
       "Eklenti pazarına kaydırdıkça yüklenen tek bir listede göz atın, önerilen, popüler, en yeni veya ada göre sıralayın ve her kategoride kaç eklentinin eşleştiğini görün; eklenti merkezine ulaşılamazsa son kaydedilen katalog kullanılır.",
       "Her eklenti artık iki dilli bir rafa yerleşiyor; pazar yeri Türkçe veya Çince okunuyor ve aynı kategoriyle filtreleniyor.",
       "Eklenti ayrıntıları artık yayıncıyı, README'yi ve güvenlik notlarını gösteriyor; katalog okunurken kayboluyorlardı.",
+      "GPT-6.2 Sol ve GPT-6.2 Astra modellerini OpenAI, ChatGPT, GitHub Copilot, OpenCode ve bunları yayımlayan ağ geçitlerinde, yayımlanan sınır ve fiyatlarıyla seçin.",
+      "Ayarlar artık geçerli sayfanın üzerinde bir iletişim kutusu olarak açılıyor, kenar çubuğu Yeni görev, Zamanlanmış ve Eklenti pazarını en üste taşıyor ve kısa bir başlangıç rehberi model eklemenize ve eklenti başlatıcı kısayolunu öğrenmenize yardımcı oluyor.",
+      "Ayarlar → Görünüm → Kenar çubuğu modülleri bölümünden hangi kenar çubuğu modüllerinin görüneceğini seçin: Yeni görev, Zamanlanmış, Eklenti pazarı, sabitlenmiş oturumlar, Oturumlar, Projeler, araç çubuğu düğmeleri ve sürüm.",
+      "Kenar çubuğundaki Oturumlar bölümü artık Son: sabitlenmemiş tüm konuşmalar en yeniden başlayarak listelenir ve Daha fazla yükle ile genişler; boş ana sayfa başlığı da proje değiştirmek için bir açılır ok gösterir.",
     ],
   },
   {
@@ -35,6 +40,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "README önizlemeleri dahil Mermaid diyagramlarını SVG metni olarak kopyalayın veya bağımsız SVG dosyaları olarak dışa aktarın.",
       "Her turun ve tüm konuşmanın maliyetini bağlam denetçisinde ve tur kullanım kapsülünde görün; abonelik kullanımı kullandıkça öde harcamasından ayrı gösterilir.",
       "Kendi videonuzu başlangıç animasyonu olarak kullanın: \"startup\" klasörüne bir video bırakın, oynatma bitince arayüz yavaşça belirir.",
       "Eklentiler, etkin oturumu değiştirmeden kayıtlı projeleri ve klasörlerini listeleyebilir.",

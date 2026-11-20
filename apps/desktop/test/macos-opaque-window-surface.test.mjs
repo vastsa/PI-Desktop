@@ -165,7 +165,7 @@ test("only macOS sidebar and splash surfaces receive the translucent glass treat
 
   const macAncestorBlock =
     stylesSource.match(
-      /:root\[data-platform="darwin"\],\n:root\[data-platform="darwin"\] body,\n:root\[data-platform="darwin"\] #root,\n:root\[data-platform="darwin"\] \.app-shell,\n:root\[data-platform="darwin"\] \.settings-shell\s*\{[^}]*\}/,
+      /:root\[data-platform="darwin"\],\n:root\[data-platform="darwin"\] body,\n:root\[data-platform="darwin"\] #root,\n:root\[data-platform="darwin"\] \.app-shell\s*\{[^}]*\}/,
     )?.[0] ?? "";
   assert.match(macAncestorBlock, /background:\s*transparent/);
 

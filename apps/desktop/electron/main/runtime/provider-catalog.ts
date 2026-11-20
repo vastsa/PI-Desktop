@@ -5,6 +5,8 @@ import {
   isCommandShellId,
   normalizeRadialMenuPreferences,
   radialMenuWriteError,
+  normalizeSidebarModulePreferences,
+  sidebarModulesWriteError,
   validateNetworkProxy,
   validateSpeechSettings,
   type CommandShellId,
@@ -189,6 +191,13 @@ export function createProviderCatalogRuntime({
       autoCollapseThinking:
         (value as T & { autoCollapseThinking?: unknown }).autoCollapseThinking !== false,
       radialMenu: normalizeRadialMenuPreferences(value.radialMenu),
+      ...(Object.prototype.hasOwnProperty.call(value, "sidebarModules")
+        ? {
+            sidebarModules: normalizeSidebarModulePreferences(
+              (value as T & { sidebarModules?: unknown }).sidebarModules,
+            ),
+          }
+        : {}),
       defaultCommandShell: isCommandShellId(value.defaultCommandShell)
         ? value.defaultCommandShell
         : defaultCommandShellForPlatform(process.platform),
@@ -309,6 +318,14 @@ export function createProviderCatalogRuntime({
     const radialMenuProblem = radialMenuWriteError(value.radialMenu);
     if (radialMenuProblem) {
       throw Object.assign(new Error(radialMenuProblem), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    const sidebarModulesProblem = sidebarModulesWriteError(
+      (value as T & { sidebarModules?: unknown }).sidebarModules,
+    );
+    if (sidebarModulesProblem) {
+      throw Object.assign(new Error(sidebarModulesProblem), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
     }
