@@ -190,11 +190,10 @@ export class AppUpdaterController {
     this.getLocale = options.getLocale ?? (() => "en");
     const platform = options.platform ?? process.platform;
     const isPackaged = options.isPackaged ?? app.isPackaged;
+    // Read on every platform: the unsigned marker matters most on macOS,
+    // where an in-app install over an unsigned build cannot succeed.
     const distribution =
-      options.distribution ??
-      (platform === "win32"
-        ? this.readPackagedDistribution(isPackaged)
-        : undefined);
+      options.distribution ?? this.readPackagedDistribution(isPackaged);
     this.platform = platform;
     this.isPackaged = isPackaged;
     this.env = process.env;

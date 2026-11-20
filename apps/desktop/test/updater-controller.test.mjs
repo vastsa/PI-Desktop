@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { register } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -49,7 +51,7 @@ class FakeUpdater extends EventEmitter {
   quitAndInstall() {}
 }
 
-function createController({ updater, settings = {}, persist = async () => {} }) {
+function createController({ updater, settings = {}, persist = async () => {}, options = {} }) {
   const logger = { app: () => {} };
   const sent = [];
   const controller = new AppUpdaterController({
@@ -61,8 +63,26 @@ function createController({ updater, settings = {}, persist = async () => {} }) 
     autoUpdater: updater,
     readUpdateSettings: async () => settings,
     persistDismissedVersion: persist,
+    ...options,
   });
   return { controller, sent };
+}
+
+/**
+ * The Electron stub answers `app.getAppPath()` with the working directory, so
+ * a packaged app's metadata is whatever `package.json` sits there.
+ */
+async function withPackagedMetadata(metadata, run) {
+  const previous = process.cwd();
+  const appPath = await mkdtemp(join(tmpdir(), "pi-desktop-updater-metadata-"));
+  await writeFile(join(appPath, "package.json"), JSON.stringify(metadata));
+  process.chdir(appPath);
+  try {
+    return await run();
+  } finally {
+    process.chdir(previous);
+    await rm(appPath, { recursive: true, force: true });
+  }
 }
 
 test("dismissing an in-app update cancels its download and disables install on quit", async () => {
@@ -119,4 +139,37 @@ test("a restored dismissal blocks that release and a newer release resumes autom
   assert.equal(controller.getState().dismissed, false);
   assert.deepEqual(persisted, [null]);
   controller.dispose();
+});
+
+test("a packaged macOS build stamped unsigned never downloads, even with a stored automatic preference", async () => {
+  await withPackagedMetadata({ piDistribution: "unsigned" }, async () => {
+    const updater = new FakeUpdater();
+    const { controller } = createController({
+      updater,
+      settings: { updatePreference: "automatic" },
+    });
+
+    await controller.check();
+
+    assert.equal(controller.getState().mode, "manual");
+    assert.equal(controller.getState().status, "available");
+    assert.deepEqual(updater.downloadStarts, []);
+    assert.equal(updater.autoDownload, false);
+    assert.equal(updater.autoInstallOnAppQuit, false);
+    await assert.rejects(controller.download(), /not supported on this install/);
+    controller.dispose();
+  });
+});
+
+test("a packaged macOS build with ordinary or unreadable metadata keeps in-app delivery", async () => {
+  for (const metadata of [{ piDistribution: "installed" }, { piDistribution: 7 }, {}]) {
+    await withPackagedMetadata(metadata, async () => {
+      const updater = new FakeUpdater();
+      const { controller } = createController({ updater });
+      await controller.check();
+      assert.equal(controller.getState().mode, "in-app");
+      assert.deepEqual(updater.downloadStarts, ["0.16.1"]);
+      controller.dispose();
+    });
+  }
 });
