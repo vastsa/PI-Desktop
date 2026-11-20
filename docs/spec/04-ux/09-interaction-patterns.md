@@ -659,6 +659,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   Info continues to show the available version and the Releases action.
 - `downloaded` remains actionable until Restart to update or normal app quit;
   later scheduled/manual checks do not replace it with `checking`.
+- On Windows, Restart to update reuses the registered NSIS install scope when
+  exactly one exists. An all-users update requests elevation when needed.
+  The installer asks for the scope when it finds no registered install or finds both.
 - A compact update notice appears in the main pane's top-right safe area for
   the one-time manual reminder, in-app `downloading`, or `downloaded`. It stays
   clear of the bottom composer at every supported window size and draft height.
