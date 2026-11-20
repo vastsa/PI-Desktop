@@ -393,6 +393,8 @@ mod worktree_environment {
     use crate::workspace_git::registry::{self, SetupStatus, Variable, WorktreeRecord};
 
     const PROBE: &str = "printf '%s|%s|%s|%s|%s|%s|%s' \"${MY_VAR-unset}\" \"${PI_WORKTREE_ROOT-unset}\" \"${PI_PROJECT_ROOT-unset}\" \"${GIT_CONFIG_COUNT-unset}\" \"${GIT_CONFIG_KEY_0-unset}\" \"${GIT_CONFIG_VALUE_0-unset}\" \"${GIT_DIR-unset}\"";
+    /// The rest of the environment-carried git configuration.
+    const HARDENING_PROBE: &str = "printf '%s=[%s]|%s=[%s]|%s=[%s]|%s' \"${GIT_CONFIG_KEY_1-unset}\" \"${GIT_CONFIG_VALUE_1-unset}\" \"${GIT_CONFIG_KEY_2-unset}\" \"${GIT_CONFIG_VALUE_2-unset}\" \"${GIT_CONFIG_KEY_3-unset}\" \"${GIT_CONFIG_VALUE_3-unset}\" \"${GIT_TERMINAL_PROMPT-unset}\"";
 
     fn proxy() -> String {
         format!("http://127.0.0.1:4321/{}/", "ab".repeat(32))
@@ -463,6 +465,17 @@ mod worktree_environment {
         call: &str,
         git_proxy_url: Option<&str>,
     ) -> String {
+        run(state, tx, root, call, git_proxy_url, PROBE).await
+    }
+
+    async fn run(
+        state: &Arc<Mutex<AppState>>,
+        tx: &mpsc::UnboundedSender<String>,
+        root: &Path,
+        call: &str,
+        git_proxy_url: Option<&str>,
+        command: &str,
+    ) -> String {
         let shell = {
             let guard = state.lock().await;
             command_shell_catalog(&guard).unwrap().effective.unwrap()
@@ -472,7 +485,7 @@ mod worktree_environment {
             "sessionId": "local-owner",
             "toolCallId": call,
             "toolName": "Bash",
-            "args": { "command": PROBE },
+            "args": { "command": command },
             "expectedCommandShellId": shell.id,
             "expectedCommandShellDialect": shell.dialect.as_str(),
         });
@@ -515,9 +528,24 @@ mod worktree_environment {
         assert_eq!(
             proxied,
             format!(
-                "from-record|{root_text}|/w/repos/github.com/octo/repo|1|url.{proxy}octo/repo.git.insteadOf|https://github.com/octo/repo.git|{}",
+                "from-record|{root_text}|/w/repos/github.com/octo/repo|4|url.{proxy}octo/repo.git.insteadOf|https://github.com/octo/repo.git|{}",
                 ambient("GIT_DIR")
             )
+        );
+        // The host user's credential helpers, askpass program, and HTTP proxy
+        // are out of the picture for the session's git.
+        let hardening = run(
+            &state,
+            &tx,
+            &root,
+            "hardening",
+            Some(&proxy),
+            HARDENING_PROBE,
+        )
+        .await;
+        assert_eq!(
+            hardening,
+            format!("credential.helper=[]|core.askPass=[]|http.{proxy}.proxy=[]|0")
         );
     }
 

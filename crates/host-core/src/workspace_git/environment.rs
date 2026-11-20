@@ -27,6 +27,31 @@ pub fn proxy_rewrite(proxy_url: &str, repository: &Repository) -> (String, Strin
     )
 }
 
+/// The git configuration for traffic to GitHub from this host, as key and
+/// value pairs for `GIT_CONFIG_COUNT`. host-run git and the Agent's Bash get
+/// the same pairs:
+///
+/// - the proxy rewrite for the session's repository;
+/// - an empty `credential.helper` and `core.askPass`, so git neither asks the
+///   host user's own helpers for a credential nor offers them one to store.
+///   The only credential in play is the one the proxy adds;
+/// - an empty proxy for the credential proxy's own address, so loopback
+///   traffic to it is never handed to a configured HTTP proxy.
+///
+/// Without a proxy address only the two credential pairs apply.
+pub fn network_config(proxy_url: Option<&str>, repository: &Repository) -> Vec<(String, String)> {
+    let mut config = Vec::with_capacity(4);
+    if let Some(proxy_url) = proxy_url {
+        config.push(proxy_rewrite(proxy_url, repository));
+    }
+    config.push(("credential.helper".to_string(), String::new()));
+    config.push(("core.askPass".to_string(), String::new()));
+    if let Some(proxy_url) = proxy_url {
+        config.push((format!("http.{proxy_url}.proxy"), String::new()));
+    }
+    config
+}
+
 /// Read an optional `gitProxyUrl` / `gitProxy.url` value. Only the shape
 /// `pi-host` produces is accepted, `http://127.0.0.1:<port>/<64 hex>/`, so the
 /// rewrite can never point git at another machine.
@@ -59,7 +84,7 @@ pub fn parse_proxy_url(value: Option<&Value>) -> Result<Option<String>, Workspac
 ///
 /// Inside a registered worktree, in order: the record's variables,
 /// `PI_WORKTREE_ROOT`, `PI_PROJECT_ROOT` (the main checkout), and, only when a
-/// proxy URL is given, `GIT_TERMINAL_PROMPT=0` and the proxy rewrite as
+/// proxy URL is given, `GIT_TERMINAL_PROMPT=0` and `network_config` as
 /// environment-carried git configuration. For any other root the result is
 /// empty, whatever `git_proxy_url` says.
 pub fn for_tool(db: &Database, root: &Path, git_proxy_url: Option<&str>) -> Vec<(String, String)> {
@@ -81,11 +106,13 @@ pub fn for_tool(db: &Database, root: &Path, git_proxy_url: Option<&str>) -> Vec<
     env.push(("PI_WORKTREE_ROOT".to_string(), record.path.clone()));
     env.push(("PI_PROJECT_ROOT".to_string(), record.main_path.clone()));
     if let (Some(proxy_url), Ok(repository)) = (git_proxy_url, record.repository.validated()) {
-        let (key, value) = proxy_rewrite(proxy_url, &repository);
+        let config = network_config(Some(proxy_url), &repository);
         env.push(("GIT_TERMINAL_PROMPT".to_string(), "0".to_string()));
-        env.push(("GIT_CONFIG_COUNT".to_string(), "1".to_string()));
-        env.push(("GIT_CONFIG_KEY_0".to_string(), key));
-        env.push(("GIT_CONFIG_VALUE_0".to_string(), value));
+        env.push(("GIT_CONFIG_COUNT".to_string(), config.len().to_string()));
+        for (index, (key, value)) in config.into_iter().enumerate() {
+            env.push((format!("GIT_CONFIG_KEY_{index}"), key));
+            env.push((format!("GIT_CONFIG_VALUE_{index}"), value));
+        }
     }
     env
 }
@@ -167,6 +194,7 @@ mod tests {
         let proxy = proxy();
         let env = for_tool(&db, Path::new(root), Some(&proxy));
         let key = format!("url.{proxy}octo/repo.js.git.insteadOf");
+        let no_proxy = format!("http.{proxy}.proxy");
         assert_eq!(
             pairs(&env),
             [
@@ -174,14 +202,52 @@ mod tests {
                 ("PI_WORKTREE_ROOT", root),
                 ("PI_PROJECT_ROOT", "/w/repos/github.com/octo/repo.js"),
                 ("GIT_TERMINAL_PROMPT", "0"),
-                ("GIT_CONFIG_COUNT", "1"),
+                ("GIT_CONFIG_COUNT", "4"),
                 ("GIT_CONFIG_KEY_0", key.as_str()),
                 ("GIT_CONFIG_VALUE_0", "https://github.com/octo/repo.js.git"),
+                ("GIT_CONFIG_KEY_1", "credential.helper"),
+                ("GIT_CONFIG_VALUE_1", ""),
+                ("GIT_CONFIG_KEY_2", "core.askPass"),
+                ("GIT_CONFIG_VALUE_2", ""),
+                ("GIT_CONFIG_KEY_3", no_proxy.as_str()),
+                ("GIT_CONFIG_VALUE_3", ""),
             ]
         );
         assert_eq!(
             proxy_rewrite(&proxy, &Repository::parse("octo", "repo.js").unwrap()),
-            (key, "https://github.com/octo/repo.js.git".to_string())
+            (
+                key.clone(),
+                "https://github.com/octo/repo.js.git".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn network_git_ignores_the_host_users_credentials_and_http_proxy() {
+        let proxy = proxy();
+        let repository = Repository::parse("octo", "repo.js").unwrap();
+        let config = network_config(Some(&proxy), &repository);
+        let expected = [
+            (
+                format!("url.{proxy}octo/repo.js.git.insteadOf"),
+                "https://github.com/octo/repo.js.git".to_string(),
+            ),
+            // An empty value resets the list: no helper of the host user is
+            // asked for a credential, and none is offered a token to store.
+            ("credential.helper".to_string(), String::new()),
+            ("core.askPass".to_string(), String::new()),
+            // Loopback traffic to the credential proxy never goes through a
+            // configured HTTP proxy.
+            (format!("http.{proxy}.proxy"), String::new()),
+        ];
+        assert_eq!(config, expected);
+        // Without a proxy address there is nothing to rewrite or exempt.
+        assert_eq!(
+            network_config(None, &repository),
+            [
+                ("credential.helper".to_string(), String::new()),
+                ("core.askPass".to_string(), String::new()),
+            ]
         );
     }
 

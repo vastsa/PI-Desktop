@@ -1050,3 +1050,30 @@ async fn cancelling_a_stalled_clone_kills_gits_helper_and_removes_the_partial_cl
     let worktree = retry.prepare("session-1", "main").await;
     assert_eq!(worktree["baseCommit"], retry.remote.head("main"));
 }
+
+#[test]
+fn production_network_git_uses_the_proxy_rewrite_and_no_host_credentials() {
+    let proxy = format!("http://127.0.0.1:4321/{}/", "ab".repeat(32));
+    let repository = crate::workspace_git::layout::Repository::parse("octo", "repo").unwrap();
+    let keys = |context: &WorkspaceGitContext| -> Vec<String> {
+        context
+            .network_config(&proxy, &repository)
+            .into_iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect()
+    };
+    assert_eq!(
+        keys(&WorkspaceGitContext::default()),
+        [
+            format!("url.{proxy}octo/repo.git.insteadOf=https://github.com/octo/repo.git"),
+            "credential.helper=".to_string(),
+            "core.askPass=".to_string(),
+            format!("http.{proxy}.proxy="),
+        ]
+    );
+    // A substituted remote has nothing to rewrite, and still asks nobody.
+    assert_eq!(
+        keys(&WorkspaceGitContext::with_remote_base("file:///tmp/x")),
+        ["credential.helper=", "core.askPass="]
+    );
+}

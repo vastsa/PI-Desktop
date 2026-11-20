@@ -23,7 +23,7 @@ use super::{command_shell_catalog, rpc_err, JsonRpcError};
 use crate::session_worktrees::git::GitRunner;
 use crate::session_worktrees::remove::is_real_dir;
 use crate::state::AppState;
-use crate::workspace_git::environment::{self, parse_proxy_url, proxy_rewrite};
+use crate::workspace_git::environment::{self, parse_proxy_url};
 use crate::workspace_git::jobs::{self, JobKind, JobPhase, JobState, Outcome, Pushed, SharedJobs};
 use crate::workspace_git::layout::{
     short_id, validate_branch, validate_installation_id, validate_session_id,
@@ -98,13 +98,18 @@ impl WorkspaceGitContext {
         }
     }
 
-    /// The per-command git configuration for a network operation: one pair,
-    /// the proxy rewrite for this repository.
-    fn network_config(&self, proxy_url: &str, repository: &Repository) -> Vec<(String, String)> {
+    /// The per-command git configuration for a network operation: the proxy
+    /// rewrite for this repository, and nothing of the host user's own
+    /// credential helpers, askpass program, or HTTP proxy.
+    pub(super) fn network_config(
+        &self,
+        proxy_url: &str,
+        repository: &Repository,
+    ) -> Vec<(String, String)> {
         match &self.remote_base {
             // A substituted remote is not GitHub: there is nothing to rewrite.
-            Some(_) => Vec::new(),
-            None => vec![proxy_rewrite(proxy_url, repository)],
+            Some(_) => environment::network_config(None, repository),
+            None => environment::network_config(Some(proxy_url), repository),
         }
     }
 }
