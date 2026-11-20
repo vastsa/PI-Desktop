@@ -2294,7 +2294,8 @@ pub enum MoveSessionProjectResult {
     Busy,
 }
 
-/// Move an idle session to another project.
+/// Move an idle session to another project, or out of any project when
+/// `project_path` is `None` (it then joins the temporary group).
 ///
 /// Only the session's project association and `updated_at` change: transcript,
 /// revisions, artifacts, notifications, scratch data, and runtime state belong
@@ -2304,7 +2305,7 @@ pub enum MoveSessionProjectResult {
 pub fn move_session_project(
     db: &Database,
     id: &str,
-    project_path: &str,
+    project_path: Option<&str>,
 ) -> Result<MoveSessionProjectResult> {
     if get_session(db, id)?.is_none() {
         return Ok(MoveSessionProjectResult::NotFound);
@@ -2312,7 +2313,10 @@ pub fn move_session_project(
     if session_has_running_turn(db, id)? {
         return Ok(MoveSessionProjectResult::Busy);
     }
-    let project_id = db.ensure_project(project_path, false)?;
+    let project_id = match project_path {
+        Some(path) => Some(db.ensure_project(path, false)?),
+        None => None,
+    };
     db.conn()
         .prepare_cached("UPDATE sessions SET project_id = ?1, updated_at = ?2 WHERE id = ?3")?
         .execute(params![project_id, now_ms(), id])?;
@@ -7540,7 +7544,8 @@ mod tests {
         // with forward slashes.
         let target_path = crate::db::canonical_project_path(&target.to_string_lossy())
             .expect("canonical project path");
-        let moved = move_session_project(&db, &session.id, &target.to_string_lossy()).unwrap();
+        let moved =
+            move_session_project(&db, &session.id, Some(&target.to_string_lossy())).unwrap();
         let MoveSessionProjectResult::Moved(summary) = moved else {
             panic!("an idle session must move to the requested project");
         };
@@ -7555,20 +7560,39 @@ mod tests {
         // instruction roots mid-turn.
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
         assert!(matches!(
-            move_session_project(&db, &session.id, &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, &session.id, Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::Busy
         ));
         end_turn(&db, &turn, "aborted", None, None, false).unwrap();
         assert!(matches!(
-            move_session_project(&db, &session.id, &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, &session.id, Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::Moved(_)
         ));
 
         assert!(matches!(
-            move_session_project(&db, "missing-session", &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, "missing-session", Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::NotFound
         ));
-        assert!(move_session_project(&db, &session.id, "   ").is_err());
+        assert!(move_session_project(&db, &session.id, Some("   ")).is_err());
+
+        // `None` detaches the session into the temporary group and keeps it
+        // otherwise intact; it can then move back into a project.
+        let MoveSessionProjectResult::Moved(detached) =
+            move_session_project(&db, &session.id, None).unwrap()
+        else {
+            panic!("an idle session must leave its project");
+        };
+        assert_eq!(detached.project_path, None);
+        assert_eq!(detached.title, "Move me");
+        let MoveSessionProjectResult::Moved(reattached) =
+            move_session_project(&db, &session.id, Some(&target.to_string_lossy())).unwrap()
+        else {
+            panic!("a temporary session must move into a project");
+        };
+        assert_eq!(
+            reattached.project_path.as_deref(),
+            Some(target_path.as_str())
+        );
     }
 
     #[test]

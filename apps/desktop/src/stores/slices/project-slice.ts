@@ -2,6 +2,7 @@ import { forgetTranscriptReadingState } from "../../lib/transcript-reading-posit
 import i18n from "i18next";
 import type { ProjectWorkspace } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { isRemoteSession } from "../../lib/remote-session-safety";
 import {
   rememberProject,
   removeRecentProject,
@@ -565,13 +566,15 @@ export function createProjectSlice({
     },
 
     moveSessionProject: async (id, projectPath) => {
-      const destinationKey = normalizeProjectPath(projectPath);
       const state = get();
       const session = state.sessions.find((item) => item.id === id);
-      if (!id || !session || !destinationKey) return false;
+      if (!id || !session || session.source === "pi-native" || isRemoteSession(session)) return false;
       if (state.runningSessions[id]) return false;
-      if (normalizeProjectPath(session.projectPath) === destinationKey) return true;
+      const destinationKey = projectPath === null ? null : normalizeProjectPath(projectPath);
+      if (projectPath !== null && !destinationKey) return false;
+      if ((normalizeProjectPath(session.projectPath) || null) === destinationKey) return true;
       if (
+        destinationKey !== null &&
         !state.openProjectPaths.some(
           (path) => normalizeProjectPath(path) === destinationKey,
         )
@@ -581,9 +584,13 @@ export function createProjectSlice({
       const result = await api.moveSessionProject(id, projectPath);
       set((current) => ({
         sessions: current.sessions.map((item) =>
-          item.id === id ? { ...item, ...result.session } : item,
+          item.id === id ? { ...item, ...result.session, projectPath: result.session.projectPath ?? undefined } : item,
         ),
       }));
+      // The active session decides the visible project: follow it so the
+      // composer, file tree, and project instructions match the new owner.
+      // Re-selecting aligns the workspace while keeping the conversation.
+      if (get().activeSessionId === id) await get().selectSession(id, { record: false });
       return true;
     },
 

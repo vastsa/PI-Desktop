@@ -27,6 +27,7 @@ import {
   IconSearch,
 } from "./icons";
 import { TooltipButton } from "./ui";
+import { ConversationProjectMenu } from "./ConversationProjectMenu";
 
 function projectName(path?: string | null, name?: string | null) {
   if (name) return name;
@@ -265,7 +266,9 @@ export function ConversationTopbar({
           className="ct-title-wrap"
           title={editing ? undefined : breadcrumbTitle}
         >
-          {project ? (
+          {activeSession && !remoteSession ? (
+            <ConversationProjectMenu session={activeSession} project={project} />
+          ) : project ? (
             <>
               <span className="ct-project">
                 <IconFolder size={12} aria-hidden />
