@@ -11,34 +11,23 @@
 import { useEffect, useMemo, useState, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  THINKING_LEVELS,
-  bindingDefaultThinkingMenuLevels,
   bindingForCustomModel,
   bindingForCustomModelInfo,
   bindingFromModelInfo,
   fastModeBillingOn,
   formatTokenCount,
-  modelMatchesFilter,
   nativeWebSearchSupportedOn,
   publishedThinkingLevels,
   resolveBindingDefaultThinkingLevel,
   sortThinkingLevels,
   type ModelBinding,
   type ModelInfo,
-  type SessionThinkingLevel,
   type ThinkingLevel,
-  type ThinkingProtocol,
 } from "@pi-desktop/shared";
-import {
-  CONTEXT_WINDOW_PRESETS,
-  MAX_OUTPUT_PRESETS,
-  matchPresetIndex,
-} from "../../lib/model-limit-presets";
 import { api } from "../../lib/api";
-import { Badge, Button, Checkbox, Field, HelpIcon, Input, Tooltip, TooltipButton, cx } from "../ui";
-import { IconClose, IconGripVertical, IconHelp, IconPlus, IconRefresh, IconSearch } from "../icons";
-import { ReasoningEffortSelect } from "./ReasoningEffortSelect";
-import { SettingsMenuSelect } from "./SettingsMenuSelect";
+import { Badge, Button, Field, HelpIcon, Input, TooltipButton, cx } from "../ui";
+import { IconClose, IconGripVertical, IconPlus, IconRefresh, IconSearch } from "../icons";
+import { ModelAdvancedSettings } from "./ModelAdvancedSettings";
 import { filterChosenModels, hidesAddedBinding } from "./model-chosen-filter";
 import {
   applyCustomModelLookup,
@@ -612,15 +601,9 @@ export function ModelSelectionPanes({
         ) : (
           <ul className="provider-chosen-list">
             {visibleChosen.map((binding) => {
-              // The catalog is a baseline, not a capability gate. Always show
-              // the canonical ladder so a proxy or newly released model can be
-              // configured before models.dev catches up.
-              const levelChoices = THINKING_LEVELS;
               const publishedLevels =
                 publishedLevelsById.get(binding.id.toLowerCase()) ?? [];
-              const enabledLevels = sortThinkingLevels(binding.thinkingLevels);
               const info = infoById.get(binding.id.toLowerCase());
-              const publishedImages = info ? modelMatchesFilter(info, "vision") : false;
               // The row's published window, so the hint below the field can say
               // the number still follows it.
               const publishedContextWindow = publishedModelLimit(info, "contextWindow");
@@ -638,7 +621,6 @@ export function ModelSelectionPanes({
                 publishedMaxTokens === undefined
                   ? undefined
                   : binding.maxTokens;
-              const publishedDocuments = info ? modelMatchesFilter(info, "pdf") : false;
               const expanded = expandedModelId === binding.id;
               const imageModelSelected = imageModelIds?.some((modelId) =>
                 modelId.toLowerCase() === binding.id.toLowerCase(),
@@ -705,375 +687,22 @@ export function ModelSelectionPanes({
                       <IconClose size={12} />
                     </TooltipButton>
                   </div>
-                  {/* Dense sheet: 2xs labels, explanations behind the help marks. */}
-                  <div
-                    className="provider-chosen-row-body"
+                  <ModelAdvancedSettings
                     id={advancedId}
                     hidden={!expanded}
-                  >
-                    <label className="provider-chosen-field">
-                      <span className="provider-chosen-field-label">
-                        {t("settings.modelAlias")}
-                        <HelpIcon label={t("settings.modelAliasHint")} />
-                      </span>
-                      <Input
-                        value={binding.alias ?? ""}
-                        placeholder={t("settings.modelAliasPlaceholder")}
-                        spellCheck={false}
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        onChange={(event) =>
-                          updateBinding(binding.id, {
-                            // Host-core caps the alias at 60 Unicode scalars, so
-                            // clamp by code point rather than UTF-16 unit.
-                            alias: [...event.target.value].slice(0, 60).join(""),
-                          })
-                        }
-                      />
-                    </label>
-                    <div className="provider-chosen-limits">
-                      <label className="provider-chosen-field">
-                        {/* A catalog window keeps following models.dev until the
-                            user pins a number; the mark beside the label is the
-                            only place that still says so. */}
-                        <span className="provider-chosen-field-label">
-                          {t("settings.contextWindow")}
-                          {followsCatalog ? (
-                            <HelpIcon label={t("settings.contextWindowCatalogHint")} />
-                          ) : null}
-                        </span>
-                        {/* Preset ladder (#202): click writes the token count;
-                            the input stays hand-editable off the ladder. */}
-                        <div
-                          className="provider-limit-presets"
-                          role="group"
-                          aria-label={t("settings.contextWindow")}
-                        >
-                          {CONTEXT_WINDOW_PRESETS.map((preset, index) => {
-                            const on =
-                              matchPresetIndex(
-                                CONTEXT_WINDOW_PRESETS,
-                                binding.contextWindow,
-                              ) === index;
-                            return (
-                              <TooltipButton
-                                key={preset.label}
-                                type="button"
-                                className={cx(
-                                  "provider-thinking-chip",
-                                  on && "selected",
-                                )}
-                                ariaLabel={preset.label}
-                                tooltip={preset.label}
-                                aria-pressed={on}
-                                onClick={() =>
-                                  updateBinding(binding.id, {
-                                    contextWindow: preset.tokens,
-                                    contextWindowSource: "user",
-                                  })
-                                }
-                              >
-                                {preset.label}
-                              </TooltipButton>
-                            );
-                          })}
-                        </div>
-                        <Input
-                          type="number"
-                          min={1}
-                          inputMode="numeric"
-                          value={binding.contextWindow}
-                          onChange={(event) =>
-                            updateBinding(binding.id, {
-                              contextWindow: Number(event.target.value) || 0,
-                              contextWindowSource: "user",
-                            })
-                          }
-                        />
-                      </label>
-                      <label className="provider-chosen-field">
-                        <span className="provider-chosen-field-label">
-                          {t("settings.maxOutput")}
-                        </span>
-                        <div
-                          className="provider-limit-presets"
-                          role="group"
-                          aria-label={t("settings.maxOutput")}
-                        >
-                          {MAX_OUTPUT_PRESETS.map((preset, index) => {
-                            const on =
-                              matchPresetIndex(
-                                MAX_OUTPUT_PRESETS,
-                                binding.maxTokens,
-                              ) === index;
-                            return (
-                              <TooltipButton
-                                key={preset.label}
-                                type="button"
-                                className={cx(
-                                  "provider-thinking-chip",
-                                  on && "selected",
-                                )}
-                                ariaLabel={preset.label}
-                                tooltip={preset.label}
-                                aria-pressed={on}
-                                onClick={() =>
-                                  updateBinding(binding.id, {
-                                    maxTokens: preset.tokens,
-                                    maxTokensSource: "user",
-                                  })
-                                }
-                              >
-                                {preset.label}
-                              </TooltipButton>
-                            );
-                          })}
-                        </div>
-                        <Input
-                          type="number"
-                          min={1}
-                          inputMode="numeric"
-                          value={binding.maxTokens}
-                          onChange={(event) =>
-                            updateBinding(binding.id, {
-                              maxTokens: Number(event.target.value) || 0,
-                              maxTokensSource: "user",
-                            })
-                          }
-                        />
-                      </label>
-                    </div>
-                    <div className="provider-chosen-thinking">
-                      <div className="provider-chosen-thinking-head">
-                        <span className="provider-chosen-thinking-label">
-                          {t("settings.supportedThinkingLevels")}
-                          {/* Nothing published means every level here is a
-                              manual override; that is what the mark explains. */}
-                          {publishedLevels.length === 0 ? (
-                            <HelpIcon label={t("settings.thinkingManualOverrideHint")} />
-                          ) : null}
-                        </span>
-                        <div className="provider-chosen-thinking-controls">
-                          <div className="provider-chosen-thinking-protocol">
-                            <span className="provider-chosen-thinking-label">
-                              {t("settings.thinkingProtocol")}
-                            </span>
-                            <SettingsMenuSelect
-                              className="provider-chosen-thinking-select"
-                              label={t("settings.thinkingProtocol")}
-                              value={
-                                binding.thinkingProtocol ?? info?.thinkingProtocol ?? "legacy"
-                              }
-                              onChange={(id) =>
-                                updateBinding(binding.id, {
-                                  thinkingProtocol: id as ThinkingProtocol,
-                                })
-                              }
-                              options={[
-                                {
-                                  id: "legacy",
-                                  label: t("settings.thinkingProtocolLegacy"),
-                                },
-                                {
-                                  id: "adaptive",
-                                  label: t("settings.thinkingProtocolAdaptive"),
-                                },
-                              ]}
-                            />
-                          </div>
-                          {bindingDefaultThinkingMenuLevels(enabledLevels).length > 1 ? (
-                            <div className="provider-chosen-thinking-default">
-                              <span className="provider-chosen-thinking-label">
-                                {t("settings.defaultThinkingLevel")}
-                              </span>
-                              <SettingsMenuSelect
-                                className="provider-chosen-thinking-select"
-                                label={t("settings.defaultThinkingLevel")}
-                                value={
-                                  resolveBindingDefaultThinkingLevel(
-                                    binding.defaultThinkingLevel,
-                                    enabledLevels,
-                                  ) ?? ""
-                                }
-                                onChange={(id) =>
-                                  updateBinding(binding.id, {
-                                    defaultThinkingLevel: id as SessionThinkingLevel,
-                                  })
-                                }
-                                options={bindingDefaultThinkingMenuLevels(enabledLevels).map(
-                                  (level) => ({
-                                    id: level,
-                                    label: level,
-                                  }),
-                                )}
-                              />
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div
-                        className="provider-chosen-thinking-chips"
-                        role="group"
-                        aria-label={t("settings.supportedThinkingLevels")}
-                      >
-                        {levelChoices.map((level) => {
-                          const on = binding.thinkingLevels.includes(level);
-                          return (
-                            <TooltipButton
-                              key={level}
-                              type="button"
-                              className={cx("provider-thinking-chip", on && "selected")}
-                              ariaLabel={level}
-                              tooltip={level}
-                              aria-pressed={on}
-                              onClick={() => {
-                                const next: ThinkingLevel[] = on
-                                  ? binding.thinkingLevels.filter(
-                                      (entry) => entry !== level,
-                                    )
-                                  : [...binding.thinkingLevels, level];
-                                updateBinding(binding.id, {
-                                  thinkingLevels: next,
-                                  defaultThinkingLevel: resolveBindingDefaultThinkingLevel(
-                                    binding.defaultThinkingLevel,
-                                    sortThinkingLevels(next),
-                                  ),
-                                });
-                              }}
-                            >
-                              {level}
-                            </TooltipButton>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    {(!apiStyle || apiStyle === "chat_completions" || apiStyle === "opencode_go") ? (
-                      <ReasoningEffortSelect
-                        value={binding.supportsReasoningEffort}
-                        onChange={(supportsReasoningEffort) => updateBinding(binding.id, { supportsReasoningEffort })}
-                      />
-                    ) : null}
-                    <div className="provider-chosen-capabilities">
-                      <span className="provider-chosen-thinking-label">
-                        {t("settings.modelCapabilities")}
-                      </span>
-                      <div className="provider-chosen-capability-rows">
-                        <CapabilityToggle
-                          label={t("settings.imageInput")}
-                          published={publishedImages}
-                          value={binding.supportsImages}
-                          onChange={(next) =>
-                            updateBinding(binding.id, { supportsImages: next })
-                          }
-                        />
-                        <CapabilityToggle
-                          label={t("settings.documentInput")}
-                          published={publishedDocuments}
-                          value={binding.supportsDocuments}
-                          onChange={(next) =>
-                            updateBinding(binding.id, { supportsDocuments: next })
-                          }
-                        />
-                        {onImageModelChange ? (
-                          <span className="provider-chosen-delegation">
-                            <Checkbox
-                              className="provider-chosen-capability"
-                              checked={imageModelSelected}
-                              disabled={busy}
-                              aria-label={t(
-                                imageModelSelected
-                                  ? "settings.imageModelSelected"
-                                  : "settings.setImageModel",
-                              )}
-                              onChange={(event) =>
-                                onImageModelChange(binding.id, event.target.checked)
-                              }
-                              label={t(
-                                imageModelSelected
-                                  ? "settings.imageModelSelected"
-                                  : "settings.setImageModel",
-                              )}
-                            />
-                            <HelpIcon label={t("settings.imageModelChatExclusionHint")} />
-                          </span>
-                        ) : null}
-                        <span className="provider-chosen-delegation">
-                          <label className="provider-chosen-capability">
-                            <input
-                              type="checkbox"
-                              checked={binding.availableForSubagents ?? false}
-                              onChange={(event) =>
-                                updateBinding(binding.id, {
-                                  availableForSubagents:
-                                    event.target.checked || undefined,
-                                })
-                              }
-                            />
-                            <span>{t("settings.availableForSubagents")}</span>
-                          </label>
-                          <Tooltip
-                            className="provider-chosen-delegation-help"
-                            label={t("settings.availableForSubagentsHint")}
-                            ariaLabel={t("settings.availableForSubagentsHint")}
-                          >
-                            <IconHelp size={13} />
-                          </Tooltip>
-                        </span>
-                        <span className="provider-chosen-delegation">
-                          <label className="provider-chosen-capability">
-                            <input
-                              type="checkbox"
-                              checked={binding.nativeWebSearch === true}
-                              disabled={!nativeWebSearchWireCapable}
-                              onChange={(event) =>
-                                updateBinding(binding.id, {
-                                  nativeWebSearch: event.target.checked || undefined,
-                                })
-                              }
-                            />
-                            <span>{t("settings.nativeWebSearch")}</span>
-                          </label>
-                          <Tooltip
-                            className="provider-chosen-delegation-help"
-                            label={t(
-                              nativeWebSearchWireCapable
-                                ? "settings.nativeWebSearchHint"
-                                : "settings.nativeWebSearchUnsupported",
-                            )}
-                            ariaLabel={t(
-                              nativeWebSearchWireCapable
-                                ? "settings.nativeWebSearchHint"
-                                : "settings.nativeWebSearchUnsupported",
-                            )}
-                          >
-                            <IconHelp size={13} />
-                          </Tooltip>
-                        </span>
-                        <span className="provider-chosen-delegation">
-                          <label className="provider-chosen-capability">
-                            <input
-                              type="checkbox"
-                              checked={binding.fastModeAllowed === true}
-                              disabled={!fastModeBilling}
-                              onChange={(event) =>
-                                updateBinding(binding.id, {
-                                  fastModeAllowed: event.target.checked || undefined,
-                                })
-                              }
-                            />
-                            <span>{t("settings.fastModeAllowed")}</span>
-                          </label>
-                          <Tooltip
-                            className="provider-chosen-delegation-help"
-                            label={t(fastModeHint)}
-                            ariaLabel={t(fastModeHint)}
-                          >
-                            <IconHelp size={13} />
-                          </Tooltip>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                    binding={binding}
+                    info={info}
+                    publishedLevels={publishedLevels}
+                    followsCatalog={followsCatalog}
+                    apiStyle={apiStyle}
+                    busy={busy}
+                    imageModelSelected={imageModelSelected}
+                    onImageModelChange={onImageModelChange}
+                    nativeWebSearchWireCapable={nativeWebSearchWireCapable}
+                    fastModeBilling={fastModeBilling}
+                    fastModeHint={fastModeHint}
+                    updateBinding={updateBinding}
+                  />
                 </li>
               );
             })}
@@ -1110,35 +739,5 @@ export function ModelSelectionPanes({
         </div>
       </div>
     </div>
-  );
-}
-
-type CapabilityToggleProps = {
-  label: string;
-  /** What models.dev publishes for this model. */
-  published: boolean;
-  /** Stored override: `true`/`false` explicit, `null`/undefined follows. */
-  value: boolean | null | undefined;
-  onChange: (next: boolean) => void;
-};
-
-/**
- * One attachment capability as a plain checkbox showing the effective answer.
- *
- * An untouched checkbox follows the catalog. Once the user changes it, the
- * selected boolean is explicit and stays pinned even if it currently agrees
- * with models.dev; catalog refreshes must not undo a deliberate choice.
- */
-function CapabilityToggle({ label, published, value, onChange }: CapabilityToggleProps) {
-  const effective = typeof value === "boolean" ? value : published;
-  return (
-    <label className="provider-chosen-capability">
-      <input
-        type="checkbox"
-        checked={effective}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span>{label}</span>
-    </label>
   );
 }

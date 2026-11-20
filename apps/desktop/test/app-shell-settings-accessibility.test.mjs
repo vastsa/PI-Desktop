@@ -11,15 +11,20 @@ const settingsPage = await readFile(
   "utf8",
 );
 
-test("settings hides and inerts chat without aria-hiding a focused descendant", () => {
+test("Settings is a modal over the chat shell, which stays mounted and visible", async () => {
   const chatShell = appShell.match(
     /<div\s+className="app-chat-shell"[\s\S]*?>/,
   )?.[0];
+  const dialog = await readFile(
+    new URL("../src/features/settings/SettingsDialog.tsx", import.meta.url),
+    "utf8",
+  );
 
   assert.ok(chatShell, "chat shell must exist");
-  assert.match(chatShell, /hidden=\{page === "settings"\}/);
-  assert.match(chatShell, /inert=\{page === "settings" \? true : undefined\}/);
-  assert.doesNotMatch(chatShell, /aria-hidden/);
+  assert.doesNotMatch(chatShell, /hidden=|inert=|aria-hidden/);
+  assert.match(dialog, /role="dialog"/);
+  assert.match(dialog, /aria-modal="true"/);
+  assert.match(dialog, /useModalDialog\(dialogRef, \{ onClose \}\)/);
 });
 
 test("entering Settings moves focus to its first search control", () => {
@@ -31,7 +36,7 @@ test("entering Settings moves focus to its first search control", () => {
   assert.match(settingsPage, /<input\s+ref=\{settingsSearchRef\}/);
 });
 
-test("chat code loads inside the existing route boundary and stays mounted in Settings", () => {
+test("chat code loads inside the existing route boundary and stays mounted under Settings", () => {
   assert.match(
     appShell,
     /const loadChatSurface = \(\) => import\("\.\.\/\.\.\/components\/ChatSurface"\)/,
@@ -45,6 +50,6 @@ test("chat code loads inside the existing route boundary and stays mounted in Se
   );
   assert.match(
     appShell,
-    /className="app-chat-shell"[\s\S]*?hidden=\{page === "settings"\}[\s\S]*?<ChatSurface visible=\{page === "chat"\} \/>/,
+    /className="app-chat-shell"[\s\S]*?<ChatSurface visible=\{page === "chat"\} \/>/,
   );
 });

@@ -25,7 +25,7 @@ function parseArgs(argv) {
 }
 
 const root = parseArgs(process.argv.slice(2));
-const targetVersion = "1.5.0";
+const targetVersion = "1.5.2";
 const entries = [
   {
     name: "@earendil-works/pi-agent-core",

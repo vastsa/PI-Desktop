@@ -3,10 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const sidebarSource = await readFile(
-  new URL("../src/components/Sidebar.tsx", import.meta.url),
-  "utf8",
-);
+const sidebarSource =
+  (await readFile(new URL("../src/components/Sidebar.tsx", import.meta.url), "utf8")) +
+  (await readFile(new URL("../src/components/SidebarNavigation.tsx", import.meta.url), "utf8"));
+const footerSource = sidebarSource.slice(sidebarSource.indexOf("export function SidebarFooter"));
 const globalStyles = await loadStyles();
 const zhLocale = await readFile(
   new URL("../../../packages/i18n/src/locales/zh-CN/index.ts", import.meta.url),
@@ -31,50 +31,20 @@ test("the sidebar footer is an action bar, not a fabricated identity", () => {
   }
 });
 
-test("footer exposes settings, plugins, scheduled tasks and notifications in one row", () => {
-  assert.match(sidebarSource, /className="footer-actions"/);
-  assert.match(sidebarSource, /data-nav="settings"/);
-  assert.match(sidebarSource, /data-nav="plugins"/);
-  const pluginsAction = sidebarSource.match(
-    /<TooltipButton[\s\S]*?data-nav="plugins"[\s\S]*?<\/TooltipButton>/,
-  )?.[0] ?? "";
-  assert.match(pluginsAction, /<IconPlug size=\{14\} aria-hidden \/>/);
-  assert.doesNotMatch(sidebarSource, /data-nav="theme"/);
-  assert.match(
-    sidebarSource,
-    /<NotificationCenter onBeforeOpen=\{\(\) => closeMenus\(false\)\} \/>/,
+test("footer keeps only Settings and the version chip", () => {
+  assert.deepEqual(
+    [...footerSource.matchAll(/data-nav="([^"]+)"/g)].map((match) => match[1]),
+    ["settings", "build"],
   );
+  // Settings is a labelled entry that opens the Settings dialog.
+  assert.match(footerSource, /className=\{cx\("footer-settings", settingsOpen && "active"\)\}/);
+  assert.match(footerSource, /aria-haspopup="dialog"/);
+  assert.match(footerSource, /onClick=\{\(\) => openSettings\(\)\}/);
+  assert.match(footerSource, /t\("nav\.settings"\)/);
+  // The notification entry is gone from the sidebar (issue #2431).
+  assert.doesNotMatch(sidebarSource, /NotificationCenter/);
   // Logs live in Settings → About; the footer stays down to daily controls.
   assert.doesNotMatch(sidebarSource, /openLogs/);
-  // Every action is icon-only, so each needs a label for pointer and AT users.
-  const actions = sidebarSource
-    .split("<TooltipButton")
-    .filter((chunk) => /className=(?:"footer-action"|\{`footer-action )/.test(chunk));
-  assert.equal(actions.length, 3);
-  for (const action of actions) {
-    const attrs = action.slice(0, action.indexOf(">"));
-    assert.match(attrs, /tooltip=/);
-    assert.match(attrs, /ariaLabel=/);
-  }
-  // All footer destinations report their active state to assistive tech; the
-  // Plugins button also reports the Back toggle a second activation performs.
-  const footerAttributes = (marker) => {
-    const at = sidebarSource.indexOf(marker);
-    if (at < 0) return "";
-    return sidebarSource.slice(
-      sidebarSource.lastIndexOf("<TooltipButton", at),
-      sidebarSource.indexOf("</TooltipButton>", at),
-    );
-  };
-  assert.match(
-    footerAttributes('data-nav="settings"'),
-    /aria-pressed=\{page === "settings"\}/,
-  );
-  assert.match(
-    footerAttributes('data-nav="plugins"'),
-    /aria-pressed=\{page === "plugins"\}/,
-  );
-  assert.match(footerAttributes('data-nav="scheduled"'), /aria-pressed=\{page === "scheduled"\}/);
 });
 
 test("footer sits on the sidebar content grid without a hairline", () => {
@@ -87,11 +57,11 @@ test("footer sits on the sidebar content grid without a hairline", () => {
   assert.match(globalStyles, /\.footer-build\s*\{[^}]*padding:\s*5px 8px/s);
 });
 
-test("footer action buttons share the notification trigger's hit target", () => {
-  const block = globalStyles.match(/\.footer-action\s*\{[^}]+\}/)?.[0] ?? "";
-  assert.match(block, /width:\s*32px/);
+test("footer Settings entry shares the 32px control line", () => {
+  const block = globalStyles.match(/\.footer-settings\s*\{[^}]+\}/)?.[0] ?? "";
   assert.match(block, /height:\s*32px/);
   assert.match(block, /transition:[^;]*var\(--motion-duration-fast\)/);
+  assert.doesNotMatch(globalStyles, /\.footer-action\s*\{/);
 });
 
 test("build chip surfaces the version and only dots an actionable update", () => {

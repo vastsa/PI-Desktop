@@ -293,6 +293,9 @@ describe("pi-ai built-in API-key services", () => {
     expect(matchNamedPreset({ vendorKey: "qwen-token-plan-cn" })?.vendorKey).toBe(
       "alibaba-token-plan-cn",
     );
+    expect(
+      matchNamedPreset({ vendorKey: "qwen-token-plan-individual-cn" })?.vendorKey,
+    ).toBe("alibaba-token-plan-cn");
   });
 
   it("keeps OpenCode Zen and OpenCode Go as separate services", () => {

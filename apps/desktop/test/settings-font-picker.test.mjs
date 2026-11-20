@@ -9,9 +9,9 @@ const rowSource = await readFile(
 );
 const styles = await loadStyles();
 
-test("font picker menu portals to the body so the settings card cannot clip it", () => {
-  assert.match(rowSource, /createPortal\(/);
-  assert.match(rowSource, /document\.body/);
+test("font picker menu portals out of the settings card so it cannot be clipped", () => {
+  // Body level, or the enclosing modal's layer host (portalToBody).
+  assert.match(rowSource, /portalToBody\(/);
   assert.match(styles, /\.settings-font-menu\s*\{[^}]*position:\s*fixed;/s);
   assert.match(styles, /\.settings-font-menu\.is-open\s*\{/);
   assert.doesNotMatch(

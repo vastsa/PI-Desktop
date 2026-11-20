@@ -49,6 +49,7 @@ import {
   type PrepareNextTurnContext,
 } from "@earendil-works/pi-agent-core";
 import {
+  cleanupSessionResources,
   isContextOverflow,
   getCurrentTools,
   getToolStateChanges,
@@ -9847,5 +9848,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.compactionInProgress) this.compactionAborted = true;
     this.compactionAbort?.abort();
     await closingExtensions;
+    // Release pi-ai's per-session provider state (Anthropic message-thread
+    // continuation, strict-tool downgrades) once nothing can send for it.
+    cleanupSessionResources(this.sessionId);
   }
 }

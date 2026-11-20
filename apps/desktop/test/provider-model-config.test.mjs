@@ -26,7 +26,11 @@ const setupSource = await read("../src/components/settings/ProviderSetupDialog.t
 const hookSource = await read("../src/components/settings/useProviderModels.ts");
 const pageSource = await read("../src/components/settings/ModelConfigPage.tsx");
 const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
-const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
+// The picker and its per-model Advanced sheet form one surface.
+const pickerSource = [
+  await read("../src/components/settings/ModelSelectionPanes.tsx"),
+  await read("../src/components/settings/ModelAdvancedSettings.tsx"),
+].join("\n");
 const fieldsSource = await read("../src/components/settings/ProviderConnectionFields.tsx");
 const filterSource = await read("../src/components/settings/model-chosen-filter.ts");
 const vendorAccountsSource = await read("../src/components/settings/useVendorAccounts.ts");
