@@ -246,6 +246,7 @@ type PluginViewContrib = {
  icon?: string; // token from the host icon set; unknown tokens draw a letter tile
  entry: string; // relative path to the view's HTML entry
   order?: number; // ascending sort key in the plugin-views menu group, default 0
+  acceptsTranscriptSelection?: boolean; // add a selected-text action to the transcript menu
 };
 
 type PluginSessionSourceContrib = {

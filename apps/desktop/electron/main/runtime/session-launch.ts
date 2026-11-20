@@ -758,6 +758,7 @@ export function createSessionLaunchRuntime({
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        backgroundJobContinuationEnabled: settings.backgroundJobContinuationEnabled === true && mode === "agent",
         // The session `/fast` switch only reaches a model the user allowed it
         // for in model settings (ADR 0334).
         fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,

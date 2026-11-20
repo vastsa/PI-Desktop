@@ -209,6 +209,7 @@ export const IPC = {
     backgroundTasksList: "pi-desktop/backgroundTasks/list",
     backgroundTasksOutput: "pi-desktop/backgroundTasks/output",
     backgroundTasksStop: "pi-desktop/backgroundTasks/stop",
+    backgroundTasksCancelContinuation: "pi-desktop/backgroundTasks/cancelContinuation",
     configSyncConfigure: "pi-desktop/configSync/configure",
     configSyncTest: "pi-desktop/configSync/test",
     configSyncSyncNow: "pi-desktop/configSync/syncNow",

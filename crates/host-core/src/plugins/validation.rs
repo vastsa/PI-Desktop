@@ -497,6 +497,10 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
             if !has_title {
                 bail!("PLUGIN_INVALID: view {id} requires a title");
             }
+            let accepts_selection = obj.get("acceptsTranscriptSelection");
+            if accepts_selection.is_some_and(|value| !value.is_boolean()) {
+                bail!("PLUGIN_INVALID: view {id} acceptsTranscriptSelection must be a boolean");
+            }
             let entry_path = obj
                 .get("entry")
                 .and_then(Value::as_str)

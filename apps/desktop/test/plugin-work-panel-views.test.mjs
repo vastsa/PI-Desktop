@@ -126,7 +126,7 @@ test("an unknown icon token degrades instead of rendering plugin markup", () => 
   // The manifest carries a token, never SVG: the icon is drawn inside host
   // chrome, so plugin markup there would be an injection surface.
   assert.doesNotMatch(iconSource, /dangerouslySetInnerHTML|innerHTML/);
-  assert.match(iconSource, /return PLUGIN_VIEW_ICON_MAP\[token\] \?\? null/);
+  assert.match(iconSource, /!Object\.hasOwn\(PLUGIN_VIEW_ICON_MAP, token\)\) return null/);
   assert.match(panelSource, /work-panel-view-initial/);
 });
 

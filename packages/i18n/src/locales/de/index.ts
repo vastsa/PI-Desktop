@@ -798,6 +798,14 @@ export const de = {
     "renameSaving": "Speichern…"
   },
   backgroundTasks: {
+    continuationpending: "Nach Abschluss fortfahren",
+    continuationReady: "Wartet auf Fortsetzung",
+    continuationstarted: "Fortsetzung gestartet",
+    continuationconsumed: "Ergebnis empfangen",
+    continuationcancelled: "Fortsetzung abgebrochen",
+    continuationfailed: "Fortsetzung fehlgeschlagen",
+    cancelContinuation: "Fortsetzung abbrechen",
+
     running: "Läuft",
     exited: "Beendet",
     failed: "Fehlgeschlagen",
@@ -1725,6 +1733,8 @@ sklm: {
     "noResults": "Keine passenden Einstellungen",
     "enterToSend": "Zum Senden eingeben",
     "enterToSendDesc": "Aus: Zum Senden ⌘/Strg+Eingabe drücken.",
+    backgroundJobContinuation: "Nach Hintergrundaufgaben fortfahren",
+    backgroundJobContinuationDesc: "Lokale Gespräche nach angeforderten Tests oder Builds mit den bestehenden Berechtigungen fortsetzen. Standardmäßig aus. Ausschalten verwirft wartende Fortsetzungen, beendet aber keine Prozesse.",
     "infiniteProviderRetry": "Bis zum Erfolg wiederholen",
     "infiniteProviderRetryDesc": "Netzwerk- und vorübergehende Anbieterfehler werden bis zum Erfolg wiederholt. Du kannst den Lauf weiterhin stoppen; der API-Verbrauch kann fortlaufen.",
     "smoothStreaming": "Sanftes Streaming",

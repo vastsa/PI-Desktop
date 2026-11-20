@@ -798,6 +798,14 @@ export const fr = {
     "renameSaving": "Enregistrer…"
   },
   backgroundTasks: {
+    continuationpending: "Reprendre à la fin",
+    continuationReady: "En attente de reprise",
+    continuationstarted: "Reprise démarrée",
+    continuationconsumed: "Résultat reçu",
+    continuationcancelled: "Reprise annulée",
+    continuationfailed: "Échec de la reprise",
+    cancelContinuation: "Annuler la reprise",
+
     running: "En cours",
     exited: "Terminé",
     failed: "Échec",
@@ -1725,6 +1733,8 @@ sklm: {
     "noResults": "Aucun paramètre correspondant",
     "enterToSend": "Entrez pour envoyer",
     "enterToSendDesc": "Désactivé : appuyez sur ⌘/Ctrl+Entrée pour envoyer.",
+    backgroundJobContinuation: "Reprendre après les tâches en arrière-plan",
+    backgroundJobContinuationDesc: "Autoriser la reprise d’une conversation locale après les tests ou compilations demandés, avec les permissions actuelles. Désactivé par défaut. La désactivation annule les reprises en attente, sans arrêter les processus.",
     "infiniteProviderRetry": "Réessayer jusqu’à réussite",
     "infiniteProviderRetryDesc": "Réessaie les erreurs réseau et temporaires jusqu’à la réussite. Vous pouvez toujours arrêter le tour ; la consommation d’API peut continuer.",
     "smoothStreaming": "Streaming fluide",

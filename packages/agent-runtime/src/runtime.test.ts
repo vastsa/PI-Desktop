@@ -175,6 +175,7 @@ function createRuntime(
     provider: RuntimeProviderConfig;
     mode: Mode | "chat";
     thinkingLevel: SessionThinkingLevel;
+    backgroundJobContinuationEnabled: boolean;
     history: UiMessage[];
     compaction: ContextCompactionRecord;
     compactionSettings: ContextCompactionSettings;
@@ -208,6 +209,7 @@ function createRuntime(
     provider: overrides.provider ?? provider,
     commandShell: overrides.commandShell ?? commandShell,
     thinkingLevel: overrides.thinkingLevel ?? "medium",
+    backgroundJobContinuationEnabled: overrides.backgroundJobContinuationEnabled,
     history: overrides.history,
     compaction: overrides.compaction,
     compactionSettings: overrides.compactionSettings,
@@ -2832,6 +2834,22 @@ describe("DesktopAgentRuntime configuration matching", () => {
     }
     expect(host.call).toHaveBeenCalledTimes(3);
     await runtime.dispose();
+  });
+
+  it("offers background continuation registration only when enabled, and forwards the original job intent", async () => {
+    for (const enabled of [false, true]) {
+      const host = { call: vi.fn().mockResolvedValue({ ok: true, content: "done" }) };
+      const runtime = createRuntime({ host, backgroundJobContinuationEnabled: enabled });
+      try {
+        const agent = Reflect.get(runtime, "agent") as Agent;
+        const bash = agent.state.tools.find(tool => tool.name === "Bash")!;
+        expect(Object.hasOwn(bash.parameters.properties, "notifyOnExit")).toBe(enabled);
+        if (enabled) {
+          await bash.execute("background", { command: "npm test", runInBackground: true, notifyOnExit: true });
+          expect(host.call).toHaveBeenLastCalledWith("tools.execute", expect.objectContaining({ args: { command: "npm test", runInBackground: true, notifyOnExit: true } }));
+        }
+      } finally { await runtime.dispose(); }
+    }
   });
 
   it("opts into background Bash without changing foreground timeout forwarding", async () => {

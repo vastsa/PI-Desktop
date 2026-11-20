@@ -91,7 +91,7 @@ export const ChatTranscript = memo(function ChatTranscript(
   props: ChatTranscriptProps,
 ) {
   return (
-    <TranscriptMenuProvider>
+    <TranscriptMenuProvider sessionId={props.paneVisible === false ? undefined : props.sessionId}>
       <TranscriptBody {...props} />
     </TranscriptMenuProvider>
   );

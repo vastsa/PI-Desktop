@@ -1,3 +1,4 @@
+import { backgroundContinuationOrigin, backgroundCompletionMessage } from "../runtime/background-continuations";
 import { expandMcpInvocation } from "../composer-mcp";
 import { IPC, ErrorCodes, compactionRecordId, composeMentionPrompt, findSkillMentions, isGlobalPermissionMode, isRpcTimeoutError, type AgentEventEnvelope, type AgentPromptRequest, type AgentSteerRequest, type UiMessage, type AgentQueuePushRequest, type AgentStopRequest, type AgentStopSubagentsRequest, type AskToolResolution, type GlobalPermissionMode, type MessageUsage, type PendingInteractiveRequests, type PlanExecutionFinishStatus, type PlanResolutionResult, type PlanResolveRequest, type VoiceOrigin } from "@pi-desktop/shared";
 import type { FinishTurn } from "../runtime/plans";
@@ -208,6 +209,7 @@ export function registerAgentIpc({
     // Set only on an in-process request built by the Agent Host bridge for a
     // Host-started mode run turn; a renderer or plugin request never has it.
     const modeOrigin = modeContinuationOrigin(req);
+    const background = backgroundContinuationOrigin(req);
     const startGoal = goalStartRequested(req);
     if (!sidecar) throw new Error("sidecar unavailable");
     const voiceOrigin = parseVoiceOrigin(req.voiceOrigin);
@@ -233,6 +235,7 @@ export function registerAgentIpc({
       });
     }
     if (!host) throw new Error("host unavailable");
+    if (background && background.host !== host) throw new Error("Background continuation belongs to an expired Host");
     if (startGoal && activeTurns.has(req.sessionId)) {
       const entry = await queueGoal({ ...req, userMessageId: req.messageId });
       return { accepted: true, turnId: entry.id };
@@ -274,6 +277,9 @@ export function registerAgentIpc({
       throw Object.assign(new Error("Session not found"), {
         errorCode: ErrorCodes.NOT_FOUND,
       });
+    }
+    if (background && (session.mode !== "agent" || settings.backgroundJobContinuationEnabled !== true || session.remoteWorkspace)) {
+      throw Object.assign(new Error("Background continuation is no longer allowed"), { errorCode: "PERMISSION_DENIED" });
     }
     // Validate explicit MCP selection before a turn or history replacement.
     // Use the session's project, never the currently focused renderer project.
@@ -568,8 +574,8 @@ export function registerAgentIpc({
           }
         : {}),
     };
-    // A Host-started mode turn is not user input and is never recorded as one.
-    if (!modeOrigin) try {
+    // A Host-started continuation is not user input and is never recorded as one.
+    if (!modeOrigin && !background) try {
       await host.call("session.appendMessage", {
         sessionId: req.sessionId,
         message: userMessage,
@@ -589,7 +595,7 @@ export function registerAgentIpc({
       // restarting it here would run a prompt the transcript does not contain.
       throw error;
     }
-    if (!modeOrigin) {
+    if (!modeOrigin && !background) {
       emitAgentEvent({
         sessionId: req.sessionId,
         ts: Date.now(),
@@ -614,6 +620,17 @@ export function registerAgentIpc({
     // provenance Main-owned and tied to the durable turn, never the prompt text.
     if (isTrustedCompletionNotice) completionNoticeTurns.add(durableTurnId);
     try {
+      let completion: UiMessage | undefined;
+      if (background) {
+        if (getHost() !== host || getSidecar() !== sidecar || launch.sidecarParams.remoteWorkspace || !isTurnDispatchable(req.sessionId, durableTurnId)) {
+          throw new Error("Background continuation admission expired");
+        }
+        const snapshot = await host.call("backgroundContinuations.claim", { sessionId: req.sessionId, id: background.id, turnId: durableTurnId });
+        completion = backgroundCompletionMessage(background.id, durableTurnId, snapshot);
+        await host.call("session.appendMessage", { sessionId: req.sessionId, message: completion, turnId: durableTurnId });
+        emitAgentEvent({ sessionId: req.sessionId, turnId: durableTurnId, ts: Date.now(), event: { type: "message_end", message: completion } });
+        if (getHost() !== host || getSidecar() !== sidecar || !isTurnDispatchable(req.sessionId, durableTurnId)) throw new Error("Background continuation dispatch expired");
+      }
       result = await sidecar.call<{ accepted: boolean; turnId: string }>(
         "agent.prompt",
         {
@@ -626,7 +643,8 @@ export function registerAgentIpc({
           // The host-created durable turn is the approval identity used by
           // Rust. The runtime must not replace it with a provider-local UUID.
           turnId: durableTurnId,
-          content: modelContent,
+          content: background ? "" : modelContent,
+          ...(completion ? { backgroundCompletion: completion } : {}),
           ...(mcpExpansion ? { mcpServerIds: mcpExpansion.mcpServerIds, mcpToolNames: mcpExpansion.mcpToolNames } : {}),
           ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
           attachments: [
@@ -652,7 +670,7 @@ export function registerAgentIpc({
               text: attachment.text,
             })),
           ],
-          ...(modeOrigin ? {} : { userMessageId: userMessage.id }),
+          ...(modeOrigin || background ? {} : { userMessageId: userMessage.id }),
           // Per-turn permission ceiling override (R1 leftover; spec §7.3). The
           // sidecar records it on the turn context; enforcement of a NARROWER
           // ceiling still routes through the session's stored mode until
@@ -661,6 +679,7 @@ export function registerAgentIpc({
         },
       );
     } catch (e) {
+      if (background) await host.call("backgroundContinuations.fail", { sessionId: req.sessionId, id: background.id }).catch((error: unknown) => logger.app("session", "warn", "Background continuation failure could not be recorded", { data: String(error) }));
       completionNoticeTurns.delete(durableTurnId);
       if (preparedMode?.modeTurn) await modeRuns.abandonTurn(req.sessionId, durableTurnId).catch(() => undefined);
       await finishTurn(req.sessionId, "error", (e as any)?.errorCode, {

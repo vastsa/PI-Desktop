@@ -807,6 +807,14 @@ export const tr = {
     renameSaving: "Kaydediliyor…",
   },
   backgroundTasks: {
+    continuationpending: "Bitince devam et",
+    continuationReady: "Devam etmek için bekliyor",
+    continuationstarted: "Devam başlatıldı",
+    continuationconsumed: "Sonuç alındı",
+    continuationcancelled: "Devam iptal edildi",
+    continuationfailed: "Devam başarısız",
+    cancelContinuation: "Devamı iptal et",
+
     running: "Çalışıyor",
     exited: "Çıktı",
     failed: "Başarısız",
@@ -1727,6 +1735,8 @@ sklm: {
     noResults: "Eşleşen ayar yok",
     enterToSend: "Enter ile gönder",
     enterToSendDesc: "Kapalı: göndermek için ⌘/Ctrl+Enter.",
+    backgroundJobContinuation: "Arka plan görevlerinden sonra devam et",
+    backgroundJobContinuationDesc: "İstenen yerel test veya derlemeler bitince mevcut izinlerle konuşmaya devam et. Varsayılan olarak kapalıdır. Kapatmak bekleyen devamları iptal eder, işlemleri durdurmaz.",
     infiniteProviderRetry: "Başarılı olana kadar yeniden dene",
     infiniteProviderRetryDesc: "Ağ ve geçici sağlayıcı hataları istek başarılı olana kadar yeniden denenir. Çalışmayı yine durdurabilirsiniz; açıkken API kullanımı sürebilir.",
     smoothStreaming: "Düzgün akış",

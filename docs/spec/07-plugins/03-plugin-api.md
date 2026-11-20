@@ -1689,6 +1689,12 @@ Delivered today:
   receives it) — payload is `{ path: string }`, the location the host asked this
   view to show. A view created with a location already carried it in its entry
   URL; this event delivers a later one.
+- `view:selection` — payload is `{ sessionId: string; text: string }`. A view
+  with `acceptsTranscriptSelection: true` receives this only when the user
+  selects its item in the transcript menu. Register the listener in the
+  view's initial script. The host waits for the document to load, discards
+  a pending excerpt if the user has switched sessions, and delivers each
+  accepted click to that view only. The text is under 64 KiB in UTF-8.
 - `session:turnEnded` — the same payload as the plugin-process event in §5,
   sent when a host turn reaches a terminal state.
 - `session:activated` — the same payload as the plugin-process event in §5, sent
