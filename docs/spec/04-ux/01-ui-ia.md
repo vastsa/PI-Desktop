@@ -505,11 +505,12 @@ shared capability contract:
   project. A temporary session shows dedicated temporary-chat copy with no
   project underline or switcher; and with no project open the generic welcome
   title stands.
-- New task resolves the current project or temporary group by its most recent
-  session: if that session has `messageCount = 0`, it is selected and reused;
-  otherwise a durable empty session is created immediately and appears in the
-  sidebar. Repeated clicks therefore keep one empty slot per visible group;
-  an empty slot remains persisted until the user deletes or archives it.
+- New task resolves the temporary group by its most recent session: if that
+  session has `messageCount = 0`, it is selected and reused; otherwise a
+  durable empty session is created immediately and appears in the sidebar. A
+  project row's `+` resolves that project's group the same way. Repeated
+  clicks therefore keep one empty slot per target group; an empty slot remains
+  persisted until the user deletes or archives it.
 
 ## 6. Keyboard map (IA level)
 

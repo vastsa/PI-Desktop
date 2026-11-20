@@ -703,10 +703,15 @@ export function createSessionSlice({
       if (!(options && "projectPath" in options) && isRemoteSession(activeSession ?? (
         get().activeSessionId?.startsWith("remote:") ? { id: get().activeSessionId! } : undefined
       ))) throw new Error(i18n.t("remote:REMOTE_PROJECT_REQUIRED"));
+      // Global New Task (sidebar, titlebar, Cmd/Ctrl+N, palette, search) starts
+      // in the temporary group. Only an explicit `projectPath` — a project
+      // row's + button, the project index, or a worktree — attaches the new
+      // conversation to a project. Inheriting the active workspace here made
+      // every New Task land in the last-used project (issue #2455).
       const requestedProjectPath =
         options && "projectPath" in options
           ? options.projectPath ?? null
-          : get().workspace?.path ?? null;
+          : null;
       const isolated = options?.isolated === true;
       const scopeKey = `${runtime.newSessionScopeKey(requestedProjectPath)}${isolated ? "\u0000isolated" : ""}`;
       const pending = runtime.pendingNewSessionRequests.get(scopeKey);

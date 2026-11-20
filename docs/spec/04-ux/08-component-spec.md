@@ -676,6 +676,10 @@ visually distinct from list content.
   respect reduced motion.
 - Right-click the `Projects` heading or empty project-list chrome: open a
   single-item create menu that runs the same Create project dialog action
+- Click the primary New task row, the titlebar New task button, or Cmd/Ctrl+N:
+  clear the workspace, then select the most recent empty temporary session or
+  create a durable empty one. The project the user was viewing never becomes
+  the target.
 - Click project `+`: activate that project, then select its most recent empty
   session or create a durable empty session bound to its exact path
 - Click the `Sessions` heading message-plus action: clear the workspace, then

@@ -362,9 +362,10 @@ may be retained while exactly one workspace supplies the visible shell context.
   falls back to latest, and read failures use the existing error notification.
 - New Task is not a cold switch. Creating a session reveals the empty home on
   the first frame (the previous conversation and retained panes clear before
-  `session.create`). Reusing the group's latest empty session commits that empty
-  transcript on the same frame rather than waiting for `session.get`. The
-  durable row is inserted from the `session.create` summary; send and paste wait
+  `session.create`). Reusing the temporary group's latest empty session commits
+  that empty transcript on the same frame rather than waiting for
+  `session.get`. The durable row is inserted from the `session.create` summary;
+  send and paste wait
   for that in-flight create instead of opening a second slot (ADR 0154).
   Concurrent first-input materializations share the same project-scoped
   creation result, including cancellation and failure. A first send does not
@@ -384,6 +385,8 @@ may be retained while exactly one workspace supplies the visible shell context.
   the visible workspace. Project-scoped new-session actions pass their target
   path to that same store transaction; sidebar and project-index handlers do
   not perform a second project navigation before session creation or selection.
+  Global New Task actions pass no path, so they clear the visible workspace and
+  resolve only the temporary group.
 - Run state, permission grants, and streamed events are keyed by session id.
   A project/tab switch does not abort a background turn or copy its events into
   the visible transcript. Background message and tool events update that

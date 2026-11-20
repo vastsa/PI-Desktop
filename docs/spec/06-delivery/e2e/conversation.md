@@ -983,38 +983,43 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Preconditions**: Provider configured; at least one real session exists so
   the sidebar history is non-empty.
 - **Steps**: 1) Invoke New Task from the sidebar, the top bar, or Cmd/Ctrl+N
-  inside a retained project and in the temporary scope. 2) Inspect the sidebar
-  history and the composer. 3) Click the same group's New Task control several
-  times quickly. 4) Type a message and send it. 5) Inspect the sidebar history
-  again and repeat in a different project group.
-- **Expected**: When the group's latest session is non-empty, the empty home
-  replaces the previous transcript on the first frame, then one new row is
-  persisted from `session.create` (without a blocking `session.list` /
-  `session.get` round-trip) and selected before the first send. Once that row
-  is the group's latest empty session, repeated clicks select it (or do
-  nothing when already selected) and create no duplicate. Sending updates the
-  same row's title and message count; the project and temporary groups keep
-  independent slots.
+  while a retained project is active, then use a project row's `+` action.
+  2) Inspect the sidebar history and the composer. 3) Click the same target's
+  New Task control several times quickly. 4) Type a message and send it. 5)
+  Inspect the sidebar history again and repeat for a different project group.
+- **Expected**: Global New Task creates a path-less conversation in the
+  temporary group even when a project is active; only the project row's `+`
+  attaches a new conversation to that project. When the target group's latest
+  session is non-empty, the empty home replaces the previous transcript on the
+  first frame, then one new row is persisted from `session.create` (without a
+  blocking `session.list` / `session.get` round-trip) and selected before the
+  first send. Once that row is the group's latest empty session, repeated
+  clicks select it (or do nothing when already selected) and create no
+  duplicate. Sending updates the same row's title and message count; the
+  project and temporary groups keep independent slots.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `04-ux/08-component-spec.md` (§11), `04-ux/01-ui-ia.md` (§5)
 - **Acceptance**: C (history integrity and group-scoped creation)
 - **Milestone**: M2
 - **Status**: Source-level regression covered
   (`app-store-sidebar.test.mjs`, `composer-send-state.test.mjs`,
-  `session-create.test.mjs`); full UI scenario Draft
+  `session-create.test.mjs`, `session-new-task-scope.test.mjs`); full UI
+  scenario Draft
 
 ## E2E-011e: Empty-session reuse is scoped to the latest session
 
 - **Preconditions**: One project group contains an older empty session and a
   newer session with messages; a separate project and the Temporary group are
   available.
-- **Steps**: 1) Click New Task in the first project group. 2) Confirm the new
-  row is created even though the older empty session remains. 3) Click New Task
-  again before sending. 4) Repeat in the second project and Temporary group.
+- **Steps**: 1) Click the first project row's New Task (`+`) action. 2) Confirm
+  the new row is created even though the older empty session remains. 3) Click
+  the project row's New Task action again before sending. 4) Repeat in the
+  second project and with global New Task for the Temporary group.
 - **Expected**: The first click creates a new durable row because only the
   latest session is considered and it is non-empty. The second click reuses
   that newly created empty row. The older empty row remains untouched, while
-  each other group gets its own independent empty-slot decision.
+  each other target gets its own independent empty-slot decision. Global New
+  Task resolves only the Temporary group, even while a project is active.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`, `04-ux/01-ui-ia.md`,
   `04-ux/08-component-spec.md`
 - **Acceptance**: C (session creation and grouping), F (persistence)
