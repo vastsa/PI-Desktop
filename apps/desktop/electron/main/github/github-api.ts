@@ -224,11 +224,14 @@ async function failureFor(
       status,
     });
   }
+  // A secondary limit can arrive as a bare 403 with quota left and no
+  // retry-after; GitHub's message is then the only thing that names it.
   const rateLimited =
     status === 429 ||
     (status === 403 &&
       (response.headers.get("x-ratelimit-remaining") === "0" ||
-        response.headers.get("retry-after") !== null));
+        response.headers.get("retry-after") !== null ||
+        /secondary rate limit/i.test(message)));
   if (rateLimited) {
     return new GitHubApiError(
       ErrorCodes.GITHUB_RATE_LIMITED,

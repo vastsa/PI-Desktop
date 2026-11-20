@@ -241,6 +241,28 @@ test("a 403 with retry-after and quota left is still a rate limit", async () => 
   assert.equal(error.errorCode, "GITHUB_RATE_LIMITED");
 });
 
+test("a secondary rate limit named only in the message is still a retriable rate limit", async () => {
+  // GitHub sends this 403 with quota left and, sometimes, no retry-after.
+  for (const message of [
+    "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+    "You have triggered an abuse detection mechanism: Secondary Rate Limit.",
+  ]) {
+    const { fetchImpl } = scriptedFetch(() =>
+      json({ message, documentation_url: "https://docs.github.com/rest" }, {
+        status: 403,
+        headers: { "x-ratelimit-remaining": "4999" },
+      }),
+    );
+    const error = await rejection(createGitHubApi({ fetchImpl }).listRepositories(TOKEN));
+
+    assert.equal(error.errorCode, "GITHUB_RATE_LIMITED");
+    assert.equal(error.retriable, true);
+    assert.equal(error.status, 403);
+    assert.equal(error.resetAt, undefined);
+    assert.equal(error.data.retriable, true);
+  }
+});
+
 test("a 429 without rate-limit headers is a rate limit with no reset time", async () => {
   const { fetchImpl } = scriptedFetch(() => json({ message: "slow down" }, { status: 429 }));
   const error = await rejection(createGitHubApi({ fetchImpl }).viewer(TOKEN));
