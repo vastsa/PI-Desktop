@@ -2275,6 +2275,41 @@ fn composer_transforms_require_permission_and_localized_titles() {
 }
 
 #[test]
+fn model_context_contribution_requires_true_and_permission() {
+    let dir = tempdir().unwrap();
+    let valid = dir.path().join("valid");
+    write_plugin(
+        &valid,
+        capability_manifest(
+            json!({ "modelContext": true }),
+            json!(["agent.modelContext"]),
+        ),
+        &[],
+    );
+    assert!(PluginManager::read_manifest(&valid).is_ok());
+
+    let denied = dir.path().join("denied");
+    write_plugin(
+        &denied,
+        capability_manifest(json!({ "modelContext": true }), json!(["session.observe"])),
+        &[],
+    );
+    assert!(read_manifest_err(&denied)
+        .contains("model context require the agent.modelContext permission"));
+
+    let invalid = dir.path().join("invalid");
+    write_plugin(
+        &invalid,
+        capability_manifest(
+            json!({ "modelContext": false }),
+            json!(["agent.modelContext"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&invalid).contains("contributes.modelContext must be true"));
+}
+
+#[test]
 fn plugin_rows_read_the_i18n_block_for_the_active_locale() {
     let _env = lock_market_env();
     let dir = tempdir().unwrap();

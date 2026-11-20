@@ -5417,3 +5417,9 @@ See ADR 0344.
   keyboard, drag and accessibility, and the column geometry contract of D458
   holds: pill, label and native stop share one center for every stop count.
 - Escape clears a typed search first; a second Escape closes the menu.
+
+## Bundled Official Enhancements defaults
+
+- Enable only generated session titles on first use. Keep next-message
+  suggestions, prompt enhancement, and AI memory opt-in. Preserve explicit
+  settings and keep the deterministic fallback and manual-title protections.

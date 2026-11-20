@@ -3792,6 +3792,21 @@ registry-only installation and credential isolation.
   path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
   Electron scenario remains a manual validation run.
 
+## E2E-PLUGIN-bundled-enhancements-defaults
+
+- **Preconditions**: A fresh Desktop profile with bundled Official Enhancements
+  and a ready model. Use a synthetic completion provider in automated tests.
+- **Steps**: Open the Enhancements settings, complete a turn in a new session,
+  then switch titles off and prompt enhancement on. Reload the plugin.
+- **Expected**: Only titles start enabled; the first completed turn can replace
+  the fallback title without reading the full transcript, offering a suggestion,
+  or recalling memory. A manual name wins. Explicit settings survive reload.
+- **Specs linked**: `04-ux/08-component-spec.md` §3.4; ADR 0323.
+- **Acceptance**: G (plugins), Quality.
+- **Milestone**: M6+.
+- **Status**: Plugin-process coverage in
+  `apps/desktop/test/bundled-official-enhancements.test.mjs`.
+
 ## E2E-1175: A plugin suggestion rides in the Composer placeholder and is taken with Tab
 
 - **Preconditions**: A plugin that declares `composer.suggest` is installed,

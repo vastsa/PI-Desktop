@@ -250,6 +250,29 @@ pi.events.on("session:turnEnded", async (event) => {
 });
 ```
 
+For grouped offers, check `await pi.app.getCapabilities?.()` for
+`composerSuggestionCandidates`. Both new calls use the same `composer.suggest`
+grant. Probe before generating so an inactive, nonempty, or stale Composer
+does not consume a completion. The probe never returns draft text.
+
+```js
+pi.events.on("session:turnEnded", async ({ sessionId, turnId, reason }) => {
+  if (reason !== "completed") return;
+  const target = await pi.composer.getSuggestionTarget({ sessionId, turnId });
+  if (!target) return;
+  const candidates = await writeFollowUps(sessionId); // one call, up to 3 lines
+  if (candidates.length) await pi.composer.suggestCandidates({ target, candidates });
+});
+```
+
+The opaque target belongs to the plugin, session, turn, and Composer revision.
+Revisiting the session or clearing text after an edit cannot restore an old
+target. Up to three folded, bounded, distinct candidates share one slot and
+lifetime; a newer offer replaces the group. With more than one candidate,
+arrow buttons or Up/Down cycle it. Autocomplete and IME keep key ownership;
+Tab fills only the selected text and Escape dismisses the group. A single
+candidate does not take the history keys. Candidates cannot send messages.
+
 ### speech (`speech.adapter.register`)
 ```ts
 pi.speech.registerAdapter(adapter: {
@@ -1536,6 +1559,23 @@ Delivered today:
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`, sent after
   a successful `session.configure` that changes provider, model, or thinking
   level.
+- `session:turnStarted` — `{ sessionId, turnId }`, after the host opens a
+  durable turn and before the agent is dispatched. It is a turn lifecycle
+  event, not a signal that the user sent a message or that a model was called.
+- `session:userMessagePersisted` — `{ sessionId, turnId, messageId }`, only
+  after the user submission that opens a managed turn is first durably inserted.
+  Queued input counts only when accepted for a new turn and saved; steering,
+  scheduled or automation inputs, collaboration and mode notices, imports,
+  plugin writes, replays, and updates of existing rows do not generate it.
+  Native Pi sessions do not use these managed-session events.
+
+  Both new events require `session.observe`, only reach the plugin process,
+  and obey its activation scope against the event session's project, not the
+  visible workspace. Neither delivers text, attachments, draft, transcript,
+  tokens, or tool data. Delivery is best effort without replay. On older hosts
+  `pi.app.getCapabilities()` may be absent; on supporting hosts
+  `sessionUserMessagePersisted` is true for callers granted `session.observe`.
+  `session:turnEnded` is unchanged.
 - `session:turnEnded` — payload is
   `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error" }`,
   sent once per host turn at the end of its teardown, after the durable
@@ -1569,6 +1609,31 @@ Delivered today:
 A throwing handler is logged and does not affect other listeners or the plugin.
 
 Planned events: none.
+
+### Per-turn model context (`agent.modelContext`)
+
+With `contributes.modelContext: true` and the `agent.modelContext` grant, an
+enabled, in-scope plugin may export:
+
+```ts
+export async function onModelContext(
+  input: { sessionId: string; turnId: string; projectId?: string; modelKey?: string },
+  context: { signal: AbortSignal },
+): Promise<{ text: string } | void> { /* ... */ }
+```
+
+The managed session's first model request freezes the contributions for that
+durable turn. Up to eight eligible plugins are asked in parallel; each answer
+has a 250 ms deadline and is limited to 4,096 UTF-8 bytes. Empty, malformed,
+failed, and late answers are ignored. The abort signal is cooperative. Later
+steps and retries reuse the same snapshot, excluding contributions whose
+permission, process, or project scope is no longer valid. Plugins do not see
+prompts, messages, file paths, drafts, or tool output through this hook.
+
+The model receives a tagged, lower-trust reference text block on the outgoing
+user message only. The system instructions, durable transcript, renderer, and
+subagents are unchanged. The hook does not run for `pi.agent.complete`, native
+Pi sessions, standalone requests, or compaction summaries.
 
 ## 6. Panel bridge API
 

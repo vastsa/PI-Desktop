@@ -738,9 +738,7 @@ export function useAppShellRuntime() {
         ...(event.location ? { location: event.location } : {}),
       });
     });
-    // A plugin offered one line for the composer (`pi.composer.suggest`). The
-    // shell owns the composer, so it decides here and answers the main process,
-    // which is waiting on the plugin's call with that answer.
+    // The renderer owns the composer; only it can answer a target probe or offer.
     const offComposerSuggestion = api.onPluginComposerSuggestion((event) => {
       if (event.kind === "clear") {
         composerSuggestion.clear({
@@ -749,13 +747,16 @@ export function useAppShellRuntime() {
         });
         return;
       }
-      const outcome = composerSuggestion.offer({
-        pluginId: event.pluginId,
-        sessionId: event.sessionId,
-        ...(event.turnId ? { turnId: event.turnId } : {}),
-        text: event.text,
-        expiresAt: event.expiresAt,
-      });
+      if (event.kind === "target") {
+        const revision = composerSuggestion.getTarget(event.sessionId);
+        void api.pluginComposerSuggestionResult({
+          requestId: event.requestId,
+          shown: revision !== null,
+          ...(revision ? { revision } : {}),
+        });
+        return;
+      }
+      const outcome = composerSuggestion.offer(event);
       void api.pluginComposerSuggestionResult({
         requestId: event.requestId,
         shown: outcome.shown === true,
