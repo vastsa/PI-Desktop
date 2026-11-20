@@ -101,6 +101,7 @@ type Listing = {
   fetchedAt: number;
   repositories: GitHubRepositorySummary[];
   truncated: boolean;
+  ssoPartial: boolean;
 };
 
 /** One login event without the envelope `emitLogin` adds. */
@@ -386,6 +387,7 @@ export function createGitHubConnector(deps: GitHubConnectorDeps): GitHubConnecto
       fetchedAt: deps.now().getTime(),
       repositories: result.repositories,
       truncated: result.truncated === true,
+      ssoPartial: result.ssoPartial === true,
     };
     // Only a complete, successful read of the still-current account is kept.
     if (generation === cacheGeneration) cache = listing;
@@ -512,12 +514,15 @@ export function createGitHubConnector(deps: GitHubConnectorDeps): GitHubConnecto
       if (input?.refresh === true) dropCache();
       const listing = await loadListing(credential);
       const query = typeof input?.query === "string" ? input.query.trim().toLowerCase() : "";
-      return {
+      const list: GitHubRepositoryList = {
         repositories: query
           ? listing.repositories.filter((entry) => entry.fullName.toLowerCase().includes(query))
           : [...listing.repositories],
         truncated: listing.truncated,
       };
+      // Incomplete stays incomplete, whether cached or narrowed by a query.
+      if (listing.ssoPartial) list.ssoPartial = true;
+      return list;
     },
 
     async listBranches(repository) {

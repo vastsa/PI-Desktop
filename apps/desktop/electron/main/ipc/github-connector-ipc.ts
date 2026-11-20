@@ -89,14 +89,16 @@ function toRepository(repository: GitHubRepositorySummary): GitHubRepositorySumm
 }
 
 function toRepositoryList(list: GitHubRepositoryList): GitHubRepositoryList {
-  return {
+  const result: GitHubRepositoryList = {
     repositories: list.repositories.map(toRepository),
     truncated: list.truncated === true,
   };
+  if (list.ssoPartial === true) result.ssoPartial = true;
+  return result;
 }
 
 function toBranchList(list: GitHubBranchList): GitHubBranchList {
-  return {
+  const result: GitHubBranchList = {
     branches: list.branches.map((branch) => ({
       name: branch.name,
       protected: branch.protected === true,
@@ -104,6 +106,8 @@ function toBranchList(list: GitHubBranchList): GitHubBranchList {
     defaultBranch: list.defaultBranch,
     truncated: list.truncated === true,
   };
+  if (list.ssoPartial === true) result.ssoPartial = true;
+  return result;
 }
 
 export function registerGitHubConnectorIpc({

@@ -189,6 +189,45 @@ test("repositories stop at ten pages and say the list is truncated", async () =>
   assert.equal(requests.length, 10);
 });
 
+test("a listing GitHub trimmed for organization SSO says so", async () => {
+  // GitHub answers 200 and silently leaves out the repositories of an
+  // organization whose SAML SSO has not authorized the token.
+  const sso = { "x-github-sso": "partial-results; organizations=21955855,20582480" };
+  const repositories = scriptedFetch((request) => {
+    const page = pageOf(request.url);
+    return json(repositoryPage(page, page === 1 ? 100 : 3), { headers: page === 2 ? sso : {} });
+  });
+  const listed = await createGitHubApi({ fetchImpl: repositories.fetchImpl }).listRepositories(TOKEN);
+  assert.equal(listed.repositories.length, 103);
+  assert.equal(listed.truncated, false);
+  assert.equal(listed.ssoPartial, true);
+
+  const branches = scriptedFetch((request) => {
+    if (!new URL(request.url).pathname.endsWith("/branches")) return json({ default_branch: "main" });
+    return json([{ name: "main", protected: false }], { headers: { "X-GitHub-SSO": "Partial-Results; organizations=1" } });
+  });
+  const branchList = await createGitHubApi({ fetchImpl: branches.fetchImpl }).listBranches(TOKEN, REPO);
+  assert.equal(branchList.ssoPartial, true);
+  assert.equal(branchList.branches.length, 1);
+});
+
+test("a complete listing carries no SSO marker", async () => {
+  const repositories = scriptedFetch(() =>
+    // The other value of this header belongs to a 403 and says nothing here.
+    json(repositoryPage(1, 2), { headers: { "x-github-sso": "required; url=https://github.com/orgs/x/sso" } }),
+  );
+  const listed = await createGitHubApi({ fetchImpl: repositories.fetchImpl }).listRepositories(TOKEN);
+  assert.equal("ssoPartial" in listed, false);
+
+  const branches = scriptedFetch((request) =>
+    new URL(request.url).pathname.endsWith("/branches")
+      ? json([{ name: "main", protected: false }])
+      : json({ default_branch: "main" }),
+  );
+  const branchList = await createGitHubApi({ fetchImpl: branches.fetchImpl }).listBranches(TOKEN, REPO);
+  assert.equal("ssoPartial" in branchList, false);
+});
+
 test("a rate limit on a later page rejects instead of returning a partial list", async () => {
   const { fetchImpl, requests } = scriptedFetch((request) => {
     if (pageOf(request.url) === 1) return json(repositoryPage(1, 100));

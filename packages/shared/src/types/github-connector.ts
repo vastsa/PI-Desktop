@@ -55,6 +55,11 @@ export type GitHubRepositoryList = {
   repositories: GitHubRepositorySummary[];
   /** More repositories exist than the connector reads; the list is a prefix. */
   truncated: boolean;
+  /**
+   * GitHub left entries out because an organization's SAML SSO has not
+   * authorized this token. The list is real but incomplete; absent otherwise.
+   */
+  ssoPartial?: boolean;
 };
 
 export type GitHubBranchList = {
@@ -62,6 +67,8 @@ export type GitHubBranchList = {
   defaultBranch: string;
   /** More branches exist than the connector reads; the list is a prefix. */
   truncated: boolean;
+  /** GitHub trimmed the answer for organization SSO, as for repositories. */
+  ssoPartial?: boolean;
 };
 
 export type GitHubPullRequestInput = {

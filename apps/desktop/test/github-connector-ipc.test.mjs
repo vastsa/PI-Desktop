@@ -258,6 +258,45 @@ test("only the main window may use the connector", async () => {
   assert.deepEqual(calls, []);
 });
 
+test("the SSO-partial marker crosses to the renderer only when it is true", async () => {
+  const { connector } = leakyConnector();
+  const { invoke } = setup(connector);
+
+  // The stand-in's default answers carry no marker.
+  assert.equal("ssoPartial" in (await invoke(CHANNELS.repositories, {})), false);
+  assert.equal("ssoPartial" in (await invoke(CHANNELS.branches, { owner: "o", name: "n" })), false);
+
+  connector.listRepositories = async () => ({
+    repositories: [REPOSITORY],
+    truncated: false,
+    ssoPartial: true,
+  });
+  connector.listBranches = async () => ({
+    branches: [{ name: "main", protected: true }],
+    defaultBranch: "main",
+    truncated: false,
+    ssoPartial: true,
+  });
+  assert.deepEqual(await invoke(CHANNELS.repositories, {}), {
+    repositories: [REPOSITORY],
+    truncated: false,
+    ssoPartial: true,
+  });
+  assert.deepEqual(await invoke(CHANNELS.branches, { owner: "o", name: "n" }), {
+    branches: [{ name: "main", protected: true }],
+    defaultBranch: "main",
+    truncated: false,
+    ssoPartial: true,
+  });
+
+  connector.listRepositories = async () => ({
+    repositories: [],
+    truncated: false,
+    ssoPartial: "partial-results; organizations=1",
+  });
+  assert.equal("ssoPartial" in (await invoke(CHANNELS.repositories, {})), false);
+});
+
 test("a service failure reaches the caller unchanged", async () => {
   const { connector } = leakyConnector();
   const failure = Object.assign(new Error("GitHub is rate limiting requests."), {

@@ -164,6 +164,15 @@ function redirectFailure(path: string, status?: number): GitHubApiError {
   );
 }
 
+/**
+ * GitHub answers a listing with 200 and `X-GitHub-SSO: partial-results; …`
+ * when it left out what an organization's SAML SSO does not let this token
+ * see. Without this the short list would pass for the whole account.
+ */
+function isSsoPartial(response: Response): boolean {
+  return /^\s*partial-results\b/i.test(response.headers.get("x-github-sso") ?? "");
+}
+
 function unreadable(status?: number): GitHubApiError {
   return new GitHubApiError(
     ErrorCodes.GITHUB_NETWORK,
@@ -399,7 +408,8 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
 
   /**
    * Read a paged list to its end or to `pageLimit` pages. `truncated` is true
-   * when the last allowed page was full, so more may exist. Any failed page
+   * when the last allowed page was full, so more may exist. `ssoPartial` is
+   * true when any page was trimmed for organization SSO. Any failed page
    * rejects the whole read.
    */
   async function readPages<T>(
@@ -408,8 +418,9 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
     query: Record<string, string>,
     pageLimit: number,
     convert: (raw: unknown) => T | null,
-  ): Promise<{ items: T[]; truncated: boolean }> {
+  ): Promise<{ items: T[]; truncated: boolean; ssoPartial: boolean }> {
     const items: T[] = [];
+    let ssoPartial = false;
     for (let page = 1; page <= pageLimit; page += 1) {
       const { response, json } = await request(token, "GET", path, {
         ...query,
@@ -417,13 +428,14 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
         page: String(page),
       });
       if (!Array.isArray(json)) throw unreadable(response.status);
+      if (isSsoPartial(response)) ssoPartial = true;
       for (const raw of json) {
         const item = convert(raw);
         if (item) items.push(item);
       }
-      if (json.length < PAGE_SIZE) return { items, truncated: false };
+      if (json.length < PAGE_SIZE) return { items, truncated: false, ssoPartial };
     }
-    return { items, truncated: true };
+    return { items, truncated: true, ssoPartial };
   }
 
   return {
@@ -450,14 +462,16 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
     },
 
     async listRepositories(token) {
-      const { items, truncated } = await readPages(
+      const { items, truncated, ssoPartial } = await readPages(
         token,
         "/user/repos",
         { sort: "pushed", affiliation: "owner,collaborator,organization_member" },
         REPOSITORY_PAGE_LIMIT,
         toRepository,
       );
-      return { repositories: items, truncated };
+      const list: GitHubRepositoryList = { repositories: items, truncated };
+      if (ssoPartial) list.ssoPartial = true;
+      return list;
     },
 
     async listBranches(token, repository) {
@@ -465,14 +479,16 @@ export function createGitHubApi(options: GitHubApiOptions = {}): GitHubApi {
       const { response, json } = await request(token, "GET", path);
       const defaultBranch = (json as { default_branch?: unknown } | null)?.default_branch;
       if (typeof defaultBranch !== "string") throw unreadable(response.status);
-      const { items, truncated } = await readPages(
+      const { items, truncated, ssoPartial } = await readPages(
         token,
         `${path}/branches`,
         {},
         BRANCH_PAGE_LIMIT,
         toBranch,
       );
-      return { branches: items, defaultBranch, truncated };
+      const list: GitHubBranchList = { branches: items, defaultBranch, truncated };
+      if (ssoPartial || isSsoPartial(response)) list.ssoPartial = true;
+      return list;
     },
 
     async findPullRequest(token, repository, head) {

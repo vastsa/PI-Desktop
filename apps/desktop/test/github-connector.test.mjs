@@ -752,6 +752,37 @@ test("a truncated listing stays marked truncated when served from the cache", as
   assert.equal((await h.connector.listRepositories({ query: "hello" })).truncated, true);
 });
 
+test("a listing trimmed for organization SSO stays marked through the cache and the filter", async () => {
+  const h = harness({ credential: storedCredential() });
+  h.responders.listRepositories = async () => ({
+    repositories: [repositorySummary("octo-org/Hello"), repositorySummary("octocat/dotfiles")],
+    truncated: false,
+    ssoPartial: true,
+  });
+  h.responders.listBranches = async () => ({
+    branches: [{ name: "main", protected: true }],
+    defaultBranch: "main",
+    truncated: false,
+    ssoPartial: true,
+  });
+
+  assert.equal((await h.connector.listRepositories({})).ssoPartial, true);
+  // Served from the cache, and narrowed by a query: still incomplete.
+  assert.equal((await h.connector.listRepositories({})).ssoPartial, true);
+  assert.equal((await h.connector.listRepositories({ query: "hello" })).ssoPartial, true);
+  assert.equal(h.apiCalls.filter((entry) => entry.method === "listRepositories").length, 1);
+  assert.equal((await h.connector.listBranches(REPO)).ssoPartial, true);
+
+  // After the organization is authorized, a refresh reads a complete list.
+  h.responders.listRepositories = async () => ({
+    repositories: [repositorySummary("octo-org/Hello")],
+    truncated: false,
+  });
+  const refreshed = await h.connector.listRepositories({ refresh: true });
+  assert.equal("ssoPartial" in refreshed, false);
+  assert.equal("ssoPartial" in (await h.connector.listRepositories({})), false);
+});
+
 test("query filters by a case-insensitive part of the full name, in main", async () => {
   const h = harness({ credential: storedCredential() });
 
