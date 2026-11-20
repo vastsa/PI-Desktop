@@ -2344,6 +2344,17 @@ pub fn append_message(
     message: &UiMessage,
     turn_id: Option<&str>,
 ) -> Result<()> {
+    append_message_with_receipt(db, session_id, message, turn_id).map(|_| ())
+}
+
+/// The canonical ID of a row first inserted with a valid turn association.
+/// Updates, retries, and index repair of an existing transcript line are not inserts.
+pub fn append_message_with_receipt(
+    db: &Database,
+    session_id: &str,
+    message: &UiMessage,
+    turn_id: Option<&str>,
+) -> Result<Option<String>> {
     model_system::validate(message)?;
     let message = crate::session_collaboration::prepare_append(db, session_id, message, turn_id)?;
     let session_created = ensure_session_for_append(db, session_id)?;
@@ -2357,6 +2368,7 @@ pub fn append_message(
     // with another session is remapped before any transcript write (D444).
     // A steering input reserves its preceding streaming assistant's position;
     // only a terminal assistant snapshot may replace that provisional row.
+    let mut inserted_id = None;
     if message_indexed(db, session_id, &record.id)? {
         if message.role == "assistant"
             && message.status.as_deref() != Some("streaming")
@@ -2383,7 +2395,7 @@ pub fn append_message(
             }
         } else {
             update_delegation_snapshot(db, session_id, &record)?;
-            return Ok(());
+            return Ok(None);
         }
     } else {
         if let Some(owner) = message_owner(db, &record.id)? {
@@ -2392,15 +2404,15 @@ pub fn append_message(
                 record.id = namespaced_message_id(session_id, &record.id);
                 if message_indexed(db, session_id, &record.id)? {
                     update_delegation_snapshot(db, session_id, &record)?;
-                    return Ok(());
+                    return Ok(None);
                 }
                 // Old hosts wrote JSONL then failed UNIQUE. Replaying that
                 // leftover must not append a second remapped line (D444).
                 if transcript_contains_id(db, session_id, &original_id)? {
-                    return Ok(());
+                    return Ok(None);
                 }
             } else {
-                return Ok(());
+                return Ok(None);
             }
         }
         let transcript_repaired =
@@ -2414,6 +2426,9 @@ pub fn append_message(
                 text.as_deref(),
                 turn_id.as_deref(),
             )?;
+            if turn_id.is_some() && record.role == "user" {
+                inserted_id = Some(record.id.clone());
+            }
         }
     }
     if message.role == "assistant" && message.status.as_deref() == Some("streaming") {
@@ -2435,7 +2450,7 @@ pub fn append_message(
                 },
             )?;
         }
-        return Ok(());
+        return Ok(None);
     }
     // The final assistant row supersedes any checkpoint of the same message
     // (D299). A checkpoint for a different id belongs to a newer fragment and
@@ -2447,7 +2462,7 @@ pub fn append_message(
             }
         }
     }
-    Ok(())
+    Ok(inserted_id)
 }
 
 /// Whether the session's index already carries `message_id`.
@@ -4780,6 +4795,27 @@ mod tests {
             model_id: Some("model-1".into()),
             created_at: "2026-07-28T00:00:03Z".into(),
         }
+    }
+
+    #[test]
+    fn user_insert_receipt_only_reports_first_valid_turn_append() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        let message = user_msg("submitted", "durable input", "2026-07-28T00:00:00Z");
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &message, Some(&turn)).unwrap(),
+            Some(message.id.clone())
+        );
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &message, Some(&turn)).unwrap(),
+            None
+        );
+        let orphan = user_msg("orphan", "historical input", "2026-07-28T00:00:01Z");
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &orphan, Some("missing-turn")).unwrap(),
+            None
+        );
     }
 
     #[test]

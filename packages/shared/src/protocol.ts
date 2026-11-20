@@ -390,9 +390,9 @@ export const IPC = {
      */
     pluginSessionActive: "pi-desktop/plugin/session/active",
     /**
-     * The shell's answer to one composer suggestion (`pi.composer.suggest`):
-     * whether it went on screen and, if not, why. The main process is waiting
-     * on this invoke, so a suggestion's caller learns what happened to it.
+     * The renderer's answer to a composer suggestion offer or target probe.
+     * A target probe returns an opaque renderer revision, never draft data.
+     * The main process waits on this invoke to resolve the plugin's call.
      */
     pluginComposerSuggestionResult: "pi-desktop/plugin/composer/suggestionResult",
     mcpList: "pi-desktop/mcp/list",
@@ -530,9 +530,8 @@ export const IPC = {
      */
     pluginViewReveal: "pi-desktop/plugin/view/event/reveal",
     /**
-     * One composer suggestion (`pi.composer.suggest`): an offer to show a
-     * plugin's line in the placeholder layer, or the shell's order to drop what
-     * it shows. The shell owns the composer, so it decides and answers over
+     * Ask the renderer to probe an empty composer, show a suggestion group,
+     * or clear what it shows. The renderer answers probes and offers over
      * `pluginComposerSuggestionResult`.
      */
     pluginComposerSuggestion: "pi-desktop/plugin/composer/event/suggestion",

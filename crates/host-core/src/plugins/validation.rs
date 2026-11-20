@@ -178,6 +178,12 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
     }
     launcher_triggers::validate(map, manifest)?;
     composer_transforms::validate(map, manifest)?;
+    if let Some(model_context) = map.get("modelContext") {
+        if model_context.as_bool() != Some(true) {
+            bail!("PLUGIN_INVALID: contributes.modelContext must be true");
+        }
+        require_permission(manifest, "agent.modelContext", "model context")?;
+    }
     if let Some(skills) = map.get("skills") {
         let entries = array_of(skills, "contributes.skills")?;
         for entry in entries {
