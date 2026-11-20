@@ -18,7 +18,11 @@
  * The device code is as sensitive as the token it turns into, so neither
  * appears in an event or an error.
  */
-import { ErrorCodes, isGitHubTokenShape } from "@pi-desktop/shared";
+import {
+  ErrorCodes,
+  GITHUB_DEVICE_WAITING_MESSAGE,
+  isGitHubTokenShape,
+} from "@pi-desktop/shared";
 import { GitHubApiError } from "./github-api";
 
 export const GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code";
@@ -209,7 +213,7 @@ export async function runGitHubDeviceFlow(
     intervalSeconds,
     expiresInSeconds,
   });
-  onEvent({ kind: "progress", message: "Waiting for approval on GitHub…" });
+  onEvent({ kind: "progress", message: GITHUB_DEVICE_WAITING_MESSAGE });
 
   for (;;) {
     const remaining = deadline - now();

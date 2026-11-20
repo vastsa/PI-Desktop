@@ -331,8 +331,14 @@ export function createGitHubConnector(deps: GitHubConnectorDeps): GitHubConnecto
         emitLogin(login, { kind: "cancelled" });
         return;
       }
-      deps.log("warn", "GitHub sign-in failed", { errorCode: codeOf(error) });
-      emitLogin(login, { kind: "error", message: messageOf(error, token) });
+      const code = codeOf(error);
+      deps.log("warn", "GitHub sign-in failed", { errorCode: code });
+      // The code lets the renderer show its own translation of the failure.
+      emitLogin(login, {
+        kind: "error",
+        message: messageOf(error, token),
+        ...(code ? { code } : {}),
+      });
     }
   };
 

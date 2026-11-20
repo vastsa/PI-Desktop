@@ -26,6 +26,13 @@ export const GITHUB_CONNECTOR_WORKFLOW_SCOPE = "workflow";
  */
 export const GITHUB_CONNECTOR_LOGIN_ID = "github-connector";
 
+/**
+ * The progress line main emits while a device code waits for approval. Main
+ * authors it in English; the renderer recognizes this exact text and shows
+ * its own translation instead.
+ */
+export const GITHUB_DEVICE_WAITING_MESSAGE = "Waiting for approval on GitHub…";
+
 /** Longest token the connector accepts; GitHub's own formats are far shorter. */
 export const GITHUB_TOKEN_MAX_LENGTH = 4096;
 

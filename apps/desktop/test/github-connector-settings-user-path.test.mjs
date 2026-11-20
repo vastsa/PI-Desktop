@@ -32,6 +32,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
 import { ConnectorsSettings } from "../../apps/desktop/src/features/settings/pages/ConnectorsSettings";
+import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 
 const PASTED_TOKEN = "ghp_userPathFixtureToken0123456789";
 const REJECTED_TOKEN = "ghp_userPathRejectedToken987654321";
@@ -88,7 +89,7 @@ window.piDesktop = {
         if (tokenOutcome === "reject") {
           return {
             ok: false,
-            error: { code: "GITHUB_INVALID_TOKEN", message: "GitHub did not accept that token." },
+            error: { code: "GITHUB_INVALID_TOKEN", message: "MAIN PROCESS ENGLISH: invalid token" },
           };
         }
         const next = {
@@ -237,7 +238,13 @@ window.githubConnectorProbe = async () => {
   await waitFor(() => calls("pi-desktop/github/setToken").length === 1, "the token was not sent");
   await waitFor(() => button("Save token") && !text().includes("Connected as"), "page vanished");
   await settle();
+  const toastTexts = () => useAppStore.getState().toasts.map((toast) => toast.message);
+  await waitFor(() => toastTexts().length > 0, "the rejected token raised no toast");
   const rejected = {
+    // The catalog's sentence for the code, not the text main sent.
+    localizedToast: toastTexts().includes(
+      flattenCatalog(catalogs.en)["errors.GITHUB_INVALID_TOKEN"],
+    ) && !toastTexts().some((message) => message.includes("MAIN PROCESS ENGLISH")),
     sentOnce: calls("pi-desktop/github/setToken")[0].input.token === REJECTED_TOKEN,
     fieldCleared: tokenInput().value === "",
     stillSignedOut: !text().includes("Connected as"),
@@ -308,6 +315,24 @@ window.githubConnectorProbe = async () => {
   flushSync(() => button("Connect GitHub").click());
   await waitFor(() => dialog(), "the third login dialog did not open");
   await waitFor(() => calls("pi-desktop/github/login/start").length === 3, "third login not started");
+  // While it waits, the status line and a failure are both the catalog's text.
+  loginEvent("login-3", { kind: "progress", message: "Waiting for approval on GitHub…" });
+  await waitFor(
+    () => dialog()?.textContent.includes(
+      flattenCatalog(catalogs.en)["settings.connectors.github.waitingForApproval"],
+    ),
+    "the waiting line is not shown",
+  );
+  loginEvent("login-3", {
+    kind: "error",
+    message: "MAIN PROCESS ENGLISH: auth failed",
+    code: "GITHUB_AUTH_FAILED",
+  });
+  await waitFor(
+    () => dialog()?.textContent.includes(flattenCatalog(catalogs.en)["errors.GITHUB_AUTH_FAILED"]),
+    "the login error was not shown from the catalog",
+  );
+  const dialogErrorLocalized = !dialog().textContent.includes("MAIN PROCESS ENGLISH");
   flushSync(() => button("Cancel").click());
   await waitFor(() => !dialog(), "Cancel did not close the dialog");
   const cancelButtonCancels = calls("pi-desktop/github/login/cancel").at(-1).input === "login-3";
@@ -330,6 +355,7 @@ window.githubConnectorProbe = async () => {
     secondStartInput,
     abandonedLoginCancelled,
     cancelButtonCancels,
+    dialogErrorLocalized,
     // Nothing but the two explicit setToken calls ever carried a token to main,
     // and no channel that could read one back exists on this page.
     tokenOnlyInSetToken: !everything.includes(PASTED_TOKEN) && !everything.includes(REJECTED_TOKEN),
@@ -444,6 +470,7 @@ app.whenReady().then(async () => {
       inputAutocompleteOff: true,
       saveDisabledWhileEmpty: true,
       rejected: {
+        localizedToast: true,
         sentOnce: true,
         fieldCleared: true,
         stillSignedOut: true,
@@ -471,6 +498,7 @@ app.whenReady().then(async () => {
       secondStartInput: { allowWorkflowScope: false },
       abandonedLoginCancelled: true,
       cancelButtonCancels: true,
+      dialogErrorLocalized: true,
       tokenOnlyInSetToken: true,
       channelsUsed: [
         "pi-desktop/github/disconnect",

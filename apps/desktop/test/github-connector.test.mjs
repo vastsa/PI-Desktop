@@ -404,8 +404,16 @@ test("a login that fails reports its error and stores nothing", async () => {
   h.flows[0].reject(apiError("GITHUB_LOGIN_DENIED"));
   await settle();
 
+  // The code travels with the message so the renderer can show its own
+  // translation instead of main's English sentence.
   assert.deepEqual(h.loginEvents(), [
-    { loginId, vendorId: "github-connector", kind: "error", message: "fixture GITHUB_LOGIN_DENIED" },
+    {
+      loginId,
+      vendorId: "github-connector",
+      kind: "error",
+      message: "fixture GITHUB_LOGIN_DENIED",
+      code: "GITHUB_LOGIN_DENIED",
+    },
   ]);
   assert.equal(h.state.credential, null);
   assert.deepEqual(h.changes(), []);
@@ -422,8 +430,21 @@ test("a login whose token GitHub then rejects reports an error and stores nothin
   await settle();
 
   assert.equal(h.loginEvents().at(-1).kind, "error");
+  assert.equal(h.loginEvents().at(-1).code, "GITHUB_NETWORK");
   assert.equal(h.state.credential, null);
   assert.equal(JSON.stringify(h.emitted).includes(TOKEN), false);
+});
+
+test("a login that fails without a code reports only its message", async () => {
+  const h = harness();
+  await h.connector.startDeviceLogin({ allowWorkflowScope: false });
+  h.flows[0].reject(new Error("something unexpected"));
+  await settle();
+
+  const event = h.loginEvents().at(-1);
+  assert.equal(event.kind, "error");
+  assert.equal(event.message, "something unexpected");
+  assert.equal("code" in event, false);
 });
 
 test("a browser that cannot be opened does not end the login", async () => {

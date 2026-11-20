@@ -135,6 +135,17 @@ test("the flow shows one device code, polls at the interval, and resolves the to
   }
 });
 
+test("the waiting line is the shared constant the renderer translates", async () => {
+  const { GITHUB_DEVICE_WAITING_MESSAGE } = await import("@pi-desktop/shared");
+  assert.equal(typeof GITHUB_DEVICE_WAITING_MESSAGE, "string");
+  const run = harness([deviceCodeResponse(), { access_token: TOKEN }]);
+  await runGitHubDeviceFlow(run.options);
+  assert.deepEqual(
+    run.events.filter((event) => event.kind === "progress"),
+    [{ kind: "progress", message: GITHUB_DEVICE_WAITING_MESSAGE }],
+  );
+});
+
 test("the workflow scope is requested only when the caller passes it", async () => {
   const run = harness([deviceCodeResponse(), { access_token: TOKEN }], {
     scopes: ["repo", "read:org", "workflow"],

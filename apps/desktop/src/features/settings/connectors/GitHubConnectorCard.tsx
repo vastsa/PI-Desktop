@@ -21,6 +21,7 @@ import { IconTriangleAlert, IconUser } from "../../../components/icons";
 import { OAuthLoginDialog } from "../../../components/settings/OAuthLoginDialog";
 import { SettingsDisclosure } from "../../../components/settings/SettingsDisclosure";
 import { SettingsCard, SettingsRow } from "../primitives";
+import { githubErrorText } from "./github-error-message";
 import { GITHUB_LOGIN_VENDOR, beginGitHubLogin } from "./github-login-session";
 import { useGitHubConnector } from "./use-github-connector";
 import "../../../styles/connectors.css";
@@ -72,14 +73,15 @@ export function GitHubConnectorCard() {
     };
   }, [login]);
 
+  // Main reports a code with its English message; the user reads the catalog's.
   const fail = (cause: unknown) => {
-    showToast(cause instanceof Error ? cause.message : String(cause), { variant: "error" });
+    showToast(githubErrorText(t, cause), { variant: "error" });
   };
 
   // Started from the click, never from an effect: StrictMode would begin two.
   const connect = () => {
     if (login || busy) return;
-    setLogin(beginGitHubLogin(api, { allowWorkflowScope: allowWorkflow }));
+    setLogin(beginGitHubLogin(api, { allowWorkflowScope: allowWorkflow, t }));
   };
 
   const closeLogin = () => {

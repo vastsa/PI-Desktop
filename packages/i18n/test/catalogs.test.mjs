@@ -75,6 +75,7 @@ test("the Connectors destination is named and explained in every shipped catalog
     "settings.connectors.github.needsReauth": "GitHub rejected the saved token. Connect again.",
     "settings.connectors.github.deviceUnavailable":
       "Sign-in with a code is not configured in this build. Use a personal access token.",
+    "settings.connectors.github.waitingForApproval": "Waiting for approval on GitHub…",
   };
   for (const [key, value] of Object.entries(expectedEnglish)) {
     assert.equal(english[key], value, key);
@@ -105,6 +106,40 @@ test("the Connectors destination is named and explained in every shipped catalog
       /\.github\/workflows/,
       locale,
     );
+  }
+});
+
+test("every GitHub connector error code has a message in every shipped catalog", () => {
+  // Main reports these as codes; the renderer shows the catalog's sentence,
+  // so a missing key would put main's English text in front of every locale.
+  const codes = [
+    "GITHUB_NOT_CONNECTED",
+    "GITHUB_AUTH_FAILED",
+    "GITHUB_FORBIDDEN",
+    "GITHUB_NOT_FOUND",
+    "GITHUB_RATE_LIMITED",
+    "GITHUB_NETWORK",
+    "GITHUB_INVALID_TOKEN",
+    "GITHUB_DEVICE_FLOW_UNAVAILABLE",
+    "GITHUB_LOGIN_EXPIRED",
+    "GITHUB_LOGIN_DENIED",
+    "GITHUB_VALIDATION_FAILED",
+  ];
+  assert.deepEqual(
+    Object.keys(english).filter((key) => key.startsWith("errors.GITHUB_")).sort(),
+    codes.map((code) => `errors.${code}`).sort(),
+  );
+  for (const [locale, catalog] of Object.entries(catalogs)) {
+    const flat = flattenCatalog(catalog);
+    for (const code of codes) {
+      const key = `errors.${code}`;
+      assert.equal(typeof flat[key], "string", `${locale} ${key}`);
+      assert.ok(flat[key].trim(), `${locale} ${key} must not be blank`);
+      assert.match(flat[key], /GitHub/, `${locale} ${key} names the service`);
+      if (locale !== "en") {
+        assert.notEqual(flat[key], english[key], `${locale} ${key} is still English`);
+      }
+    }
   }
 });
 
