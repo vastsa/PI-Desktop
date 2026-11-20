@@ -552,7 +552,7 @@ visually distinct from list content.
 | Empty group | Muted one-line empty state; group create action remains available |
 | Default session title | New task/New chat (localized where applicable) until the first prompt, the user, or an installed title plugin sets one |
 | First prompt title | A normalized 48-character prompt fallback appears immediately and is stored as a still-replaceable automatic title |
-| Plugin-generated session title | A title plugin may replace that automatic title after the first completed turn when its permission is granted |
+| Plugin-generated session title | Bundled Official Enhancements can replace that automatic title after the first completed turn. Titles are on by default; next-message suggestions, prompt enhancement, and AI memory are opt-in. The plugin settings panel preserves explicit choices. |
 | Manual session title | User-defined title remains stable across refresh and renderer restart; automatic titles (local fallback or plugin) never overwrite it |
 | Footer idle | Transparent 58px band; build and action controls remain visually quiet |
 | Footer hover/focus | Only the targeted control receives the semantic hover/focus treatment |
