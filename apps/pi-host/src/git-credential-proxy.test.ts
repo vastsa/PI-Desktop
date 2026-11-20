@@ -373,6 +373,78 @@ describe("git credential proxy", () => {
     expect(text).not.toContain("e".repeat(64));
   });
 
+  it("destroys a connection that another local user opened, before reading a request", async () => {
+    const up = await upstream();
+    const lines: string[] = [];
+    let uid: number | null = 4242;
+    const lookups: Array<[number, number]> = [];
+    const proxy = createGitCredentialProxy({
+      upstream: up.url,
+      log: (level, message, data) => lines.push(JSON.stringify({ level, message, data })),
+      peerUid: (clientPort, proxyPort) => { lookups.push([clientPort, proxyPort]); return uid; },
+    });
+    await proxy.start();
+    cleanup.push(() => proxy.close());
+    proxy.setToken(INSTALLATION, TOKEN);
+    const base = proxy.register(scope);
+    const url = `${base}octo/repo.git/info/refs?service=git-upload-pack`;
+    // Another user knows the handle (it is in git's process arguments) and uses it.
+    await expect(send(url)).rejects.toThrow();
+    await expect(send(`${base}octo/repo.git/git-receive-pack`, { method: "POST", headers: RECEIVE_HEADERS, body: push(`${A} ${B} refs/heads/${WORK_BRANCH}`) })).rejects.toThrow();
+    // A connection whose owner cannot be determined is refused too.
+    uid = null;
+    await expect(send(url)).rejects.toThrow();
+    expect(up.seen).toEqual([]);
+    expect(lookups.every(([clientPort, proxyPort]) => clientPort > 0 && proxyPort === Number(new URL(base).port))).toBe(true);
+    // The same user is served.
+    uid = process.getuid!();
+    expect((await send(url)).status).toBe(200);
+    expect(up.seen).toHaveLength(1);
+    const text = lines.join("\n");
+    expect(text).toContain("another user");
+    expect(text).not.toContain(new URL(base).pathname.split("/")[1]!);
+    expect(text).not.toContain(TOKEN);
+  });
+
+  it.runIf(process.platform === "linux")("recognizes its own connections through the kernel's socket table", async () => {
+    // No injected lookup: the real `/proc/net/tcp` must name this process's uid.
+    const up = await upstream();
+    const proxy = await proxyFor(up.url);
+    proxy.setToken(INSTALLATION, TOKEN);
+    const base = proxy.register(scope);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await send(`${base}octo/repo.git/info/refs?service=git-upload-pack`)).status).toBe(200);
+    }
+  });
+
+  it("setting a credential invalidates the installation's handles", async () => {
+    const up = await upstream();
+    const proxy = await proxyFor(up.url);
+    proxy.setToken(INSTALLATION, TOKEN);
+    const first = proxy.register(scope);
+    const otherScope = { ...scope, installationId: "11111111-1111-4111-8111-111111111111" };
+    proxy.setToken(otherScope.installationId, "other-fixture");
+    const other = proxy.register(otherScope);
+    const path = "octo/repo.git/info/refs?service=git-upload-pack";
+    expect((await send(`${first}${path}`)).status).toBe(200);
+
+    // The same token again still rotates: every credential set does.
+    proxy.setToken(INSTALLATION, TOKEN);
+    expect((await send(`${first}${path}`)).status).toBe(404);
+    const second = proxy.register(scope);
+    expect(second).not.toBe(first);
+    expect(proxy.register(scope)).toBe(second);
+    expect((await send(`${second}${path}`)).status).toBe(200);
+    // Another installation's handles are untouched.
+    expect(proxy.register(otherScope)).toBe(other);
+    expect((await send(`${other}${path}`)).status).toBe(200);
+    // Dropping the token does not rotate: the handle answers 401.
+    proxy.setToken(INSTALLATION, null);
+    expect(proxy.register(scope)).toBe(second);
+    expect((await send(`${second}${path}`)).status).toBe(401);
+    expect(up.seen).toHaveLength(3);
+  });
+
   it("stops answering after close", async () => {
     const up = await upstream();
     const proxy = createGitCredentialProxy({ upstream: up.url });

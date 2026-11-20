@@ -7,10 +7,19 @@
  * `http://127.0.0.1:<port>/<handle>/<owner>/<repo>.git/...`, and this proxy
  * adds the credential on the way to GitHub.
  *
- * A handle is not the token. It works only on this host's loopback interface,
- * only for the repository of the session it was issued for, and for a push
- * only to that session's work branch. When the owning desktop disconnects the
- * token is dropped and the proxy answers 401.
+ * A handle is not the token, and it is not a secret from other local users:
+ * git puts the proxy URL in the arguments of its `git remote-http` helper, in
+ * `.git/FETCH_HEAD`, and in its own output. What protects it:
+ *
+ * - the listener is loopback-only;
+ * - a connection is served only when the process that opened it runs as the
+ *   same user as `pi-host` (Linux; see `loopback-peer.ts`);
+ * - a handle works only for the repository of the session it was issued for,
+ *   and for a push only to that session's work branch;
+ * - every credential set replaces the installation's handles.
+ *
+ * When the owning desktop disconnects the token is dropped and the proxy
+ * answers 401.
  */
 import { randomBytes } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -21,6 +30,7 @@ import { constants as zlibConstants, gunzipSync } from "node:zlib";
 import type { WorkspaceGitRepository } from "@pi-desktop/shared";
 
 import { parseReceivePackCommands } from "./git-receive-pack.js";
+import { createLoopbackPeerUidLookup, type LoopbackPeerUidLookup } from "./loopback-peer.js";
 
 export type GitProxyScope = { installationId: string; sessionId: string; repository: WorkspaceGitRepository; workBranch: string };
 
@@ -28,8 +38,12 @@ export type GitCredentialProxy = {
   /** Bind 127.0.0.1 on a free port. */
   start(): Promise<void>;
   close(): Promise<void>;
+  /**
+   * Setting a token invalidates every handle of that installation; the next
+   * `register` mints new ones. Dropping it (`null`) keeps them: they answer 401.
+   */
   setToken(installationId: string, token: string | null): void;
-  /** Returns `http://127.0.0.1:<port>/<handle>/`; the same scope keeps its handle. */
+  /** Returns `http://127.0.0.1:<port>/<handle>/`; the same scope keeps its handle until the next credential set. */
   register(scope: GitProxyScope): string;
   unregister(installationId: string, sessionId: string): void;
 };
@@ -152,7 +166,15 @@ function forwardedHeaders(headers: IncomingHttpHeaders): Record<string, string |
  * settable only through this argument: no flag, environment variable, or RPC
  * can point the credential at another server.
  */
-export function createGitCredentialProxy(options: { upstream?: string; log?: ProxyLog } = {}): GitCredentialProxy {
+export function createGitCredentialProxy(options: {
+  upstream?: string;
+  log?: ProxyLog;
+  /**
+   * The uid that owns the client end of a loopback connection, for tests.
+   * By default the kernel's socket table on Linux; no check elsewhere.
+   */
+  peerUid?: LoopbackPeerUidLookup;
+} = {}): GitCredentialProxy {
   const upstream = new URL(options.upstream ?? DEFAULT_UPSTREAM);
   const upstreamBasePath = upstream.pathname.replace(/\/+$/u, "");
   const sendUpstream = upstream.protocol === "https:" ? httpsRequest : httpRequest;
@@ -163,6 +185,8 @@ export function createGitCredentialProxy(options: { upstream?: string; log?: Pro
   const scopeKey = (installationId: string, sessionId: string) => JSON.stringify([installationId, sessionId]);
   let server: Server | null = null;
   let port = 0;
+  const ownUid = typeof process.getuid === "function" ? process.getuid() : null;
+  const peerUid = options.peerUid ?? (process.platform === "linux" ? createLoopbackPeerUidLookup() : null);
 
   const reply = (res: ServerResponse, status: number, message: string) => {
     if (res.headersSent) return void res.destroy();
@@ -266,6 +290,16 @@ export function createGitCredentialProxy(options: { upstream?: string; log?: Pro
       // A clone or push may run for an hour; git's own limits apply, not ours.
       created.requestTimeout = 0;
       created.timeout = 0;
+      // Before any request is read: only a process of this user may talk to
+      // the proxy. An owner that cannot be determined is refused.
+      created.on("connection", (socket) => {
+        if (!peerUid) return;
+        const uid = socket.remotePort === undefined ? null : peerUid(socket.remotePort, port);
+        if (uid !== null && uid === ownUid) return;
+        log("warn", uid === null ? "git proxy closed a connection whose owner is unknown" : "git proxy closed a connection opened by another user", uid === null ? undefined : { uid });
+        socket.destroy();
+      });
+      if (!peerUid) log("warn", "git proxy cannot check which user opens a connection on this platform; any local user who learns a handle can use it");
       await new Promise<void>((resolve, reject) => {
         created.once("error", reject);
         created.listen(0, "127.0.0.1", () => {
@@ -289,8 +323,15 @@ export function createGitCredentialProxy(options: { upstream?: string; log?: Pro
       });
     },
     setToken(installationId, token) {
-      if (token) tokens.set(installationId, token);
-      else tokens.delete(installationId);
+      if (!token) return void tokens.delete(installationId);
+      tokens.set(installationId, token);
+      // A handle is readable by other local users (see the module comment),
+      // so it does not outlive the credential set it was issued under.
+      for (const [handleId, scope] of scopes) {
+        if (scope.installationId !== installationId) continue;
+        scopes.delete(handleId);
+        handles.delete(scopeKey(scope.installationId, scope.sessionId));
+      }
     },
     register(scope) {
       if (!server) throw new Error("the git credential proxy is not listening");
