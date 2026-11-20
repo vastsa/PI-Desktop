@@ -99,7 +99,10 @@ test("status changes go to the renderer, and logs never carry the token", async 
     {
       channel: "pi-desktop/github/event/changed",
       // Device login is offered exactly when the build carries a client id.
-      payload: { connected: false, deviceLoginAvailable: GITHUB_OAUTH_CLIENT_ID !== "" },
+      payload: {
+        connected: false,
+        deviceLoginAvailable: Boolean(process.env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID?.trim() || GITHUB_OAUTH_CLIENT_ID),
+      },
     },
   ]);
   assert.deepEqual(host.calls.map((entry) => entry.method), ["secrets.delete"]);
@@ -109,6 +112,19 @@ test("status changes go to the renderer, and logs never carry the token", async 
     assert.ok(["info", "warn", "error"].includes(level));
   }
   assert.equal(JSON.stringify(app.logged).includes(TOKEN), false);
+});
+
+test("a build with a public OAuth client ID offers GitHub device login", async (t) => {
+  const previous = process.env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID;
+  process.env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID = " public-client-id-fixture ";
+  t.after(() => {
+    if (previous === undefined) delete process.env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID;
+    else process.env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID = previous;
+  });
+  const app = appDeps({ host: hostHolding(null) });
+  const connector = bootGitHubConnector(app.deps);
+
+  assert.deepEqual(await connector.status(), { connected: false, deviceLoginAvailable: true });
 });
 
 test("a host that is not running is a failure, not a signed-out account", async () => {

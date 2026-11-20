@@ -28,9 +28,9 @@ which hosts it is sent to are security boundaries, not implementation details.
    `getActiveGitHubConnector().token()`; nothing returns it over IPC.
 
 2. **Sign-in is an OAuth App with device flow; a pasted token is the
-   fallback.** The build ships only the OAuth App's public client id
-   (`GITHUB_OAUTH_CLIENT_ID`). Device flow needs no client secret, so there is
-   none to protect. While the client id is empty, and whenever the user
+   fallback.** The build embeds the OAuth App's public Client ID in Electron
+   main using `PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID`. Device flow needs no
+   client secret. While the Client ID is empty, and whenever the user
    prefers, a personal access token can be pasted instead; main validates it
    against `GET /user` before storing it.
 

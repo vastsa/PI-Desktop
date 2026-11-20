@@ -87,6 +87,7 @@ jobs:
     name: Build ${{ matrix.name }}
     needs: verify
     env:
+      PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID: ${{ vars.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID }}
       # Signing is opt-in per repository: nothing signs unless the repository
       # variable MACOS_SIGN_RELEASE is 'true'. With it set, tag pushes always
       # sign and workflow_dispatch signs unless explicitly disabled.
@@ -173,6 +174,10 @@ jobs:
 
           wait "$host_build_pid"
           trap - EXIT
+
+      - name: Report when GitHub device login is unavailable
+        if: env.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID == ''
+        run: echo "::warning::GitHub device login is disabled. Set the PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID repository variable to enable it."
 
       - name: Package installers (${{ matrix.dist }})
         if: matrix.platform != 'macos'
