@@ -835,7 +835,8 @@ window; opening a normal panel afterward must still work.
       the same tool in the existing session without searching again.
   11. Repeat with the restarted stub omitting that tool, and with the server
       disabled or scoped away before recovery. Also try concurrent calls after
-       a disconnect and a server that fails its recovery handshake.
+      a disconnect and a server that fails its recovery handshake. Restore that
+      server and call the same tool again without an edit or Test connection.
   12. Connect the HTTP server, stop it, and refresh the MCP settings page.
       Test connection again after restarting the server.
 - **Expected**:
@@ -843,8 +844,9 @@ window; opening a normal panel afterward must still work.
     concurrent calls share one handshake. The fresh server list must still
     advertise the tool. Removed tools and inactive servers are refused without
     executing a call; inactive servers are not reconnected. Recovery failure
-    returns `UNAVAILABLE` and does not trigger repeated handshake attempts until
-    an edit or Test connection. A failed tool execution is never replayed.
+    returns `UNAVAILABLE` and is not redialled by session assembly. A later
+    explicit tool call retries the failed handshake and succeeds after the
+    server recovers. A failed tool execution is never replayed.
   - Two servers import; the third is listed as skipped with "a stdio server
      requires command". The LAN HTTP entry lands as `http` with its url intact,
      and the editor shows the unencrypted-connection warning.

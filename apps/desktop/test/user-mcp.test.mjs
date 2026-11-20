@@ -230,6 +230,7 @@ test("the stdio connection cache stays bounded and evicted workspaces reconnect"
 test("refreshing HTTP MCP status detects a server that went offline", async (t) => {
   let online = true;
   let pings = 0;
+  let handshakes = 0;
   let connected = false;
   let finishCall;
   let failCall;
@@ -238,7 +239,11 @@ test("refreshing HTTP MCP status detects a server that went offline", async (t) 
   const client = {
     isConnected: () => connected,
     getTools: () => [{ name: "lookup" }],
-    connect: async () => { connected = true; return [{ name: "lookup" }]; },
+    connect: async () => {
+      handshakes += 1;
+      connected = true;
+      return [{ name: "lookup" }];
+    },
     callTool: () => new Promise((resolve, reject) => {
       finishCall = resolve;
       failCall = reject;
@@ -270,6 +275,12 @@ test("refreshing HTTP MCP status detects a server that went offline", async (t) 
   finishCall({ content: [{ type: "text", text: "completed" }] });
   assert.deepEqual(await pendingCall, { content: [{ type: "text", text: "completed" }] });
   assert.equal(pings, 2);
+
+  online = true;
+  client.callTool = async () => "recovered";
+  assert.equal(await rt.callTool("mcp_stub_lookup", {}, "/repo"), "recovered");
+  assert.equal(handshakes, 2, "a failed live transport should be re-handshaken");
+  assert.equal(rt.statusFor("stub").state, "ready");
 });
 test("stopping one session cancels only its active MCP call", async (t) => {
   const started = new Map();
@@ -568,16 +579,25 @@ test("reconnection revalidates the advertised tool list before dispatch", async 
   assert.deepEqual(state.calls, []);
 });
 
-test("a failed reconnect reports unavailability without repeated handshakes", async (t) => {
+test("a failed reconnect is retried and can recover on a later tool call", async (t) => {
   const { rt, client, state } = reconnectingRuntime(t);
   await rt.toolsForProject("/repo");
   client.close();
   state.fail = true;
-  for (let i = 0; i < 2; i += 1) {
-    await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "UNAVAILABLE" });
-  }
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "UNAVAILABLE" });
   assert.equal(state.handshakes, 2);
+
+  assert.deepEqual(await rt.toolsForProject("/repo"), []);
+  assert.equal(state.handshakes, 2, "session assembly should not repeatedly dial a failed server");
+  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "UNAVAILABLE" });
+  assert.equal(state.handshakes, 3, "an explicit tool call should retry the failed handshake");
   assert.deepEqual(state.calls, []);
+
+  state.fail = false;
+  assert.equal(await rt.callTool("mcp_stub_lookup", {}, "/repo"), "lookup");
+  assert.equal(state.handshakes, 4);
+  assert.deepEqual(state.calls, ["lookup"]);
+  assert.equal(rt.statusFor("stub").state, "ready");
 });
 
 test("scope and enablement are checked before reconnecting a remembered tool", async (t) => {
