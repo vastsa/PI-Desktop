@@ -49,8 +49,20 @@ describe("GitHub feedback issue URL", () => {
     ).toThrow(/origin/);
     expect(() =>
       assertFeedbackIssueUrl(
-        "https://github.com/vastsa/PI-Desktop/issues/new?template=feature_request.yml",
+        "https://github.com/david-yang-pixel/PI-Desktop/issues/new?template=feature_request.yml",
       ),
     ).toThrow(/template/);
+  });
+
+  it("targets the fork's issue tracker and rejects the upstream one", () => {
+    expect(GITHUB_REPO).toBe("david-yang-pixel/PI-Desktop");
+    expect(buildBugReportUrl(sample)).toMatch(
+      /^https:\/\/github\.com\/david-yang-pixel\/PI-Desktop\/issues\/new\?/,
+    );
+    expect(() =>
+      assertFeedbackIssueUrl(
+        "https://github.com/vastsa/PI-Desktop/issues/new?template=bug_report.yml",
+      ),
+    ).toThrow(/path/);
   });
 });

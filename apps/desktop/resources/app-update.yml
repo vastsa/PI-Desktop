@@ -1,4 +1,4 @@
 provider: github
-owner: vastsa
+owner: david-yang-pixel
 repo: PI-Desktop
 updaterCacheDirName: '@pi-desktopdesktop-updater'
