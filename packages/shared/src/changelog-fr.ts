@@ -2,6 +2,22 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "Sur une nouvelle installation, le plugin intégré Améliorations officielles génère automatiquement les titres de session ; les suggestions, l'amélioration des brouillons et la mémoire IA restent désactivées jusqu'à ce que vous les activiez.",
+      "Nouvelle tâche ouvre désormais une discussion temporaire hors de tout projet, et les conversations peuvent passer d'un projet à l'autre ou revenir en Discussion temporaire.",
+      "Sur l'accueil vide, cliquez sur le nom du projet ou sur « temporairement » dans le titre pour changer de projet ; la destination sans projet s'appelle désormais partout Discussion temporaire.",
+      "En option, les commandes d'arrière-plan terminées transmettent leurs résultats et reprennent une conversation inactive après la fin du tour ; désactivé par défaut.",
+      "Les plugins peuvent ajouter des entrées au menu contextuel de la conversation pour envoyer le texte sélectionné vers une vue ancrée, et proposer des suggestions et un contexte limité.",
+      "Les notes de progression des modèles OpenAI Responses restent dans le déroulé du tour, dans leur ordre d'origine, au lieu de se mêler à la réponse, y compris après réouverture ; Copier la dernière réponse ne copie que la réponse.",
+      "Les points de terminaison personnalisés compatibles OpenAI conservent leur cache de prompt d'un tour à l'autre, évitant de longues attentes avant le premier jeton dans les longues conversations.",
+      "Les paragraphes en persan, en arabe et dans d'autres langues de droite à gauche qui commencent par un mot anglais s'affichent maintenant dans le bon sens.",
+      "Le plugin Gestionnaire de fichiers 0.9.1 affiche en toute sécurité les images Markdown intégrées et prévisualise les feuilles de calcul en lecture seule.",
+      "Corrigé : la bifurcation depuis d'anciennes réponses chargées de l'historique, la synchronisation de configuration en échec répété après une suppression d'un côté, les noms de modèles tronqués dans les Réglages, le bouton du panneau de travail masquant la Recherche et les définitions d'outils refusées par certains points de terminaison Responses.",
+    ],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [

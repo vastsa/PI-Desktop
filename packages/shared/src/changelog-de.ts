@@ -2,6 +2,22 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "Bei einer Neuinstallation erzeugt das mitgelieferte Plugin „Offizielle Erweiterungen“ Sitzungstitel automatisch; Vorschläge, Entwurfsverbesserung und KI-Gedächtnis bleiben aus, bis du sie einschaltest.",
+      "Neue Aufgabe startet jetzt einen temporären Chat außerhalb von Projekten, und Unterhaltungen lassen sich zwischen Projekten oder zurück in den temporären Chat verschieben.",
+      "Auf der leeren Startseite wechselst du das Projekt per Klick auf den Projektnamen oder „temporär“ im Titel; das projektlose Ziel heißt jetzt überall Temporärer Chat.",
+      "Optional melden abgeschlossene Hintergrundbefehle ihre Ergebnisse und setzen eine ruhende Unterhaltung nach Ende des Durchgangs fort; standardmäßig aus.",
+      "Plugins können Einträge zum Kontextmenü des Verlaufs hinzufügen, um markierten Text an eine angedockte Ansicht zu senden, und Vorschläge sowie begrenzten Kontext für die Unterhaltung liefern.",
+      "Fortschrittsnotizen von OpenAI-Responses-Modellen bleiben in ursprünglicher Reihenfolge im Ablauf des Durchgangs statt in der Antwort, auch nach erneutem Öffnen; „Letzte Antwort kopieren“ kopiert nur die Antwort.",
+      "Benutzerdefinierte OpenAI-kompatible Endpunkte behalten ihren Prompt-Cache über Durchgänge hinweg, sodass lange Unterhaltungen nicht mehr lange auf das erste Token warten.",
+      "Persische, arabische und andere rechtsläufige Absätze, die mit einem englischen Wort beginnen, werden jetzt in der richtigen Richtung angezeigt.",
+      "Das Dateimanager-Plugin 0.9.1 zeigt eingebettete Markdown-Bilder sicher an und bietet schreibgeschützte Tabellenvorschauen.",
+      "Behoben: Verzweigen älterer, aus dem Verlauf geladener Antworten, wiederholt fehlschlagende Konfigurationssynchronisierung nach einseitigem Löschen, abgeschnittene Modellnamen in den Einstellungen, der Arbeitsbereich-Schalter über der Suche und von manchen Responses-Endpunkten abgelehnte Tooldefinitionen.",
+    ],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [

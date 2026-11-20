@@ -2,6 +2,22 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "En una instalación nueva, el complemento incluido Mejoras oficiales genera automáticamente los títulos de las sesiones; las sugerencias, la mejora de borradores y la memoria de IA siguen desactivadas hasta que las actives.",
+      "Nueva tarea ahora inicia un chat temporal fuera de cualquier proyecto, y las conversaciones pueden moverse entre proyectos o volver a Chat temporal.",
+      "En la página de inicio vacía, haz clic en el nombre del proyecto o en «temporal» del título para cambiar de proyecto; el destino sin proyecto ahora se llama Chat temporal en todas partes.",
+      "De forma opcional, los comandos en segundo plano terminados informan sus resultados y reanudan una conversación inactiva después del turno; está desactivado por defecto.",
+      "Los complementos pueden añadir opciones al menú contextual de la conversación para enviar el texto seleccionado a una vista acoplada, y ofrecer sugerencias y contexto limitado.",
+      "Las notas de progreso de los modelos OpenAI Responses permanecen en el proceso del turno, en su orden original, en lugar de mezclarse con la respuesta, también al reabrir una sesión; Copiar última respuesta copia solo la respuesta.",
+      "Los endpoints personalizados compatibles con OpenAI conservan la caché de prompts entre turnos y evitan largas esperas hasta el primer token en conversaciones largas.",
+      "Los párrafos en persa, árabe y otros idiomas de derecha a izquierda que empiezan con una palabra en inglés ahora se muestran en la dirección correcta.",
+      "El complemento Administrador de archivos 0.9.1 muestra de forma segura las imágenes Markdown en línea y ofrece vistas previas de hojas de cálculo de solo lectura.",
+      "Corregido: bifurcar respuestas antiguas cargadas del historial, la sincronización de configuración que fallaba repetidamente tras borrar un registro en un lado, nombres de modelo recortados en Ajustes, el botón del panel de trabajo sobre la búsqueda y definiciones de herramientas rechazadas por algunos endpoints Responses.",
+    ],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [
