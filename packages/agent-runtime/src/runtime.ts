@@ -7717,8 +7717,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   ): Promise<AgentLoopTurnUpdate> {
     let context = this.rebuiltAgentContext();
     const budget = this.contextBudget(context.messages);
-    if (this.contextWatch) this.publishNativeBudget(budget);
     const hardLimitReached = budget.tokens >= budget.hardLimit;
+    if (this.contextWatch) this.publishNativeBudget(budget);
     if (!this.compactionEnabled) {
       this.pendingModelCompaction = false;
       if (hardLimitReached) {
