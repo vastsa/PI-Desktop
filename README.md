@@ -12,8 +12,8 @@ Local-first · Model-agnostic · Plugin-powered · macOS / Windows / Linux
 
 <br />
 
-[![Release](https://img.shields.io/github/v/release/vastsa/PI-Desktop?label=release)](https://github.com/vastsa/PI-Desktop/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/vastsa/PI-Desktop/total?label=downloads)](https://github.com/vastsa/PI-Desktop/releases)
+[![Release](https://img.shields.io/github/v/release/david-yang-pixel/PI-Desktop?label=release)](https://github.com/david-yang-pixel/PI-Desktop/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/david-yang-pixel/PI-Desktop/total?label=downloads)](https://github.com/david-yang-pixel/PI-Desktop/releases)
 [![Stars](https://img.shields.io/github/stars/vastsa/PI-Desktop?style=flat\&label=stars)](https://github.com/vastsa/PI-Desktop/stargazers)
 [![CI](https://github.com/vastsa/PI-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/vastsa/PI-Desktop/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/vastsa/PI-Desktop)](LICENSE)
@@ -21,7 +21,7 @@ Local-first · Model-agnostic · Plugin-powered · macOS / Windows / Linux
 
 <br />
 
-**[Download](https://github.com/vastsa/PI-Desktop/releases/latest)** ·
+**[Download](https://github.com/david-yang-pixel/PI-Desktop/releases/latest)** ·
 [Documentation](https://pi-docs.aiuo.net/) ·
 [Build a Plugin](docs/plugin-development.md) ·
 [Screenshots](docs/guide/screenshots.md) ·
@@ -562,29 +562,28 @@ Agent / Plan / Goal
 
 <div align="center">
 
-### [Download PI-Desktop →](https://github.com/vastsa/PI-Desktop/releases/latest)
+### [Download PI-Desktop →](https://github.com/david-yang-pixel/PI-Desktop/releases/latest)
 
-**macOS · Windows · Linux**
+**macOS Desktop · Linux Remote Host**
 
 </div>
 
 ### Packages
 
-| Platform | Architecture  | Package                                 |
-| -------- | ------------- | --------------------------------------- |
-| macOS    | Apple Silicon | `.dmg` / `.zip`                         |
-| macOS    | Intel         | `.dmg` / `.zip`                         |
-| Windows  | x64           | Installer / `.zip`                      |
-| Linux    | x64 / ARM64   | `.AppImage` / `.deb` / `.rpm` / `.asar` |
+| Platform | Architecture  | Package                           |
+| -------- | ------------- | --------------------------------- |
+| macOS    | Apple Silicon | Desktop `.dmg` / `.zip`            |
+| Linux    | x64 / arm64   | Headless `pi-host` `.tar.gz`      |
 
-macOS releases are signed with a Developer ID certificate and notarized by Apple.
+The macOS package uses ad-hoc signing and manual updates. For Intel Mac,
+Windows, or Linux desktop packages, see the [upstream releases](https://github.com/vastsa/PI-Desktop/releases).
 
 <details>
 <summary><strong>Linux Compatibility</strong></summary>
 
 <br />
 
-Linux packages require **glibc 2.35+**.
+Linux `pi-host` bundles require **glibc 2.35+**.
 
 Common supported distributions include:
 
@@ -754,7 +753,7 @@ See [LICENSE](LICENSE) for details.
 
 <br />
 
-**[Download](https://github.com/vastsa/PI-Desktop/releases/latest)** ·
+**[Download](https://github.com/david-yang-pixel/PI-Desktop/releases/latest)** ·
 [Documentation](https://pi-docs.aiuo.net/) ·
 [Build a Plugin](docs/plugin-development.md)
 

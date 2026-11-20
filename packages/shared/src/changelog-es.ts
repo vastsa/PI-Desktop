@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [
+      "Inicia sesiones remotas desde un repositorio de GitHub en un árbol de trabajo aislado, envía la rama de la sesión y abre una solicitud de cambios desde la aplicación.",
       "Activa OpenAI Fast para cada modelo y usa /fast en una conversación para solicitar prioridad; puede consumir antes los límites de tu suscripción o aumentar el coste por token.",
       "Las visualizaciones integradas cargan más rápido con asistentes de gráficos reutilizables; los scripts fallidos ahora muestran errores útiles en lugar de tarjetas en blanco.",
       "Prueba los servidores MCP desde la carpeta del proyecto seleccionado; tras una prueba correcta, las sesiones del proyecto pueden recuperar conexiones fallidas que estén inactivas.",

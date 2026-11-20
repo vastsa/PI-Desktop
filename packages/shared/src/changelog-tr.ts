@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [
+      "Bir GitHub deposundan yalıtılmış bir çalışma ağacında uzak oturum başlatabilir, ardından oturum dalını gönderip masaüstü uygulamasından bir pull request açabilirsiniz.",
       "OpenAI Fast modunu model başına açın ve öncelikli hizmet istemek için konuşmada /fast kullanın; bu, abonelik limitlerini daha hızlı tüketebilir veya token başına maliyeti artırabilir.",
       "Satır içi görselleştirmeler yeniden kullanılabilir grafik yardımcılarıyla daha hızlı yüklenir; başarısız betikler artık boş kartlar yerine düzeltmeye yardımcı olacak hatalar gösterir.",
       "MCP sunucularını seçili projenin klasöründe test edin; başarılı bir testten sonra proje oturumları boşta kalan başarısız bağlantıları kurtarabilir.",

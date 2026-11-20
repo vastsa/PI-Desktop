@@ -5,6 +5,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [
+      "Démarrez des sessions distantes depuis un dépôt GitHub dans un arbre de travail isolé, puis poussez la branche de la session et ouvrez une pull request depuis l’application.",
       "Activez OpenAI Fast par modèle et utilisez /fast dans une conversation pour demander un service prioritaire ; les limites d’abonnement peuvent baisser plus vite ou le coût par token augmenter.",
       "Les visualisations intégrées se chargent plus vite grâce à des outils de graphique réutilisables ; les scripts en échec affichent désormais des erreurs utiles au lieu de cartes vides.",
       "Testez les serveurs MCP depuis le dossier du projet sélectionné ; après un test réussi, les sessions du projet peuvent récupérer les connexions inactives en échec.",
