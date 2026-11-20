@@ -5,24 +5,38 @@ import i18n from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { en } from "@pi-desktop/i18n";
 import { IPC } from "@pi-desktop/shared/protocol";
-import type { AskToolRequest, Result, SessionSummary } from "@pi-desktop/shared";
+import type { AskToolRequest, Result, SessionSummary, ToolPermissionRequest } from "@pi-desktop/shared";
 import { AskToolCard } from "../../apps/desktop/src/components/AskToolCard";
 import { ToastHost } from "../../apps/desktop/src/components/Toast";
+import { NotificationCenter } from "../../apps/desktop/src/components/NotificationCenter";
+import { PermissionCard } from "../../apps/desktop/src/components/PermissionCard";
 import { headAsk } from "../../apps/desktop/src/lib/pending-asks";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
 
 const createdAt = "2026-09-01T00:00:00Z";
-const sessions: SessionSummary[] = ["A", "B"].map((id) => ({
+const sessions: SessionSummary[] = ["A", "B", "C"].map((id) => ({
   id, title: `Chat ${id}`, mode: "agent", permissionMode: "ask", thinkingLevel: "off",
   providerId: "fixture", modelId: "fixture", createdAt, updatedAt: createdAt,
-  messageCount: 1, projectPath: `C:/fixture/${id}`,
+  messageCount: 1, projectPath: id === "C" ? undefined : `C:/fixture/${id}`,
 }));
 const requests = new Map<string, AskToolRequest>();
 const resolutions: unknown[] = [];
+const history = new Map<string, import("@pi-desktop/shared").AppNotification>();
+const permissions = new Map<string, ToolPermissionRequest[]>();
+const approvals: unknown[] = [];
+let rejectApproval = false;
+const acknowledged: string[] = [];
 const unexpected: string[] = [];
 let rejectReads = false;
 let readCount = 0;
 let sequence = 0;
+let notificationListGate: Promise<void> | undefined;
+
+function pauseNotificationLists() {
+  let resume = () => {};
+  notificationListGate = new Promise<void>((resolve) => { resume = resolve; });
+  return () => { notificationListGate = undefined; resume(); };
+}
 const frame = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -52,6 +66,8 @@ function Surface() {
   const page = useAppStore((state) => state.page);
   const pending = useAppStore((state) => state.pendingAsks);
   const request = active ? headAsk(pending, active) : undefined;
+  const permissionQueues = useAppStore((state) => state.pendingPermissions);
+  const permission = active ? permissionQueues[active]?.[0] : undefined;
   return <>
     <div
       aria-hidden
@@ -62,15 +78,21 @@ function Surface() {
       <div style={{ flex: 1 }} />
     </div>
     <output id="active-chat">{page}:{active ?? "home"}</output>
+    <NotificationCenter />
     {request && <AskToolCard key={request.requestId} request={request} />}
+    {permission && <PermissionCard key={permission.requestId} permission={permission} />}
     <ToastHost anchorElement={toastAnchor} />
   </>;
 }
 function reset(page: "chat" | "settings" = "chat", activeSessionId?: string) {
   requests.clear();
+  history.clear();
+  permissions.clear();
   flushSync(() => useAppStore.setState({
-    page, activeSessionId, selectingSessionId: undefined, messages: [],
+    page: "chat", settingsOpen: page === "settings", activeSessionId, selectingSessionId: undefined, messages: [],
     toasts: [], pendingAsks: {}, workspace: undefined, activeProjectPath: undefined,
+    notifications: [], unreadNotificationCount: 0, dismissedNotificationRequests: {},
+    pendingPermissions: {},
   }));
 }
 function ask(sessionId: string, question = "Which path should we take?") {
@@ -143,9 +165,37 @@ globalThis.questionNotificationProbe = async () => {
       else if (channel === IPC.invoke.pendingInteractive) {
         assert(input && typeof input === "object" && "sessionId" in input, "Invalid pending request");
         const request = requests.get(String(input.sessionId));
-        data = { permissions: [], asks: request ? [request] : [] };
+        data = { permissions: permissions.get(String(input.sessionId)) ?? [], asks: request ? [request] : [] };
       } else if (channel === IPC.invoke.notificationShowNative) data = { shown: false };
-      else if (channel === IPC.invoke.askToolResolve) { resolutions.push(input); data = { ok: true }; }
+      else if (channel === IPC.invoke.appGetOnboarding) data = { showChecklist: false, steps: [] };
+      else if (channel === IPC.invoke.askToolResolve) {
+        resolutions.push(input);
+        if (input && typeof input === "object" && "sessionId" in input) requests.delete(String(input.sessionId));
+        data = { ok: true };
+      } else if (channel === IPC.invoke.toolResolvePermission) {
+        approvals.push(input);
+        if (rejectApproval) return { ok: false, error: { code: "FIXTURE_APPROVAL", message: "Fixture approval unavailable" } };
+        assert(input && typeof input === "object" && "requestId" in input, "Invalid approval response");
+        for (const [id, queue] of permissions) permissions.set(id, queue.filter((item) => item.requestId !== input.requestId));
+        data = { ok: true };
+      } else if (channel === IPC.invoke.notificationList) {
+        await notificationListGate;
+        data = { notifications: [...history.values()],
+          unreadCount: [...history.values()].filter((row) => !row.readAt).length };
+      } else if (channel === IPC.invoke.notificationMarkRead) {
+        if (input && typeof input === "object" && "id" in input) {
+          const id = String(input.id);
+          acknowledged.push(id);
+          const row = history.get(id);
+          if (row) history.set(id, { ...row, readAt: createdAt });
+        }
+        data = { ok: true };
+      } else if (channel === IPC.invoke.notificationMarkAllRead) {
+        for (const [id, row] of history) history.set(id, { ...row, readAt: createdAt });
+        data = { ok: true };
+      } else if (channel === IPC.invoke.notificationClear) {
+        history.clear(); data = { ok: true };
+      } else if (channel === IPC.invoke.projectClear) data = { ok: true };
       else {
         unexpected.push(channel);
         return { ok: false, error: { code: "FIXTURE_UNEXPECTED", message: `Unexpected IPC ${channel}` } };
@@ -155,6 +205,8 @@ globalThis.questionNotificationProbe = async () => {
   };
   useAppStore.setState({
     sessions, notifications: [], runningSessions: {}, retainedSessionIds: [], retainedTranscripts: {},
+    ready: true,
+    projectMeta: { "C:/fixture/B": { name: "Research" } },
     pendingPlans: {}, pendingPermissions: {}, providers: [], providerModels: {},
   });
   const host = document.createElement("div");
@@ -165,7 +217,21 @@ globalThis.questionNotificationProbe = async () => {
 
   // Start at the empty New task surface, as in the reported screenshot.
   reset();
-  const request = ask("B");
+  ask("B");
+  assert(document.querySelector(".notification-badge")?.textContent === "1", "Missing badge for an unread question");
+  const resumeQuestionRefresh = pauseNotificationLists();
+  try {
+    flushSync(() => document.querySelector<HTMLButtonElement>(".notification-trigger")?.click());
+    const question = document.querySelector<HTMLButtonElement>(".notification-question");
+    assert(question && !question.disabled, "Question must be clickable before notification refresh completes");
+    assert(question.textContent?.includes("Research"), "Owning project name is missing");
+    question.click();
+    await selected("B");
+    assert(document.querySelector(".notification-badge")?.textContent === "1", "Opening chat incorrectly acknowledged its question");
+  } finally { resumeQuestionRefresh(); }
+  await frame();
+  reset();
+  const toastRequest = ask("B");
   const originalToastId = useAppStore.getState().toasts[0]?.id;
   await until(toastFollowsSafeArea, "question toast stays inside the main-content safe area");
   const safeArea = document.getElementById("toast-safe-area");
@@ -191,8 +257,9 @@ globalThis.questionNotificationProbe = async () => {
   submit.click();
   await until(() => resolutions.length === 1, "answer reaches the host");
   assert(JSON.stringify(resolutions[0]) === JSON.stringify({
-    requestId: request.requestId, sessionId: "B", answers: [["Continue"]],
+    requestId: toastRequest.requestId, sessionId: "B", answers: [["Continue"]],
   }), "Answer resolved the wrong request");
+  await until(() => !document.querySelector(".notification-badge"), "submitted answer clears its unread badge contribution");
 
   // Same text in different chats must retain both destinations.
   reset("chat", "A");
@@ -224,7 +291,8 @@ globalThis.questionNotificationProbe = async () => {
   assert(dismiss, "Missing dismiss control");
   dismiss.click();
   await until(() => useAppStore.getState().toasts.length === 0, "dismiss animation");
-  assert(readCount === reads && useAppStore.getState().page === "settings", "Dismiss unexpectedly navigated");
+  assert(readCount === reads && useAppStore.getState().settingsOpen && !useAppStore.getState().activeSessionId,
+    "Dismiss unexpectedly closed Settings or navigated");
 
   // Controlled timers prove focus/hover transitions never duplicate the countdown.
   reset();
@@ -282,12 +350,225 @@ globalThis.questionNotificationProbe = async () => {
   await selected("B");
   await until(() => !useAppStore.getState().toasts.some((item) => item.id === failedToastId),
     "successful retry dismisses the retained reminder");
+  const verifyApprovalNotifications = async () => {
+    // Every real permission request stays actionable; navigation is never approval.
+    reset();
+    const permissionFor = (sessionId: string) => {
+      const request: ToolPermissionRequest = { sessionId, requestId: `permission-${++sequence}`,
+        toolCallId: `permission-tool-${sequence}`, toolName: "Bash", argsPreview: { command: "echo fixture" },
+        risk: "high", reason: "Fixture approval" };
+      permissions.set(sessionId, [...(permissions.get(sessionId) ?? []), request]);
+      flushSync(() => useAppStore.getState().handleAgentEvent({ ts: Date.parse(createdAt), sessionId,
+        turnId: `permission-turn-${sequence}`, event: { type: "tool_permission_request", request } }));
+      return request;
+    };
+    const firstApproval = permissionFor("B");
+    const nextApproval = permissionFor("B");
+    const otherApproval = permissionFor("A");
+    const resumeApprovalRefresh = pauseNotificationLists();
+    try {
+      flushSync(() => document.querySelector<HTMLButtonElement>(".notification-trigger")?.click());
+      assert(document.querySelectorAll(".notification-permission").length === 3, "Permission notification items are missing");
+      assert(document.querySelector(".notification-badge")?.textContent === "3", "Unread permission requests are missing from the total badge");
+      const permission = document.querySelector<HTMLButtonElement>(`[data-permission-id="${firstApproval.requestId}"]`);
+      assert(permission && !permission.disabled, "Permission must be clickable before notification refresh completes");
+      document.querySelectorAll<HTMLButtonElement>(".notification-filter")[1]?.click();
+      await until(() => document.querySelectorAll(".notification-permission").length === 3 &&
+        !document.querySelector(".notification-empty"), "unread keeps approvals pending");
+      permission.click();
+      await until(() => useAppStore.getState().activeSessionId === "B" &&
+        !useAppStore.getState().selectingSessionId && Boolean(document.querySelector(".permission-card")), "approval notification destination");
+      assert(useAppStore.getState().activeProjectPath === "C:/fixture/B", "Approval notification opened the wrong project");
+      assert(approvals.length === 0 && useAppStore.getState().pendingPermissions.B?.length === 2, "Opening a notification approved a permission");
+      assert(document.querySelector(".notification-badge")?.textContent === "3", "Opening a permission notification removed its badge");
+    } finally { resumeApprovalRefresh(); }
+    document.querySelector<HTMLButtonElement>(".notification-trigger")!.click();
+    await until(() => document.querySelectorAll(".notification-permission.unread").length === 3,
+      "navigation retains every unresolved approval reminder and unread state");
+    document.querySelector<HTMLButtonElement>(`[data-permission-id="${firstApproval.requestId}"]`)!.click();
+    const decision = (label: string) => {
+      const button = Array.from(document.querySelectorAll<HTMLButtonElement>(".permission-card-actions button"))
+        .find((item) => item.textContent?.trim() === label);
+      assert(button, `Missing approval decision ${label}`);
+      return button;
+    };
+    rejectApproval = true;
+    decision(i18n.t("permission.allowOnce")).click();
+    await until(() => useAppStore.getState().toasts.some((item) => item.message.includes("Fixture approval unavailable")), "approval failure feedback");
+    assert(useAppStore.getState().pendingPermissions.B?.[0]?.requestId === firstApproval.requestId, "Failed approval discarded the request");
+    assert(document.querySelector(".notification-badge")?.textContent === "3", "Failed approval removed its badge");
+    rejectApproval = false;
+    await until(() => Boolean(document.querySelector(".permission-card-actions .btn-primary:not(:disabled)")), "approval retry enabled");
+    decision(i18n.t("permission.allowOnce")).click();
+    await until(() => useAppStore.getState().pendingPermissions.B?.[0]?.requestId === nextApproval.requestId &&
+      Boolean(document.querySelector(".permission-card-actions .btn-primary:not(:disabled)")), "first permission approved only once");
+    await until(() => document.querySelector(".notification-badge")?.textContent === "2", "accepted approval removes only its own badge contribution");
+    assert(useAppStore.getState().pendingPermissions.A?.[0]?.requestId === otherApproval.requestId, "Approving B discarded A's permission");
+    decision(i18n.t("permission.deny")).click();
+    await until(() => !useAppStore.getState().pendingPermissions.B, "denial resolves only the second permission");
+    await until(() => document.querySelector(".notification-badge")?.textContent === "1", "denial removes only its own badge contribution");
+    document.querySelector<HTMLButtonElement>(".notification-trigger")?.click();
+    await until(() => document.querySelectorAll(".notification-permission").length === 1 &&
+      Boolean(document.querySelector(".notification-permission:not(:disabled)")), "only the unprocessed approval remains in inbox");
+    document.querySelector<HTMLButtonElement>(".notification-permission")?.click();
+    await until(() => useAppStore.getState().activeSessionId === "A" && !useAppStore.getState().selectingSessionId &&
+      Boolean(document.querySelector(".permission-card")), "other approval destination");
+    decision(i18n.t("permission.allowOnce")).click();
+    await until(() => Object.keys(useAppStore.getState().pendingPermissions).length === 0, "all explicit decisions completed");
+    await until(() => !document.querySelector(".notification-badge"), "completed approvals clear their badge");
+
+    // Bulk read removes reminders, never the underlying decision cards.
+    reset();
+    history.clear();
+    flushSync(() => useAppStore.setState({ notifications: [], unreadNotificationCount: 0 }));
+    const bulkApproval = permissionFor("B");
+    const bulkQuestion = ask("B", "Bulk-read question");
+    const approvalsBeforeBulk = approvals.length;
+    const answersBeforeBulk = resolutions.length;
+    document.querySelector<HTMLButtonElement>(".notification-trigger")!.click();
+    await until(() => document.querySelectorAll(".notification-item").length === 2, "mixed decision reminders visible");
+    document.querySelector<HTMLButtonElement>('[aria-label="Mark all as read"]')!.click();
+    await until(() => !document.querySelector(".notification-item") && !document.querySelector(".notification-badge"),
+      "bulk-read removes permission and question reminders together with the badge");
+    assert(permissions.get("B")?.[0]?.requestId === bulkApproval.requestId && requests.get("B")?.requestId === bulkQuestion.requestId,
+      "Bulk-read settled an underlying decision");
+    assert(approvals.length === approvalsBeforeBulk && resolutions.length === answersBeforeBulk, "Bulk-read submitted an approval or answer");
+    await useAppStore.getState().refreshNotificationAttention();
+    for (const tab of document.querySelectorAll<HTMLButtonElement>(".notification-filter")) {
+      flushSync(() => tab.click());
+      assert(!document.querySelector(".notification-item") && !document.querySelector(".notification-badge"), "Read decision reminders reappeared in a filter");
+    }
+    flushSync(() => document.querySelector<HTMLButtonElement>(".notification-trigger")!.click());
+    flushSync(() => document.querySelector<HTMLButtonElement>(".notification-trigger")!.click());
+    await until(() => Boolean(document.querySelector(".notification-empty")), "bulk-read stays empty after reopening");
+    const freshApproval = permissionFor("A");
+    await until(() => document.querySelector(".notification-badge")?.textContent === "1" &&
+      document.querySelectorAll(".notification-permission.unread").length === 1, "new approval is not hidden by an earlier bulk read");
+    document.querySelector<HTMLButtonElement>(`[data-permission-id="${freshApproval.requestId}"]`)!.click();
+    await until(() => useAppStore.getState().activeSessionId === "A" && !useAppStore.getState().selectingSessionId &&
+      Boolean(document.querySelector(".permission-card")), "fresh approval destination");
+    assert(document.querySelector(".notification-badge")?.textContent === "1", "Fresh approval navigation changed its unread state");
+    decision(i18n.t("permission.allowOnce")).click();
+    await until(() => !document.querySelector(".notification-badge"), "fresh approval completion removes its reminder contribution");
+  };
+  // Bulk acknowledgement settles reminders without answering asks or approving tools.
+  reset();
+  const unanswered = ask("B");
+  let done: import("@pi-desktop/shared").AppNotification = {
+    id: "completion-C", sessionId: "C", sessionTitle: "C", kind: "task.completed",
+    turnId: "turn-C", createdAt,
+  };
+  const addCompletion = () => {
+    done = { ...done, id: `completion-C-${++sequence}`, turnId: `turn-C-${sequence}`,
+      createdAt: new Date(Date.now() + sequence).toISOString() };
+    history.set(done.id, done);
+    flushSync(() => useAppStore.getState().receiveNotification(done));
+  };
+  addCompletion();
+  history.set("original-failure", { ...done, id: "original-failure", kind: "task.failed", errorCode: "ORIGINAL_ERROR" });
+  flushSync(() => useAppStore.setState({ notifications: [...history.values()], unreadNotificationCount: 2 }));
+  const openBell = async () => {
+    if (!document.querySelector(".notification-popover")) document.querySelector<HTMLButtonElement>(".notification-trigger")?.click();
+    await until(() => Boolean(document.querySelector(".notification-completion:not(:disabled)")), "completion inbox");
+  };
+  await openBell();
+  assert(document.querySelector(".notification-completion")?.textContent?.includes("Chat C"), "Completion displays an ID instead of the current title");
+  assert(document.querySelector(".notification-list")?.textContent?.includes("ORIGINAL_ERROR"), "Original failure text was lost");
+  const icons = [".notification-question", ".notification-completion", ".notification-kind-icon.failed"]
+    .map((selector) => document.querySelector(`${selector} svg`)?.innerHTML);
+  assert(icons.every(Boolean) && new Set(icons).size === 3, "Question, completion, and failure icons must be distinct");
+  assert(document.querySelectorAll(".notification-badge").length === 1 &&
+    document.querySelector(".notification-badge")?.textContent === "3", "Questions, completions, and failures must share one deduplicated total badge");
+  const badgeRect = document.querySelector(".notification-badge")!.getBoundingClientRect();
+  const bellRect = document.querySelector(".notification-trigger")!.getBoundingClientRect();
+  assert(badgeRect.top < bellRect.top && badgeRect.right >= bellRect.right, "Question badge is not at the top-right");
+  const popoverRect = document.querySelector(".notification-popover")!.getBoundingClientRect();
+  assert(popoverRect.top > bellRect.bottom && popoverRect.left >= 0 && popoverRect.right <= window.innerWidth,
+    "The titlebar popover must open below the bell and fit the viewport");
+  const markAll = () => document.querySelector<HTMLButtonElement>('[aria-label="Mark all as read"]');
+  assert(!markAll()?.disabled, "Unread completions must enable mark-all through ordinary history");
+  markAll()!.click();
+  await until(() => !useAppStore.getState().notifications.some((item) => item.kind === "task.completed" && !item.readAt) &&
+    !document.querySelector(".notification-completion"), "bulk-read completion removed without navigation");
+  await until(() => !document.querySelector(".notification-item") && !document.querySelector(".notification-badge"), "mark-all removes every notice, not just its unread styling");
+  assert(requests.get("B")?.requestId === unanswered.requestId, "Mark-all must not answer the pending question");
+  assert(!acknowledged.includes(done.id), "Bulk-read must not issue individual acknowledgements");
+  assert(useAppStore.getState().notifications.some((item) => item.id === "original-failure" && item.readAt), "Bulk-read deleted durable task history");
+  for (const tab of document.querySelectorAll<HTMLButtonElement>(".notification-filter")) {
+    flushSync(() => tab.click());
+    assert(!document.querySelector(".notification-item"), "Read notifications remain visible in a filter");
+  }
+  flushSync(() => root.render(<I18nextProvider i18n={i18n}><Surface key="rebuilt-sidebar" /></I18nextProvider>));
+  await useAppStore.getState().refreshNotificationAttention();
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  assert(!document.querySelector(".notification-badge"), "Rebuilding the sidebar restored a dismissed reminder");
+  flushSync(() => document.querySelector<HTMLButtonElement>(".notification-trigger")!.click());
+  assert(!document.querySelector(".notification-item"), "Rebuilding the sidebar restored dismissed rows");
+  const freshQuestion = ask("A", "New question after bulk read");
+  await until(() => document.querySelector(".notification-badge")?.textContent === "1" &&
+    Boolean(document.querySelector(`[data-request-id="${freshQuestion.requestId}"].unread:not(:disabled)`)), "new question restores its notice and badge after bulk read");
+  document.querySelector<HTMLButtonElement>(`[data-request-id="${freshQuestion.requestId}"]`)!.click();
+  await selected("A");
+  assert(document.querySelector(".notification-badge")?.textContent === "1", "Question navigation changed its unread state after bulk read");
+  document.querySelector<HTMLButtonElement>(".notification-trigger")!.click();
+  await until(() => Boolean(document.querySelector(`[data-request-id="${freshQuestion.requestId}"].unread`)), "unanswered question remains in the notification list");
+  flushSync(() => document.querySelector<HTMLButtonElement>(".asktool-option")!.click());
+  document.querySelector<HTMLButtonElement>(".asktool-card-header-actions .btn-primary")!.click();
+  await until(() => !document.querySelector(".notification-question") && !document.querySelector(".notification-badge"), "answering removes the question and badge together");
+  addCompletion();
+  await until(() => Boolean(document.querySelector(".notification-completion:not(:disabled)")) && !markAll()?.disabled &&
+    document.querySelector(".notification-badge")?.textContent === "1", "new completion restores the total badge and re-enables mark-all");
+  document.querySelector<HTMLButtonElement>('[aria-label="Clear all"]')!.click();
+  await until(() => useAppStore.getState().notifications.length === 0 && !document.querySelector(".notification-question"), "clear removes all reminders");
+  assert(requests.get("B")?.requestId === unanswered.requestId, "Clear must not cancel the pending question");
+  await useAppStore.getState().refreshNotificationAttention();
+  assert(!document.querySelector(".notification-completion"), "Cleared completion resurrected after refresh");
+  const afterClearQuestion = ask("A", "New question after clear");
+  await until(() => document.querySelector(".notification-badge")?.textContent === "1" &&
+    Boolean(document.querySelector(`[data-request-id="${afterClearQuestion.requestId}"].unread:not(:disabled)`)), "clear does not hide a future question");
+  document.querySelector<HTMLButtonElement>('[aria-label="Clear all"]')!.click();
+  await until(() => !document.querySelector(".notification-item") && !document.querySelector(".notification-badge"), "clear removes the fresh question reminder without answering it");
+  addCompletion();
+  await openBell();
+  rejectReads = true;
+  document.querySelector<HTMLButtonElement>(".notification-completion")!.click();
+  await until(() => useAppStore.getState().toasts.some((item) => item.variant === "error"), "failed completion navigation");
+  assert(history.get(done.id)?.readAt === undefined, "Failed navigation confirmed the task result");
+  await useAppStore.getState().refreshNotifications();
+  assert(!acknowledged.includes(done.id), "Failed navigation acknowledged the completion before loading");
+  assert(history.get(done.id)?.readAt === undefined, "Refreshing after failed navigation removed its reminder");
+  rejectReads = false;
+  await openBell();
+  document.querySelector<HTMLButtonElement>(".notification-completion")!.click();
+  await until(() => useAppStore.getState().activeSessionId === "C" &&
+    !useAppStore.getState().selectingSessionId, "completion destination loaded");
+  const focusDescriptor = Object.getOwnPropertyDescriptor(document, "hasFocus");
+  Object.defineProperty(document, "hasFocus", { configurable: true, value: () => true });
+  try {
+    window.dispatchEvent(new Event("focus"));
+    const visibleId = done.id;
+    await until(() => acknowledged.includes(visibleId) && Boolean(useAppStore.getState().notifications.find((item) => item.id === visibleId)?.readAt),
+      "viewing a completion acknowledges its exact notification");
+    flushSync(() => useAppStore.getState().openSettings());
+    addCompletion();
+    const coveredId = done.id;
+    window.dispatchEvent(new Event("focus"));
+    assert(!acknowledged.includes(coveredId) && history.get(coveredId)?.readAt === undefined,
+      "Settings must not acknowledge the chat beneath it");
+    flushSync(() => useAppStore.getState().closeSettings());
+    await until(() => acknowledged.includes(coveredId), "closing Settings reveals and confirms the completion");
+  } finally {
+    if (focusDescriptor) Object.defineProperty(document, "hasFocus", focusDescriptor);
+    else Reflect.deleteProperty(document, "hasFocus");
+  }
+  await verifyApprovalNotifications();
   assert(unexpected.length === 0, `Unexpected IPC: ${unexpected}`);
 
   // The runner delivers real Chromium keyboard events after focusing the action.
-  globalThis.prepareQuestionNotificationKeyboard = () => {
+  globalThis.prepareQuestionNotificationKeyboard = async () => {
     reset("settings");
     ask("B", "Keyboard question");
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     action("B").focus();
     assert(document.activeElement === action("B"), "Question action is not focusable");
   };
@@ -298,5 +579,7 @@ globalThis.questionNotificationProbe = async () => {
   return { ok: true, home: true, safeArea: true, safeAreaResize: true,
     safeAreaShift: true, crossProject: true, answered: true, distinctTargets: true,
     dismiss: true, textSelection: true, focusTimer: true, ordinaryToast: true,
-    errorFeedback: true, retry: true };
+    errorFeedback: true, retry: true, persistentQuestionBadge: true, completionViewed: true, bulkAcknowledgement: true,
+    topRightBadge: true, distinctNotificationIcons: true, notificationContextLabels: true,
+    approvalNavigation: true, approvalFailureRetry: true, approvalLifecycle: true };
 };

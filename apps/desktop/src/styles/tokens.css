@@ -176,6 +176,7 @@
   /* Work-panel controls share these geometry tokens so the header's safe lane
      cannot drift away from the viewport-fixed toggle. */
   --ds-work-panel-toggle-size: 28px;
+  --ds-notification-control-reserve: calc(var(--ds-work-panel-toggle-size) + 8px);
   --ds-work-panel-toggle-inset: 12px;
   /* The one gap between adjacent controls in the panel header row: the tab
      strip to the action group, between `+` and maximize, and — through the

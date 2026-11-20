@@ -1,3 +1,12 @@
+import { isAbsolute, join, relative } from "node:path";
+
+/** Side Chat stores its local host sessions in its private per-chat workspaces. */
+export function isSideChatNotificationWorkspace(dataDir: string, projectPath: unknown): boolean {
+  if (typeof projectPath !== "string" || !isAbsolute(projectPath)) return false;
+  const root = join(dataDir, "plugins", "data", "com.vastsa.side-chat", "attachments");
+  return /^[a-f0-9]{32}$/i.test(relative(root, projectPath));
+}
+
 export type TaskNotificationVisibility = {
   finishingSessionId: string;
   viewingSessionId: string | null;

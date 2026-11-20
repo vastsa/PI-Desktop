@@ -62,7 +62,7 @@ function fixture({ onTurnEnded } = {}) {
       }
       if (method === "session.endTurn") {
         const write = deferred();
-        writes.push({ ...write, turnId: params.turnId });
+        writes.push({ ...write, turnId: params.turnId, createNotification: params.createNotification });
         return write.promise;
       }
       if (method === "session.queuePrioritize") {
@@ -428,4 +428,71 @@ test("an idempotent Goal retry never repeats the accepted replacement callback",
   assert.equal(retry.id, first.id);
   assert.equal(replacements, 1);
   assert.equal(f.persistedQueue.size, 1);
+});
+
+for (const status of ["completed", "error"]) {
+  test(`a side-chat ${status} settles without a task notification and leaves other turns alone`, async () => {
+    const f = fixture();
+    f.coordination.recordTurnStart(SESSION, FIRST_TURN, { suppressTaskNotification: true });
+    const side = f.finish(status);
+    await setImmediate();
+    const sideWrite = f.writes[0];
+    sideWrite.resolve({ ok: true });
+    await side;
+    assert.equal(sideWrite.createNotification, false);
+    assert.deepEqual(f.announcements, [{ sessionId: SESSION, turnId: FIRST_TURN, reason: status }]);
+
+    const normalTurn = "ordinary-follow-up";
+    f.activeTurns.set(SESSION, normalTurn);
+    f.coordination.recordTurnStart(SESSION, normalTurn);
+    const ordinary = f.finishTurn(SESSION, "completed", undefined, { turnId: normalTurn });
+    await setImmediate();
+    const ordinaryWrite = f.writes[1];
+    ordinaryWrite.resolve({ ok: true });
+    await ordinary;
+    assert.equal(ordinaryWrite.createNotification, true);
+  });
+}
+
+test("a Side Chat prompt keeps the main chat viewing state and settles errors without notifications", async () => {
+  const { registerAgentIpc } = await import("../electron/main/ipc/agent-ipc.ts");
+  const f = fixture();
+  const handlers = new Map();
+  const dataDir = join(here, "fixture-profile");
+  const projectPath = join(dataDir, "plugins", "data", "com.vastsa.side-chat", "attachments", "a".repeat(32));
+  const failure = new Error("fixture launch failure after beginTurn");
+  let viewingSessionId = "main-chat";
+  registerAgentIpc({
+    registrar: { handle: (channel, invoke) => handlers.set(channel, invoke) },
+    getHost: () => ({
+      async call(method) {
+        if (method === "settings.get") return {};
+        if (method === "session.get") return { session: { id: SESSION, mode: "plan", projectPath } };
+        if (method === "session.beginTurn") return { turnId: FIRST_TURN };
+        throw new Error(`Unexpected host call: ${method}`);
+      },
+    }),
+    getSidecar: () => ({ setProjectInstructionRoot() {} }),
+    getAgentHostBridge: () => f.bridge,
+    dataDir,
+    activeTurns: f.activeTurns,
+    recordTurnStart: f.coordination.recordTurnStart,
+    activeTurnUsages: f.coordination.activeTurnUsages,
+    acquireSessionOperation: f.coordination.acquireSessionOperation,
+    resolveAgentRuntimeLaunch: async () => ({ sidecarParams: { mode: "plan" } }),
+    modeRuns: { prepareTurn: async () => { throw failure; } },
+    finishTurn: f.finishTurn,
+    setNotificationViewingSessionId: (id) => { viewingSessionId = id; },
+  });
+
+  const rejected = assert.rejects(handlers.get(IPC.invoke.agentPrompt)({
+    sessionId: SESSION, content: "Side Chat question", attachments: [],
+  }), (error) => error === failure);
+  await setImmediate();
+  assert.equal(f.writes.length, 1);
+  f.writes[0].resolve({ ok: true });
+  await rejected;
+  assert.equal(viewingSessionId, "main-chat");
+  assert.equal(f.writes[0].createNotification, false);
+  assert.deepEqual(f.announcements, [{ sessionId: SESSION, turnId: FIRST_TURN, reason: "error" }]);
 });

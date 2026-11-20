@@ -3122,6 +3122,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "Bağlam sıkıştırıldı. Uzun diziler her sıkıştırmada erken ayrıntıyı kaybeder — ilgisiz iş için yeni oturum açın.",
   },
   notifications: {
+    ...en.notifications,
     title: "Bildirimler",
     open: "Bildirimleri aç",
     openUnread: "Bildirimleri aç, {{count}} okunmamış",

@@ -53,6 +53,7 @@ import { createProjectSlice } from "./slices/project-slice";
 import { createCatalogSlice } from "./slices/catalog-slice";
 import { createEventsSlice } from "./slices/events-slice";
 import { createInteractionSlice } from "./slices/interaction-slice";
+import { createNotificationAttentionSlice } from "./slices/notification-attention-slice";
 import {
   createCatalogRuntime,
   type CatalogRuntime,
@@ -161,6 +162,7 @@ export const useAppStore = create<AppState>((set, get) => {
   return {
   ...createInitialState(),
   ...transcriptReading.actions,
+  ...createNotificationAttentionSlice({ get, set }),
 
   ...createSessionSlice({
     get,

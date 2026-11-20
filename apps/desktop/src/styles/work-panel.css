@@ -147,7 +147,7 @@
   padding: 0
     calc(
       var(--ds-work-panel-toggle-size) + var(--ds-work-panel-toggle-inset) +
-        var(--ds-work-panel-control-gap)
+        var(--ds-work-panel-control-gap) + var(--ds-notification-control-reserve)
     )
     0 12px;
   --window-drag-region: drag;

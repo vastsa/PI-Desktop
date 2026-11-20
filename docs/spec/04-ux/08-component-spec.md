@@ -498,7 +498,7 @@ Expanded (~275px, D034/D070):
 |   • Project session      |
 | project-B      [>] [+] … |
 |                           |
-| [⚙][plug][bell]          [version]|
+| [Settings]       [version]|
 +---------------------------+
 
 Collapsed (48px):
@@ -507,7 +507,7 @@ Collapsed (48px):
 | ses |
 | ses |
 | ──  |
-| [⚙][plug][☾][bell] |
+| [titlebar controls] |
 +----+
 ```
 
@@ -737,7 +737,7 @@ visually distinct from list content.
   non-Settings route
 - Click the local profile trigger: open or close the identity menu containing
   Settings, Logs, and Theme
-- Click the footer bell: open or close the durable notification inbox
+- Click the app titlebar bell: open or close the notification inbox.
 
 ### 3.6 Accessibility
 
@@ -859,7 +859,6 @@ account, subscription, or collaboration backend.
 | User glyph | `30px` circular local-user glyph; decorative when the text label names the control |
 | Identity copy | Primary `Custom`; secondary `Local profile` or localized `本地配置`; two lines truncate independently |
 | Chevron | Trailing disclosure indicator; reflects the menu's open state without motion when reduced motion is requested |
-| Notification shortcut | Separate `32px` square Bell target with unread badge; opens the durable inbox above and to the right of the footer |
 | Profile menu | `280px` wide, bottom anchored `8px` above the footer; opaque elevated surface |
 | Identity header | Repeats the glyph and two-line local identity; non-interactive |
 | Menu actions | Divider, then Settings, Logs, and Theme in that order; Theme retains its current-value metadata |
@@ -4464,7 +4463,7 @@ restarts.
 ### 20.2 Anatomy
 
 ```text
-Sidebar footer                                        Popover (360px max)
+App titlebar                                          Popover (360px max)
 [Bell (12)]  ->  [Notifications]       [All | Unread] [Mark all read] [Clear]
                  ------------------------------------------------------------
                  [unread dot] [check] Task completed              2m
@@ -4474,13 +4473,13 @@ Sidebar footer                                        Popover (360px max)
                                       Session title · ERROR_CODE
 ```
 
-- Trigger: 32px Lucide `Bell` icon button at the right of the expanded sidebar
-  footer, replacing the former Help shortcut. The main titlebar has no
-  duplicate. A compact badge renders `1`–`99` and `99+`; its accessible label
-  retains the exact count (the durable store is capped at 200).
-- Popover: width `min(360px, calc(100vw - 24px))`, opens above and to the right
-  of the footer, and is no taller than the available window, with one internally
-  scrollable row list.
+- Trigger: one Lucide `Bell` icon button in the app's top-right chrome,
+  next to the work-panel toggle and clear of the native window controls. The
+  sidebar has no notification entry. A compact badge renders `1`–`99` and `99+`;
+  its accessible label retains the exact total (up to 200 retained task outcomes
+  plus visible asks and permissions).
+- Popover: width `min(360px, calc(100vw - 24px))`, opens below the bell,
+  and stays within the viewport with one internally scrollable row list.
 - Header: localized title, `All` / `Unread` segmented filter, Lucide
   `CheckCheck` mark-all-read button, and Lucide `Trash2` clear button. Icon-only
   actions carry localized tooltips and accessible names.
@@ -4499,33 +4498,40 @@ Sidebar footer                                        Popover (360px max)
 | Unread | Badge shows count; unread rows carry dot and stronger label weight |
 | All empty | Centered compact “No notifications” empty state; list actions disabled |
 | Unread empty | “You're all caught up”; All filter remains available |
-| Loading/refresh | Preserve current rows and filter; disable mutations until refresh settles |
+| Loading/refresh | Preserve current rows and filter; available rows remain immediately clickable; only explicit mutations disable actions |
 | Mutation failure | Keep the existing list and announce an error toast; do not optimistically lose rows |
 
 ### 20.4 Interactions
 
 - Bell toggles the popover. Opening does not implicitly mark anything read.
-- `All` shows the newest retained rows; `Unread` filters to `readAt == null`.
-- Selecting a row first calls `notification.markRead`, closes the popover, then
-  activates the row's durable session (including its project when applicable)
-  and scrolls the transcript to its latest content. The successful read also
-  dismisses the matching task-native banner before a late activation can
-  surface it again.
+- Both `All` and `Unread` omit acknowledged reminders. Read terminal records remain
+  in durable history rather than appearing as gray bell rows.
+- Selecting a failure row first calls `notification.markRead`, closes the popover,
+  then activates the row's durable session (including its project when applicable)
+  and scrolls the transcript to its latest content. Completion navigation defers
+  read until the intended chat has successfully loaded and is still selected in a
+  visible focused window. Failed or superseded navigation retains the reminder.
+  Acknowledgement dismisses the matching task-native banner before a late
+  activation can surface it again.
 - Restoring/focusing the app from its taskbar or Dock while an unread terminal
   outcome's session is already visible in the chat marks that session's
   matching durable notifications read; it does not mark outcomes belonging to
   other sessions.
-- Mark all read is idempotent and preserves rows; it dismisses every outstanding
-  task-native banner. Clear deletes every inbox row, dismisses all task-native
-  banners, and leaves sessions, transcripts, and turns intact. These actions
-  remain available for successful completions hidden from the failure-only
-  bell list, so the taskbar unread badge can be cleared from the popover.
+- Mark all read is idempotent and removes every current bell reminder and its
+  badge contribution, including unanswered asks and undecided permissions, while
+  preserving durable task history. It dismisses every outstanding task-native
+  banner. Clear also deletes inbox history. Neither action answers, approves,
+  denies, or cancels a pending request; inline decision cards remain usable.
 - `notification.changed` updates the visible list and badge only for a new
   durable id. A duplicate id, or a delayed event for an acknowledged/cleared
   row, is ignored. Opening the
   popover also refreshes the bounded list from host-core. A
   `notification.activated` event from Electron follows the same session
   activation path as a row click.
+- Local Side Chat turns in the plugin's private chat workspaces keep their
+  normal transcript and settlement, but do not create a task notification,
+  unread badge contribution, completion chime, or native banner. Sending a
+  side-chat prompt does not replace the main conversation's viewing state.
 - Completion/failure enters the durable inbox unless the main window is
   visible/focused and the exact finishing session is the current chat. A
   focused background session still enters the inbox without a native banner;
@@ -4533,9 +4539,56 @@ Sidebar footer                                        Popover (360px max)
   Clicking the banner restores/shows and focuses the main window before
   emitting `notification.activated` for the matching session.
 - Aborted turns, interactive permission/ask/Plan prompts, scheduled reminders,
-  and plugin notifications do not enter this inbox. Interactive prompts may
+  and plugin notifications do not create durable inbox history. Interactive prompts may
   use the source-aware native surface while the app is focused on a different
   session.
+- **Attention additions** ([ADR](../../adr/notification-attention-lifetimes.md)):
+  the same All/Unread lists prepend open ask/permission requests and derive
+  completion rows from unread `task.completed` records in the ordinary notification
+  list, without replacing failure rows, text, native banners, sounds, or taskbar
+  policy. One red badge at the bell's top-right is
+  `unreadNotificationCount + visibleAskCount + visiblePermissionCount`.
+  `unreadNotificationCount` includes both successful and failed outcomes; completion
+  rows never contribute through a second attention/history count path. Read/cleared
+  reminders do not count; zero hides the badge and values above 99 show `99+`.
+  Bulk read and clear hide interactive reminders from both filters and the badge
+  for this renderer lifetime, including sidebar collapse/remount. Every visible
+  interactive row remains unread. There is no completion pagination or load-more
+  action. Question/check/alert/shield icons distinguish asks, completions, failures,
+  and permission requests.
+- Project copy identifies the owning sidebar project display name and chat
+  title: `Project “{projectName}”, chat “{sessionTitle}” has unanswered questions`
+  or `…has completed its task`. Unscoped copy starts `In sessions, chat…`.
+  Chinese uses `「{projectName}」项目中「{sessionTitle}」对话有问题未回答` /
+  `…对话任务已完成`; unscoped copy starts `会话中「{sessionTitle}」对话`.
+  Ordinary outcome/native titles use `{projectName} · {sessionTitle}` or localized
+  `Sessions · {sessionTitle}`. Resolve the current chat title before the historical
+  snapshot; never use a session ID as its display name. Missing titles use New task.
+- Opening a question item only navigates; its reminder and badge remain together
+  until successful whole-request submission (including explicit decline/skip),
+  authoritative cancellation, or explicit bulk acknowledgement. Mark-all-read and
+  clear hide the reminder without submitting an answer. Draft edits and partial
+  progress never settle it; submission failures retain the card and reminder for
+  retry. Startup and bell opening reconcile in the background without blocking
+  existing rows, activating chats, replaying sound, or stealing focus on late results.
+- Permission attention projects actual `pendingPermissions` requests, including
+  requests from Ask permission mode, one row per session/request ID. Its tool
+  summary reuses the existing permission body; project/unscoped titles identify
+  the owning chat. Clicking reuses `onActivate` / `selectSession`, never
+  `resolvePermission`, and retains both the reminder and its badge contribution.
+  Bulk read/clear hides the reminder, not the pending permission. Only accepted
+  Allow once / Allow for session / Deny or authoritative cancellation settles that
+  request; the existing inline card owns approval controls.
+- Completion reminders can be acknowledged without navigation: ordinary mark-read
+  updates the exact retained notification, mark-all-read updates every unread
+  notification, and clear deletes notification history. These schema-33 semantics
+  are unchanged. Opening the successfully loaded, selected chat in a visible
+  focused window is an optional acknowledgement, confirmed after navigation settles.
+  Opening the bell/project or failed/superseded navigation alone does not
+  acknowledge it. New notifications re-enable the bulk actions. A live insertion
+  during refresh appears once in the bounded ordinary list and its unread count.
+  Confirmation invalidates older ordinary notification snapshots so an empty list
+  cannot regain a stale badge.
 
 ### 20.5 Accessibility
 
@@ -4555,13 +4608,15 @@ Sidebar footer                                        Popover (360px max)
 
 ### 20.6 Constraints
 
-- The list contains only `task.completed` and `task.failed` records produced
-  from unseen terminal agent turns. Visible-current results and `aborted` turns
-  are intentionally silent.
-- At most 200 newest rows are retained globally. There is no pagination,
-  scheduled notification source, durable permission-notification source,
-  preferences page, notification permission prompt, or cloud sync. Interactive
-  prompt banners are transient native surfaces outside the inbox.
+- The existing `notifications` table is the sole durable source for completion
+  reminders. Schema 33 stays unchanged: no schema bump, migration, or new table.
+  History retains only the newest 200 terminal outcomes, read or unread, and keeps
+  its existing read/clear semantics; the bell displays outstanding reminders only.
+  Unread completion reminders survive restart only while retained; pruning beyond
+  the latest 200 may deliberately discard them. Open ask/permission rows are live
+  projections, not persisted history. Permission/Plan reminders and native prompt
+  banners remain outside durable history. Restarting the whole runtime does not
+  resume an old ask Promise.
 
 ---
 

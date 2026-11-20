@@ -661,7 +661,7 @@
 .conversation-topbar .ct-right {
   flex: 0 0 auto;
   justify-content: flex-end;
-  padding-right: 36px;
+  padding-right: calc(36px + var(--ds-notification-control-reserve));
 }
 
 .conversation-topbar.ct-work-panel-open .ct-right {
@@ -841,6 +841,7 @@
    them. */
 .conversation-topbar .ct-icon-btn,
 .app-work-panel-toggle,
+.notification-trigger,
 .main-titlebar .title-nav-btn,
 .window-chrome-row .title-nav-btn,
 .work-panel-new-tab,
@@ -862,6 +863,8 @@
 
 .conversation-topbar .ct-icon-btn:hover:not(:disabled),
 .app-work-panel-toggle:hover:not(:disabled),
+.notification-trigger:hover,
+.notification-trigger[aria-expanded="true"],
 .main-titlebar .title-nav-btn:hover:not(:disabled),
 .window-chrome-row .title-nav-btn:hover:not(:disabled),
 .work-panel-new-tab:hover:not(:disabled),
@@ -1038,26 +1041,43 @@
 }
 
 .notification-center {
-  position: relative;
-  flex: 0 0 auto;
+  position: fixed;
+  top: 9px;
+  right: calc(var(--ds-work-panel-toggle-inset) + var(--ds-notification-control-reserve));
+  z-index: 30;
+  --window-drag-region: no-drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+:root[data-platform="win32"] .notification-center,
+:root[data-platform="linux"] .notification-center {
+  right: calc(
+    var(--ds-window-controls-width) + var(--ds-work-panel-toggle-inset) +
+      var(--ds-notification-control-reserve)
+  );
 }
 
 .notification-trigger {
   position: relative;
-  width: 32px;
-  height: 32px;
+  margin: 0;
 }
 
-.notification-badge {
+.notification-badges {
   position: absolute;
   top: -5px;
   right: -6px;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.notification-badge {
   display: inline-flex;
   min-width: 16px;
   height: 16px;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--ds-bg-sidebar);
+  border: 2px solid var(--ds-bg-primary);
   border-radius: var(--radius-full);
   background: var(--ds-error);
   color: var(--ds-bg-primary);
@@ -1292,18 +1312,6 @@
   max-width: 260px;
   font-size: var(--text-sm);
   line-height: var(--leading-body);
-}
-
-@media (max-width: 480px) {
-  .notification-popover {
-    position: fixed;
-    top: auto;
-    bottom: 8px;
-    right: 8px;
-    left: 8px;
-    width: auto;
-    max-height: calc(100vh - 16px);
-  }
 }
 
 .window-controls {

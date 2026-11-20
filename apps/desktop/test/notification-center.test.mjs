@@ -17,16 +17,16 @@ const chineseCatalog = await readFile(
   "utf8",
 );
 
-test("notification center exposes an accessible sidebar footer trigger and dialog", () => {
+test("notification center exposes an accessible titlebar trigger and dialog", () => {
   assert.match(componentSource, /<IconBell size=\{14\} aria-hidden \/>/);
-  assert.match(componentSource, /className=\{`footer-notification notification-trigger/);
-  assert.match(componentSource, /onBeforeOpen\?\.\(\)/);
+  assert.match(componentSource, /className="notification-trigger"/);
   assert.match(componentSource, /aria-haspopup="dialog"/);
   assert.match(componentSource, /aria-controls="notification-popover"/);
   assert.match(componentSource, /aria-expanded=\{open\}/);
   assert.match(componentSource, /role="dialog"/);
   assert.match(componentSource, /aria-labelledby="notification-title"/);
-  assert.match(componentSource, /unreadCount > 99 \? "99\+" : unreadCount/);
+  assert.match(componentSource, /badgeCount > 99 \? "99\+" : badgeCount/);
+  assert.doesNotMatch(componentSource, /notification-question-badge/);
 });
 
 test("notification center supports filtering, bulk actions, and session navigation", () => {
@@ -36,7 +36,8 @@ test("notification center supports filtering, bulk actions, and session navigati
   assert.match(componentSource, /markAllNotificationsRead/);
   assert.match(componentSource, /clearNotifications/);
   assert.match(componentSource, /openNotification\(notification\.id\)/);
-  assert.match(componentSource, /notification\.kind === "task\.failed"/);
+  assert.match(componentSource, /inboxNotifications\(storedNotifications\)/);
+  assert.match(componentSource, /notifications\.failedTitle/);
   assert.match(componentSource, /notification\.errorCode/);
 });
 
@@ -78,8 +79,18 @@ test("notification popover has bounded desktop and mobile layouts", () => {
     globalStyles,
     /\.notification-popover-portaled\s*\{[^}]*z-index:\s*60;/s,
   );
-  assert.match(componentSource, /style=\{\{ bottom: popoverPos\.bottom, left: popoverPos\.left \}\}/);
-  assert.match(globalStyles, /\.notification-badge\s*\{[^}]*var\(--ds-bg-sidebar\)/s);
+  assert.match(componentSource, /setPopoverPos\(\{ top: rect\.bottom \+ 8, left \}\)/);
+  assert.match(componentSource, /style=\{popoverPos\}/);
+  assert.match(globalStyles, /\.notification-center\s*\{[^}]*position:\s*fixed;[^}]*--ds-notification-control-reserve/s);
   assert.match(globalStyles, /\.notification-list\s*\{[^}]*overflow-y:\s*auto;/s);
   assert.match(globalStyles, /\.notification-item\.unread\s*\{/);
+});
+
+test("notification badges share a top-right anchor without overlapping", () => {
+  const rule = globalStyles.match(/\.notification-badges\s*\{([^}]*)\}/s)?.[1];
+  assert.ok(rule);
+  assert.match(rule, /top:\s*-5px;/);
+  assert.match(rule, /right:\s*-6px;/);
+  assert.match(rule, /display:\s*inline-flex;/);
+  assert.doesNotMatch(globalStyles, /\.notification-question-badge\s*\{[^}]*bottom:/s);
 });

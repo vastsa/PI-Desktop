@@ -12,17 +12,20 @@ import type { AppNotification } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/app-store";
 import {
+  formatNotificationSessionLabel,
   inboxNotifications,
-  inboxUnreadCount,
+  notificationBadgeCount,
+  notificationSessionLabel,
 } from "../lib/notification-inbox";
 import {
   IconBell,
   IconCheckCheck,
   IconCircleAlert,
-  IconCircleCheck,
   IconTrash,
 } from "./icons";
 import { TooltipButton } from "./ui";
+import { useNotificationAttention } from "../features/app/useNotificationAttention";
+import { NotificationAttentionItems } from "./NotificationAttentionItems";
 
 type NotificationFilter = "all" | "unread";
 
@@ -60,25 +63,17 @@ function formatRelativeTime(value: string, locale: string, justNow: string): str
   }
 }
 
-export function NotificationCenter({
-  onBeforeOpen,
-}: {
-  onBeforeOpen?: () => void;
-}) {
+export function NotificationCenter() {
   const { t, i18n } = useTranslation();
+  const attention = useNotificationAttention();
+  const selectSession = useAppStore((state) => state.selectSession);
   const storedNotifications = useAppStore((state) => state.notifications);
-  // Successful completions are hidden here; they still drive the sidebar
-  // outcome badge and native notifications from the unfiltered store.
+  // Read records remain in durable history, not in the bell's attention list.
   const notifications = useMemo(
-    () => inboxNotifications(storedNotifications),
-    [storedNotifications],
-  );
-  const unreadCount = useMemo(
-    () => inboxUnreadCount(storedNotifications),
+    () => inboxNotifications(storedNotifications).filter((notification) => !notification.readAt),
     [storedNotifications],
   );
   const allUnreadCount = useAppStore((state) => state.unreadNotificationCount);
-  const refreshNotifications = useAppStore((state) => state.refreshNotifications);
   const markAllNotificationsRead = useAppStore(
     (state) => state.markAllNotificationsRead,
   );
@@ -89,18 +84,27 @@ export function NotificationCenter({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<NotificationFilter>("all");
-  const [popoverPos, setPopoverPos] = useState<{ bottom: number; left: number } | null>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-
-  const visibleNotifications = useMemo(
-    () =>
-      filter === "unread"
-        ? notifications.filter((notification) => !notification.readAt)
-        : notifications,
-    [filter, notifications],
-  );
+  const sessions = useAppStore((state) => state.sessions);
+  const projectMeta = useAppStore((state) => state.projectMeta);
+  const requests = useMemo(() => [...attention.questions, ...attention.permissions],
+    [attention.questions, attention.permissions]);
+  const questions = attention.questions;
+  const permissions = attention.permissions;
+  const questionCount = questions.length;
+  const interactiveCount = questions.length + permissions.length;
+  const badgeCount = notificationBadgeCount(allUnreadCount, interactiveCount);
+  const hasUnread = badgeCount > 0;
+  const hasItems = notifications.length > 0 || attention.completions.length > 0 || interactiveCount > 0;
+  const acknowledgeAttention = async (action: () => Promise<void>) => {
+    const ids = requests.map((item) => item.requestId);
+    await action();
+    attention.dismiss(ids);
+    await attention.refresh();
+  };
 
   const closePopover = useCallback((restoreFocus = true) => {
     setOpen(false);
@@ -118,11 +122,8 @@ export function NotificationCenter({
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const width = Math.min(360, window.innerWidth - 24);
-      const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
-      setPopoverPos({
-        bottom: Math.max(12, window.innerHeight - rect.top + 8),
-        left,
-      });
+      const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
+      setPopoverPos({ top: rect.bottom + 8, left });
     };
     place();
     window.addEventListener("resize", place);
@@ -131,22 +132,20 @@ export function NotificationCenter({
 
   useEffect(() => {
     if (!open) return;
-    setBusy(true);
-    void refreshNotifications()
+    const focusFrame = requestAnimationFrame(() => {
+      popoverRef.current
+        ?.querySelector<HTMLButtonElement>(
+          ".notification-item.unread, .notification-item, .notification-filter.active",
+        )
+        ?.focus();
+    });
+    // Refresh must not disable already available actions or steal focus later.
+    void attention.refresh()
       .catch(() =>
         showToast(t("notifications.actionFailed"), { variant: "error" }),
-      )
-      .finally(() => {
-        setBusy(false);
-        requestAnimationFrame(() => {
-          popoverRef.current
-            ?.querySelector<HTMLButtonElement>(
-              ".notification-item.unread, .notification-item, .notification-filter.active",
-            )
-            ?.focus();
-        });
-      });
-  }, [open, refreshNotifications, showToast, t]);
+      );
+    return () => cancelAnimationFrame(focusFrame);
+  }, [open, attention.refresh, showToast, t]);
 
   useEffect(() => {
     if (!open) return;
@@ -219,39 +218,41 @@ export function NotificationCenter({
   };
 
   const unreadLabel =
-    unreadCount > 0
-      ? t("notifications.openUnread", { count: unreadCount })
+    badgeCount > 0
+      ? t("notifications.openUnread", { count: badgeCount })
       : t("notifications.open");
   const emptyUnread = filter === "unread";
+  const triggerLabel = questionCount > 0
+    ? `${unreadLabel}; ${t("notifications.pendingQuestions", { count: questionCount })}`
+    : unreadLabel;
 
   return (
     <div className="notification-center" ref={rootRef}>
       <TooltipButton
         ref={triggerRef}
         type="button"
-        className={`footer-notification notification-trigger ${open ? "active" : ""}`}
-        tooltip={unreadLabel}
-        ariaLabel={unreadLabel}
+        className="notification-trigger"
+        tooltip={triggerLabel}
+        ariaLabel={triggerLabel}
         aria-haspopup="dialog"
         aria-controls="notification-popover"
         aria-expanded={open}
         onClick={() => {
           if (open) closePopover();
-          else {
-            onBeforeOpen?.();
-            setOpen(true);
-          }
+          else setOpen(true);
         }}
       >
         <IconBell size={14} aria-hidden />
-        {unreadCount > 0 ? (
-          <span className="notification-badge" aria-hidden>
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        ) : null}
+        <span className="notification-badges" aria-hidden>
+          {badgeCount > 0 ? (
+            <span className="notification-badge">
+              {badgeCount > 99 ? "99+" : badgeCount}
+            </span>
+          ) : null}
+        </span>
       </TooltipButton>
       <span className="sr-only" role="status" aria-live="polite">
-        {unreadLabel}
+        {triggerLabel}
       </span>
 
       {open && popoverPos && typeof document !== "undefined"
@@ -263,7 +264,7 @@ export function NotificationCenter({
               role="dialog"
               aria-labelledby="notification-title"
               onKeyDown={onPopoverKeyDown}
-              style={{ bottom: popoverPos.bottom, left: popoverPos.left }}
+              style={popoverPos}
             >
           <header className="notification-header">
             <h2 id="notification-title">{t("notifications.title")}</h2>
@@ -273,8 +274,8 @@ export function NotificationCenter({
                 className="notification-action"
                 tooltip={t("notifications.markAllRead")}
                 ariaLabel={t("notifications.markAllRead")}
-                disabled={busy || allUnreadCount === 0}
-                onClick={() => void runToolbarAction(markAllNotificationsRead)}
+                disabled={busy || !hasUnread}
+                onClick={() => void runToolbarAction(() => acknowledgeAttention(markAllNotificationsRead))}
               >
                 <IconCheckCheck size={15} aria-hidden />
               </TooltipButton>
@@ -283,8 +284,8 @@ export function NotificationCenter({
                 className="notification-action"
                 tooltip={t("notifications.clearAll")}
                 ariaLabel={t("notifications.clearAll")}
-                disabled={busy || storedNotifications.length === 0}
-                onClick={() => void runToolbarAction(clearNotifications)}
+                disabled={busy || !hasItems}
+                onClick={() => void runToolbarAction(() => acknowledgeAttention(clearNotifications))}
               >
                 <IconTrash size={15} aria-hidden />
               </TooltipButton>
@@ -309,42 +310,37 @@ export function NotificationCenter({
             ))}
           </div>
 
-          {visibleNotifications.length > 0 ? (
+          {hasItems ? (
             <ul className="notification-list">
-              {visibleNotifications.map((notification) => {
-                const failed = notification.kind === "task.failed";
-                const sessionTitle = notification.sessionTitle || t("chat.untitledTask");
-                const title = t(
-                  failed
-                    ? "notifications.failedTitle"
-                    : "notifications.completedTitle",
-                  { sessionTitle },
-                );
-                const body = failed
-                  ? notification.errorCode
-                    ? t("notifications.failedBodyWithCode", {
-                        code: notification.errorCode,
-                      })
-                    : t("notifications.failedBody")
-                  : t("notifications.completedBody");
+              <NotificationAttentionItems {...attention} questions={questions} permissions={permissions}
+                busy={busy}
+                onActivate={(sessionId) => {
+                  closePopover();
+                  void selectSession(sessionId).catch(() =>
+                    showToast(t("notifications.actionFailed"), { variant: "error" }));
+                }} />
+              {notifications.map((notification) => {
+                const sessionTitle = formatNotificationSessionLabel(
+                  notificationSessionLabel(notification.sessionId, sessions, projectMeta, notification.sessionTitle),
+                  t("nav.sessions"), t("chat.untitledTask"));
+                const title = t("notifications.failedTitle", { sessionTitle });
+                const body = notification.errorCode
+                  ? t("notifications.failedBodyWithCode", { code: notification.errorCode })
+                  : t("notifications.failedBody");
                 return (
                   <li key={notification.id}>
                     <button
                       type="button"
-                      className={`notification-item ${notification.readAt ? "" : "unread"}`}
+                      className="notification-item unread"
                       data-notification-id={notification.id}
                       disabled={busy}
                       onClick={() => void activateNotification(notification)}
                     >
                       <span
-                        className={`notification-kind-icon ${failed ? "failed" : ""}`}
+                        className="notification-kind-icon failed"
                         aria-hidden
                       >
-                        {failed ? (
-                          <IconCircleAlert size={17} />
-                        ) : (
-                          <IconCircleCheck size={17} />
-                        )}
+                        <IconCircleAlert size={17} />
                       </span>
                       <span className="notification-copy">
                         <span className="notification-item-title">{title}</span>
@@ -360,9 +356,7 @@ export function NotificationCenter({
                           t("notifications.justNow"),
                         )}
                       </time>
-                      {!notification.readAt ? (
-                        <span className="notification-unread-dot" aria-hidden />
-                      ) : null}
+                      <span className="notification-unread-dot" aria-hidden />
                     </button>
                   </li>
                 );

@@ -3060,6 +3060,7 @@ export const ptBR = {
     longThreadWarning: "O contexto foi compactado. Conversas longas perdem detalhes anteriores a cada compactação — inicie uma nova sessão para tarefas não relacionadas.",
   },
   notifications: {
+    ...en.notifications,
     title: "Notificações",
     open: "Abrir notificações",
     openUnread: "Abrir notificações, {{count}} não lidas",

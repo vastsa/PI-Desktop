@@ -79,10 +79,13 @@ export function createSessionCoordination({
     { turnIds: Set<string>; events: AgentEventEnvelope[]; forgotten: boolean }
   >();
 
-  function recordTurnStart(sessionId: string, turnId: string): void {
+  const mutedTaskNotificationTurns = new Set<string>();
+
+  function recordTurnStart(sessionId: string, turnId: string, options?: { suppressTaskNotification?: boolean }): void {
     const id = sessionId.trim();
     const turn = turnId.trim();
     if (!id || !turn) return;
+    if (options?.suppressTaskNotification) mutedTaskNotificationTurns.add(planSubmissionTurnKey(id, turn));
     const turns = startedTurnsBySession.get(id) ?? new Set<string>();
     turns.add(turn);
     startedTurnsBySession.set(id, turns);
@@ -363,6 +366,8 @@ export function createSessionCoordination({
     pendingAbortReasons,
     acquireSessionOperation,
     recordTurnStart,
+    takeTaskNotificationSuppression: (sessionId: string, turnId: string) =>
+      mutedTaskNotificationTurns.delete(planSubmissionTurnKey(sessionId, turnId)),
     beginTranscriptRewrite,
     deferTranscriptEvent,
     isStaleTranscriptEvent,

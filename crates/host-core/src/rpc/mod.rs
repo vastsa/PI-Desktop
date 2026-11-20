@@ -27,6 +27,9 @@ mod session_mode_migration_tests;
 #[cfg(test)]
 mod market_browse_rpc_tests;
 #[cfg(test)]
+mod notification_rpc_tests;
+
+#[cfg(test)]
 mod plugin_reviews_rpc_tests;
 #[cfg(test)]
 mod review_rpc_tests;

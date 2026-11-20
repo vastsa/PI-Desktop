@@ -903,6 +903,16 @@ type SessionsChangedEvent = {
 };
 ```
 
+These request/result contracts remain unchanged at schema 33. `unreadCount`
+includes both `task.completed` and `task.failed` rows in the existing
+`notifications` table. Completion reminders derive from unread `task.completed`
+rows in the ordinary list, bounded by the latest 200 retained notifications; they
+survive restart only while retained. Pruning may discard unread reminders. There
+is no separate completion page, count, or load-more request. Ordinary mark-read
+acknowledges the retained row, mark-all-read updates all unread rows, and clear
+deletes notification history. These actions never answer or resolve pending asks
+or permissions.
+
 Main sends two events:
 
 - `pi-desktop/notification/event/changed` after `session.endTurn` returns a

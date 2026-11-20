@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v33)
+# 04. Data Storage (Schema v34)
 
 ### Project path aliases (#2148)
 
@@ -1535,9 +1535,10 @@ CREATE INDEX idx_notifications_unread
 - After an insert, the same transaction prunes all but the newest 200 rows by
   `(created_at DESC, id DESC)`. This is a global cap; session deletion also
   cascades its rows.
-- Mark-read updates are idempotent (`read_at` changes only from null), mark all
-  read is one indexed update, and clear deletes notification rows only. None of
-  these operations changes sessions, turns, or transcripts.
+- Mark-read updates are idempotent (`read_at` changes only from null). Mark-read,
+  mark-all-read, and clear atomically acknowledge matching pending completion
+  reminders, including reminders whose history rows were pruned. Clear also deletes
+  notification history. None changes sessions, turns, or transcripts.
 
 ### Dropped from v1
 
@@ -2212,3 +2213,22 @@ upgrade chain first. Reopening schema 33 does not repeat the repair or replace
 the backup. Mode snapshots, permissions, and staged-run contracts are unchanged.
 Older Host binaries reject schema 33; retain the compatible backup rather than
 deleting application data or manually lowering the version marker.
+
+### Completion attention from bounded notifications (schema 33 unchanged)
+
+The existing Rust-owned `notifications` table is the sole durable source for
+completion reminders. The renderer derives them from unread `task.completed` rows
+in the ordinary notification list. No schema bump, migration, new table, or
+independently retained completion projection is introduced.
+
+The existing newest-200 global cap applies to read and unread outcomes alike.
+Unread completion reminders survive refresh and restart only while their rows
+remain retained; discarding older unread reminders is an accepted pruning trade-off.
+There is no separate completion pagination or load-more path.
+
+Ordinary mark-read sets the retained notification's `read_at`; mark-all-read sets
+it on every unread notification, and clear deletes notification history. These
+schema-33 semantics are unchanged, as is session-deletion cleanup. Interactive
+ask/permission reminders are not persisted here; bulk dismissal is renderer-lifetime
+state that survives sidebar remounts without resolving requests. See
+[notification attention lifetimes](../../adr/notification-attention-lifetimes.md).

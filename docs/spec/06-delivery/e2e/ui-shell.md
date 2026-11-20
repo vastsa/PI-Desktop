@@ -344,9 +344,8 @@
   window and complete another turn in A. 4) Restore/focus the app from its
   taskbar or Dock without switching sessions and confirm A's visible terminal
   outcome is acknowledged. 5) Abort a fourth turn. 6) Repeat each terminal
-  RPC. 7) Confirm neither the main titlebar nor the sidebar has a bell
-  (issue #2431); the remaining steps verify durable inbox state through the
-  host fixture rather than a visible inbox. 8) Mark one
+  RPC. 7) Open the single bell in the app titlebar; the sidebar still has no
+  notification entry. 8) Mark one
   row read and confirm its session has no terminal sidebar mark, then
   close/reopen the popover and restart the app. 9) Select the other session
   from its terminal-marked sidebar row. 10) Generate a host fixture with 205
@@ -355,7 +354,7 @@
   delayed `notification.changed` payload for a cleared/read durable id and a
   duplicate payload for an id that is already present. 13) On Windows, create
   one unread successful outcome while the bell has no failure rows. Open the
-  empty bell popover, use Mark all read, then create another success and use
+  bell popover, use Mark all read, then create another success and use
   Clear. 14) Create enough unread outcomes for a two-digit count and inspect
   the taskbar overlay before and after marking all outcomes read.
 - **Expected**: A's visible-current completion creates no row or terminal
@@ -367,8 +366,8 @@
   Badge and Unread show the exact unread count without opening implicitly
   reading rows. Read state and both
   records survive restart. Row selection marks it read and activates its bound
-  project/session. The fixture retains exactly the newest 200 rows. Mark all
-  preserves rows with zero unread. Selecting the other session clears its
+  project/session. The fixture retains exactly the newest 200 history rows. Mark all
+  preserves durable history but empties the bell list and its badge. Selecting the other session clears its
   terminal sidebar mark and marks its task notification read; neither mark
   returns after refresh or restart. Clear empties only the inbox and leaves
   sessions, turns, and transcripts intact. Clear/read also dismisses any
@@ -379,9 +378,9 @@
   duplicate, delayed, and historical rows do not replay it. On Windows, the
   taskbar overlay is a smooth black circular badge with a centered white system-font numeral. Its visual weight matches common
   Windows taskbar badges for both single- and two-digit counts. A success-only
-  outcome increments the taskbar badge without adding a bell row or bell
-  count; both toolbar actions remain enabled when relevant and clear the
-  taskbar badge. The badge also clears when no unread outcomes remain. The
+  outcome increments `unreadNotificationCount` and the taskbar badge, and appears
+  once in the single bell total; its reminder follows E2E-064Q.
+  Both toolbar actions remain enabled when relevant and clear the taskbar badge. The badge also clears when no unread outcomes remain. The
   underlying taskbar button keeps the
   PI-Desktop `P` icon and PI-Desktop name while the overlay is present.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
@@ -391,6 +390,90 @@
 - **Acceptance**: C (turn completion), F (persistence), Quality
 - **Milestone**: M5
 - **Status**: Draft
+
+## E2E-064Q: Notification acknowledgement is independent of answering or approval
+
+- **Preconditions**: An isolated schema-33 app profile, two project chats and one
+  unscoped chat; a pending ask, an unseen successful turn, and failure history.
+  Retention fixtures use deterministic terminal ordering, not a user's database.
+- **Steps**:
+  1. Receive a background ask; hold list-refresh responses, then open the bell.
+     Its row must be immediately clickable, with the correct top-right badge,
+     icon, and project/chat title. Opening its chat keeps the reminder and badge.
+  2. Submit the whole ask; repeat with a transient failure and cancellation. Only
+     accepted submission or authoritative cancellation removes the request reminder.
+  3. Acknowledge existing outcomes, then create one unread successful outcome.
+     Verify the ordinary unread count is one and bulk actions are enabled. Use
+     ordinary mark-read on its ID; its reminder disappears while read history remains.
+     Repeat with mark-all-read, then clear, creating a new completion for each action.
+     A later completion re-enables bulk actions. Refresh and restart: acknowledged
+     rows stay read; clear deletes only history, leaving sessions, turns, and transcripts intact.
+  4. Create fresh question/approval reminders and mark all read. Verify both All
+     and Unread are empty, with no badge. Reopen/refresh, collapse and rebuild the
+     sidebar: they stay hidden without resolving inline cards. New
+     asks/approvals restore their own reminders; clear must not hide future requests.
+  5. Verify project/unscoped labels, no ID fallback, original failure body, distinct
+     question/completion/failure/permission icons, and exactly one badge equal to
+     `unreadNotificationCount + visibleAskCount + visiblePermissionCount`.
+     Successes and failures belong to the ordinary unread count; completion rows
+     must not contribute a second time.
+  6. In Ask permission mode, create two permission requests in one background
+     chat and one in another. Hold list refresh, then click an approval immediately.
+     The owning project/chat opens without a permission response or badge removal.
+     Reopen the bell: all undecided rows remain unread. Fail one approval response,
+     retry Allow once, then Deny the queued request. Only accepted decisions remove
+     those rows and badge contributions. The other chat remains pending until its
+     existing card receives an explicit decision. Also bulk-read and clear mixed
+     ask/approval lists; neither action submits an answer or permission response.
+  7. Fail and supersede completion navigation, then refresh: its exact reminder
+     stays unread. Load its chat while the window is unfocused: it stays unread
+     until that successfully loaded chat is still selected, visible, and focused.
+     An open Settings dialog leaves the underlying chat selected but does not
+     acknowledge its completion; closing Settings reveals and confirms it.
+     After confirmation, release an older ordinary snapshot; it must not restore
+     the reminder or an empty-list badge. No unrelated chat's completion is read.
+  8. Verify an unread completion survives restart while its ordinary notification
+     row is retained. Generate 201 ordered terminal notifications, including unread
+     completions older than the final 200. Refresh and restart: only the latest
+     200 rows remain, and pruned unread completions have no reminder or badge
+     contribution. Schema stays 33 and no completion table or migration is added;
+     there is no completion page or load-more control. Reading a pruned ID returns
+     `ok=false`; Host mark-all-read and clear affect only retained notification rows.
+  9. Insert a live completion during an ordinary list refresh. It appears once
+     with an exact unread count; no duplicate attention/history badge path exists.
+- **Expected**: Mark-all-read and clear remove every current reminder and its badge
+  contribution from both filters without answering questions or approving/denying
+  tools. Actual requests and inline cards remain until accepted responses/cancellation.
+  Navigation alone retains interactive reminders and badges. Refresh never disables
+  available rows. Completion reminders derive solely from unread `task.completed`
+  rows in the latest 200 ordinary notifications; restart preserves retained rows,
+  not pruned unread reminders. Existing list/read/bulk-read/clear contracts and
+  schema 33 remain unchanged. Completion navigation acknowledges only a successfully
+  loaded, selected chat in a visible focused window; failed/stale navigation does
+  not. Native delivery, sound, OS taskbar policy, and decision paths remain unchanged.
+- **Specs linked**: [Notification center](../../04-ux/08-component-spec.md#20-notificationinbox-d117),
+  [Ask card](../../04-ux/11-asktool-question-card.md),
+  [Permission UX](../../04-ux/03-permission-ux.md),
+  [Storage](../../03-runtime/04-data-storage.md#completion-attention-from-bounded-notifications-schema-33-unchanged),
+  [Host RPC](../../03-runtime/06-host-rpc-protocol.md#4a-notification-contracts-protocol-v4).
+- **Acceptance criterion**: C (turn completion), F (persistence), Quality
+- **Milestone**: M5
+- **Status**: Automated component user path (`test:e2e:question-notification`),
+  real catalog/attention state tests, and Rust schema-33 notification/RPC tests.
+  Coverage includes retained completion restart, 200-row pruning, exact-ID read,
+  bulk acknowledgement, failed navigation, and sidebar remount. Native focus is
+  controlled at the external window boundary in the isolated component probe.
+
+### Side Chat notification exclusion
+
+- **Steps**: In an isolated profile, finish and fail turns in the Side Chat
+  plugin, both with the panel open and with it closed or unfocused. Also finish
+  an ordinary chat while sending a side-chat prompt, then repeat with the
+  ordinary chat in the background.
+- **Expected**: Side Chat still receives replies and failures, but creates no
+  task notification, badge increment, system banner, or notification chime.
+  Its prompt does not clear the main chat's viewing state. Ordinary foreground
+  and background outcomes still follow their existing notification policy.
 
 ## E2E-065: Native task notifications are unfocused-only and activate sessions
 
@@ -1853,9 +1936,10 @@
 ## US-UI-65 Durable notification inbox (D117/D130)
 - Verify a focused-current completion leaves the inbox unchanged, then
   populate it through background/unfocused completed and failed task rows,
-  including one long session title. Inspect the expanded sidebar footer and
-  popover in light/dark themes at default and narrow supported widths.
-- Expect no titlebar bell, a stable 32px footer bell in the former Help position,
+  including one long session title. Inspect the titlebar and popover in
+  light/dark themes at default and narrow supported widths, with the sidebar
+  and work panel open and closed.
+- Expect one titlebar bell clear of other controls and no sidebar bell,
   a non-overlapping `1`–`99` / `99+` badge,
   dense 360px-or-narrower list, localized kind/session/time/error content, and
   distinct text/icon/unread-dot semantics without nested cards or clipped text.

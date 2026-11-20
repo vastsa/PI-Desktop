@@ -15,6 +15,7 @@ import {
   IconPanelOpen,
 } from "../../components/icons";
 import { LifecycleConfirmationDialog } from "../../components/LifecycleConfirmationDialog";
+import { NotificationCenter } from "../../components/NotificationCenter";
 import { ProjectCreateDialog } from "../../components/ProjectCreateDialog";
 import { SearchDialog } from "../../components/SearchDialog";
 import { Sidebar } from "../../components/Sidebar";
@@ -325,6 +326,7 @@ export function AppShell() {
             </Suspense>
           )}
 
+          <NotificationCenter />
           <TooltipButton
             type="button"
             className="app-work-panel-toggle no-drag"

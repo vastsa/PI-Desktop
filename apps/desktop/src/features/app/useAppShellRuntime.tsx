@@ -22,6 +22,7 @@ import { usePluginBrowseState } from "../plugins/browse-state";
 import { subscribeRemoteInteractions } from "../../lib/remote-interactions";
 import { startModesSync } from "../modes/modes-sync";
 import { playNotificationChime } from "../../lib/notification-sound";
+import { formatNotificationSessionLabel, notificationSessionLabel } from "../../lib/notification-inbox";
 import {
   clampSidebarWidth,
   loadSidebarWidth,
@@ -41,6 +42,7 @@ import {
   pluginWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import { useAppStore } from "../../stores/app-store";
+import { notificationViewingSessionId } from "../../stores/helpers/store-helpers";
 import { useSidebarTransition } from "./useSidebarTransition";
 import { useStartupAnimation } from "./useStartupAnimation";
 import { useStartupWatchdog } from "./useStartupWatchdog";
@@ -64,6 +66,7 @@ export function useAppShellRuntime() {
   const ready = useAppStore((s) => s.ready);
   const page = useAppStore((s) => s.page);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const viewingSessionId = useAppStore(notificationViewingSessionId);
   const acknowledgeSessionOutcome = useAppStore(
     (s) => s.acknowledgeSessionOutcome,
   );
@@ -490,11 +493,10 @@ export function useAppShellRuntime() {
   }, []);
 
   useEffect(() => {
-    const viewingSessionId = page === "chat" ? activeSessionId ?? null : null;
     void api
       .setNotificationViewingSession(viewingSessionId)
       .catch(() => undefined);
-  }, [activeSessionId, page]);
+  }, [viewingSessionId]);
 
   /**
    * The selected session is shell state, so the shell publishes it. Plugin
@@ -519,16 +521,18 @@ export function useAppShellRuntime() {
 
   useEffect(() => {
     const acknowledgeFocusedSession = () => {
-      if (!ready || page !== "chat" || !activeSessionId) return;
+      const state = useAppStore.getState();
+      const viewingSessionId = notificationViewingSessionId(state);
+      if (!state.ready || !viewingSessionId) return;
       // Restoring the existing chat from the taskbar is a read action even
       // when the active session did not change. Keep the host row and shell
       // badge in sync with what the user can now see.
-      void acknowledgeSessionOutcome(activeSessionId).catch(() => undefined);
+      void acknowledgeSessionOutcome(viewingSessionId).catch(() => undefined);
     };
 
     window.addEventListener("focus", acknowledgeFocusedSession);
     return () => window.removeEventListener("focus", acknowledgeFocusedSession);
-  }, [acknowledgeSessionOutcome, activeSessionId, page, ready]);
+  }, [acknowledgeSessionOutcome]);
 
   useEffect(() => {
     if (!ready) return;
@@ -792,7 +796,10 @@ export function useAppShellRuntime() {
       const failed = notification.kind === "task.failed";
       const title = t(
         failed ? "notifications.failedTitle" : "notifications.completedTitle",
-        { sessionTitle: notification.sessionTitle },
+        { sessionTitle: formatNotificationSessionLabel(
+          notificationSessionLabel(notification.sessionId, useAppStore.getState().sessions,
+            useAppStore.getState().projectMeta, notification.sessionTitle),
+          t("nav.sessions"), t("chat.untitledTask")) },
       );
       const body = failed
         ? notification.errorCode

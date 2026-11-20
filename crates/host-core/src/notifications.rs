@@ -209,18 +209,30 @@ mod tests {
     }
 
     #[test]
-    fn terminal_turns_keep_only_the_latest_two_hundred_notifications() {
+    fn schema_33_terminal_turns_keep_only_the_latest_two_hundred_notifications() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.sqlite");
         let db = Database::open(&path).unwrap();
         let session =
             sessions::create_session(&db, Some("Long task".into()), None, None, None, None)
                 .unwrap();
+        assert_eq!(crate::db::SCHEMA_VERSION, 33);
+        assert_eq!(
+            db.conn()
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            33
+        );
+        assert!(!db.conn().query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='pending_completion_notifications')",
+            [], |row| row.get::<_, bool>(0),
+        ).unwrap());
 
+        let mut ids = Vec::new();
         for _ in 0..201 {
             let turn = sessions::begin_turn(&db, &session.id, None, None).unwrap();
             let result = sessions::end_turn(&db, &turn, "completed", None, None, true).unwrap();
-            assert!(result.notification.is_some());
+            ids.push(result.notification.unwrap().id);
         }
 
         let stored: i64 = db
@@ -229,6 +241,7 @@ mod tests {
             .unwrap();
         assert_eq!(stored, NOTIFICATION_KEEP);
         assert_eq!(list(&db, false, 500).unwrap().0.len(), 200);
+        assert_eq!(list(&db, true, 500).unwrap().1, 200);
 
         drop(db);
         let reopened = Database::open(&path).unwrap();
@@ -237,5 +250,29 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM notifications", [], |row| row.get(0))
             .unwrap();
         assert_eq!(stored_after_restart, NOTIFICATION_KEEP);
+        let (retained, unread) = list(&reopened, false, 500).unwrap();
+        assert_eq!(unread, 200);
+        assert!(retained
+            .iter()
+            .all(|item| item.kind == "task.completed" && item.read_at.is_none()));
+        let pruned_id = ids
+            .iter()
+            .find(|id| !retained.iter().any(|item| &item.id == *id))
+            .unwrap();
+        assert!(!mark_read(&reopened, pruned_id).unwrap());
+        assert!(mark_read(&reopened, &retained[0].id).unwrap());
+        assert_eq!(list(&reopened, true, 500).unwrap().1, 199);
+        mark_all_read(&reopened).unwrap();
+        assert_eq!(list(&reopened, true, 500).unwrap().1, 0);
+        assert_eq!(list(&reopened, false, 500).unwrap().0.len(), 200);
+        clear(&reopened).unwrap();
+        assert!(list(&reopened, false, 500).unwrap().0.is_empty());
+        assert_eq!(
+            reopened
+                .conn()
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            33
+        );
     }
 }

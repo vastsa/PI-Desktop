@@ -91,9 +91,9 @@ destination, chat as the home surface, tools and permissions inline.
   Destination history is
   shortcut-first (`Cmd/Ctrl+[` and `Cmd/Ctrl+]`) with no dedicated back/forward
   chrome; while Extensions is active, the sidebar Plugin market row performs one
-  Back step as the only pointer affordance. Neither the main titlebar nor the
-  sidebar has a notification action (D130/D117 superseded by issue #2431); the
-  durable local inbox keeps feeding sidebar outcome badges. In work-panel preview mode, MainChat is unmounted
+  Back step as the only pointer affordance. A single notification bell lives in
+  the top-right window chrome; the sidebar has no notification entry and still
+  shows task outcome badges. In work-panel preview mode, MainChat is unmounted
   and a window-level 46px chrome row keeps New Task, sidebar, and native window
   controls available without owning a drag or no-drag rectangle across the
   panel. The panel header alone owns dragging in the preview pane; its actual
@@ -478,7 +478,7 @@ shared capability contract:
 | Model menu | Composer-right model × reasoning chip | configured provider/model choices + settings entry (D091) |
 | Settings dialog | sidebar footer Settings, `Mod+,`, deep links | modal over the current page; waits behind the startup guide and announcement ([06-settings-ia](06-settings-ia.md) §1) |
 | Startup guide / announcement | first launch (once) or Settings → About / first launch of a release with an enabled announcement (once) | [05-onboarding](05-onboarding.md) §3–§5 |
-| Notification inbox | none (entry removed, issue #2431) | All/Unread views, task failure rows only (successful completions are hidden, D295), mark-all-read and clear actions (D130/D117) |
+| Notification inbox | App titlebar bell | All/Unread reminders for task outcomes, questions and approvals; mark-all-read and clear actions (D117) |
 | Toasts | events (plugin toast, backend restored, copy) | top-center of the live main-content safe area; viewport fallback; 4s default, 8s for errors |
 | Project switcher | empty-home underlined project name | sidebar open projects + search + clone git project + open project |
 
@@ -543,11 +543,11 @@ shared capability contract:
 - Completed/failed turn not already visible → host-core appends one durable
   inbox row. A result shown in the visible, focused current chat and every
   `aborted` turn append none. Background sessions and any turn finishing while
-  the window is unfocused still append. The (currently unmounted) notification inbox lists only
-  `task.failed` rows and its badge counts only unread failures; successful
-  completions stay in the durable record for the sidebar outcome badge and
-  native notification but never appear in the inbox (D295). Selecting a row
-  marks it read and activates its bound project/session.
+  the window is unfocused still append. The bell combines unread task outcomes
+  with outstanding ask and approval reminders (see NotificationInbox in
+  [Component specs](08-component-spec.md#_20-notificationinbox-d117)). It never
+  acknowledges a completion when Settings covers the chat, or settles an
+  interactive request when opening a reminder.
   Electron additionally presents a native task notification only when the
   app window is unfocused, and clicking it focuses the window before activating
   the same session (D117). Interactive ask/permission/plan prompts use their

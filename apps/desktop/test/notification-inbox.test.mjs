@@ -52,12 +52,13 @@ test("inbox unread count ignores unread completions", () => {
 
 test("notification center renders the filtered inbox instead of the raw store", () => {
   assert.match(componentSource, /inboxNotifications\(storedNotifications\)/);
-  assert.match(componentSource, /inboxUnreadCount\(storedNotifications\)/);
+  assert.match(componentSource, /notificationBadgeCount\(allUnreadCount, interactiveCount\)/);
 });
 
-test("notification center actions can clear taskbar-only completed outcomes", () => {
+test("notification center actions can acknowledge completion rows in ordinary history", () => {
   assert.match(componentSource, /const allUnreadCount = useAppStore\(/);
   assert.match(componentSource, /state\.unreadNotificationCount/);
-  assert.match(componentSource, /disabled=\{busy \|\| allUnreadCount === 0\}/);
-  assert.match(componentSource, /disabled=\{busy \|\| storedNotifications\.length === 0\}/);
+  assert.match(componentSource, /attention\.completions\.length > 0/);
+  assert.match(componentSource, /disabled=\{busy \|\| !hasUnread\}/);
+  assert.match(componentSource, /disabled=\{busy \|\| !hasItems\}/);
 });

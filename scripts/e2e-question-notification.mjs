@@ -19,7 +19,7 @@ try {
     entryPoints: [join(root, "scripts/e2e/question-notification.tsx")],
     outfile: join(temp, "renderer.js"), bundle: true, platform: "browser", format: "iife",
     jsx: "automatic", loader: { ".css": "empty" },
-    define: { "process.env.NODE_ENV": '"production"', "import.meta.env.DEV": "false" },
+    define: { "process.env.NODE_ENV": '"production"', "import.meta.env.DEV": "false", "import.meta.env.MODE": '"production"' },
     alias: {
       "@pi-desktop/i18n": join(root, "packages/i18n/src/index.ts"),
       "@pi-desktop/shared/protocol": join(root, "packages/shared/src/protocol.ts"),
@@ -30,7 +30,7 @@ try {
     nodePaths: [join(root, "apps/desktop/node_modules")],
   });
   // Use the production toast rules; no app build or existing user profile required.
-  const styles = await Promise.all(["ui-kit.css", "overlays.css"].map((name) =>
+  const styles = await Promise.all(["tokens.css", "ui-kit.css", "overlays.css", "chrome.css"].map((name) =>
     readFile(join(root, "apps/desktop/src/styles", name), "utf8")));
   await writeFile(join(temp, "index.html"), `<!doctype html><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
@@ -52,6 +52,7 @@ app.whenReady().then(async () => {
     console.log("QUESTION_POINTER_CHECKS " + JSON.stringify(result));
     for (const keyCode of ["Return", "Space"]) {
       console.log("QUESTION_KEYBOARD_CHECK " + keyCode);
+      win.focus();
       await win.webContents.executeJavaScript("globalThis.prepareQuestionNotificationKeyboard()");
       win.webContents.sendInputEvent({ type: "keyDown", keyCode });
       win.webContents.sendInputEvent({ type: "char", keyCode: keyCode === "Return" ? "\\r" : " " });

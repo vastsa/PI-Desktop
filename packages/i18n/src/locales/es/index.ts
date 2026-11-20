@@ -3090,6 +3090,7 @@ sklm: {
     "longThreadWarning": "Contexto compactado. Los hilos largos pierden detalles anteriores con cada compactación: inicie una nueva sesión para trabajos no relacionados."
   },
   "notifications": {
+    ...en.notifications,
     "title": "Notificaciones",
     "open": "Notificaciones abiertas",
     "openUnread": "Notificaciones abiertas, {{count}} no leídos",
