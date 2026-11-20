@@ -2660,6 +2660,8 @@ export class PluginRuntime {
           headers: (payload?.headers as Record<string, string> | undefined) ?? undefined,
           body: payload?.body ? String(payload.body) : undefined,
           timeoutMs: typeof payload?.timeoutMs === "number" ? payload.timeoutMs : undefined,
+          responseType: payload?.responseType === undefined ? undefined : String(payload.responseType) as "text" | "base64",
+          maxResponseBytes: typeof payload?.maxResponseBytes === "number" ? payload.maxResponseBytes : undefined,
           redirect: payload?.redirect,
         });
       case "plugin.getSettings":
@@ -6646,13 +6648,15 @@ export class PluginRuntime {
         closeOutput: async () => this.refuseAudio(loaded, "audio.closeOutput"),
       },
       net: {
-        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"] }),
+        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"], binaryResponseBody: true, maxResponseBodyBytes: 16 * 1024 * 1024 }),
         fetch: async (input: {
           url: string;
           method?: string;
           headers?: Record<string, string>;
           body?: string;
           timeoutMs?: number;
+          responseType?: "text" | "base64";
+          maxResponseBytes?: number;
           redirect?: unknown;
         }) => {
           this.assertPermission(loaded, "net.fetch");
