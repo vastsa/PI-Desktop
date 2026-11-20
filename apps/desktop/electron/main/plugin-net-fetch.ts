@@ -23,7 +23,7 @@ function parseResponseType(value: unknown): "text" | "base64" {
 
 function parseResponseLimit(value: unknown, responseType: "text" | "base64"): number {
   if (value === undefined) return MAX_PLUGIN_BINARY_RESPONSE_BYTES;
-  if (responseType !== "base64" || !Number.isSafeInteger(value) || value < 1 || value > MAX_PLUGIN_BINARY_RESPONSE_BYTES) {
+  if (responseType !== "base64" || typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > MAX_PLUGIN_BINARY_RESPONSE_BYTES) {
     throw failure("INVALID_ARGUMENT", "maxResponseBytes is only supported for bounded base64 responses");
   }
   return value;
