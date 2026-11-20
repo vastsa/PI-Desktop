@@ -46,7 +46,7 @@ const TEMPORARY_KEY = "temporary";
 /**
  * The empty home's project picker. Inside a project it is the underlined
  * project name in the title; for a temporary conversation (or no session) it
- * is a "Choose project" chip under the title. Both list "No project" first so
+ * is a quiet "No project" caption under the title. Both list "No project" first so
  * the next task can leave or join a project from the same place (#2455).
  */
 export function HomeProjectSwitcher({
@@ -288,14 +288,14 @@ export function HomeProjectSwitcher({
             type="button"
             className="home-project-chip"
             data-testid="home-project-switcher"
+            aria-label={`${t("project.switchProject")}: ${t("project.noProject")}`}
             aria-haspopup="menu"
             aria-expanded={open}
             disabled={busy}
             onClick={toggle}
           >
-            <IconFolder size={14} aria-hidden />
-            <span>{t("project.chooseProject")}</span>
-            <IconChevronDown size={13} aria-hidden />
+            <span>{t("project.noProject")}</span>
+            <IconChevronDown size={12} aria-hidden />
           </button>
         ) : (
           <button

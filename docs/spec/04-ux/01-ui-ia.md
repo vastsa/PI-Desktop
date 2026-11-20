@@ -503,8 +503,9 @@ shared capability contract:
   open project with no session yet names the hero the same way, because that
   empty home already belongs to it and a task started there lands in the
   project. A temporary session shows dedicated temporary-chat copy, and with
-  no project open the generic welcome title stands; both show a "Choose
-  project" chip under the title that opens the same switcher. The switcher
+  no project open the generic welcome title stands; both show a quiet,
+  borderless "No project" caption under the title that opens the same
+  switcher. The switcher
   lists "No project" first, so the next task can leave or join a project from
   the empty home.
 - New task resolves the temporary group by its most recent session: if that

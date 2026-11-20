@@ -826,25 +826,30 @@
   border-radius: var(--radius-3xs);
 }
 
+/* A caption, not a control: it states the scope and only reveals itself on hover. */
 .empty-hero .home-project-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--radius-full);
+  gap: 3px;
+  margin-top: -4px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-3xs);
   background: transparent;
-  color: var(--ds-text-secondary);
+  color: var(--ds-text-faint);
   font-size: var(--text-sm);
   line-height: var(--leading-compact);
   cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: color 150ms ease;
+}
+
+.empty-hero .home-project-chip svg {
+  opacity: 0.7;
 }
 
 .empty-hero .home-project-chip:hover,
 .empty-hero .home-project-chip[aria-expanded="true"] {
-  background: var(--ds-bg-hover);
-  color: var(--ds-text-primary);
+  color: var(--ds-text-secondary);
 }
 
 .empty-hero .home-project-chip:focus-visible {

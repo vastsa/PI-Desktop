@@ -80,9 +80,11 @@ test("home project switcher lists No project first and has a chip for temporary 
   assert.match(switcher, /if \(project\.temporary\) return selectTemporary\(\);/);
   assert.match(switcher, /await newSession\(\{ projectPath: null \}\)/);
   assert.match(switcher, /className="home-project-chip"/);
-  assert.match(switcher, /t\("project\.chooseProject"\)/);
+  // The temporary home states its scope quietly instead of a bordered chip.
+  assert.match(switcher, /<span>\{t\("project\.noProject"\)\}<\/span>/);
   // A temporary or projectless home offers the chip; a project home keeps
   // the underlined name in its title.
   assert.match(chatSurface, /\{heroProject \? null : <HomeProjectSwitcher variant="chip" \/>\}/);
-  assert.match(styles, /\.empty-hero \.home-project-chip \{[\s\S]*?border-radius:\s*var\(--radius-full\);/);
+  assert.match(styles, /\.empty-hero \.home-project-chip \{[\s\S]*?color:\s*var\(--ds-text-faint\);/);
+  assert.doesNotMatch(styles, /\.empty-hero \.home-project-chip \{[^}]*border:\s*1px/);
 });

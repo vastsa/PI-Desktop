@@ -2168,7 +2168,6 @@ sklm: {
     switchProject: "프로젝트 전환",
     noProject: "프로젝트 없음",
     noProjectHint: "어떤 프로젝트에도 속하지 않는 임시 대화",
-    chooseProject: "프로젝트 선택",
     clone: "Git 프로젝트 클론",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",
     cloneUrlHint: "저장소 URL을 붙여넣은 다음 폴더를 선택하세요.",

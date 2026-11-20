@@ -2147,7 +2147,6 @@ sklm: {
     switchProject: "切換專案",
     noProject: "不使用專案",
     noProjectHint: "不屬於任何專案的臨時對話",
-    chooseProject: "選擇專案",
     clone: "克隆 Git 專案",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",
     cloneUrlHint: "貼上儲存庫網址，然後選擇儲存位置。",
