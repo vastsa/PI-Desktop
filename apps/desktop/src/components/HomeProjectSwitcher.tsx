@@ -18,7 +18,6 @@ import { useAppStore } from "../stores/app-store";
 import {
   IconBranch,
   IconCheck,
-  IconChevronDown,
   IconChevronLeft,
   IconFolder,
   IconNewProject,
@@ -254,11 +253,6 @@ export function HomeProjectSwitcher({
           }}
         >
           <span className="project-underline-name">{name}</span>
-          <IconChevronDown
-            size={16}
-            className="project-underline-chevron"
-            aria-hidden
-          />
         </button>
       )}
     >
