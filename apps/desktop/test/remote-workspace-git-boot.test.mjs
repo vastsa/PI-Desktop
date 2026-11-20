@@ -113,6 +113,23 @@ test("a caller cannot smuggle its own installation id or extra fields into prepa
   assert.deepEqual(f.requests[0].params, { installationId: INSTALLATION, sessionId: "s", repository, baseBranch: "main" });
 });
 
+test("automatic removal uses only a live Host that advertises safe removal", async () => {
+  const legacy = setup({ capabilities: ALL });
+  await assert.rejects(legacy.boot.remove("h", "session-1", false), code("HOST_VERSION_MISMATCH"));
+  assert.deepEqual(legacy.requests, []);
+
+  const capable = setup({ capabilities: { ...ALL, workspaceGitSafeRemoval: true } });
+  await capable.boot.remove("h", "session-1", false);
+  assert.deepEqual(capable.requests.map(({ method }) => method), ["workspace/gitRemove"]);
+
+  const changing = setup({ capabilities: { ...ALL, workspaceGitSafeRemoval: true }, getInstallationId: async () => {
+    changing.state.capabilities = ALL;
+    return INSTALLATION;
+  } });
+  await assert.rejects(changing.boot.remove("h", "session-1", false), code("HOST_VERSION_MISMATCH"));
+  assert.deepEqual(changing.requests, []);
+});
+
 test("a host without the capability is refused before anything is sent", async () => {
   const f = setup({ capabilities: NO_GIT });
   const calls = [

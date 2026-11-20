@@ -9,7 +9,7 @@ import { WorktreeDialogFrame } from "../../worktree/WorktreeDialogFrame";
 export function RemoteSessionActions({ sessionId, sessionTitle, workspace }: { sessionId: string; sessionTitle: string; workspace: SessionRemoteRepository }) {
   const { t } = useTranslation();
   const [status, setStatus] = useState<RemoteSessionGitStatus>();
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"push" | "find" | "create">();
   const [showDialog, setShowDialog] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -17,7 +17,8 @@ export function RemoteSessionActions({ sessionId, sessionTitle, workspace }: { s
   const [error, setError] = useState<string>();
   const [hostLabel, setHostLabel] = useState(workspace.hostLabel ?? workspace.hostKey);
   const [progress, setProgress] = useState<number>();
-  const [pullRequest, setPullRequest] = useState(workspace.pullRequest);
+  const pullRequest = workspace.pullRequest;
+  const busy = pendingAction !== undefined;
   const toast = useAppStore((state) => state.showToast);
   const close = useCallback(() => setShowDialog(false), []);
   const ready = workspace.state === "ready";
@@ -46,25 +47,24 @@ export function RemoteSessionActions({ sessionId, sessionTitle, workspace }: { s
     });
     return () => { current = false; window.removeEventListener("focus", refresh); offHosts(); offTurns(); offProgress(); };
   }, [ready, sessionId]);
-  useEffect(() => { setPullRequest(workspace.pullRequest); }, [workspace.pullRequest]);
 
-  async function run(action: () => Promise<void>, inDialog = false) {
-    setBusy(true);
+  async function run(kind: NonNullable<typeof pendingAction>, action: () => Promise<void>) {
+    setPendingAction(kind);
     setError(undefined);
     try { await action(); }
     catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      if (inDialog) setError(message);
+      if (kind === "create") setError(message);
       else toast(message, { variant: "error" });
     } finally {
-      setBusy(false);
+      setPendingAction(undefined);
       setProgress(undefined);
     }
   }
   async function startRequest() {
     const existing = await api.findRemoteSessionPullRequest(sessionId);
     if (existing.pullRequest) {
-      setPullRequest(existing.pullRequest);
+      await api.browserOpenExternal(existing.pullRequest.url);
       return;
     }
     setTitle(sessionTitle);
@@ -78,22 +78,19 @@ export function RemoteSessionActions({ sessionId, sessionTitle, workspace }: { s
       {status?.reachable === false && <span>{t("sessionTarget.offline")}</span>}
       {status?.reachable && (Boolean(status.ahead) || Boolean(status.behind) || Boolean(status.uncommittedFiles)) &&
         <span>{t("sessionTarget.gitCounts", { ahead: status.ahead ?? 0, behind: status.behind ?? 0, files: status.uncommittedFiles ?? 0 })}</span>}
-      <Button variant="secondary" disabled={busy || !canPush} onClick={() => void run(async () => {
+      <Button variant="secondary" disabled={busy || !canPush} onClick={() => void run("push", async () => {
         setStatus((await api.pushRemoteSession(sessionId)).status);
-      })}>{progress !== undefined ? t("sessionTarget.pushPercent", { percent: progress }) : busy && !showDialog ? t("sessionTarget.pushing") : t("sessionTarget.push")}</Button>
-      {pullRequest ? <Button variant="secondary" onClick={() => void api.browserOpenExternal(pullRequest.url)}>
-        {t("sessionTarget.openPullRequest", { number: pullRequest.number })}
-      </Button> : <Button variant="secondary" disabled={busy || status?.reachable === false} onClick={() => void run(startRequest)}>
-        {t("sessionTarget.createPullRequest")}
-      </Button>}
+      })}>{progress !== undefined ? t("sessionTarget.pushPercent", { percent: progress }) : pendingAction === "push" ? t("sessionTarget.pushing") : t("sessionTarget.push")}</Button>
+      <Button variant="secondary" disabled={busy || (!pullRequest && status?.reachable === false)} onClick={() => void run("find", startRequest)}>
+        {pullRequest ? t("sessionTarget.openPullRequest", { number: pullRequest.number }) : t("sessionTarget.createPullRequest")}
+      </Button>
     </>}
     {showDialog && <WorktreeDialogFrame id="remote-pull-request" title={t("sessionTarget.createPullRequest")}
       subtitle={`${workspace.workBranch} → ${workspace.baseBranch}`} onClose={close} busy={busy}
-      actions={<Button disabled={busy || !title.trim()} onClick={() => void run(async () => {
-        const result = await api.createRemoteSessionPullRequest({ sessionId, title: title.trim(), body, draft });
-        setPullRequest(result.pullRequest);
+      actions={<Button disabled={busy || !title.trim()} onClick={() => void run("create", async () => {
+        await api.createRemoteSessionPullRequest({ sessionId, title: title.trim(), body, draft });
         close();
-      }, true)}>{t("sessionTarget.createPullRequest")}</Button>}>
+      })}>{t("sessionTarget.createPullRequest")}</Button>}>
       <Field label={t("sessionTarget.pullRequestTitle")}><Input value={title} maxLength={256} onChange={(event) => setTitle(event.target.value)} /></Field>
       <Field label={t("sessionTarget.pullRequestBody")}><Textarea value={body} rows={5} onChange={(event) => setBody(event.target.value)} /></Field>
       <Checkbox label={t("sessionTarget.draftPullRequest")} checked={draft} onChange={(event) => setDraft(event.target.checked)} />

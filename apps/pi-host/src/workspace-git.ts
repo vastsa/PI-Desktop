@@ -45,6 +45,7 @@ function hostError(error: unknown): never {
     const jobId = (error as { data?: { jobId?: unknown } })?.data?.jobId;
     throw new RacpError(code, message, { details: typeof jobId === "string" ? { jobId } : undefined });
   }
+  if (code === "METHOD_NOT_FOUND") throw new RacpError(code, message);
   if (code === "INVALID_ARGUMENT" || code === "INVALID_PARAMS") throw new RacpError("INVALID_ARGUMENT", message);
   if (code === "HOST_UNAVAILABLE" || code === "HOST_SHUTTING_DOWN") throw new RacpError("AGENT_UNAVAILABLE", message, { retriable: true });
   throw new RacpError("INTERNAL", message, { details: code ? { code } : undefined });
@@ -106,6 +107,7 @@ export function createWorkspaceGit(deps: {
   }
 
   return {
+    safeRemoval: true,
     async setCredential(input, owner) {
       if (!getHost()) throw unavailable();
       attach(owner, input.installationId);
@@ -185,9 +187,12 @@ export function createWorkspaceGit(deps: {
       return call("workspaceGit.status", { installationId: input.installationId, sessionId: input.sessionId });
     },
     async remove(input) {
-      const result = await call<Awaited<ReturnType<WorkspaceGitOperations["remove"]>>>("workspaceGit.remove", {
-        installationId: input.installationId, sessionId: input.sessionId, force: input.force,
-      });
+      const session = { installationId: input.installationId, sessionId: input.sessionId };
+      // An older host-core does not recognize the guarded method. Its legacy
+      // removal must never be used for an unattended request.
+      const result = await (input.force
+        ? call<Awaited<ReturnType<WorkspaceGitOperations["remove"]>>>("workspaceGit.remove", { ...session, force: true })
+        : call<Awaited<ReturnType<WorkspaceGitOperations["remove"]>>>("workspaceGit.removeSafely", session));
       if (result.removed) {
         const key = scopeKey(input.installationId, input.sessionId);
         scopes.delete(key);

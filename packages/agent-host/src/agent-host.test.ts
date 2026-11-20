@@ -473,7 +473,7 @@ describe("AgentHost turns", () => {
     expect(await queueStore.listAll()).toHaveLength(1);
     expect(runtime.prompts).toHaveLength(0);
     ready = true;
-    host.resumeWorkspaceQueue("s1");
+    host.kick("s1");
     await vi.waitFor(() => expect(runtime.prompts).toHaveLength(1));
     expect(runtime.prompts[0]?.content).toBe("work here");
     expect(await queueStore.listAll()).toHaveLength(0);
@@ -799,8 +799,11 @@ describe("AgentHost turns", () => {
       inputHash: "h",
       createdAt: 1,
     });
-    const { host, runtime } = build({ queueStore: store });
+    let ready = false;
+    const { host, runtime } = build({ queueStore: store, canDispatchQueued: async () => ready });
     await host.start();
+    ready = true;
+    host.kick("s1");
     const asViewer = await host.attach(viewer, { sessionId: "s1" });
     expect(asViewer.snapshot?.queuedTurns.map((turn) => turn.id)).toEqual(["turn_restored"]);
     await new Promise((resolve) => setTimeout(resolve, 0));

@@ -374,7 +374,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
       sendToRenderer(channel, payload);
       if (channel !== IPC.event.remoteSessionWorkspaceChanged) return;
       const event = payload as { sessionId: string; remoteRepository?: { state: string } };
-      if (event.remoteRepository?.state === "ready") getAgentHostBridge()?.agentHost.resumeWorkspaceQueue(event.sessionId);
+      if (event.remoteRepository?.state === "ready") getAgentHostBridge()?.agentHost.kick(event.sessionId);
     },
     call: async (method, params) => {
       const host = getHost();

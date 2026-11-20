@@ -254,7 +254,11 @@ transcript-file line first, index transaction second.
 A repository project session carries an optional `remoteRepository` binding.
 A binding starts as `preparing` and becomes `ready` after its worktree exists.
 A failed prepare is retryable. The durable prompt queue holds input until the
-binding is ready. Tools and session file views require the ready worktree and
+binding is ready. On restart a restored queue still waits for a controller
+to attach. A worktree readiness event rechecks the queue and preserves that
+hold. If the Host reports a missing checkout for a ready session, Desktop
+returns it to preparation and asks the Host to restore the registered
+branch. Tools and session file views require the ready worktree and
 return `REMOTE_WORKSPACE_NOT_READY` for unbound or unready repository sessions.
 A setup script failure is reported in `remoteRepository.setup` and leaves the
 worktree ready for use.

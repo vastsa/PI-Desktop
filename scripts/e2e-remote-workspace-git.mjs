@@ -335,24 +335,37 @@ try {
     const call = (method, params) => localHost.call(method, params);
     const events = [];
     const requests = new Map();
+    let lastPullRequestNumber = 0;
+    let lookupError = null;
     const connector = {
       status: async () => ({ connected: true }),
-      findPullRequest: async (_repository, head) => requests.get(head) ?? null,
+      findPullRequest: async (_repository, head, state) => {
+        assert.equal(state, "open");
+        if (lookupError) throw lookupError;
+        return requests.get(head) ?? null;
+      },
       createPullRequest: async (_repository, input) => {
         assert.ok(remoteHasBranch(input.head), "the branch is on the remote before opening its PR");
-        const result = { number: 1, url: "https://github.com/octo/repo/pull/1", state: "open", ...input };
+        const number = ++lastPullRequestNumber;
+        const result = { number, url: `https://github.com/octo/repo/pull/${number}`, state: "open", ...input };
         requests.set(input.head, result);
         return result;
       },
     };
     const emit = (channel, payload) => events.push({ channel, payload });
     let online = true;
+    let safeRemoval = true;
+    const removalCalls = [];
     // The real transport remains available so the same Host can reconnect
     // immediately. Inject the typed offline result at the desktop Host port.
     const offline = () => Object.assign(new Error("fixture host offline"), { errorCode: "AGENT_UNAVAILABLE" });
     const gitPort = { ...boot.workspaceGit,
       status: (...args) => online ? boot.workspaceGit.status(...args) : Promise.reject(offline()),
-      remove: (...args) => online ? boot.workspaceGit.remove(...args) : Promise.reject(offline()),
+      supportsSafeRemoval: (key) => safeRemoval && boot.workspaceGit.supportsSafeRemoval(key),
+      remove: (...args) => {
+        removalCalls.push(args);
+        return online ? boot.workspaceGit.remove(...args) : Promise.reject(offline());
+      },
     };
     const hostPort = () => ({ ...boot, workspaceGit: gitPort });
     const workspaces = createSessionWorkspaces({ call, hosts: hostPort, connector, emit, log: (message, error) => hostLogs.push(`${message}: ${error}`) });
@@ -397,9 +410,33 @@ try {
       await workspaces.waitUntilReady(child.id);
       const childBinding = await workspaces.binding(child.id);
       assert.equal(git(childBinding.path, "rev-parse", "HEAD"), git(ready.remoteWorkspace.path, "rev-parse", "HEAD"));
+      assert.equal(boot.workspaceGit.supportsSafeRemoval(HOST), true);
+      // A deleted directory is explicit on the wire. Reconnecting restores
+      // the session from its actual work branch even if its environment is gone.
+      const head = git(ready.remoteWorkspace.path, "rev-parse", "HEAD");
+      await workspaces.removeEnvironment(environment.id);
+      await rm(ready.remoteWorkspace.path, { recursive: true });
+      const missingCheckout = await boot.workspaceGit.status(HOST, session.id);
+      assert.equal(missingCheckout.worktree.checkoutPresent, false);
+      assert.equal(missingCheckout.unpushedCommits, 1);
+      await workspaces.resume(HOST);
+      await workspaces.waitUntilReady(session.id);
+      assert.equal(git(ready.remoteWorkspace.path, "rev-parse", "HEAD"), head);
+
       const pr = await repositoryGit.create(session.id, { title: "Fixture PR", body: "", draft: true });
       assert.equal(pr.number, 1);
       assert.equal((await repositoryGit.create(session.id, { title: "Ignored duplicate", body: "", draft: false })).title, "Fixture PR");
+      lookupError = new Error("fixture GitHub lookup unavailable");
+      await assert.rejects(repositoryGit.find(session.id), /lookup unavailable/);
+      assert.equal((await workspaces.binding(session.id)).pullRequest.number, 1);
+      lookupError = null;
+      requests.set(pr.head, { ...pr, state: "closed" });
+      assert.equal(await repositoryGit.find(session.id), null);
+      assert.equal((await workspaces.binding(session.id)).pullRequest, null);
+      const replacement = await repositoryGit.create(session.id, { title: "Replacement PR", body: "", draft: false });
+      assert.equal(replacement.number, 2);
+      assert.equal((await workspaces.binding(session.id)).pullRequest.number, 2);
+
       await writeFile(join(ready.remoteWorkspace.path, "dirty.txt"), "pending work");
       const preflight = await repositoryGit.preflight(session.id);
       assert.deepEqual(preflight, { kind: "atRisk", uncommittedFiles: 1, unpushedCommits: 0 });
@@ -414,10 +451,12 @@ try {
       assert.ok(events.some(({ payload }) => payload.remoteRepository?.state === "ready"));
       // Losing the original job (such as during a Host restart) still
       // recovers the canonical checkout through the Host's worktree list.
+      await rm(childBinding.path, { recursive: true });
       await workspaces.update(child.id, { state: "preparing", jobId: "job-lost-after-restart" });
       await workspaces.resume(HOST);
       await workspaces.waitUntilReady(child.id);
       assert.equal((await workspaces.binding(child.id)).path, childBinding.path);
+      assert.equal(git(childBinding.path, "rev-parse", "HEAD"), head);
 
       online = false;
       assert.deepEqual(await repositoryGit.preflight(child.id), { kind: "unknown" });
@@ -427,6 +466,12 @@ try {
       assert.ok(existsSync(childBinding.path));
       online = true;
       const recovered = createSessionWorkspaceGit({ call, workspaces, connector, emit });
+      safeRemoval = false;
+      const beforeLegacyReconcile = removalCalls.length;
+      await recovered.reconcile(HOST);
+      assert.equal(removalCalls.length, beforeLegacyReconcile, "legacy hosts never receive automatic removal requests");
+      assert.ok(existsSync(childBinding.path));
+      safeRemoval = true;
       await recovered.reconcile(HOST);
       assert.ok(!existsSync(childBinding.path));
       await recovered.reconcile(HOST);

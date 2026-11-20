@@ -73,6 +73,7 @@ impl WorktreeRecord {
             "baseBranch": self.base_branch,
             "workBranch": self.work_branch,
             "path": self.path,
+            "checkoutPresent": crate::session_worktrees::remove::is_real_dir(Path::new(&self.path)),
             "mainPath": self.main_path,
             "baseCommit": self.base_commit,
             "createdAt": self.created_at,

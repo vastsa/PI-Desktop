@@ -939,12 +939,6 @@ export class AgentHost {
     void this.drain(sessionId);
   }
 
-  /** Resume a saved queue after its workspace is prepared or recovered. */
-  resumeWorkspaceQueue(sessionId: string): void {
-    this.queue.resume(sessionId);
-    this.kick(sessionId);
-  }
-
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------

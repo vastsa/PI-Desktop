@@ -23,6 +23,7 @@ export function createSessionWorkspaceGit(deps: {
   const pushes = new Map<string, Promise<RemoteSessionGitStatus>>();
   const requests = new Map<string, Promise<Awaited<ReturnType<GitHubConnector["createPullRequest"]>>>>();
   const reconciling = new Map<string, Promise<void>>();
+  const lookups = new Map<string, Promise<Awaited<ReturnType<GitHubConnector["findPullRequest"]>>>>();
   const pending = (hostKey: string) => call<{ removals: PendingRemoval[] }>("sessionWorkspace.pendingRemoval.list", { hostKey });
   const discardPending = (hostKey: string, sessionId: string) => call("sessionWorkspace.pendingRemoval.remove", { hostKey, sessionId });
   const load = async (sessionId: string) => {
@@ -39,6 +40,10 @@ export function createSessionWorkspaceGit(deps: {
     const { sessionId, hostKey, workBranch, baseBranch } = binding;
     try {
       const result = await workspaces.git().status(hostKey, sessionId);
+      if (result.worktree.checkoutPresent === false) {
+        await workspaces.recoverMissingCheckout(binding, result.worktree);
+        throw remoteError(ErrorCodes.REMOTE_WORKSPACE_NOT_READY, "The repository checkout is being restored");
+      }
       return { reachable: true, workBranch, baseBranch, ahead: result.ahead, behind: result.behind, aheadOfBase: result.aheadOfBase,
         uncommittedFiles: result.uncommittedFiles, unpushedCommits: result.unpushedCommits, pushedOnce: result.pushedOnce };
     } catch (error) {
@@ -76,11 +81,22 @@ export function createSessionWorkspaceGit(deps: {
       pushJobs.delete(sessionId);
     }
   }
-  async function find(sessionId: string) {
+  async function lookupOpenPullRequest(sessionId: string) {
     const binding = await requireReady(sessionId);
-    const pullRequest = await connector.findPullRequest(binding.repository, binding.workBranch);
-    if (pullRequest) workspaces.announce(await workspaces.update(sessionId, { pullRequest: { number: pullRequest.number, url: pullRequest.url } }));
+    const found = await connector.findPullRequest(binding.repository, binding.workBranch, "open");
+    const pullRequest = found?.state === "open" ? found : null;
+    const link = pullRequest ? { number: pullRequest.number, url: pullRequest.url } : null;
+    if (link?.number !== binding.pullRequest?.number || link?.url !== binding.pullRequest?.url) {
+      workspaces.announce(await workspaces.update(sessionId, { pullRequest: link }));
+    }
     return pullRequest;
+  }
+  function find(sessionId: string) {
+    const existing = lookups.get(sessionId);
+    if (existing) return existing;
+    const task = lookupOpenPullRequest(sessionId).finally(() => lookups.delete(sessionId));
+    lookups.set(sessionId, task);
+    return task;
   }
   async function create(sessionId: string, input: Pick<GitHubPullRequestInput, "title" | "body" | "draft">) {
     const binding = await requireReady(sessionId);
@@ -109,6 +125,7 @@ export function createSessionWorkspaceGit(deps: {
     return created;
   }
   async function reconcile(hostKey: string) {
+    if (!workspaces.git().supportsSafeRemoval(hostKey)) return;
     const { removals } = await pending(hostKey);
     const worktrees = await workspaces.git().list(hostKey);
     for (const removal of removals) {
@@ -145,7 +162,9 @@ export function createSessionWorkspaceGit(deps: {
       pushes.set(sessionId, task);
       return task;
     },
-    find,
+    find(sessionId: string) {
+      return requests.get(sessionId) ?? find(sessionId);
+    },
     create(sessionId: string, input: Pick<GitHubPullRequestInput, "title" | "body" | "draft">) {
       const current = requests.get(sessionId);
       if (current) return current;
@@ -178,7 +197,8 @@ export function createSessionWorkspaceGit(deps: {
         if (!result.removed) throw lostRemoval();
       } catch (error) {
         if (missing(error)) return;
-        if (!offlineError(error) || !force) throw error;
+        const legacyHost = !force && [ErrorCodes.HOST_VERSION_MISMATCH, "METHOD_NOT_FOUND"].includes(remoteCode(error) ?? "");
+        if (!(legacyHost || offlineError(error) && force)) throw error;
         await call("sessionWorkspace.pendingRemoval.add", {
           sessionId, hostKey: current.hostKey, repository: current.repository, workBranch: current.workBranch,
         });

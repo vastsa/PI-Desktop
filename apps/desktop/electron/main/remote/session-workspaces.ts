@@ -23,7 +23,7 @@ export function remoteCode(error: unknown): string | undefined {
   return value?.data?.errorCode ?? value?.errorCode ?? value?.code;
 }
 export function offlineError(error: unknown): boolean {
-  return ["AGENT_UNAVAILABLE", "HOST_UNAVAILABLE", "TIMEOUT", "REMOTE_TARGET_HOST_OFFLINE", "REMOTE_DISCONNECTED", "NOT_CONNECTED"].includes(remoteCode(error) ?? "");
+  return ["AGENT_UNAVAILABLE", "HOST_UNAVAILABLE", "TIMEOUT", "REMOTE_TARGET_HOST_OFFLINE", "REMOTE_DISCONNECTED", "HOST_DISCONNECTED", "NOT_CONNECTED"].includes(remoteCode(error) ?? "");
 }
 export function busyJob(error: unknown): string | undefined {
   if (remoteCode(error) !== ErrorCodes.WORKSPACE_GIT_BUSY) return undefined;
@@ -41,6 +41,7 @@ export function createSessionWorkspaces(deps: {
   const { call, hosts, connector, emit, log } = deps;
   const jobs = new Map<string, { controller: AbortController; done: Promise<void> }>();
   const starting = new Set<string>();
+  const recovering = new Set<string>();
   let disposed = false;
   const git = () => {
     const boot = hosts();
@@ -89,12 +90,16 @@ export function createSessionWorkspaces(deps: {
     return remoteRepository;
   }
   async function prepare(b: WorkspaceBinding): Promise<string> {
-    const environment = await getEnvironment(b.environmentId);
+    // A bound checkout can be restored after its environment has been removed.
+    // The Host owns the original variables and branch for this registration.
+    const environment = b.path ? null : await getEnvironment(b.environmentId);
     try {
       const result = await git().prepare(b.hostKey, {
         sessionId: b.sessionId, repository: b.repository, baseBranch: b.baseBranch,
-        ...(b.fromSessionId ? { fromSessionId: b.fromSessionId } : {}),
-        environment: { variables: environment.variables, setupScript: environment.setupScript },
+        ...(environment ? {
+          ...(b.fromSessionId ? { fromSessionId: b.fromSessionId } : {}),
+          environment: { variables: environment.variables, setupScript: environment.setupScript },
+        } : { restoreOnly: true }),
       });
       return result.jobId;
     } catch (error) {
@@ -122,7 +127,8 @@ export function createSessionWorkspaces(deps: {
     const started = Date.now();
     let previous = "";
     try {
-      const jobId = initial.jobId ?? await prepare(initial);
+      let restoredMissingCheckout = false;
+      let jobId = initial.jobId ?? await prepare(initial);
       // Record the accepted job even during cancellation so deletion can stop it.
       if ((await binding(sessionId))?.state === "preparing") {
         await update(sessionId, { jobId });
@@ -137,6 +143,14 @@ export function createSessionWorkspaces(deps: {
           if (remoteCode(error) !== ErrorCodes.WORKSPACE_GIT_JOB_NOT_FOUND) throw error;
           const worktree = (await git().list(current.hostKey)).find((item) => item.sessionId === sessionId);
           if (!worktree || worktree.setup.status === "running") throw error;
+          if (worktree.checkoutPresent === false) {
+            if (restoredMissingCheckout || !await active()) throw error;
+            restoredMissingCheckout = true;
+            const recovery = await update(sessionId, { path: worktree.path, workBranch: worktree.workBranch, jobId: null });
+            jobId = await prepare(recovery);
+            if ((await binding(sessionId))?.state === "preparing") await update(sessionId, { jobId });
+            continue;
+          }
           await save(readyPatch(worktree));
           return;
         }
@@ -174,6 +188,31 @@ export function createSessionWorkspaces(deps: {
     jobs.set(sessionId, { controller, done });
   }
 
+  async function beginPreparation(sessionId: string) {
+    const result = announce(await update(sessionId, { state: "preparing", jobId: null, error: null }));
+    watch(sessionId);
+    return result;
+  }
+
+  async function recoverMissingCheckout(expected: WorkspaceBinding, worktree: WorkspaceGitWorktree) {
+    const { sessionId } = expected;
+    if (worktree.checkoutPresent !== false || worktree.sessionId !== sessionId
+      || worktree.path !== expected.path || worktree.workBranch !== expected.workBranch
+      || worktree.repository.owner !== expected.repository.owner || worktree.repository.name !== expected.repository.name
+      || disposed || recovering.has(sessionId)) return;
+    recovering.add(sessionId);
+    try {
+      await jobs.get(sessionId)?.done;
+      const current = await binding(sessionId);
+      if (current?.state === "ready" && current.hostKey === expected.hostKey
+        && current.path === expected.path && current.workBranch === expected.workBranch && !disposed) {
+        await beginPreparation(sessionId);
+      }
+    } finally {
+      recovering.delete(sessionId);
+    }
+  }
+
   async function start(input: WorkspaceStart) {
     if (starting.has(input.sessionId)) throw remoteError(ErrorCodes.CONFLICT, "The session already has a workspace starting");
     starting.add(input.sessionId);
@@ -202,7 +241,7 @@ export function createSessionWorkspaces(deps: {
   }
 
   return {
-    git, binding, update, listBindings, announce, ensureSession, list, start,
+    git, binding, update, listBindings, announce, ensureSession, list, start, recoverMissingCheckout,
     async get(sessionId: string) {
       const current = await binding(sessionId);
       return current ? publicBinding(current) : null;
@@ -228,10 +267,8 @@ export function createSessionWorkspaces(deps: {
       await jobs.get(sessionId)?.done;
       const current = await binding(sessionId);
       if (current?.state !== "failed") throw remoteError(ErrorCodes.CONFLICT, "Only a failed workspace can be retried");
-      await getEnvironment(current.environmentId);
-      const result = announce(await update(sessionId, { state: "preparing", jobId: null, error: null }));
-      watch(sessionId);
-      return result;
+      if (!current.path) await getEnvironment(current.environmentId);
+      return beginPreparation(sessionId);
     },
     async cancel(sessionId: string) {
       const monitorTask = jobs.get(sessionId);
@@ -245,9 +282,28 @@ export function createSessionWorkspaces(deps: {
       }
     },
     async resume(hostKey?: string) {
-      for (const current of await listBindings(["preparing"])) {
-        if (!hostKey || current.hostKey === hostKey) watch(current.sessionId);
+      const bindings = await listBindings(["preparing", "ready"]);
+      for (const current of bindings) {
+        if (current.state === "preparing" && (!hostKey || current.hostKey === hostKey)) watch(current.sessionId);
       }
+      const ready = bindings.filter((current) => current.state === "ready" && (!hostKey || current.hostKey === hostKey));
+      if (!ready.length) return;
+      const connected = hostKey ? [hostKey] : (await hosts()?.list() ?? []).filter((host) => host.connected).map((host) => host.hostKey);
+      await Promise.all(connected.map(async (key) => {
+        const selected = ready.filter((current) => current.hostKey === key);
+        if (!selected.length) return;
+        try {
+          const worktrees = new Map((await git().list(key)).map((worktree) => [worktree.sessionId, worktree]));
+          for (const current of selected) {
+            const worktree = worktrees.get(current.sessionId);
+            if (worktree) await recoverMissingCheckout(current, worktree);
+          }
+        } catch (error) {
+          if (!offlineError(error) && remoteCode(error) !== ErrorCodes.HOST_VERSION_MISMATCH) {
+            log("Could not check repository workspaces on reconnect", error);
+          }
+        }
+      }));
     },
     async waitUntilReady(sessionId: string) {
       let current = await binding(sessionId);

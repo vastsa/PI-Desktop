@@ -150,6 +150,8 @@ export const WorkspaceGitPrepareSchema = Type.Object({
    * how a forked session starts from its parent's commits.
    */
   fromSessionId: Type.Optional(SessionId()),
+  /** Restore an existing registration without creating a new checkout from the base. */
+  restoreOnly: Type.Optional(Type.Boolean()),
   environment: Type.Optional(WorkspaceGitEnvironmentSchema),
 }, { additionalProperties: false });
 export type WorkspaceGitPrepare = Static<typeof WorkspaceGitPrepareSchema>;
@@ -192,6 +194,8 @@ export type WorkspaceGitWorktree = {
   /** `pi-desktop/<id>`; `<id>` is also the worktree directory name. */
   workBranch: string;
   path: string;
+  /** Absent on older hosts that do not report checkout presence. */
+  checkoutPresent?: boolean;
   /** The repository's main checkout, never edited by sessions. */
   mainPath: string;
   baseCommit: string;

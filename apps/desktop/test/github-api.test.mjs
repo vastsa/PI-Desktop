@@ -681,6 +681,12 @@ test("findPullRequest falls back to the most recent one and reports a merge", as
   assert.equal(closedFound.state, "closed");
 });
 
+test("repository sessions can look for an open pull request without returning a closed PR", async () => {
+  const { fetchImpl, requests } = scriptedFetch(() => json([pullRequest({ number: 2, state: "closed" })]));
+  assert.equal(await createGitHubApi({ fetchImpl }).findPullRequest(TOKEN, REPO, "feature", "open"), null);
+  assert.equal(new URL(requests[0].url).searchParams.get("state"), "open");
+});
+
 test("findPullRequest answers null when the branch has no pull request", async () => {
   const { fetchImpl } = scriptedFetch(() => json([]));
   assert.equal(await createGitHubApi({ fetchImpl }).findPullRequest(TOKEN, REPO, "feature"), null);

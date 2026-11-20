@@ -160,6 +160,8 @@ struct PrepareParams {
     #[serde(default)]
     from_session_id: Option<String>,
     #[serde(default)]
+    restore_only: bool,
+    #[serde(default)]
     environment: Option<EnvironmentInput>,
 }
 
@@ -232,6 +234,7 @@ struct PrepareRequest {
     repository: Repository,
     base_branch: String,
     from_session_id: Option<String>,
+    restore_only: bool,
     variables: Vec<Variable>,
     setup_script: Option<String>,
 }
@@ -285,6 +288,7 @@ impl PrepareRequest {
             repository,
             base_branch: params.base_branch,
             from_session_id: params.from_session_id,
+            restore_only: params.restore_only,
             variables,
             // A blank script is no script.
             setup_script: environment
@@ -381,6 +385,20 @@ pub(super) async fn handle_with(
             let p: SessionParams = parse(params)?;
             status(state, context, &p).await.map_err(to_rpc)
         }
+        "workspaceGit.removeSafely" => {
+            let p: SessionParams = parse(params)?;
+            remove(
+                state,
+                context,
+                &RemoveParams {
+                    installation_id: p.installation_id,
+                    session_id: p.session_id,
+                    force: false,
+                },
+            )
+            .await
+            .map_err(to_rpc)
+        }
         "workspaceGit.remove" => {
             let p: RemoveParams = parse(params)?;
             remove(state, context, &p).await.map_err(to_rpc)
@@ -476,6 +494,8 @@ async fn start_prepare(
                 );
                 return Ok(json!({ "jobId": job_id }));
             }
+        } else if request.restore_only {
+            return Err(not_found());
         }
         let (job_id, cancel) = table.start(
             JobKind::Prepare,
@@ -559,6 +579,9 @@ async fn create_worktree(
         )
         .await?;
         return Ok(record);
+    }
+    if request.restore_only {
+        return Err(not_found());
     }
 
     let config = context.network_config(&request.proxy_url, &request.repository);

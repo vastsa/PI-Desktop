@@ -2228,6 +2228,9 @@
           "workspaceGit": {
             "type": "boolean"
           },
+          "workspaceGitSafeRemoval": {
+            "type": "boolean"
+          },
           "notifications": {
             "type": "boolean"
           },
@@ -2550,6 +2553,9 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 256
+      },
+      "restoreOnly": {
+        "type": "boolean"
       },
       "environment": {
         "type": "object",

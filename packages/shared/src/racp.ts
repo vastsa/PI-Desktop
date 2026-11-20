@@ -488,6 +488,7 @@ export const RacpServerCapabilitiesSchema = Type.Object({
   workspaceFiles: Type.Optional(Type.Boolean()),
   workspacePluginFiles: Type.Optional(Type.Boolean()),
   workspaceGit: Type.Optional(Type.Boolean()),
+  workspaceGitSafeRemoval: Type.Optional(Type.Boolean()),
   notifications: Type.Boolean(),
   bindings: Type.Array(Type.Union([Type.Literal("RACP-WS"), Type.Literal("RACP-HTTP"), Type.Literal("RACP-GRPC")])),
 });
