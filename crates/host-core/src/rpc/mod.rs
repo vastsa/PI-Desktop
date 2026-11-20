@@ -7,6 +7,7 @@ mod gen_ui;
 mod market_browse_rpc;
 mod modes_rpc;
 mod plugin_reviews_rpc;
+mod remote_sessions_rpc;
 mod remote_tools;
 mod review_actions_rpc;
 mod scheduled_rpc;
@@ -1386,19 +1387,12 @@ fn resolve_persisted_project_workspace(
 ) -> Result<Option<String>, JsonRpcError> {
     match sessions::session_summary(&state.db, session_id) {
         Ok(Some(summary)) => {
-            if let Some(path) = summary.project_path.as_deref() {
-                if state
-                    .db
-                    .remote_workspace_for_path(path)
-                    .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?
-                    .is_some()
-                {
-                    let scratch = scratch::session_dir(&state.data_dir, session_id)
-                        .ok_or_else(|| rpc_err(1002, "invalid session id", "INVALID_PARAMS"))?;
-                    std::fs::create_dir_all(&scratch)
-                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                    return Ok(Some(scratch.to_string_lossy().into_owned()));
-                }
+            if remote_tools::remote_workspace_of(state, &summary)?.is_some() {
+                let scratch = scratch::session_dir(&state.data_dir, session_id)
+                    .ok_or_else(|| rpc_err(1002, "invalid session id", "INVALID_PARAMS"))?;
+                std::fs::create_dir_all(&scratch)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                return Ok(Some(scratch.to_string_lossy().into_owned()));
             }
             Ok(summary.project_path)
         }
@@ -1454,10 +1448,7 @@ fn resolve_tool_workspace_for_call(
         return Ok(primary);
     };
     if primary_path.starts_with(crate::db::REMOTE_PROJECT_PREFIX) {
-        let remote = state
-            .db
-            .remote_workspace_for_path(primary_path)
-            .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?
+        let remote = remote_tools::session_remote_workspace(state, session_id)?
             .ok_or_else(|| rpc_err(1002, "remote workspace binding missing", "INVALID_PARAMS"))?;
         return Ok(Some(remote.path));
     }
@@ -2121,6 +2112,11 @@ async fn handle_request(
                 .db
                 .list_project_groups()
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let groups = groups
+                .iter()
+                .map(|group| crate::remote_sessions::decorate_group(&st.db, group))
+                .collect::<anyhow::Result<Vec<_>>>()
+                .map_err(|err| rpc_err(1000, err.to_string(), "INTERNAL"))?;
             Ok(json!({ "groups": groups }))
         }
         "project.group.createRemote" => {
@@ -2890,11 +2886,17 @@ async fn handle_request(
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| rpc_err(1002, "projectPath required", "INVALID_PARAMS"))?;
             let st = state.lock().await;
+            let repository_session = crate::remote_sessions::bindings::get(&st.db, session_id)
+                .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?
+                .is_some()
+                || crate::remote_sessions::marker(&st.db, project_path)
+                    .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?
+                    .is_some();
             // An isolated session's worktree belongs to its project's repository.
             let isolated = crate::session_worktrees::registry::for_owner(&st.db, session_id, None)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
                 .is_some();
-            if isolated {
+            if isolated || repository_session {
                 return Err(worktree_rpc::to_rpc(
                     crate::session_worktrees::WorktreeError::new(
                         "WORKTREE_MOVE_UNSUPPORTED",
@@ -4144,6 +4146,14 @@ async fn handle_request(
             worktree_rpc::handle(&state, method, params).await
         }
 
+        method
+            if method.starts_with("environments.")
+                || method.starts_with("sessionWorkspace.")
+                || method == "project.group.ensureRepository" =>
+        {
+            let st = state.lock().await;
+            remote_sessions_rpc::handle(&st.db, method, params)
+        }
         method if method.starts_with("workspaceGit.") => {
             workspace_git_rpc::handle(&state, method, params).await
         }

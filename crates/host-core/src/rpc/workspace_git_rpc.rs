@@ -56,7 +56,11 @@ fn to_rpc(error: WorkspaceGitError) -> JsonRpcError {
     } else {
         WORKSPACE_GIT_RPC_CODE
     };
-    rpc_err(code, error.message, error.code)
+    let mut rpc = rpc_err(code, error.message, error.code);
+    if let (Some(job_id), Some(data)) = (error.running_job_id, rpc.data.as_mut()) {
+        data["jobId"] = json!(job_id);
+    }
+    rpc
 }
 
 fn not_found() -> WorkspaceGitError {
@@ -381,6 +385,25 @@ pub(super) async fn handle_with(
             let p: RemoveParams = parse(params)?;
             remove(state, context, &p).await.map_err(to_rpc)
         }
+        // Private host pipe only. The path is canonicalized by pi-host
+        // after it resolves the authorized workspace tool root.
+        "workspaceGit.scopeForPath" => {
+            let root = params
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| to_rpc(WorkspaceGitError::invalid("path is required")))?;
+            let st = state.lock().await;
+            let scope = registry::find_by_path(&st.db, Path::new(root))
+                .map_err(|error| to_rpc(error.into()))?
+                .map(|record| {
+                    json!({
+                        "installationId": record.installation_id,
+                        "sessionId": record.session_id,
+                        "repository": record.repository,
+                    })
+                });
+            Ok(json!({ "scope": scope }))
+        }
         "workspaceGit.list" => {
             let p: ListParams = parse(params)?;
             validate_installation_id(&p.installation_id).map_err(to_rpc)?;
@@ -401,6 +424,14 @@ fn lock(jobs: &SharedJobs) -> std::sync::MutexGuard<'_, jobs::JobTable> {
 }
 
 /// The session's record, read from the registry. Paths always come from here.
+async fn mutation_lock(
+    installation_id: &str,
+    session_id: &str,
+) -> tokio::sync::OwnedMutexGuard<()> {
+    let lock_path = PathBuf::from(format!("workspace-git:{installation_id}:{session_id}"));
+    crate::session_worktrees::repo_lock::lock(&lock_path).await
+}
+
 async fn record_of(
     state: &SharedState,
     installation_id: &str,
@@ -417,22 +448,25 @@ async fn start_prepare(
     context: &Arc<WorkspaceGitContext>,
     request: PrepareRequest,
 ) -> Result<Value, WorkspaceGitError> {
+    let _mutation = mutation_lock(&request.installation_id, &request.session_id).await;
     let (jobs, job_id, cancel) = {
         let st = state.lock().await;
         let jobs = st.workspace_git_jobs.clone();
         let mut table = lock(&jobs);
         // A running job wins over an existing record: during the setup script
         // the record already exists, and the session is still busy.
-        if table.is_running(&request.installation_id, &request.session_id) {
-            return Err(WorkspaceGitError::new(
-                "WORKSPACE_GIT_BUSY",
-                "a git job for this session is still running",
-            ));
+        if let Some(job_id) = table.running_job(&request.installation_id, &request.session_id) {
+            return Err(WorkspaceGitError::busy(job_id));
         }
         // A retry after a lost reply, or a double click: the worktree exists,
         // so the answer is that worktree, not a second one.
         if let Some(record) = registry::get(&st.db, &request.installation_id, &request.session_id)?
         {
+            if record.repository != request.repository {
+                return Err(WorkspaceGitError::invalid(
+                    "this session is already bound to another repository",
+                ));
+            }
             if is_real_dir(Path::new(&record.path)) {
                 let job_id = table.completed(
                     JobKind::Prepare,
@@ -472,6 +506,13 @@ async fn run_prepare(
 ) {
     // Dropping the git future kills its process (`kill_on_drop`) and removes
     // a half-written clone directory.
+    let may_discard = match record_of(&state, &request.installation_id, &request.session_id).await {
+        Ok(None) => matches!(
+            std::fs::symlink_metadata(request.worktree_path()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+        ),
+        _ => false,
+    };
     let created = tokio::select! {
         biased;
         _ = jobs::cancelled(&mut cancel) => None,
@@ -482,7 +523,13 @@ async fn run_prepare(
         Some(Err(error)) => Outcome::Failed(error),
         Some(Ok(record)) => run_setup(&state, &jobs, &job_id, &request, record, cancel).await,
     };
-    if outcome == Outcome::Cancelled {
+    if outcome == Outcome::Cancelled
+        && may_discard
+        && matches!(
+            record_of(&state, &request.installation_id, &request.session_id).await,
+            Ok(Some(_))
+        )
+    {
         // A cancelled prepare leaves no worktree, record, or branch behind;
         // the main checkout stays.
         discard(&state, &context, &request).await;
@@ -501,7 +548,18 @@ async fn create_worktree(
     let main_path = request.main_path();
     let worktree_path = request.worktree_path();
     let work_branch = request.work_branch();
-    std::fs::create_dir_all(request.layout.root())?;
+    request.layout.ensure_private_directories()?;
+    if let Some(record) = record_of(state, &request.installation_id, &request.session_id).await? {
+        lock(jobs).set_phase(job_id, JobPhase::CreatingWorktree);
+        worktree::restore(
+            &context.git,
+            Path::new(&record.main_path),
+            Path::new(&record.path),
+            &record.work_branch,
+        )
+        .await?;
+        return Ok(record);
+    }
 
     let config = context.network_config(&request.proxy_url, &request.repository);
     let config: Vec<(&str, &str)> = config
@@ -542,11 +600,6 @@ async fn create_worktree(
     };
 
     lock(jobs).set_phase(job_id, JobPhase::CreatingWorktree);
-    {
-        // A record whose directory is gone is stale; the worktree is rebuilt.
-        let st = state.lock().await;
-        registry::remove(&st.db, &request.installation_id, &request.session_id)?;
-    }
     let base_commit = worktree::create(
         &context.git,
         &main_path,
@@ -556,15 +609,7 @@ async fn create_worktree(
     )
     .await?;
 
-    let registered = register(state, request, &main_path, &worktree_path, base_commit).await;
-    if registered.is_err() {
-        if let Err(error) =
-            worktree::remove(&context.git, &main_path, &worktree_path, &work_branch).await
-        {
-            tracing::warn!(%error, "could not remove an unregistered worktree");
-        }
-    }
-    registered
+    register(state, request, &main_path, &worktree_path, base_commit).await
 }
 
 async fn register(
@@ -615,7 +660,11 @@ async fn run_setup(
     record: WorktreeRecord,
     cancel: watch::Receiver<bool>,
 ) -> Outcome {
-    let Some(script) = request.setup_script.as_deref() else {
+    let Some(script) = record
+        .setup_script
+        .as_deref()
+        .filter(|_| record.setup_status == SetupStatus::Running)
+    else {
         return Outcome::Prepared(record.wire());
     };
     lock(jobs).set_phase(job_id, JobPhase::RunningSetup);
@@ -697,15 +746,13 @@ async fn start_push(
     layout(&params.workspaces_root)?;
     let proxy_url = proxy_url(params.git_proxy.as_ref())?;
     session_key(&params.installation_id, &params.session_id)?;
+    let _mutation = mutation_lock(&params.installation_id, &params.session_id).await;
     let (jobs, job_id, cancel, record) = {
         let st = state.lock().await;
         let jobs = st.workspace_git_jobs.clone();
         let mut table = lock(&jobs);
-        if table.is_running(&params.installation_id, &params.session_id) {
-            return Err(WorkspaceGitError::new(
-                "WORKSPACE_GIT_BUSY",
-                "a git job for this session is still running",
-            ));
+        if let Some(job_id) = table.running_job(&params.installation_id, &params.session_id) {
+            return Err(WorkspaceGitError::busy(job_id));
         }
         let record = registry::get(&st.db, &params.installation_id, &params.session_id)?
             .filter(|record| is_real_dir(Path::new(&record.path)))
@@ -775,12 +822,25 @@ async fn status(
     session_key(&params.installation_id, &params.session_id)?;
     let record = record_of(state, &params.installation_id, &params.session_id)
         .await?
-        .filter(|record| is_real_dir(Path::new(&record.path)))
         .ok_or_else(not_found)?;
-    let counts =
-        worktree::status(&context.git, Path::new(&record.path), &record.work_branch).await?;
+    let path = Path::new(&record.path);
+    let main = Path::new(&record.main_path);
+    let counts = if is_real_dir(path) {
+        worktree::status(&context.git, path, &record.work_branch).await?
+    } else {
+        worktree::branch_status(&context.git, main, &record.work_branch, 0).await?
+    };
+    let ahead_of_base = worktree::commits_ahead_of_base(
+        &context.git,
+        main,
+        &record.work_branch,
+        &record.base_branch,
+        &record.base_commit,
+    )
+    .await?;
     Ok(json!({
         "worktree": record.wire(),
+        "aheadOfBase": ahead_of_base,
         "ahead": counts.ahead,
         "behind": counts.behind,
         "uncommittedFiles": counts.uncommitted_files,
@@ -798,45 +858,29 @@ async fn remove(
     params: &RemoveParams,
 ) -> Result<Value, WorkspaceGitError> {
     session_key(&params.installation_id, &params.session_id)?;
+    let _removal = mutation_lock(&params.installation_id, &params.session_id).await;
     let record = {
         let st = state.lock().await;
-        if lock(&st.workspace_git_jobs).is_running(&params.installation_id, &params.session_id) {
-            return Err(WorkspaceGitError::new(
-                "WORKSPACE_GIT_BUSY",
-                "a git job for this session is still running",
-            ));
+        if let Some(job_id) =
+            lock(&st.workspace_git_jobs).running_job(&params.installation_id, &params.session_id)
+        {
+            return Err(WorkspaceGitError::busy(job_id));
         }
         registry::get(&st.db, &params.installation_id, &params.session_id)?.ok_or_else(not_found)?
     };
-    let path = Path::new(&record.path);
-    let (uncommitted_files, unpushed_commits) = if is_real_dir(path) {
-        match worktree::status(&context.git, path, &record.work_branch).await {
-            Ok(counts) => (counts.uncommitted_files, counts.unpushed_commits),
-            // A worktree too broken to inspect can still be forced away.
-            Err(_) if params.force => (0, 0),
-            Err(error) => return Err(error),
-        }
-    } else {
-        (0, 0)
-    };
-    let result = |removed: bool| {
-        json!({
-            "removed": removed,
-            "uncommittedFiles": uncommitted_files,
-            "unpushedCommits": unpushed_commits,
-        })
-    };
-    if (uncommitted_files > 0 || unpushed_commits > 0) && !params.force {
-        return Ok(result(false));
-    }
-    worktree::remove(
+    let (removed, uncommitted_files, unpushed_commits) = worktree::remove_checked(
         &context.git,
         Path::new(&record.main_path),
-        path,
+        Path::new(&record.path),
         &record.work_branch,
+        params.force,
     )
     .await?;
-    let st = state.lock().await;
-    registry::remove(&st.db, &params.installation_id, &params.session_id)?;
-    Ok(result(true))
+    if removed {
+        let st = state.lock().await;
+        registry::remove(&st.db, &params.installation_id, &params.session_id)?;
+    }
+    Ok(json!({
+        "removed": removed, "uncommittedFiles": uncommitted_files, "unpushedCommits": unpushed_commits,
+    }))
 }

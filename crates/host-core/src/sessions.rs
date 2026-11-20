@@ -2127,10 +2127,13 @@ pub fn configure_session_with_mode_snapshot(
 }
 
 pub fn delete_session(db: &Database, id: &str) -> Result<bool> {
+    let transaction = db.conn().unchecked_transaction()?;
     let n = db
         .conn()
         .prepare_cached("DELETE FROM sessions WHERE id = ?1")?
         .execute(params![id])?;
+    crate::remote_sessions::bindings::remove(db, id)?;
+    transaction.commit()?;
     if n > 0 {
         // Here rather than in the RPC handler so every deletion path (UI,
         // failed scheduled-run cleanup) also drops the transcript files.

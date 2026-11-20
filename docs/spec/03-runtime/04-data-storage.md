@@ -2212,3 +2212,11 @@ upgrade chain first. Reopening schema 33 does not repeat the repair or replace
 the backup. Mode snapshots, permissions, and staged-run contracts are unchanged.
 Older Host binaries reject schema 33; retain the compatible backup rather than
 deleting application data or manually lowering the version marker.
+
+## Remote repository session records
+
+The local Host uses the existing `kv` table. The `remoteEnvironments`
+namespace stores named configuration, `repositoryProjects` marks repository
+project groups, and `sessionWorkspaces` stores the per-session binding.
+`pendingWorkspaceRemovals` records cleanup requests across offline restarts.
+The paired Host separately stores worktree metadata and its setup outcome.

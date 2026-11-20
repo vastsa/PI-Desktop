@@ -111,14 +111,13 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
   async function pushCredential(hostKey: string): Promise<void> {
     const current = provider;
     const host = deps.connectedHost(hostKey);
-    if (!current || !host || !advertises(host)) return;
-    let token: string | null;
+    if (!host || !advertises(host)) return;
+    let token: string | null = null;
     try {
-      token = await current();
+      token = await current?.() ?? null;
     } catch {
       // The provider's error may quote what it failed to read; keep only the fact.
-      deps.log("warn", "git credential provider failed; the remote host has no git credential", { hostKey });
-      return;
+      deps.log("warn", "git credential provider failed; clearing the remote credential", { hostKey });
     }
     if (provider !== current || deps.connectedHost(hostKey) !== host) return;
     try {
@@ -129,11 +128,13 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
       }
       if (!credentialTransportAllowed(deps.record(hostKey))) {
         refused.add(hostKey);
+        await host.adapter.client.request("workspace/gitCredentialClear", {}, REQUEST_TIMEOUT_MS);
         deps.log("warn", "git credential not sent: the remote host is not reached over SSH, wss, or loopback", { hostKey, code: ErrorCodes.WORKSPACE_GIT_TRANSPORT_REFUSED });
         return;
       }
       refused.delete(hostKey);
       const installationId = await deps.getInstallationId();
+      if (provider !== current || deps.connectedHost(hostKey) !== host) return;
       await host.adapter.client.request("workspace/gitCredentialSet", { installationId, token }, REQUEST_TIMEOUT_MS);
     } catch (error) {
       // Only the code: a message could echo the request.

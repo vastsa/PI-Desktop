@@ -1,3 +1,4 @@
+import type { SessionRemoteRepository } from "./remote-sessions";
 /** Shared public types grouped by the owning application domain. */
 import type { RemoteWorkspace } from "./workspace.js";
 import type { Mode } from "./common.js";
@@ -34,6 +35,7 @@ export type SessionCapabilities = {
 };
 
 export type SessionSummary = {
+  remoteRepository?: SessionRemoteRepository;
   remoteWorkspace?: RemoteWorkspace;
   id: string;
   /** Transcript authority. Omitted by older hosts and normalized to `desktop`. */

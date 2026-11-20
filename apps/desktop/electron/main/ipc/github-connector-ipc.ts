@@ -29,6 +29,7 @@ import type { IpcRegistrar } from "./types";
 
 export type GitHubConnectorIpcDependencies = {
   registrar: IpcRegistrar;
+  agentTools?: () => Promise<GitHubConnectorStatus["agentTools"]>;
   connector: Pick<
     GitHubConnector,
     | "status"
@@ -113,6 +114,7 @@ function toBranchList(list: GitHubBranchList): GitHubBranchList {
 export function registerGitHubConnectorIpc({
   registrar,
   connector,
+  agentTools,
 }: GitHubConnectorIpcDependencies): void {
   /** Register a channel that only the main window may invoke. */
   const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
@@ -122,7 +124,11 @@ export function registerGitHubConnectorIpc({
     });
   };
 
-  handle(IPC.invoke.githubConnectorStatus, async () => toStatus(await connector.status()));
+  handle(IPC.invoke.githubConnectorStatus, async () => {
+    const status = toStatus(await connector.status());
+    const state = await agentTools?.().catch(() => undefined);
+    return state ? { ...status, agentTools: state } : status;
+  });
 
   handle(IPC.invoke.githubConnectorLoginStart, async (input) => {
     const { allowWorkflowScope } = asRecord(input, "login input");

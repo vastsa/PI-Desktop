@@ -108,6 +108,13 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
   };
 
   const runtime: RuntimePort = {
+    async canDispatchQueued(sessionId) {
+      const { session } = await requireHost().call<{ session?: { projectPath?: string; remoteRepository?: { state: string }; remoteWorkspace?: unknown } }>(
+        "session.get", { id: sessionId, messageLimit: 1 },
+      );
+      if (!session?.projectPath?.startsWith("remote-project:")) return true;
+      return session.remoteRepository ? session.remoteRepository.state === "ready" : Boolean(session.remoteWorkspace);
+    },
     async prompt(request: TurnStartRequest) {
       try {
         const summary = await sessions.get(request.sessionId);

@@ -37,9 +37,15 @@ export type UserMcpClient = Pick<
 
 export type UserMcpClientConfig = ConstructorParameters<typeof McpServerClient>[0];
 
+const builtInGitHub = Symbol.for("pi-desktop.built-in-github-mcp");
+
+function isBuiltinGitHub(record: McpServerRecord): boolean {
+  return Reflect.get(record, builtInGitHub) === true;
+}
+
 export type UserMcpOAuthHandler = {
-  getValidAccessToken: (serverId: string) => Promise<string | null>;
-  hasOAuth: (serverId: string) => Promise<boolean>;
+  getValidAccessToken: (serverId: string, record?: McpServerRecord) => Promise<string | null>;
+  hasOAuth: (serverId: string, record?: McpServerRecord) => Promise<boolean>;
 };
 
 export type UserMcpRuntimeOptions = {
@@ -421,6 +427,17 @@ export class UserMcpRuntime {
     }
   }
 
+  invalidateBuiltinGitHub(): void {
+    for (const [key, entry] of this.entries) {
+      if (!isBuiltinGitHub(entry.record)) continue;
+      entry.client.close();
+      this.entries.delete(key);
+    }
+    for (const [key, record] of this.records) {
+      if (isBuiltinGitHub(record)) this.discoveredTools.delete(key);
+    }
+  }
+
   /** Drop every connection, e.g. on quit. */
   disposeAll(): void {
     this.calls.cancelAll();
@@ -457,12 +474,13 @@ export class UserMcpRuntime {
     let oauthToken: string | null = null;
     if (record.transport === "http" && this.options.oauth) {
       try {
-        oauthToken = await this.options.oauth.getValidAccessToken(record.id);
+        oauthToken = await this.options.oauth.getValidAccessToken(record.id, record);
       } catch {
         oauthToken = null;
       }
     }
 
+    if (isBuiltinGitHub(record) && !oauthToken) return { tools: [] };
     const key = connectionKey(record, projectPath);
     let existing = this.entries.get(key);
     // Token refresh can run while Test connection or another session arrives.
@@ -642,6 +660,7 @@ function workspaceIdentity(projectPath: string | null | undefined): string {
  * while a project server is its own server even when it reuses a global id.
  */
 function recordKey(record: McpServerRecord): string {
+  if (isBuiltinGitHub(record)) return JSON.stringify([record.id, "built-in"]);
   return record.level === "project" && record.projectPath
     ? JSON.stringify([record.id, workspaceIdentity(record.projectPath)])
     : JSON.stringify([record.id]);

@@ -44,7 +44,7 @@ export function WorktreeDialogFrame({
       }
       if (event.key !== "Tab") return;
       const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        "button:not([disabled]), textarea:not([disabled])",
+        "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
       );
       if (!focusable?.length) return;
       const first = focusable[0];

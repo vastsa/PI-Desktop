@@ -1,3 +1,4 @@
+import { getRemoteRepositorySessions } from "./repository-session-ipc";
 import { IPC } from "@pi-desktop/shared";
 import type { HostProcess } from "../host-process";
 import type { IpcRegistrar } from "./types";
@@ -46,6 +47,11 @@ export function registerScheduledIpc({
     return executeScheduledTask({
       host, id, automatic, runs: scheduledRunsBySession,
       isCurrent: () => !isQuitting() && getHost() === host,
+      prepareWorkspace: async (sessionId) => {
+        const workspaces = getRemoteRepositorySessions()?.workspaces;
+        await workspaces?.ensureSession(sessionId);
+        await workspaces?.waitUntilReady(sessionId);
+      },
       prompt: (sessionId, content) => invoke(IPC.invoke.agentPrompt, [{ sessionId, content }]),
     });
   });

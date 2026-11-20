@@ -6,12 +6,12 @@ export async function sessionForFiles(
   getHost: () => FileHost | null,
   sessionId: string,
   getSidecar?: () => FileHost | null,
-): Promise<{ projectPath?: string; worktree?: unknown }> {
+): Promise<{ projectPath?: string; worktree?: unknown; remoteWorkspace?: RemoteWorkspace; remoteRepository?: unknown }> {
   const native = sessionId.startsWith("native-pi:");
   const getOwner = native ? getSidecar : getHost;
   const owner = getOwner?.();
   if (!owner) throw Object.assign(new Error("session source unavailable"), { errorCode: "HOST_UNAVAILABLE" });
-  const { session } = await owner.call<{ session?: { projectPath?: string; worktree?: unknown } }>(
+  const { session } = await owner.call<{ session?: { projectPath?: string; worktree?: unknown; remoteWorkspace?: RemoteWorkspace; remoteRepository?: unknown } }>(
     native ? "native.session.get" : "session.get", { id: sessionId, messageLimit: 1 },
   );
   if (getOwner?.() !== owner) throw Object.assign(new Error("session source replaced"), { errorCode: "HOST_UNAVAILABLE" });
@@ -26,6 +26,7 @@ export async function remoteWorkspaceForFiles(getHost: () => FileHost | null, se
   let path: string | undefined;
   if (sessionId) {
     const session = await sessionForFiles(getHost, sessionId, getSidecar);
+    if (session.remoteWorkspace) return session.remoteWorkspace;
     path = session.projectPath;
   } else {
     const { workspace } = await owner.call<{ workspace?: { path: string } }>("workspace.get");
@@ -35,7 +36,9 @@ export async function remoteWorkspaceForFiles(getHost: () => FileHost | null, se
   if (!path?.startsWith("remote-project:")) return null;
   const { groups } = await owner.call<{ groups: ProjectGroupRecord[] }>("project.groups.list");
   if (getHost() !== owner) throw Object.assign(new Error("host replaced"), { errorCode: "HOST_UNAVAILABLE" });
-  const remote = groups.find((group) => group.primaryPath === path)?.remote;
+  const group = groups.find((group) => group.primaryPath === path);
+  if (group?.repository) throw Object.assign(new Error("Repository workspace is not ready"), { errorCode: "REMOTE_WORKSPACE_NOT_READY" });
+  const remote = group?.remote;
   if (!remote) throw Object.assign(new Error("remote workspace binding unavailable"), { errorCode: "NOT_FOUND" });
   return remote;
 }

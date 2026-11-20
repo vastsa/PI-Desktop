@@ -55,6 +55,7 @@ export function useGitHubConnector(): GitHubConnectorState {
     const stop = api.onGithubConnectorChanged((next) => {
       latest.current += 1;
       setStatus(next);
+      void refresh();
       setError(null);
       setLoading(false);
     });

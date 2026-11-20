@@ -14,6 +14,10 @@
  */
 export const GITHUB_OAUTH_CLIENT_ID: string = "";
 
+export const GITHUB_MCP_SERVER_ID = "github";
+export const GITHUB_MCP_URL = "https://api.githubcopilot.com/mcp/";
+export const GITHUB_MCP_TOOLSETS = "issues,pull_requests";
+
 /** Scopes every sign-in asks for: repository access and organization membership. */
 export const GITHUB_CONNECTOR_BASE_SCOPES = ["repo", "read:org"] as const;
 

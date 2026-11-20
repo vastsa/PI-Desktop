@@ -1,3 +1,4 @@
+import { configureBuiltinGitHubMcp } from "../github/builtin-mcp";
 import { dialog, globalShortcut, shell, type BrowserWindow } from "electron";
 import { join } from "node:path";
 import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
@@ -558,9 +559,15 @@ export function createPluginServices({
       return status;
     },
   });
+  const githubMcp = configureBuiltinGitHubMcp(async () => {
+    const host = getHost();
+    if (!host) return false;
+    const settings = await host.call<AppSettings>("settings.get");
+    return settings.githubAgentTools !== false;
+  });
   userMcp = new UserMcpRuntime({
     createClient: (config) => new McpServerClient(config),
-    oauth: mcpOAuth,
+    oauth: githubMcp.oauth(mcpOAuth),
     connectTimeoutMs: MCP_CONNECT_TIMEOUT_MS,
     callTimeoutMs: MCP_CALL_TIMEOUT_MS,
     discoveryTimeoutMs: MCP_TOOL_DISCOVERY_TIMEOUT_MS,

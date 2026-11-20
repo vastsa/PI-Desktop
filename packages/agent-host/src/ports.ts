@@ -88,6 +88,8 @@ export interface RuntimePort {
   /** Runtime-side busy state the event stream cannot see, e.g. a manual
    * compaction; a busy session queues instead of starting. */
   isBusy?(sessionId: string): boolean;
+  /** Check a persisted admission prerequisite before consuming the queue head. */
+  canDispatchQueued?(sessionId: string): Promise<boolean>;
 }
 
 export type QueuedTurnRecord = {

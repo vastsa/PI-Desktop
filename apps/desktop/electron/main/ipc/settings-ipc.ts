@@ -8,6 +8,7 @@ import { currentSystemProxyRelayUrl } from "../network-proxy";
 
 export type SettingsIpcDependencies = {
   registrar: IpcRegistrar;
+  onGitHubToolsChanged?: () => void;
   getHost: () => HostProcess | null;
   getSidecar: () => AgentSidecar | null;
   dataDir: string;
@@ -34,6 +35,7 @@ export type SettingsIpcDependencies = {
 /** Register app settings and command-shell channels. */
 export function registerSettingsIpc({
   registrar,
+  onGitHubToolsChanged,
   getHost,
   getSidecar,
   dataDir,
@@ -82,6 +84,7 @@ export function registerSettingsIpc({
     try {
       result = await host.call<AppSettings>("settings.set", validatedSettings);
       await liveCallService?.settingsWritten(result);
+      if (currentSettings.githubAgentTools !== result.githubAgentTools) onGitHubToolsChanged?.();
     } finally {
       releaseSettingsWrite?.();
     }

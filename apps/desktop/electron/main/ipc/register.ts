@@ -1,3 +1,5 @@
+import { getBuiltinGitHubMcp } from "../github/builtin-mcp";
+import type { McpServerRecord } from "@pi-desktop/shared";
 import { join } from "node:path";
 import { dialog, shell, type BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron";
 import { err, ErrorCodes, IPC, ok, type LifecycleDialogChoice, type Result } from "@pi-desktop/shared";
@@ -22,6 +24,7 @@ import { registerPluginLauncherIpc } from "./plugin-launcher-ipc";
 import { registerComputerIpc } from "./computer-ipc";
 import { registerJevIpc } from "./jev-ipc";
 import { bootGitHubConnector } from "../github/connector-boot";
+import { getRemoteRepositorySessions, registerRemoteRepositorySessions } from "./repository-session-ipc";
 import { registerGitHubConnectorIpc } from "./github-connector-ipc";
 import { registerModesIpc } from "./modes-ipc";
 import type { ModeServices } from "../runtime/mode-services";
@@ -291,6 +294,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
   registerSessionIpc({
     registrar,
+    getRepositorySessions: getRemoteRepositorySessions,
     getHost,
     getSidecar,
     dataDir,
@@ -324,6 +328,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyUpdatePreference: (preference) => updater.setPreference(preference),
     resolveEffectiveCommandShell,
     liveCallService,
+    onGitHubToolsChanged: () => {
+      userMcp.invalidateBuiltinGitHub();
+      for (const path of userMcp.listedWorkspaces()) void refreshUserMcp(path);
+    },
   });
   registerConfigSyncIpc({
     registrar,
@@ -347,9 +355,33 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
   });
   registerJevIpc({ registrar, logger });
-  registerGitHubConnectorIpc({
-    registrar,
-    connector: bootGitHubConnector({ getHost, sendToRenderer, safeOpenExternal, logger }),
+  const githubConnector = bootGitHubConnector({ getHost, sendToRenderer, safeOpenExternal, logger });
+  const refreshGitHubTools = () => {
+    userMcp.invalidateBuiltinGitHub();
+    for (const path of userMcp.listedWorkspaces()) void refreshUserMcp(path);
+  };
+  githubConnector.onChange(refreshGitHubTools);
+  registerGitHubConnectorIpc({ registrar, connector: githubConnector, agentTools: async () => {
+    const host = getHost();
+    const builtin = getBuiltinGitHubMcp();
+    if (!host || !builtin) return undefined;
+    const projectPath = await optionalWorkspaceRoot();
+    const { servers } = await host.call<{ servers: McpServerRecord[] }>("mcp.list", { projectPath, level: "all" });
+    return builtin.state(servers ?? []);
+  } });
+  registerRemoteRepositorySessions({
+    registrar, connector: githubConnector, emit: (channel, payload) => {
+      sendToRenderer(channel, payload);
+      if (channel !== IPC.event.remoteSessionWorkspaceChanged) return;
+      const event = payload as { sessionId: string; remoteRepository?: { state: string } };
+      if (event.remoteRepository?.state === "ready") getAgentHostBridge()?.agentHost.resumeWorkspaceQueue(event.sessionId);
+    },
+    call: async (method, params) => {
+      const host = getHost();
+      if (!host) throw Object.assign(new Error("Local host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
+      return host.call(method, params);
+    },
+    log: (message, error) => logger.app("runtime", "warn", message, { data: { error: String(error) } }),
   });
   registerModesIpc({ registrar, catalog: dependencies.modeServices.catalog, runs: dependencies.modeServices.runs });
   registerComputerIpc({ registrar, getHost, publishGrant: publishComputerGrant });

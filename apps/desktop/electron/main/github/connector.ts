@@ -71,6 +71,7 @@ export type GitHubConnector = {
     input: GitHubPullRequestInput,
   ): Promise<GitHubPullRequestSummary>;
   /** Abort any login in progress and go quiet. Called on shutdown. */
+  cancelPendingLogin(): void;
   dispose(): void;
 };
 
@@ -425,8 +426,11 @@ export function createGitHubConnector(deps: GitHubConnectorDeps): GitHubConnecto
     },
 
     async token() {
-      return (await deps.store.read())?.token ?? null;
+      const credential = await deps.store.read();
+      return credential && credential.token !== rejectedToken ? credential.token : null;
     },
+
+    cancelPendingLogin: abandonLogin,
 
     onChange(listener) {
       listeners.add(listener);

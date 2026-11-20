@@ -58,3 +58,9 @@ consistent with that stored state.
   and ZIP users install from the release page after extracting the archive.
 - Prerelease installs graduate to stable through the latest feed; rollback,
   staged rollout, and a dedicated RC channel remain operational follow-ups.
+
+## Fork release mode (D686)
+
+The fork's unsigned macOS arm64 package sets `piDistribution: "unsigned"`.
+The updater opens the fork's Releases page and leaves installation to the
+user. See [Fork release coordinates](fork-release-coordinates.md).

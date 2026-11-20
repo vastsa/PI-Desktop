@@ -163,6 +163,18 @@ pub fn set_setup(
     insert(db, &record)
 }
 
+/// A setup process cannot outlive the host-core that started it.
+pub fn recover_interrupted_setups(db: &Database) -> Result<()> {
+    for mut record in all(db)? {
+        if record.setup_status == SetupStatus::Running {
+            record.setup_status = SetupStatus::Failed;
+            record.setup_log_tail = Some("Setup was interrupted when the host stopped.".into());
+            insert(db, &record)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

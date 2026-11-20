@@ -25,6 +25,7 @@ pub(crate) mod test_support;
 pub struct WorkspaceGitError {
     pub code: &'static str,
     pub message: String,
+    pub running_job_id: Option<String>,
 }
 
 impl WorkspaceGitError {
@@ -32,7 +33,17 @@ impl WorkspaceGitError {
         Self {
             code,
             message: message.into(),
+            running_job_id: None,
         }
+    }
+
+    pub fn busy(job_id: &str) -> Self {
+        let mut error = Self::new(
+            "WORKSPACE_GIT_BUSY",
+            "a git job for this session is still running",
+        );
+        error.running_job_id = Some(job_id.to_string());
+        error
     }
 
     /// A name, id, or path the caller supplied was refused before any use.
@@ -50,6 +61,8 @@ impl std::fmt::Display for WorkspaceGitError {
         write!(f, "{}: {}", self.code, self.message)
     }
 }
+
+impl std::error::Error for WorkspaceGitError {}
 
 impl From<anyhow::Error> for WorkspaceGitError {
     fn from(error: anyhow::Error) -> Self {

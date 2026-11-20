@@ -215,6 +215,7 @@ export async function runGitHubDeviceFlow(
   });
   onEvent({ kind: "progress", message: GITHUB_DEVICE_WAITING_MESSAGE });
 
+  let unreadableClientErrors = 0;
   for (;;) {
     const remaining = deadline - now();
     if (remaining <= 0) throw expired();
@@ -233,10 +234,16 @@ export async function runGitHubDeviceFlow(
       // The user may be approving in the browser right now; a dropped poll is
       // not a reason to make them start over. The expiry still bounds this.
       if (error instanceof GitHubApiError && error.errorCode === ErrorCodes.GITHUB_NETWORK) {
+        unreadableClientErrors = 0;
         continue;
       }
       throw error;
     }
+    if (answer.body === null && answer.status >= 400 && answer.status < 500) {
+      if (++unreadableClientErrors >= 3) throw authFailed();
+      continue;
+    }
+    unreadableClientErrors = 0;
     if (answer.status >= 500 || answer.body === null) continue;
 
     const accessToken = answer.body.access_token;

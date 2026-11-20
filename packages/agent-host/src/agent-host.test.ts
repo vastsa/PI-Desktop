@@ -132,14 +132,14 @@ function envelope(sessionId: string, turnId: string | undefined, event: AgentEve
   return { sessionId, ...(turnId ? { turnId } : {}), ts: Date.parse("2026-09-10T00:00:01.000Z"), event };
 }
 
-function build(options: { permissionMode?: SessionSummary["permissionMode"]; queueStore?: MemoryQueueStore; allowRemoteSessionGrants?: boolean } = {}) {
+function build(options: { permissionMode?: SessionSummary["permissionMode"]; queueStore?: MemoryQueueStore; allowRemoteSessionGrants?: boolean; canDispatchQueued?: (sessionId: string) => Promise<boolean> } = {}) {
   const runtime = new FakeRuntime();
   const sessions = new FakeSessions();
   sessions.summaries.set("s1", summary("s1", options.permissionMode));
   const approvals = new FakeApprovals();
   const clock = new FixedClock();
   const host = new AgentHost({
-    runtime,
+    runtime: options.canDispatchQueued ? Object.assign(runtime, { canDispatchQueued: options.canDispatchQueued }) : runtime,
     sessions,
     approvals,
     clock,
@@ -460,6 +460,23 @@ describe("AgentHost turns", () => {
     await expect(host.startTurn(viewer, { sessionId: "s1", input: { text: "x" }, context: { requestId: "r" } })).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
+  });
+
+  it("durably holds the first prompt until the repository workspace is ready", async () => {
+    let ready = false;
+    const queueStore = new MemoryQueueStore();
+    const { host, runtime } = build({ queueStore, canDispatchQueued: async () => ready });
+    const queued = await host.startTurn(owner, {
+      sessionId: "s1", admission: "queue", input: { text: "work here" }, context: { requestId: "repo-first" },
+    });
+    expect(queued.turn.status).toBe("queued");
+    expect(await queueStore.listAll()).toHaveLength(1);
+    expect(runtime.prompts).toHaveLength(0);
+    ready = true;
+    host.resumeWorkspaceQueue("s1");
+    await vi.waitFor(() => expect(runtime.prompts).toHaveLength(1));
+    expect(runtime.prompts[0]?.content).toBe("work here");
+    expect(await queueStore.listAll()).toHaveLength(0);
   });
 
   it("queues behind an active turn, drains in order, and aliases runtime ids", async () => {

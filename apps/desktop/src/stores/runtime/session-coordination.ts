@@ -39,6 +39,7 @@ export type PersistSessionOptions = {
   draftConfiguration?: DraftSessionConfiguration | null;
   /** Run the new session in its own git worktree (ADR 0329). */
   isolated?: boolean;
+  deferRemoteWorkspace?: boolean;
 };
 
 export type SessionCoordination = {
@@ -326,6 +327,7 @@ export function createSessionCoordination({
         modelId: inherited.modelId,
         projectPath: projectPath ?? undefined,
         ...(options.isolated ? { isolated: true } : {}),
+        ...(options.deferRemoteWorkspace ? { deferRemoteWorkspace: true } : {}),
       });
     } catch (error) {
       if (previousSessionId && runtime.navigationIntentIsCurrent(active)) {

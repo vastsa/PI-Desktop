@@ -1,3 +1,6 @@
+import { useSessionTargetStore } from "../../features/chat/session-target/session-target-store";
+import { materializeRemoteTargetSession } from "../runtime/remote-target-session";
+import type { PersistSessionOptions } from "../runtime/session-coordination";
 import i18n from "i18next";
 import { formatFileInsert } from "@pi-desktop/shared";
 import type {
@@ -51,6 +54,7 @@ export type QueueSliceDependencies = StoreAccess & {
   messageErrorFromUnknown: (error: unknown) => AppError;
   assistantErrorMessage: (error: AppError) => UiMessage;
   materializeDraftSession: (intent?: number) => Promise<string | null>;
+  persistSessionAndSelect: (options?: PersistSessionOptions) => Promise<string | null>;
   flushPendingSessionConfiguration: (sessionId: string) => Promise<void>;
 };
 
@@ -64,6 +68,7 @@ export function createQueueSlice({
   messageErrorFromUnknown,
   assistantErrorMessage,
   materializeDraftSession,
+  persistSessionAndSelect,
   flushPendingSessionConfiguration,
 }: QueueSliceDependencies): Pick<
   AppState,
@@ -381,7 +386,7 @@ export function createQueueSlice({
       }
     },
 
-    sendPrompt: async (content, draft, requestedSessionId, onAccepted) => {
+    sendPrompt: async (content, draft, requestedSessionId, onAccepted, useRemoteTarget) => {
       let sessionId = requestedSessionId ?? get().activeSessionId;
       const target = get().sessions.find((session) => session.id === sessionId) ?? (sessionId ? { id: sessionId } : undefined);
       if (!sessionAllows(target, "canPrompt")) return false;
@@ -395,18 +400,25 @@ export function createQueueSlice({
         if (sessionId && get().pendingPlans[sessionId]?.status === "pending") {
           return false;
         }
-        if (!sessionId) {
-          const createdId = await materializeDraftSession();
+        const chooseRemote = useRemoteTarget && useSessionTargetStore.getState().environmentId !== "local"
+          && !get().sessions.find((item) => item.id === sessionId)?.remoteRepository;
+        if (!sessionId || chooseRemote) {
+          const createdId = chooseRemote
+            ? await materializeRemoteTargetSession({ get, set }, runtime, persistSessionAndSelect)
+            : await materializeDraftSession();
           if (!createdId) return false;
           sessionId = createdId;
           const key = `session:${createdId}`;
-          if (pendingSubmissions.has(key)) return false;
-          pendingSubmissions.add(key);
-          materializedKey = key;
+          if (key !== submissionKey) {
+            if (pendingSubmissions.has(key)) return false;
+            pendingSubmissions.add(key);
+            materializedKey = key;
+          }
         }
         if (!sessionId) throw new Error(i18n.t("errors.noActiveSession"));
         if (get().pendingPlans[sessionId]?.status === "pending") return false;
-        if (get().runningSessions[sessionId]) {
+        const workspace = get().sessions.find((item) => item.id === sessionId)?.remoteRepository;
+        if ((workspace && workspace.state !== "ready") || get().runningSessions[sessionId]) {
           // Native Pi children have no Desktop prompt queue. Reject the send
           // here so the caller restores the draft instead of round-tripping a
           // queue item the backend refuses.

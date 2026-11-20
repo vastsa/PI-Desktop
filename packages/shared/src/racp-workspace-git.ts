@@ -226,6 +226,8 @@ export type WorkspaceGitJob = {
 
 export type WorkspaceGitStatus = {
   worktree: WorkspaceGitWorktree;
+  /** Added by hosts that can compare the work branch against its base. */
+  aheadOfBase?: number;
   ahead: number;
   behind: number;
   uncommittedFiles: number;

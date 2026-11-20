@@ -216,6 +216,7 @@ export function createProviderCatalogRuntime({
       keepAwakeWhileRunning?: unknown;
       scheduledTasksEnabled?: unknown;
       jevEnabled?: unknown;
+      githubAgentTools?: unknown;
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
       networkProxy?: unknown;
@@ -260,6 +261,9 @@ export function createProviderCatalogRuntime({
       throw Object.assign(new Error("scheduledTasksEnabled is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
+    }
+    if (Object.hasOwn(value, "githubAgentTools") && typeof value.githubAgentTools !== "boolean") {
+      throw Object.assign(new Error("githubAgentTools is invalid"), { errorCode: "INVALID_ARGUMENT" });
     }
     if (
       Object.prototype.hasOwnProperty.call(value, "jevEnabled") &&

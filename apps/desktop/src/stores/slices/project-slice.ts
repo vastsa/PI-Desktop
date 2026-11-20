@@ -590,7 +590,19 @@ export function createProjectSlice({
     deleteSession: async (id) => {
       if (!id) return;
       try {
-        await api.deleteSession(id);
+        const session = get().sessions.find((item) => item.id === id);
+        let forceRemoteWorkspace = false;
+        if (session?.remoteRepository) {
+          const review = await api.remoteSessionDeletePreflight(id);
+          if (review.kind === "atRisk" || review.kind === "unknown") {
+            const message = review.kind === "atRisk"
+              ? i18n.t("sessionTarget.deleteAtRisk", { files: review.uncommittedFiles, commits: review.unpushedCommits })
+              : i18n.t("sessionTarget.deleteUnknown");
+            if (!window.confirm(message)) return;
+            forceRemoteWorkspace = true;
+          }
+        }
+        await api.deleteSession(id, forceRemoteWorkspace);
       } catch (error) {
         // The main-side running guard is the backstop for races the sidebar's
         // pre-check cannot see (issue #2291); surface it translated instead

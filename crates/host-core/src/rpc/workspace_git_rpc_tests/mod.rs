@@ -881,19 +881,26 @@ async fn unknown_jobs_and_methods_are_typed_errors_through_the_dispatcher() {
 }
 
 #[tokio::test]
-async fn a_record_whose_directory_is_gone_is_prepared_again() {
+async fn a_missing_checkout_preserves_the_local_branch() {
     let f = Fixture::new();
     f.prepare("session-1", "main").await;
     let path = f.worktree_path("session-1");
+    let head = commit_file(&path, "unpushed.txt", "precious");
     std::fs::remove_dir_all(&path).unwrap();
-    let error = f
+    let status = f
         .call("workspaceGit.status", f.session("session-1"))
         .await
-        .unwrap_err();
-    assert_eq!(code(&error), "WORKSPACE_GIT_NOT_FOUND");
-    let worktree = f.prepare("session-1", "develop").await;
-    assert_eq!(worktree["baseBranch"], "develop");
-    assert!(path.join("develop.txt").is_file());
+        .unwrap();
+    assert_eq!(status["unpushedCommits"], 1);
+    assert_eq!(status["aheadOfBase"], 1);
+    let mut remove = f.session("session-1");
+    remove["force"] = json!(false);
+    let result = f.call("workspaceGit.remove", remove).await.unwrap();
+    assert_eq!(result["removed"], false);
+    assert_eq!(result["unpushedCommits"], 1);
+    let worktree = f.prepare("session-1", "main").await;
+    assert_eq!(worktree["baseBranch"], "main");
+    assert_eq!(rev_parse(&path, "HEAD"), head);
     assert_eq!(worktree_count(&f.main_path()), 2);
 }
 

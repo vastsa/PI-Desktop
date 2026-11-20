@@ -13,6 +13,7 @@ export type GitHubConnectorAccount = {
 
 export type GitHubConnectorStatus = {
   connected: boolean;
+  agentTools?: "active" | "disabled" | "shadowed" | "disconnected";
   /** Sign-in with a device code is possible: the build carries an OAuth client id. */
   deviceLoginAvailable: boolean;
   account?: GitHubConnectorAccount;

@@ -790,3 +790,19 @@ unchanged, the second branch still exists, and no new branch or tag appears.
 The same refusals, a gzip-encoded foreign push, and a push whose ref updates
 do not end within 64 KiB are pinned byte-for-byte in
 `apps/pi-host/src/git-credential-proxy.test.ts`.
+
+## E2E-REMOTE-composer-target-starts-isolated-repo-session
+
+Run `PI_HOST_CORE_BINARY="$PWD/target/debug/pi-desktop-host-core" pnpm test:e2e:remote-workspace-git`.
+The fixture resolves a repository target, creates a local session, observes
+preparation and readiness, runs a setup script on the paired Host, and reads
+its output through real tool relay. A second session without a binding
+receives `REMOTE_WORKSPACE_NOT_READY` before any tool is forwarded. A fork
+starts at the parent's unpushed commit.
+
+## E2E-REMOTE-repo-session-pushes-and-opens-pull-request
+
+The same fixture pushes the prepared work branch into a real Git server
+before the PR service sees it. The connector fixture returns one open PR
+for repeated requests. The test verifies uncommitted work survives an ordinary
+delete and that confirmed deletion preserves the pushed branch.

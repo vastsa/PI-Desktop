@@ -291,7 +291,7 @@ test("mode slash prefixes send the trailing prompt and retain failed drafts", ()
   );
   assert.match(store, /draft\?: ComposerDraftSnapshot/);
   const sendPrompt = queueSlice.slice(
-    queueSlice.indexOf("sendPrompt: async (content, draft, requestedSessionId, onAccepted)"),
+    queueSlice.indexOf("sendPrompt: async (content, draft, requestedSessionId, onAccepted"),
   );
   assert.match(sendPrompt, /return false;/);
   assert.match(
@@ -372,7 +372,7 @@ test("draft attachment routing keeps image chips structured and file chips textu
 
 test("the user row is inserted before the host round trip and echoed under the same id (D288)", () => {
   const sendPrompt = queueSlice.slice(
-    queueSlice.indexOf("sendPrompt: async (content, draft, requestedSessionId, onAccepted)"),
+    queueSlice.indexOf("sendPrompt: async (content, draft, requestedSessionId, onAccepted"),
   );
   assert.ok(sendPrompt.length > 0, "sendPrompt not found");
   const insertAt = sendPrompt.indexOf("insertOptimisticUserMessage(startedIn, optimisticMessage)");

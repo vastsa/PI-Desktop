@@ -248,3 +248,13 @@ transcript-file line first, index transaction second.
 13. A Goal execution reports each acceptance criterion's outcome before ending
     the turn, and a scheduled/unattended Goal run is rejected with
     `PLAN_REQUIRES_INTERACTIVE_SESSION` exactly like Plan
+
+## Repository workspace readiness
+
+A repository project session carries an optional `remoteRepository` binding.
+A binding starts as `preparing` and becomes `ready` after its worktree exists.
+A failed prepare is retryable. The durable prompt queue holds input until the
+binding is ready. Tools and session file views require the ready worktree and
+return `REMOTE_WORKSPACE_NOT_READY` for unbound or unready repository sessions.
+A setup script failure is reported in `remoteRepository.setup` and leaves the
+worktree ready for use.

@@ -36,6 +36,8 @@ section describes what the fork's workflow does.
 - **Flag forwarding**: pass electron-builder flags to `pnpm run dist:mac`
   without a `--` separator. The pinned pnpm forwards a literal `--`, after
   which electron-builder treats every flag as a positional argument.
+- **Repository setup**. Enable GitHub Actions for build and release jobs.
+  Enable GitHub Issues so the in-app feedback link can open an issue on the fork.
 - **Cutting a release**: `node scripts/release.mjs <version> --tag`, then push
   the branch and the tag. A `workflow_dispatch` run builds the same artifacts
   without publishing.

@@ -75,7 +75,9 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     const current = currentWorkspacePath();
     await refreshUserMcp(current);
     const statuses = await Promise.all(
-      (await userMcp.refreshStatuses(current)).map(async (status) => ({
+      (await userMcp.refreshStatuses(current))
+        .filter((status) => result.servers?.some((server) => server.id === status.serverId))
+        .map(async (status) => ({
         ...status,
         hasOauth: oauth ? await oauth.hasOAuth(status.serverId) : false,
       })),

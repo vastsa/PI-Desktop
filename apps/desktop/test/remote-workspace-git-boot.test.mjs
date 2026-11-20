@@ -187,22 +187,22 @@ test("a connect sends the provider's token, and a null token clears", async () =
   assert.equal(f.requests.length, 3);
 });
 
-test("without a provider, or without the capability, a connect sends nothing", async () => {
+test("a missing provider clears credentials and an unsupported host receives nothing", async () => {
   const none = setup();
   await none.boot.hostConnected("h");
   await none.boot.refreshCredential();
-  assert.deepEqual(none.requests, []);
+  assert.deepEqual(none.requests.map(({ method }) => method), ["workspace/gitCredentialClear", "workspace/gitCredentialClear"]);
   const old = setup({ capabilities: NO_GIT });
   old.boot.setCredentialProvider(async () => TOKEN);
   await old.boot.hostConnected("h");
   await old.boot.refreshCredential();
   assert.deepEqual(old.requests, []);
-  // Removing the provider stops further pushes.
+  // Removing the provider sends a clear instead of a token.
   const removed = setup();
   removed.boot.setCredentialProvider(async () => TOKEN);
   removed.boot.setCredentialProvider(null);
   await removed.boot.hostConnected("h");
-  assert.deepEqual(removed.requests, []);
+  assert.deepEqual(removed.requests.map(({ method }) => method), ["workspace/gitCredentialClear"]);
 });
 
 test("the credential is sent only over SSH, wss, or loopback ws", async () => {
@@ -229,12 +229,12 @@ test("the credential is sent only over SSH, wss, or loopback ws", async () => {
     f.boot.setCredentialProvider(async () => TOKEN);
     await f.boot.hostConnected("h");
     await f.boot.refreshCredential();
-    // Nothing was sent: not the credential, and not a clear either.
-    assert.deepEqual(f.requests, [], url);
+    // The request only clears any old credential.
+    assert.deepEqual(f.requests.map(({ method }) => method), ["workspace/gitCredentialClear", "workspace/gitCredentialClear"], url);
     // A git session on such a host fails with the typed reason, still without a send.
     await assert.rejects(f.boot.prepare("h", { sessionId: "s", repository, baseBranch: "main" }), code("WORKSPACE_GIT_TRANSPORT_REFUSED"), url);
     await assert.rejects(f.boot.push("h", "s"), code("WORKSPACE_GIT_TRANSPORT_REFUSED"), url);
-    assert.deepEqual(f.requests, [], url);
+    assert.equal(f.requests.length, 2, url);
     assert.ok(!f.logs.join("\n").includes(TOKEN));
   }
   // With no token to send there is nothing to refuse: the host stays usable.
@@ -249,7 +249,7 @@ test("a failing provider leaves the host usable and without a credential", async
   const f = setup({ respond: (method) => (method === "workspace/gitList" ? { worktrees: [] } : { jobId: "job-1" }) });
   f.boot.setCredentialProvider(async () => { throw new Error(`keychain failed for ${TOKEN}`); });
   await f.boot.hostConnected("h");
-  assert.deepEqual(f.requests, []);
+  assert.deepEqual(f.requests.map(({ method }) => method), ["workspace/gitCredentialClear"]);
   assert.deepEqual(await f.boot.list("h"), []);
   assert.deepEqual(await f.boot.prepare("h", { sessionId: "s", repository, baseBranch: "main" }), { jobId: "job-1" });
   assert.ok(f.logs.length > 0);
@@ -401,4 +401,19 @@ test("without an installation identity the git API fails closed and folders keep
     await assert.rejects(boot.workspaceGit.list("capable"), code("WORKSPACE_GIT_UNAVAILABLE"));
     assert.equal(capable.requests.some((request) => request.method.startsWith("workspace/git")), false);
   } finally { await cleanup(); }
+});
+
+test("removing a credential provider or losing its store clears the prior remote credential", async () => {
+  const f = setup();
+  const token = "ghp_fixture_previous";
+  f.boot.setCredentialProvider(async () => token);
+  await f.boot.hostConnected("h");
+  f.boot.setCredentialProvider(async () => { throw new Error("secret store failure"); });
+  await f.boot.refreshCredential();
+  f.boot.setCredentialProvider(null);
+  await f.boot.refreshCredential();
+  assert.deepEqual(f.requests.map((request) => request.method), [
+    "workspace/gitCredentialSet", "workspace/gitCredentialClear", "workspace/gitCredentialClear",
+  ]);
+  assert.ok(f.logs.every((line) => !line.includes(token)));
 });

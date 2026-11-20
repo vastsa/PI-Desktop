@@ -19,6 +19,12 @@ disagrees, so a green `check:release-docs` is a precondition, not a substitute.
 | `check-style-tokens.mjs` | run by the desktop `lint` script | Fail renderer styles that hardcode values instead of design-system tokens |
 | `check-packaged-distribution.mjs` | `node scripts/check-packaged-distribution.mjs <app.asar> <expected>` | Fail unless the packaged `app.asar` carries the expected `piDistribution` marker; run by the Release workflow on the unsigned macOS lane, because electron-builder ignores an unparsed command-line override without failing |
 
+## GitHub connector
+
+Run `node scripts/probe-github-mcp.mjs` with `GITHUB_TOKEN` provided through
+the environment to check whether the hosted MCP endpoint accepts the fork's
+OAuth device-flow token. The script prints HTTP statuses and tool names.
+
 ## Packaging
 
 | Script | Alias | Purpose |

@@ -316,13 +316,13 @@ test("project rows expose folder actions and full-path hover", () => {
   assert.doesNotMatch(sidebarSource, /api\.openSessionFolder\(/);
   assert.match(
     sidebarSource,
-    /className="sidebar-session-group-title project-toggle"[\s\S]*?tooltip=\{entry\.displayPath \?\? entry\.path\}[\s\S]*?tooltipDelayMs=\{500\}[\s\S]*?aria-describedby=\{`\$\{projectId\}-path-description`\}/,
+    /className="sidebar-session-group-title project-toggle"[\s\S]*?tooltip=\{hostLabel \? [^\n]* : entry\.displayPath \?\? entry\.path\}[\s\S]*?tooltipDelayMs=\{500\}[\s\S]*?aria-describedby=\{`\$\{projectId\}-path-description`\}/,
   );
   assert.match(sidebarSource, /<TooltipButton/);
   assert.match(globalStyles, /\.ui-tooltip-path\s*\{[^}]*width:\s*max-content/);
   assert.match(globalStyles, /\.ui-tooltip-path\s*\{[^}]*max-width:\s*min\(420px,\s*calc\(100vw - 16px\)\)/);
-  // The hover text and its accessible description name the path the project
-  // really lives at: the remote workspace path for a remote project.
+  // Folder projects retain their path. Repository projects show the paired
+  // host and the repository coordinate in the tooltip.
   assert.match(sidebarSource, /className="sr-only">\s*\{entry\.displayPath \?\? entry\.path\}/);
 });
 

@@ -526,7 +526,9 @@ export class AgentHost {
       approverOverride: principal.approverOverride ?? false,
     });
     const admission: RacpTurnAdmission = forceQueue ? "queue" : params.admission ?? "reject_if_busy";
-    const busy = this.isBusy(state);
+    const workspaceReady = forceQueue || !this.runtime.canDispatchQueued
+      || await this.runtime.canDispatchQueued(state.id);
+    const busy = this.isBusy(state) || !workspaceReady;
     const modeOrigin = params[TRUSTED_MODE_ORIGIN];
     const backgroundContinuation = params[TRUSTED_BACKGROUND_CONTINUATION];
     if ((modeOrigin || backgroundContinuation) && (busy || forceQueue)) {
@@ -937,6 +939,12 @@ export class AgentHost {
     void this.drain(sessionId);
   }
 
+  /** Resume a saved queue after its workspace is prepared or recovered. */
+  resumeWorkspaceQueue(sessionId: string): void {
+    this.queue.resume(sessionId);
+    this.kick(sessionId);
+  }
+
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
@@ -994,6 +1002,7 @@ export class AgentHost {
         const state = this.state(sessionId);
         if (this.queue.isHeld(sessionId) || this.isOccupied(state)) return;
         const head = this.queue.peek(sessionId);
+        if (head && this.runtime.canDispatchQueued && !await this.runtime.canDispatchQueued(sessionId)) return;
         const headTurn = head ? this.ensureTurn(state, head.id) : undefined;
         if (headTurn?.deliveryPending) return;
         if (headTurn?.deliveredIntoTurnId) {

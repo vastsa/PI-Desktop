@@ -17,8 +17,8 @@ const MAX_BYTES = 1024 * 1024;
 export function createWorkspaceTools(
   getHost: () => HostRpc | null,
   options: {
-    /** The session's git proxy address, when the connection has a git worktree scope for it. */
-    gitProxyUrlFor?: (connectionId: string, sessionId: string) => string | undefined;
+    /** The session's git proxy address for the canonical tool root. */
+    gitProxyUrlFor?: (connectionId: string, sessionId: string, path: string) => string | undefined | Promise<string | undefined>;
   } = {},
 ): NonNullable<RacpHostOperations["workspaceTools"]> {
   const active = new Map<string, Active>();
@@ -47,8 +47,10 @@ export function createWorkspaceTools(
         const path = await realpath(input.path).catch(() => undefined);
         if (!path || !(await stat(path)).isDirectory()) throw new RacpError("REMOTE_PATH_NOT_FOUND", "workspace directory is unavailable");
         if (entry.cancelled || getHost() !== host) throw unavailable();
-        // Looked up by the caller's own session id; host-core gets the hashed one.
-        const gitProxyUrl = options.gitProxyUrlFor?.(owner.connectionId, input.sessionId);
+        const gitProxyUrl = input.toolName === "Bash"
+          ? await options.gitProxyUrlFor?.(owner.connectionId, input.sessionId, path)
+          : undefined;
+        if (entry.cancelled || getHost() !== host) throw unavailable();
         const result = await host.call<WorkspaceToolResult>("tools.workspaceExecute", {
           ...input, path, sessionId: entry.sessionId, ...(gitProxyUrl ? { gitProxyUrl } : {}),
         });

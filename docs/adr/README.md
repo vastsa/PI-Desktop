@@ -424,5 +424,9 @@ git history.
 | plugin-transcript-selection-views | [Docked views can accept transcript selections](plugin-transcript-selection-views.md) | Accepted (issue #2395) |
 | opt-in-background-job-continuation | [Opt-in background job continuation](opt-in-background-job-continuation.md) | Proposed (#2143) |
 | fork-release-coordinates | [Fork release coordinates and unsigned macOS builds](fork-release-coordinates.md) | Accepted |
+| environments-and-session-targets | [Environments and composer session targets](environments-and-session-targets.md) | Accepted (D689) |
+| remote-session-push-and-pull-requests | [Push, pull requests, and cleanup](remote-session-push-and-pull-requests.md) | Accepted (D690) |
+| github-agent-tools | [GitHub tools for the Agent](github-agent-tools.md) | Accepted (D691) |
+| remote-environment-setup | [Remote environment setup](remote-environment-setup.md) | Accepted (D692) |
 | github-connector | [Built-in GitHub connector](github-connector.md) | Accepted |
 | remote-git-workspaces | [Remote git workspaces and the credential proxy](remote-git-workspaces.md) | Accepted (D687; extends ADR 0329 to paired Hosts) |

@@ -224,9 +224,8 @@ and every git invocation separates options from operands with `--`.
   runner has a fixed 120-second limit and strips environment-carried git
   configuration on purpose. The variant takes a caller-supplied limit and
   passes the proxy rewrite through the child's environment
-  (`GIT_CONFIG_COUNT`), not as a `-c` option, so the handle is not readable
-  in the process list; it keeps stripping inherited configuration and keeps
-  every other safety flag. This needs git 2.31 or newer.
+  (`GIT_CONFIG_COUNT`). It strips inherited configuration and preserves
+  the runner's other safety flags. This needs Git 2.31 or newer.
 - **pi-host** (Node): validates and forwards the RACP operations, namespaces
   session keys by device as `workspace-tools.ts` does, and runs the credential
   proxy below.
@@ -252,9 +251,11 @@ submodules, and git-based dependencies work anonymously. Private repositories
 other than the session's own are not reachable; that is a known limit of this
 version.
 
-The handle appears in the environment of host-run git and in the Agent's
-environment, never in a process argument list. It is not the token: it is usable only on the host's loopback interface, only
-for one repository, and for pushes only to one branch.
+Git can expose the handle in child-process arguments, `.git/FETCH_HEAD`,
+and command output. The proxy binds to loopback, checks the caller's user
+on Linux, rotates handles on credential replacement, and scopes usage to
+one repository and one work branch. The workspaces root and its `repos` and
+`worktrees` directories use mode 0700 on Unix.
 
 Result: host-core's own clone, fetch, and push, and the Agent's `git` inside
 Bash, all authenticate without the token ever reaching host-core, a child

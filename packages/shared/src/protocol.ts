@@ -321,6 +321,19 @@ export const IPC = {
      * Electron main: none of these channels returns it, and `SetToken` is the
      * only one that accepts it.
      */
+    environmentsList: "pi-desktop/environments/list",
+    environmentsUpsert: "pi-desktop/environments/upsert",
+    environmentsRemove: "pi-desktop/environments/remove",
+    remoteSessionTargetResolve: "pi-desktop/remoteSession/target/resolve",
+    remoteSessionWorkspaceStart: "pi-desktop/remoteSession/workspace/start",
+    remoteSessionWorkspaceRetry: "pi-desktop/remoteSession/workspace/retry",
+    remoteSessionGitStatus: "pi-desktop/remoteSession/git/status",
+    remoteSessionPush: "pi-desktop/remoteSession/git/push",
+    remoteSessionPullRequestFind: "pi-desktop/remoteSession/pullRequest/find",
+    remoteSessionPullRequestCreate: "pi-desktop/remoteSession/pullRequest/create",
+    remoteSessionDeletePreflight: "pi-desktop/remoteSession/deletePreflight",
+    remoteLeftoverWorktreesList: "pi-desktop/remoteHost/leftoverWorktrees/list",
+    remoteLeftoverWorktreesRemove: "pi-desktop/remoteHost/leftoverWorktrees/remove",
     githubConnectorStatus: "pi-desktop/github/status",
     githubConnectorLoginStart: "pi-desktop/github/login/start",
     githubConnectorLoginCancel: "pi-desktop/github/login/cancel",
@@ -569,6 +582,9 @@ export const IPC = {
     /** Progress of a GitHub device login, in the vendor-account event shape. */
     githubConnectorLogin: "pi-desktop/github/event/login",
     /** The connector's status after a sign-in, sign-out, or rejected token. */
+    remoteSessionWorkspaceChanged: "pi-desktop/remoteSession/event/workspaceChanged",
+    environmentsChanged: "pi-desktop/environments/event/changed",
+    remoteSessionPushProgress: "pi-desktop/remoteSession/event/pushProgress",
     githubConnectorChanged: "pi-desktop/github/event/changed",
     updatesState: "pi-desktop/updates/event/state",
     voiceStateChanged: "pi-desktop/voice/event/stateChanged",

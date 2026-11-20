@@ -6,15 +6,15 @@
 //! `--` wherever git accepts it, so nothing a caller supplies can be read as
 //! an option.
 
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 use super::layout::validate_branch;
 use super::repository::{self, NetworkContext, PUSH_TIMEOUT};
 use super::WorkspaceGitError;
 use crate::session_worktrees::git::GitRunner;
 use crate::session_worktrees::registry::{WorktreeRow, WorktreeStatus};
-use crate::session_worktrees::remove::remove_worktree;
+use crate::session_worktrees::remove::{drop_admin_entry, remove_worktree};
 use crate::session_worktrees::repo_lock;
 
 /// Where a new worktree starts.
@@ -80,9 +80,8 @@ fn git_failed(
 }
 
 /// Create the worktree on a new `work_branch` and return the commit it starts
-/// at. The remains of an interrupted earlier attempt at the same path or
-/// branch are cleared first; the caller has established that no registry
-/// record exists for them.
+/// at. Leave existing paths and branches intact unless the caller has a
+/// registry record proving ownership.
 pub async fn create(
     git: &GitRunner,
     main_path: &Path,
@@ -114,18 +113,21 @@ pub async fn create(
     }
     let base_commit = resolved.stdout.trim().to_string();
 
-    remove_locked(git, main_path, worktree_path, work_branch).await?;
+    match fs::symlink_metadata(worktree_path) {
+        Ok(metadata) if metadata.is_dir() && fs::read_dir(worktree_path)?.next().is_none() => {}
+        Ok(_) => {
+            return Err(WorkspaceGitError::failed(
+                "the worktree path already contains files",
+            ))
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
     if let Some(parent) = worktree_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let created = add(git, main_path, path, work_branch, &base_commit).await;
-    if created.is_err() {
-        // Leave neither a partial directory nor the branch behind.
-        if let Err(error) = remove_locked(git, main_path, worktree_path, work_branch).await {
-            tracing::warn!(%error, "could not clean up a failed worktree creation");
-        }
-    }
-    created.map(|()| base_commit)
+    add(git, main_path, path, work_branch, Some(&base_commit)).await?;
+    Ok(base_commit)
 }
 
 async fn add(
@@ -133,26 +135,18 @@ async fn add(
     main_path: &Path,
     path: &str,
     work_branch: &str,
-    base_commit: &str,
+    base_commit: Option<&str>,
 ) -> Result<(), WorkspaceGitError> {
-    // `--no-track`: the upstream is set below to the work branch itself, never
-    // to the base branch, so a bare `git push` cannot target the base.
-    git.run(
-        main_path,
-        &[
-            "worktree",
-            "add",
-            "-q",
-            "--no-track",
-            "-b",
-            work_branch,
-            "--",
-            path,
-            base_commit,
-        ],
-    )
-    .await
-    .map_err(git_failed("worktree add"))?;
+    // The upstream is set below to the work branch itself.
+    let mut args = vec!["worktree", "add", "-q"];
+    if let Some(base) = base_commit {
+        args.extend(["--no-track", "-b", work_branch, "--", path, base]);
+    } else {
+        args.extend(["--", path, work_branch]);
+    }
+    git.run(main_path, &args)
+        .await
+        .map_err(git_failed("worktree add"))?;
     // Keep git from pruning the worktree while its directory is unreachable.
     git.run(
         main_path,
@@ -181,6 +175,32 @@ async fn add(
     Ok(())
 }
 
+/// Restore a registered checkout without changing the local work branch.
+pub async fn restore(
+    git: &GitRunner,
+    main_path: &Path,
+    worktree_path: &Path,
+    work_branch: &str,
+) -> Result<(), WorkspaceGitError> {
+    validate_branch(work_branch)?;
+    let common = repository::common_dir(main_path);
+    let _lock = repo_lock::lock(&common).await;
+    match fs::symlink_metadata(worktree_path) {
+        Ok(_) => {
+            return Err(WorkspaceGitError::failed(
+                "the registered worktree path is occupied",
+            ))
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    if let Some(parent) = worktree_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    drop_admin_entry(&common, worktree_path)?;
+    add(git, main_path, utf8(worktree_path)?, work_branch, None).await
+}
+
 /// Counts for one worktree. Read-only: it takes no repository lock.
 pub async fn status(
     git: &GitRunner,
@@ -188,9 +208,6 @@ pub async fn status(
     work_branch: &str,
 ) -> Result<StatusCounts, WorkspaceGitError> {
     validate_branch(work_branch)?;
-    let local = format!("refs/heads/{work_branch}");
-    let remote = format!("refs/remotes/origin/{work_branch}");
-
     let porcelain = git
         .run(
             worktree_path,
@@ -198,16 +215,26 @@ pub async fn status(
         )
         .await
         .map_err(git_failed("status"))?;
-    let uncommitted_files = count_porcelain_entries(&porcelain);
+    branch_status(
+        git,
+        worktree_path,
+        work_branch,
+        count_porcelain_entries(&porcelain),
+    )
+    .await
+}
 
-    let unpushed = git
-        .run(
-            worktree_path,
-            &["rev-list", "--count", &local, "--not", "--remotes=origin"],
-        )
-        .await
-        .map_err(git_failed("rev-list"))?;
-    let unpushed_commits = parse_count(&unpushed)?;
+/// Read branch state from the main checkout when its linked directory is gone.
+pub async fn branch_status(
+    git: &GitRunner,
+    worktree_path: &Path,
+    work_branch: &str,
+    uncommitted_files: u32,
+) -> Result<StatusCounts, WorkspaceGitError> {
+    validate_branch(work_branch)?;
+    let local = format!("refs/heads/{work_branch}");
+    let remote = format!("refs/remotes/origin/{work_branch}");
+    let unpushed_commits = unpushed_commits(git, worktree_path, work_branch).await?;
 
     let pushed_once = git
         .output(
@@ -247,6 +274,70 @@ pub async fn status(
     })
 }
 
+/// Count branch-only commits even when the worktree directory has disappeared.
+pub async fn unpushed_commits(
+    git: &GitRunner,
+    repository_path: &Path,
+    work_branch: &str,
+) -> Result<u32, WorkspaceGitError> {
+    validate_branch(work_branch)?;
+    let branch = format!("refs/heads/{work_branch}");
+    let exists = git
+        .output(
+            repository_path,
+            &["show-ref", "--verify", "--quiet", "--", &branch],
+        )
+        .await
+        .map_err(git_failed("show-ref"))?;
+    if exists.status == 1 {
+        return Ok(0);
+    }
+    if !exists.success() {
+        return Err(WorkspaceGitError::failed(
+            "could not inspect the local work branch",
+        ));
+    }
+    let unpushed = git
+        .run(
+            repository_path,
+            &["rev-list", "--count", &branch, "--not", "--remotes=origin"],
+        )
+        .await
+        .map_err(git_failed("rev-list"))?;
+    parse_count(&unpushed)
+}
+
+pub async fn commits_ahead_of_base(
+    git: &GitRunner,
+    main_path: &Path,
+    work_branch: &str,
+    base_branch: &str,
+    initial_commit: &str,
+) -> Result<u32, WorkspaceGitError> {
+    validate_branch(work_branch)?;
+    validate_branch(base_branch)?;
+    let base = format!("refs/remotes/origin/{base_branch}");
+    let available = git
+        .output(main_path, &["show-ref", "--verify", "--quiet", "--", &base])
+        .await
+        .map_err(git_failed("show-ref"))?;
+    // A renamed or removed base can still report what the session added.
+    let base = if available.success() {
+        base.as_str()
+    } else {
+        initial_commit
+    };
+    let range = format!("{base}..refs/heads/{work_branch}");
+    let count = git
+        .run(
+            main_path,
+            &["rev-list", "--count", "--end-of-options", &range],
+        )
+        .await
+        .map_err(git_failed("rev-list"))?;
+    parse_count(&count)
+}
+
 fn parse_count(text: &str) -> Result<u32, WorkspaceGitError> {
     text.trim()
         .parse()
@@ -278,6 +369,48 @@ pub async fn remove(
     validate_branch(work_branch)?;
     let _lock = repo_lock::lock(&repository::common_dir(main_path)).await;
     remove_locked(git, main_path, worktree_path, work_branch).await
+}
+
+pub async fn remove_checked(
+    git: &GitRunner,
+    main_path: &Path,
+    path: &Path,
+    work_branch: &str,
+    force: bool,
+) -> Result<(bool, u32, u32), WorkspaceGitError> {
+    let common_dir = repository::common_dir(main_path);
+    let _lock = repo_lock::lock(&common_dir).await;
+    let counts = if crate::session_worktrees::remove::is_real_dir(path) {
+        let actual = git
+            .run(
+                path,
+                &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            )
+            .await
+            .map_err(git_failed("rev-parse"))?;
+        if crate::workspace::simple_canonicalize(Path::new(actual.trim()))? != common_dir {
+            return Err(WorkspaceGitError::failed(
+                "the registered path belongs to another checkout",
+            ));
+        }
+        status(git, path, work_branch)
+            .await
+            .map(|status| (status.uncommitted_files, status.unpushed_commits))
+    } else {
+        unpushed_commits(git, main_path, work_branch)
+            .await
+            .map(|commits| (0, commits))
+    };
+    let (files, commits) = match counts {
+        Ok(counts) => counts,
+        Err(_) if force => (0, 0),
+        Err(error) => return Err(error),
+    };
+    if !force && (files > 0 || commits > 0) {
+        return Ok((false, files, commits));
+    }
+    remove_locked(git, main_path, path, work_branch).await?;
+    Ok((true, files, commits))
 }
 
 async fn remove_locked(
@@ -333,7 +466,10 @@ pub async fn push(
         )
         .await
         .map_err(git_failed("rev-parse"))?;
-    let _lock = repo_lock::lock(&PathBuf::from(common.trim())).await;
+    let _lock = repo_lock::lock(&crate::workspace::simple_canonicalize(&PathBuf::from(
+        common.trim(),
+    ))?)
+    .await;
     let local = format!("refs/heads/{work_branch}");
     let refspec = format!("{local}:{local}");
     let args = ["push", "-q", "--", "origin", &refspec];
@@ -575,7 +711,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_replaces_the_remains_of_an_interrupted_attempt() {
+    async fn create_preserves_an_unregistered_checkout_and_restore_keeps_commits() {
         let f = Fixture::new().await;
         let a = f.path("aaaaaaaaaaaa");
         create(
@@ -587,20 +723,21 @@ mod tests {
         )
         .await
         .unwrap();
-        // The host stopped before the registry record was written; the caller
-        // found no record and asks again, from another base.
-        let base = create(
+        let head = commit_file(&a, "unpushed.txt", "do not lose this");
+        assert!(create(
             &f.git,
             &f.main,
             &a,
             WORK_A,
-            StartPoint::RemoteBranch("develop"),
+            StartPoint::RemoteBranch("develop")
         )
         .await
-        .unwrap();
-        assert_eq!(base, f.remote.head("develop"));
-        assert_eq!(rev_parse(&a, "HEAD"), base);
-        assert_eq!(git_cmd(&f.main, &["worktree", "list"]).lines().count(), 2);
+        .is_err());
+        assert_eq!(rev_parse(&a, "HEAD"), head);
+        fs::remove_dir_all(&a).unwrap();
+        assert_eq!(unpushed_commits(&f.git, &f.main, WORK_A).await.unwrap(), 1);
+        restore(&f.git, &f.main, &a, WORK_A).await.unwrap();
+        assert_eq!(rev_parse(&a, "HEAD"), head);
     }
 
     #[tokio::test]
