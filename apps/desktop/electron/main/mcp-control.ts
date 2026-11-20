@@ -4,6 +4,7 @@ import { isIP } from "node:net";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SESSION_COLLABORATION_OPERATIONS } from "./session-collaboration-control";
+import { markAutomationRequest } from "./runtime/user-message-provenance";
 
 /** A small JSON Schema subset used by MCP's tools/list response. */
 export type McpJsonSchema = {
@@ -801,6 +802,7 @@ export function createMcpControlController(options: {
         });
       }
       const sanitized = args.map((value) => stripSecretMaterial(value)) as unknown[];
+      if (operation.id === "agent/prompt") markAutomationRequest(sanitized[0]);
       const result = operation.channel === "internal:session-collaboration"
         ? await options.invokeSessionCollaboration!({ ...input, args: sanitized })
         : await options.invoke(operation.channel, sanitized);

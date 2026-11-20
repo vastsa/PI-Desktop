@@ -24,6 +24,7 @@ function loadPluginUiIpc({ gateFactory = () => () => ({ ignored: false }) } = {}
       pluginThemeId: (...parts) => parts.join(":"),
       resolvePluginLocalizedString: (value) => value,
       themeAssetUrl: (value) => value,
+      PLUGIN_COMPOSER_SUGGESTION_REFUSALS: ["draft-not-empty"],
     },
     "../browser-host": { BROWSER_PLUGIN_ID: "pi.browser", BROWSER_VIEW_ID: "browser" },
     "../plugin-runtime": { resolveInsidePlugin: () => "/plugin/index.html" },
@@ -69,7 +70,7 @@ test("the plugin Add Service IPC returns declared categories through the Host ha
   });
 
   loadPluginUiIpc()({
-    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler), handleWithEvent() {} },
     plugins: {
       listLoaded: () => [
         plugin("community.sites", "Community Sites", ["provider.register"], {
@@ -103,7 +104,7 @@ test("the plugin session IPC resets ordering on renderer reload and rejects stal
   const handlers = new Map();
   const activeSessions = [];
   loadPluginUiIpc({ gateFactory: createSessionPushGate })({
-    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler), handleWithEvent() {} },
     plugins: { listLoaded: () => [] },
     browserHost: {},
     pluginViews: {},
@@ -157,7 +158,7 @@ test("selected transcript text goes only to an opted-in view in the current proj
     },
   };
   loadPluginUiIpc()({
-    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler), handleWithEvent() {} },
     plugins: { listLoaded: () => [plugin], getLoaded: (id) => id === plugin.manifest.id ? plugin : undefined },
     pluginViews: { open: (request) => opened.push(request) },
     pluginPanels: {},
@@ -194,4 +195,30 @@ test("selected transcript text goes only to an opted-in view in the current proj
   assert.equal(item.selection.isCurrentSession(), false);
   await choose({ sessionId: "parent" });
   assert.equal(item.selection.isCurrentSession(), false);
+});
+
+test("only the main shell can settle suggestion probes, without forwarding malformed revisions", async () => {
+  const shell = {};
+  const answers = [];
+  const handlers = new Map();
+  loadPluginUiIpc()({
+    registrar: {
+      handle() {},
+      handleWithEvent: (channel, handler) => handlers.set(channel, handler),
+      assertMainWindowSender: (event) => {
+        if (event !== shell) throw new Error("not the main shell");
+      },
+    },
+    settleComposerSuggestion: (answer) => answers.push(answer),
+  });
+  const reply = handlers.get(IPC.invoke.pluginComposerSuggestionResult);
+  const revision = "b1519a2c-64bd-4aa2-9c47-9b0be97bfe2d";
+  await assert.rejects(reply({}, { requestId: "probe", shown: true, revision }), /not the main shell/);
+  assert.deepEqual(answers, []);
+  assert.deepEqual(await reply(shell, { requestId: "probe", shown: true, revision }), { ok: true });
+  assert.deepEqual(await reply(shell, { requestId: "offer", shown: false, reason: "draft-not-empty", revision: "bogus" }), { ok: true });
+  assert.deepEqual(answers, [
+    { requestId: "probe", shown: true, revision },
+    { requestId: "offer", shown: false, reason: "draft-not-empty" },
+  ]);
 });

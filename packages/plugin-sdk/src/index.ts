@@ -185,6 +185,8 @@ export type PluginManifest = {
     globalShortcuts?: PluginGlobalShortcutContrib[];
     /** User-invoked text actions beside the Composer controls. */
     composerTransforms?: PluginComposerTransformContrib[];
+    /** Opt into the process-only `onModelContext` hook (`agent.modelContext`). */
+    modelContext?: true;
     /**
      * Launcher triggers: the plugin claims launcher input that matches its
      * pattern. Each `pattern` is matched against the *whole* trimmed launcher
@@ -1312,12 +1314,37 @@ export type PluginThemeSummary = {
   base: "light" | "dark";
 };
 
+export type PluginAppCapabilities = {
+  sessionUserMessagePersisted?: boolean;
+  composerSuggestionCandidates?: boolean;
+};
+
+export type PluginComposerSuggestionTargetInput = { sessionId: string; turnId: string };
+export type PluginComposerSuggestCandidatesInput = {
+  target: string;
+  candidates: readonly string[];
+  ttlMs?: number;
+};
+
+export type PluginSessionTurnStarted = { sessionId: string; turnId: string };
+export type PluginSessionUserMessagePersisted = PluginSessionTurnStarted & { messageId: string };
+
+export type PluginModelContextInput = PluginSessionTurnStarted & { projectId?: string; modelKey?: string };
+export type PluginModelContextResult = { text: string };
+
+type PluginObservedSessionEvents = {
+  "session:turnStarted": PluginSessionTurnStarted;
+  "session:userMessagePersisted": PluginSessionUserMessagePersisted;
+};
+
 export type PluginHostApi = {
+  /** Host capabilities are feature flags, not permission grants. */
   app: {
     getVersion: () => Promise<string>;
     /** Active app language. Plugin-owned UI localizes from this (ADR 0280). */
     getLocale: () => Promise<string>;
     getAppearance: () => Promise<PluginAppearance>;
+    getCapabilities: () => Promise<PluginAppCapabilities>;
     /**
      * Apply the host's app theme preference (`ui.theme`). Accepts a built-in
      * preference or a currently registered plugin theme id.
@@ -1361,6 +1388,10 @@ export type PluginHostApi = {
      * a new turn, this plugin unloading, a renderer reload, or a window close.
      */
     suggest: (input: PluginComposerSuggestInput) => Promise<PluginComposerSuggestResult>;
+    /** Obtain a short-lived, opaque offer target for an eligible Composer. */
+    getSuggestionTarget: (input: PluginComposerSuggestionTargetInput) => Promise<string | null>;
+    /** Offer up to three alternatives without reading, editing, or sending the draft. */
+    suggestCandidates: (input: PluginComposerSuggestCandidatesInput) => Promise<PluginComposerSuggestResult>;
     /** Drop this plugin's suggestion; nothing is shown when it is already gone. */
     clearSuggestion: (input?: PluginComposerClearSuggestionInput) => Promise<{ ok: true }>;
   };
@@ -1647,8 +1678,14 @@ export type PluginHostApi = {
     };
   };
   events: {
-    on: (event: string, handler: (...args: unknown[]) => void) => void;
-    off: (event: string, handler: (...args: unknown[]) => void) => void;
+    on: {
+      <K extends keyof PluginObservedSessionEvents>(event: K, handler: (payload: PluginObservedSessionEvents[K]) => void): void;
+      (event: string, handler: (...args: unknown[]) => void): void;
+    };
+    off: {
+      <K extends keyof PluginObservedSessionEvents>(event: K, handler: (payload: PluginObservedSessionEvents[K]) => void): void;
+      (event: string, handler: (...args: unknown[]) => void): void;
+    };
   };
 };
 
@@ -1672,6 +1709,11 @@ export type PluginModule = {
   onComposerTransform?: (
     input: PluginComposerTransformInput,
   ) => Promise<string> | string;
+  /** Return optional lower-trust text for one managed session turn. */
+  onModelContext?: (
+    input: PluginModelContextInput,
+    context: { signal: AbortSignal },
+  ) => Promise<PluginModelContextResult | void> | PluginModelContextResult | void;
 };
 
 /** Upper bound on ExtensionAPI modules one plugin may contribute. */
@@ -1695,6 +1737,7 @@ export const PLUGIN_PERMISSIONS = [
   "agent.tool.register",
   "agent.prompt.inject",
   "agent.complete",
+  "agent.modelContext",
   "composer.transform",
   // One dismissible line in the composer's placeholder layer. A grant here can
   // put text into a draft the user may send, so it sits with the draft writer
@@ -1711,6 +1754,7 @@ export const PLUGIN_PERMISSIONS = [
   "models.list",
   "project.create",
   "session.read",
+  "session.observe",
   "session.import",
   "session.read.own",
   "session.update.own",
@@ -1841,6 +1885,15 @@ export function validateManifest(raw: unknown): {
     }
   }
   const contributesError = validateContributions(m.contributes);
+  if (m.contributes?.modelContext !== undefined && m.contributes.modelContext !== true) {
+    return { ok: false, error: "contributes.modelContext must be true" };
+  }
+  if (m.contributes?.modelContext === true && !Array.isArray(m.permissions)) {
+    return { ok: false, error: "contributes.modelContext requires the agent.modelContext permission" };
+  }
+  if (m.contributes?.modelContext === true && !m.permissions?.includes("agent.modelContext")) {
+    return { ok: false, error: "contributes.modelContext requires the agent.modelContext permission" };
+  }
   if (
     !contributesError &&
     (m.contributes?.agentExtensions?.length ?? 0) > 0 &&

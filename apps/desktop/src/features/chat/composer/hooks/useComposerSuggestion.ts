@@ -15,6 +15,13 @@ export type ComposerSuggestionView = {
   readonly text: string;
   /** `Tab` / `Esc` hint drawn beside the line, in the shell's language. */
   readonly hint: string;
+  readonly navigation?: {
+    readonly count: number;
+    readonly position: string;
+    readonly previousLabel: string;
+    readonly nextLabel: string;
+    cycle(delta: -1 | 1): boolean;
+  };
   /** Take it: the draft becomes the text and the caret lands at its end. */
   accept(): boolean;
   dismiss(): void;
@@ -32,18 +39,24 @@ const serverSnapshot = (): null => null;
 export function useComposerSuggestion(): ComposerSuggestionView | null {
   const { t } = useTranslation();
   const suggestion = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-  const text = suggestion?.text ?? "";
+  const count = suggestion?.candidates.length ?? 0;
   const hint = t("chat.suggestionHint");
+  const position = t("chat.suggestionPosition", { current: (suggestion?.index ?? 0) + 1, total: count });
+  const previousLabel = t("chat.suggestionPrevious");
+  const nextLabel = t("chat.suggestionNext");
   return useMemo(
-    () =>
-      suggestion
-        ? {
-            text,
-            hint,
-            accept: () => composerSuggestion.accept(),
-            dismiss: () => composerSuggestion.dismiss(),
-          }
-        : null,
-    [suggestion, text, hint],
+    () => suggestion ? {
+      text: suggestion.text,
+      hint,
+      ...(count > 1 ? {
+        navigation: {
+          count, position, previousLabel, nextLabel,
+          cycle: (delta: -1 | 1) => composerSuggestion.cycle(delta, suggestion),
+        },
+      } : {}),
+      accept: () => composerSuggestion.accept(suggestion),
+      dismiss: () => composerSuggestion.dismiss(suggestion),
+    } : null,
+    [suggestion, count, hint, position, previousLabel, nextLabel],
   );
 }

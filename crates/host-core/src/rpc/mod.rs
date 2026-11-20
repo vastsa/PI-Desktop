@@ -3099,9 +3099,14 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
             let st = state.lock().await;
-            sessions::append_message(&st.db, session_id, &message, turn_id.as_deref())
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(json!({ "ok": true }))
+            let inserted_user_message_id = sessions::append_message_with_receipt(
+                &st.db,
+                session_id,
+                &message,
+                turn_id.as_deref(),
+            )
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "ok": true, "insertedUserMessageId": inserted_user_message_id }))
         }
         "session.saveInflightMessage" => {
             let session_id = params
