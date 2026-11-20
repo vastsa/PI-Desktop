@@ -189,6 +189,7 @@ export const ChatSurface = memo(function ChatSurface({
                     t("chat.emptyTitle")
                   )}
                 </h1>
+                {heroProject ? null : <HomeProjectSwitcher variant="chip" />}
               </div>
             </div>
           </div>

@@ -983,11 +983,15 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Preconditions**: Provider configured; at least one real session exists so
   the sidebar history is non-empty.
 - **Steps**: 1) Invoke New Task from the sidebar, the top bar, or Cmd/Ctrl+N
-  inside a retained project and in the temporary scope. 2) Inspect the sidebar
-  history and the composer. 3) Click the same group's New Task control several
-  times quickly. 4) Type a message and send it. 5) Inspect the sidebar history
-  again and repeat in a different project group.
-- **Expected**: When the group's latest session is non-empty, the empty home
+  while a retained project is active, then use a project row's `+` action.
+  2) Inspect the sidebar history and the composer. 3) Click the same target's
+  New Task control several times quickly. 4) Type a message and send it. 5)
+  Inspect the sidebar history again and repeat for a different project group.
+- **Expected**: Global New Task creates a path-less conversation in the
+  temporary group and clears the visible workspace, whatever project was
+  active (issue #2455); only a project row's `+` or the empty-home project
+  switcher creates inside a project. When the target group's latest session is
+  non-empty, the empty home
   replaces the previous transcript on the first frame, then one new row is
   persisted from `session.create` (without a blocking `session.list` /
   `session.get` round-trip) and selected before the first send. Once that row
@@ -1001,7 +1005,29 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Milestone**: M2
 - **Status**: Source-level regression covered
   (`app-store-sidebar.test.mjs`, `composer-send-state.test.mjs`,
-  `session-create.test.mjs`); full UI scenario Draft
+  `session-create.test.mjs`, `session-project-scope.test.mjs`); full UI
+  scenario Draft
+
+## E2E-011f2: A conversation leaves or joins a project from its crumb
+
+- **Preconditions**: Two projects are open; one idle conversation with
+  messages belongs to the first project and one temporary conversation exists.
+- **Steps**: 1) Open the project conversation and choose "No project" from the
+  topbar project crumb. 2) Choose the second project from the same crumb. 3)
+  Open the temporary conversation's empty home or topbar and choose a project.
+  4) Start a turn and open the crumb while it runs.
+- **Expected**: Each move keeps the transcript, title, and model, regroups the
+  sidebar row, and the visible workspace follows the active conversation. The
+  next turn uses the new project's instructions (or none). A running,
+  remote, native, or isolated-worktree conversation shows a static crumb and
+  cannot move.
+- **Specs linked**: `04-ux/01-ui-ia.md` (§5), `04-ux/09-interaction-patterns.md`
+- **Acceptance**: C (session grouping), F (persistence)
+- **Milestone**: M2
+- **Status**: Source-level regression covered (`session-project-scope.test.mjs`,
+  `topbar-title-rendering.test.mjs`, host-core
+  `move_session_project_reassigns_only_the_project_and_rejects_running_turns`);
+  full UI scenario Draft
 
 ## E2E-011e: Empty-session reuse is scoped to the latest session
 

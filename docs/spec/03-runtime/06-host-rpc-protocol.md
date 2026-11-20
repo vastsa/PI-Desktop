@@ -420,7 +420,11 @@ to later refresh and inference; the vendor picker does not collect them.
   project and returns `{ session }` carrying the canonical project path. It
   upserts the project row and updates only `sessions.project_id` and
   `updated_at`; transcript, revisions, artifacts, notifications, and scratch
-  data stay with the session. Blank ids or paths are `INVALID_PARAMS`, an
+  data stay with the session. An explicit `projectPath: null` moves the
+  session out of its project into the temporary group (`project_id` becomes
+  `NULL`, `projectPath` is omitted from the summary); older hosts reject it as
+  `INVALID_PARAMS`. Blank ids, a missing key, or blank paths are
+  `INVALID_PARAMS`, an
   unknown session is `NOT_FOUND`, and a session with a running turn is
   `CONFLICT` so a live agent never switches instruction roots mid-turn.
   An isolated session is refused with `WORKTREE_MOVE_UNSUPPORTED`.
