@@ -12,7 +12,7 @@ import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
+import { MAX_PLUGIN_BINARY_RESPONSE_BYTES, pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
 import { assertLocalPluginRoot, pluginFsReadOptions, readRemotePluginFiles, type PluginRemoteFilesRead } from "./plugin-remote-files";
 import { getModuleDirectory } from "./module-path";
@@ -6648,7 +6648,7 @@ export class PluginRuntime {
         closeOutput: async () => this.refuseAudio(loaded, "audio.closeOutput"),
       },
       net: {
-        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"], binaryResponseBody: true, maxResponseBodyBytes: 16 * 1024 * 1024 }),
+        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"], binaryResponseBody: true, maxResponseBodyBytes: MAX_PLUGIN_BINARY_RESPONSE_BYTES }),
         fetch: async (input: {
           url: string;
           method?: string;

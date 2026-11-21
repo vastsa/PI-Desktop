@@ -1678,7 +1678,7 @@ export type PluginHostApi = {
   };
   net: {
     /** Query before using redirect on hosts that may predate this API. */
-    getCapabilities: () => Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>;
+    getCapabilities: () => Promise<PluginNetCapabilities>;
     fetch: (input: PluginNetFetchInput) => Promise<PluginNetFetchResult>;
     /**
      * Real-time bidirectional sockets (`net.websocket`). A connect is confined

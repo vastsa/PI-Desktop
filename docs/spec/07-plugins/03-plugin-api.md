@@ -1253,8 +1253,8 @@ pi.net.fetch(input: {
  contentType?: string
  byteLength?: number
 }>
-
 ```
+
 `responseType` defaults to `text` and preserves the existing bodyText response.
 `responseType: "base64"` reads the response body as bounded bytes and returns
 canonical standard Base64 in `bodyBase64`, with `contentType` and `byteLength`.
@@ -1263,11 +1263,16 @@ The host enforces a maximum of 16 MiB and accepts a smaller positive integer in
 `RESPONSE_TOO_LARGE`; no partial bytes are returned. Binary response mode is
 intended for bounded media downloads and does not grant filesystem access.
 
-Before using binary mode on a potentially older host, query
+Before using the redirect option or binary mode on a potentially older host,
+query
 `pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[]; binaryResponseBody?: true; maxResponseBodyBytes?: number }>`
-and require `binaryResponseBody` plus a sufficient `maxResponseBodyBytes`.
-This read-only query needs no network permission and performs no network I/O.
-When the capability is absent, do not send a base64 request.
+and require the desired redirect mode, or `binaryResponseBody` plus a
+sufficient `maxResponseBodyBytes`. This read-only query needs no network
+permission and performs no network I/O. A missing method, rejected query,
+absent mode, or absent binary capability means unsupported: do not send the
+request. Older hosts may silently ignore unknown fetch options, so passing
+`redirect` or `responseType` alone is **not** capability detection.
+No same-origin-only mode is introduced by this change.
 
 `redirect` is optional: omitted or `follow` preserves the existing policy (up to
 five followed 3xx responses with Location, relative to the current URL, each
@@ -1289,7 +1294,10 @@ audited without response bodies or headers.
 `fetch` answers with the upstream response unchanged — `status`, `headers`,
 and either text or bounded Base64 body data — so a `429` is data your plugin can
 read, `Retry-After` included, rather than an error the host hides. The host does
-not retry, throttle, or re-issue the request.
+not retry, throttle, or re-issue the request: retry and backoff after a `429`
+are your plugin's own policy, and the response headers are the only backoff
+signal you get. A failed call (`status >= 400`) is audited as `ok: false`,
+together with the `retryAfter` it advertised when the response states one (§7).
 
 ```ts
 pi.net.websocket.connect(input: {
