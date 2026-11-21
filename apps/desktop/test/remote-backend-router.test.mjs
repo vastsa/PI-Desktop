@@ -15,6 +15,7 @@ const {
   isRemoteSessionId,
   sessionIdForCall,
 } = await import("../electron/main/remote/backend-router.ts");
+const { IPC } = await import("@pi-desktop/shared");
 
 test("namespaces and parses remote session ids", () => {
   const id = makeRemoteSessionId("hostA", "sess_1");
@@ -84,6 +85,30 @@ test("route surfaces a backend failure to the caller", async () => {
     },
   });
   await assert.rejects(() => router.route("session.get", [remote]), /host gone/);
+});
+
+test("host-scoped channels stay local even when the request names a remote session", async () => {
+  const router = createBackendRouter();
+  const remote = makeRemoteSessionId("h", "s");
+  const calls = [];
+  router.registerBackend(remote, {
+    handles: () => true,
+    invoke: async (channel, args) => {
+      calls.push([channel, args]);
+      return { usage: null };
+    },
+  });
+
+  // `remoteHost/sessionUsage` asks this desktop's paired-host layer for the
+  // occupancy of one Host session; the Host round-trip belongs to that local
+  // handler, so the router must not hand it back to a RemoteBackend that does
+  // not serve it.
+  assert.equal(await router.route(IPC.invoke.remoteSessionUsage, [{ sessionId: remote }]), ROUTE_LOCAL);
+  assert.equal(router.resolveBackend(IPC.invoke.remoteSessionUsage, [{ sessionId: remote }]), null);
+  assert.equal(calls.length, 0);
+
+  // A session channel for the same id still routes remotely.
+  assert.notEqual(await router.route(IPC.invoke.sessionGet, [{ id: remote }]), ROUTE_LOCAL);
 });
 
 test("malformed remote identifiers cannot fall through to local handlers", async () => {

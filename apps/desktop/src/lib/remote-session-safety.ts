@@ -10,7 +10,9 @@ export function sessionAllows(
   capability: keyof SessionCapabilities,
 ): boolean {
   if (isRemoteSession(session)) {
-    return ["canPrompt", "canStop", "canRefresh", "canReadWorkspace"].includes(capability)
+    // A remote session configures its own model through the Host's
+    // `session/configure`; every other capability stays local-only.
+    return ["canPrompt", "canStop", "canRefresh", "canReadWorkspace", "canConfigureModel"].includes(capability)
       && session?.capabilities?.[capability] === true;
   }
   return session?.capabilities?.[capability] !== false;

@@ -106,9 +106,26 @@ test("racpSessionToSummary maps the host-agnostic renderer summary", () => {
   assert.equal(summary.source, "remote");
   assert.equal(summary.mode, "agent");
   assert.equal(summary.permissionMode, "allow");
-  // RACP never carries thinkingLevel; it defaults to "off" for the renderer.
+  // A Host that publishes no binding leaves provider/model absent rather than
+  // inventing a model the session does not actually use; the renderer's
+  // neutral thinking level keeps the reasoning control off.
   assert.equal(summary.thinkingLevel, "off");
+  assert.equal(summary.providerId, undefined);
+  assert.equal(summary.modelId, undefined);
   assert.equal(summary.messageCount, 7);
+});
+
+test("racpSessionToSummary carries the Host's model binding and thinking level", () => {
+  const session = makeRacpSession({
+    providerId: "host-provider",
+    modelId: "host-model",
+    thinkingLevel: "high",
+  });
+  const summary = racpSessionToSummary(REMOTE_SESSION_ID, session, 2);
+  assert.equal(summary.providerId, "host-provider");
+  assert.equal(summary.modelId, "host-model");
+  assert.equal(summary.thinkingLevel, "high");
+  assert.equal(summary.capabilities?.canConfigureModel, true);
 });
 
 test("snapshotToSessionDetail lifts snapshot items directly into the transcript", () => {

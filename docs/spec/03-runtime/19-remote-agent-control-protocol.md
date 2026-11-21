@@ -218,6 +218,9 @@ type Session = {
   status: "idle" | "running" | "waiting_permission" | "aborted" | "error"
   planningState: "inactive" | "planning" | "awaiting_approval"
   permissionMode: "ask" | "accept-edits" | "auto"
+  providerId?: string
+  modelId?: string
+  thinkingLevel?: string
   activeTurnId?: string
   queuedTurnIds: string[]
   revision: number
@@ -225,6 +228,12 @@ type Session = {
   updatedAt: string
 }
 ```
+
+`providerId` / `modelId` / `thinkingLevel` are the Host's own binding for the
+session. They are optional so a client can talk to a Host that predates the
+model catalog; without them the client shows a read-only model label instead of
+the model picker. A client MUST NOT substitute its own provider store for these
+values: a remote session runs on the Host's providers and credentials.
 
 `status` and `planningState` mirror the local session state machine
 (`10-session-state-machine.md` §0–§1): `planningState` is the Plan/Goal
@@ -532,6 +541,54 @@ type ProjectSummary = {
 has more than one Host. `ProjectSummary` never contains an absolute path unless
 the principal has the path-disclosure scope.
 
+### 5.8 Model catalog and session usage
+
+```ts
+type HostModel = {
+  providerId: string
+  providerName: string
+  modelId: string
+  displayName: string
+  contextWindow?: number
+  capabilities?: string[]
+  supportedThinkingLevels?: string[]
+  fastMode?: boolean
+}
+
+type HostModelCatalog = {
+  models: HostModel[]
+  defaultProviderId?: string
+  defaultModelId?: string
+}
+
+type SessionUsage = {
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
+    totalTokens: number
+  }
+  providerId?: string
+  modelId?: string
+  contextWindow?: number
+  updatedAt?: string
+}
+```
+
+Only public catalog metadata crosses the boundary — never an endpoint,
+credential, or provider secret. A row is keyed by the pair
+`(providerId, modelId)`, so two Host providers that share a display name remain
+distinct rows.
+
+`SessionUsage` reports the newest *physical request* the Host completed, not
+the turn aggregate: a turn that called tools issued several requests, and only
+the last one's input plus output still occupies the model window. `usage` is
+absent until the session completes its first model request. `contextWindow` is
+the Host's effective window for the bound model, so the client can draw the
+context ring without resolving the Host's provider bindings itself.
+
 ## 6. Operation catalog
 
 ### 6.1 v1 operations
@@ -584,6 +641,8 @@ session root as working directory and stream through `terminal.output`.
 | Operation | Role | Behavior |
 |---|---|---|
 | `session/configure` | controller | Change mode, provider/model, thinking level, or permission mode while idle; same rules as `pi-desktop/session/configure` |
+| `session/usage` | viewer | Report the newest completed request's context occupancy for a session (§5.8) |
+| `models/list` | viewer | List the Host's own model catalog, so a paired client offers the models this Host can actually run (§5.8) |
 | `session/fork` | controller | Fork an idle session, optionally through a message id, into a new idle session |
 | `session/rename` | controller | Rename a session |
 | `session/deriveTitle` | controller | Apply the Host's deterministic first-prompt title to a still-untitled session; returns `{ updated }` and never overrides a rename |

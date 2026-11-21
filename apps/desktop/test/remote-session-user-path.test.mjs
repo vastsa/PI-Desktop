@@ -31,6 +31,9 @@ function fixture() {
         case "project/register": return { project: { id: "p1", label: "app", archived: false, path: params.path } };
         case "session/create": case "session/get": return { session: session() };
         case "session/list": return { sessions: [session()] };
+        case "session/configure": return { session: session() };
+        case "models/list": return { models: [] };
+        case "session/usage": return {};
         case "session/attach": return { snapshot: snapshot({ items: [item("m2", "Hello")], hasMoreHistory: true }) };
         case "session/history": return { items: [item("m1", "Earlier")], hasMore: false };
         case "turn/start": return { accepted: true, turn: { id: "t1" } };
@@ -61,7 +64,7 @@ test("remote user path: project, session, prompt, approval, files, reconnect wit
   assert.equal(created.source, "remote");
   assert.equal(created.remoteHostLabel, "Linux host");
   assert.equal(created.projectPath, undefined, "remote root cannot become a local workspace");
-  assert.equal(created.capabilities.canConfigureModel, false);
+  assert.equal(created.capabilities.canConfigureModel, true, "the Host owns the model binding");
   assert.equal(created.capabilities.canAttach, false);
   const route = async (channel, input) => (await f.router.route(channel, [input])).value;
   const detail = await route(IPC.invoke.sessionGet, { id: created.id, messageLimit: 1 });
@@ -95,11 +98,16 @@ test("remote history pages older items and rejects foreign or unknown cursors", 
   await assert.rejects(backend.invoke(IPC.invoke.sessionGet, [{ id: "remote:h1:s1", messageBefore: 123 }]), { errorCode: "INVALID_ARGUMENT" });
 });
 
-test("remote model selection and invalid paths are rejected before network dispatch", async () => {
+test("remote model selection reaches the Host while fast mode stays local", async () => {
   const { backend, calls } = fixture();
-  await assert.rejects(backend.invoke(IPC.invoke.sessionConfigure, ["remote:h1:s1", { providerId: "local-provider" }]), { errorCode: "CAPABILITY_UNAVAILABLE" });
+  await backend.invoke(IPC.invoke.sessionConfigure, ["remote:h1:s1", { providerId: "p1", modelId: "m1", thinkingLevel: "low" }]);
+  const configure = calls.find((entry) => entry.method === "session/configure");
+  assert.deepEqual(configure.params, { sessionId: "s1", providerId: "p1", modelId: "m1", thinkingLevel: "low" });
+  await assert.rejects(
+    backend.invoke(IPC.invoke.sessionConfigure, ["remote:h1:s1", { fastMode: true }]),
+    { errorCode: "CAPABILITY_UNAVAILABLE" },
+  );
   await assert.rejects(backend.invoke(IPC.invoke.fsRead, [{ sessionId: "remote:h1:s1", path: "bad\0path" }]), { errorCode: "INVALID_ARGUMENT" });
-  assert.equal(calls.length, 0);
 });
 
 test("late session list after host removal cannot resurrect cached rows", async () => {

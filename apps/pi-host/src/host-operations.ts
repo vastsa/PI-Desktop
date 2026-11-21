@@ -21,15 +21,69 @@ import {
   type RuntimeService,
 } from "@pi-desktop/host-runtime";
 import type {
+  HostModelCatalog,
+  HostModelRow,
+  HostSessionUsage,
   RacpHostOperations,
+  RacpModelCatalog,
   RacpProjectCatalog,
   RacpSessionCatalog,
+  RacpUsageReport,
   RacpWorkspaceAccess,
 } from "@pi-desktop/racp";
 import type { RacpProjectSummary } from "@pi-desktop/shared";
 
 /** A project row as host-core lists it. */
 type ProjectRow = { id: number; path: string; name: string; pinned?: boolean };
+
+/** One selected model inside a provider row, as `providers.list` reports it. */
+type ProviderModelRow = {
+  id: string;
+  alias?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  thinkingLevels?: string[];
+  defaultThinkingLevel?: string | null;
+  fastModeAllowed?: boolean;
+};
+
+/** A provider row reduced to what a model catalog may publish. */
+type ProviderRow = {
+  id: string;
+  name: string;
+  enabled?: boolean;
+  hasSecret?: boolean;
+  authKind?: string;
+  models?: ProviderModelRow[];
+  defaultModelId?: string;
+  contextWindow?: number;
+  supportedThinkingLevels?: string[];
+};
+
+/** One published catalog record, used only to enrich a selected model. */
+type PublishedModelRow = {
+  providerId: string;
+  modelId: string;
+  displayName: string;
+  capabilities?: string[];
+  contextWindow?: number;
+};
+
+/** `session.turnUsage` as host-core reports the newest physical request. */
+type HostTurnUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  totalTokens?: number;
+  providerId?: string | null;
+  modelId?: string | null;
+};
+
+function tokenCount(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+}
 
 /** Directory names never offered by the folder picker. */
 const HIDDEN_BROWSE_NAMES = new Set([
@@ -314,6 +368,100 @@ export function createProjectCatalog(
   };
 }
 
+/**
+ * The models this Host can actually run, published for a paired client's
+ * Composer. Rows mirror what the Host's own Settings offers: enabled providers
+ * with a usable credential, and the models selected in each of them. Only
+ * public catalog metadata crosses the boundary — no endpoint, header, or
+ * secret (spec §5.2).
+ */
+export function createModelCatalog(deps: HostOperationsDeps): RacpModelCatalog {
+  return {
+    async list(): Promise<HostModelCatalog> {
+      const host = requireHost(deps.getHost);
+      const [providers, published, settings] = await Promise.all([
+        host.call<{ providers?: ProviderRow[] }>("providers.list", { includeDisabled: false }).catch(hostError),
+        host.call<{ models?: PublishedModelRow[] }>("providers.listModels", {}).catch(hostError),
+        host.call<{ defaultProviderId?: string; defaultModelId?: string }>("settings.get", {}).catch(hostError),
+      ]);
+      const known = new Map(
+        (published.models ?? []).map((item) => [`${item.providerId}\u0000${item.modelId}`, item]),
+      );
+      const models: HostModelRow[] = [];
+      for (const provider of providers.providers ?? []) {
+        if (provider.enabled === false) continue;
+        if (provider.hasSecret === false && provider.authKind !== "none") continue;
+        for (const model of provider.models ?? []) {
+          const modelId = model.id?.trim();
+          if (!modelId) continue;
+          const catalog = known.get(`${provider.id}\u0000${modelId}`);
+          const contextWindow = tokenCount(model.contextWindow)
+            || tokenCount(provider.contextWindow)
+            || tokenCount(catalog?.contextWindow);
+          const levels = model.thinkingLevels?.length
+            ? model.thinkingLevels
+            : provider.supportedThinkingLevels;
+          models.push({
+            providerId: provider.id,
+            providerName: provider.name,
+            modelId,
+            displayName: model.alias?.trim() || catalog?.displayName || modelId,
+            ...(contextWindow > 0 ? { contextWindow } : {}),
+            ...(catalog?.capabilities?.length ? { capabilities: [...catalog.capabilities] } : {}),
+            ...(levels?.length ? { supportedThinkingLevels: [...levels] } : {}),
+            ...(model.fastModeAllowed === true ? { fastMode: true } : {}),
+          });
+        }
+      }
+      return {
+        models,
+        ...(settings.defaultProviderId ? { defaultProviderId: settings.defaultProviderId } : {}),
+        ...(settings.defaultModelId ? { defaultModelId: settings.defaultModelId } : {}),
+      };
+    },
+  };
+}
+
+/**
+ * The session's newest physical request, which is the only figure that can
+ * answer "how much context is left": the paired Desktop cannot read the Host's
+ * turn ledger, and transcript messages carry usage only for nested tool
+ * operations, never the top-level assistant row.
+ */
+export function createUsageReport(deps: HostOperationsDeps): RacpUsageReport {
+  return {
+    async read(sessionId: string): Promise<HostSessionUsage> {
+      const host = requireHost(deps.getHost);
+      const result = await host.call<{ usage?: HostTurnUsage | null }>("session.turnUsage", { id: sessionId }).catch(hostError);
+      const usage = result.usage;
+      if (!usage) return {};
+      const providerId = usage.providerId ?? undefined;
+      const modelId = usage.modelId ?? undefined;
+      // The window is a catalog fact, so it travels with the usage rather than
+      // making every client resolve the Host's provider bindings itself.
+      const catalog = await createModelCatalog(deps)
+        .list()
+        .catch((): HostModelCatalog => ({ models: [] }));
+      const row = catalog.models.find(
+        (candidate) => candidate.providerId === providerId && candidate.modelId === modelId,
+      );
+      return {
+        usage: {
+          inputTokens: tokenCount(usage.inputTokens),
+          outputTokens: tokenCount(usage.outputTokens),
+          ...(usage.cacheReadTokens ? { cacheReadTokens: tokenCount(usage.cacheReadTokens) } : {}),
+          ...(usage.cacheWriteTokens ? { cacheWriteTokens: tokenCount(usage.cacheWriteTokens) } : {}),
+          ...(usage.reasoningTokens ? { reasoningTokens: tokenCount(usage.reasoningTokens) } : {}),
+          totalTokens: tokenCount(usage.totalTokens),
+        },
+        ...(providerId ? { providerId } : {}),
+        ...(modelId ? { modelId } : {}),
+        ...(row?.contextWindow ? { contextWindow: row.contextWindow } : {}),
+      };
+    },
+  };
+}
+
 /** Workspace reads against the session's durable root, on the Host's filesystem. */
 export function createWorkspaceAccess(
   deps: HostOperationsDeps,
@@ -364,6 +512,8 @@ export function createHostOperations(
 ): Omit<RacpHostOperations, "terminal"> {
   return {
     sessions: createSessionCatalog(deps),
+    models: createModelCatalog(deps),
+    usage: createUsageReport(deps),
     projects: createProjectCatalog(deps),
     workspace: createWorkspaceAccess(deps),
     workspaceTools: createWorkspaceTools(deps.getHost),
