@@ -1385,19 +1385,28 @@
   color: var(--ds-warning);
 }
 
+.task-command-detail,
 .task-output {
-  max-height: 180px;
   margin: 0;
   padding: 8px 10px;
-  overflow: auto;
   border-top: 1px solid var(--ds-border-subtle);
   background: var(--ds-bg-inset);
-  color: var(--ds-text-secondary);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: var(--leading-body);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.task-command-detail {
+  display: block;
+  color: var(--ds-text-primary);
+}
+
+.task-output {
+  max-height: 180px;
+  overflow: auto;
+  color: var(--ds-text-secondary);
 }
 
 /* Narrow composer panes: the header cannot hold progress text, the current
