@@ -1750,6 +1750,8 @@ sklm: {
     enterToSendDesc: "끔: ⌘/Ctrl+Enter를 눌러 보내세요.",
     backgroundJobContinuation: "백그라운드 작업 완료 후 계속",
     backgroundJobContinuationDesc: "요청한 로컬 테스트나 빌드가 끝나면 기존 권한 모드로 대화를 재개합니다. 기본값은 꺼짐입니다. 끄면 대기 중인 재개만 취소되며 프로세스는 계속 실행됩니다.",
+    codemode: "Codemode 스크립트",
+    codemodeDesc: "어시스턴트가 격리된 샌드박스에서 짧은 JavaScript를 실행해 도구와 모델 호출을 묶거나 연결하거나 걸러내고, 최종 결과만 대화에 넣도록 허용합니다. 중첩된 각 호출은 여전히 현재 권한 모드와 승인을 따릅니다. 기본값은 꺼짐입니다.",
     infiniteProviderRetry: "성공할 때까지 재시도",
     infiniteProviderRetryDesc: "네트워크 및 일시적인 제공자 오류가 성공할 때까지 계속 재시도됩니다. 언제든 중지할 수 있지만 API 사용량이 계속 발생할 수 있습니다.",
     smoothStreaming: "부드러운 스트리밍",

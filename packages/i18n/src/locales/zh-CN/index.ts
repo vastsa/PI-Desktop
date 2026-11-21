@@ -1734,6 +1734,8 @@ sklm: {
     enterToSendDesc: "关闭后按 ⌘/Ctrl+Enter 发送。",
     backgroundJobContinuation: "后台任务完成后续跑",
     backgroundJobContinuationDesc: "允许助手在安排的本地测试或构建结束后接回原会话，仍遵循现有权限模式。默认关闭；关闭时撤销待续跑任务，不停止后台进程。",
+    codemode: "Codemode 脚本",
+    codemodeDesc: "允许助手在隔离沙盒中运行简短的 JavaScript，批量、串联或筛选工具与模型调用，只把最终结果放回对话。每次嵌套调用仍遵循当前权限模式与审批。默认关闭。",
     infiniteProviderRetry: "无尽重试",
     infiniteProviderRetryDesc: "网络或临时服务故障会一直重试直到成功。仍可随时停止，但开启后可能持续消耗 API 用量。",
     smoothStreaming: "平滑流式显示",

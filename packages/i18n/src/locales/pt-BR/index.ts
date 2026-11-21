@@ -1713,6 +1713,8 @@ export const ptBR = {
     enterToSendDesc: "Desativado: pressione ⌘/Ctrl+Enter para enviar.",
     backgroundJobContinuation: "Continuar após tarefas em segundo plano",
     backgroundJobContinuationDesc: "Permitir retomar a conversa local após os testes ou compilações solicitados, com as permissões atuais. Desativado por padrão. Desativar cancela as continuações pendentes, sem encerrar os processos.",
+    codemode: "Scripts do Codemode",
+    codemodeDesc: "Permite que o assistente execute JavaScript curto em uma sandbox isolada para agrupar, encadear ou filtrar chamadas de ferramentas e modelos, de modo que só o resultado final entre na conversa. Cada chamada aninhada continua usando seu modo de permissão e suas aprovações. Desativado por padrão.",
     infiniteProviderRetry: "Tentar novamente até obter sucesso",
     infiniteProviderRetryDesc: "Continua tentando indefinidamente em caso de falhas temporárias de rede ou do provedor. Ainda é possível interromper a rodada; enquanto esta opção estiver ativada, o consumo e os custos da API podem continuar.",
     smoothStreaming: "Exibição gradual",

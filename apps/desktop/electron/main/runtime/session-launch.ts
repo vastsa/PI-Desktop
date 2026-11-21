@@ -769,6 +769,10 @@ export function createSessionLaunchRuntime({
         ...(mode === "agent" && settings.computerUse?.enabled === true
           ? { computerUseEnabled: true }
           : {}),
+        // Codemode is opt-in and Agent-only (ADR codemode-sandbox-boundary).
+        ...(mode === "agent" && settings.codemodeEnabled === true
+          ? { codemodeEnabled: true }
+          : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),
         // Remote-host tools write on that host; Main can only serve local files.

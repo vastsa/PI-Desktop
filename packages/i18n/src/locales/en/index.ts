@@ -1754,6 +1754,8 @@ sklm: {
     enterToSendDesc: "Off: press ⌘/Ctrl+Enter to send.",
     backgroundJobContinuation: "Continue after background jobs",
     backgroundJobContinuationDesc: "Allow the assistant to resume a local conversation after requested tests or builds finish, using the existing permission mode. Off by default. Turning this off cancels pending continuations, not their processes.",
+    codemode: "Codemode scripts",
+    codemodeDesc: "Let the assistant run short JavaScript in an isolated sandbox to batch, chain, or filter tool and model calls, so only the final result enters the conversation. Each nested call still uses your permission mode and approvals. Off by default.",
     infiniteProviderRetry: "Retry until success",
     infiniteProviderRetryDesc: "Keep retrying network and transient provider failures until the request succeeds. You can still stop the turn; API usage may continue while enabled.",
     smoothStreaming: "Smooth streaming",
