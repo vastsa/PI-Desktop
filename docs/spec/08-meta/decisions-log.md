@@ -5418,6 +5418,21 @@ See ADR 0344.
   holds: pill, label and native stop share one center for every stop count.
 - Escape clears a typed search first; a second Escape closes the menu.
 
+## 2026-11-21 — Plugins can start subagents from their own tool calls (D686)
+
+- A new `high`-risk permission `agent.subagent` adds `pi.agent.startSubagent`,
+  `waitSubagents`, and `stopSubagents`, valid only during the calling plugin's
+  own Agent tool invocation; session, turn, and parent tool call come from that
+  invocation (issue #2508).
+- Delegations run through the same runtime path as a model-issued `Task` call
+  (`startDelegation`), with the plugin tool call as `parentToolCallId`; start
+  is non-blocking and each wait is capped at 90 s because a plugin tool has a
+  110 s budget, which stays unchanged.
+- Electron main owns which plugin started which id per session; reports the
+  plugin received count as delivered, unread reports keep the idle
+  auto-resume, and plugin cancellation does not stop started runs.
+See ADR `plugin-started-subagents`.
+
 ## Bundled Official Enhancements defaults
 
 - Enable only generated session titles on first use. Keep next-message

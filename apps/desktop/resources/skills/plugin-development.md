@@ -178,7 +178,8 @@ when working in the host repository. Major gates include:
 - `ui.panel` / `ui.view` for isolated pages; `renderer.extension` for trusted code
   in the host document; `agent.extension` for trusted code in the Agent sidecar.
 - `agent.tool.register` for runtime tool registration; `agent.prompt.inject` for
-  skill catalogs/bodies; `agent.complete` for quota-spending one-shot completions.
+  skill catalogs/bodies; `agent.complete` for quota-spending one-shot completions;
+  `agent.subagent` for starting subagents from inside your own tool call.
 - `models.list`, `usage.read`, `session.read`, and the separate ownership-scoped
   `session.import`, `session.read.own`, `session.update.own`, `session.delete.own`.
   `session.read.all`, `session.update.all`, and `session.delete.all` are the
@@ -281,6 +282,16 @@ Composer callback, or selected-session snapshot does not grant this context.
 `pi.models.list()` returns ready model keys without secrets. `pi.agent.complete`
 uses the user's model, no tools, a 90s budget and eight calls per rolling minute.
 Handle timeout/rate-limit/provider failures without infinite retries.
+
+`agent.subagent` runs a worker loop from your own tool: inside `execute`, call
+`const { delegationId } = await pi.agent.startSubagent({ agent: "explorer", task })`,
+then `const { results, running } = await pi.agent.waitSubagents({ timeoutSeconds: 80 })`.
+Delegates take the same path as a model `Task` call. Only valid during your own
+tool call (`INVALID_ARGUMENT` elsewhere); needs configured subagents and a mode
+that allows `Task`. Each wait is 1..90 s (default 60) to fit the 110 s tool
+budget; unfinished workers keep running and a later call may wait again. You
+may wait on or stop only your own delegation ids. Received reports are not fed
+to the model again; unread ones reach it when the turn idles.
 
 Imported sessions need declared `sessionSources`; operations are scoped to the
 calling plugin. Historical project/model strings do not bind a live session;

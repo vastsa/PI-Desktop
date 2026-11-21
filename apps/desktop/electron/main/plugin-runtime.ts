@@ -144,6 +144,7 @@ import {
   type PluginShortcutRegistry,
 } from "./plugin-shortcut-registry";
 import { repairImportedExtensionWrapper } from "./imported-plugin-wrapper";
+import { PluginSubagentBroker, type PluginSubagentServices } from "./plugin-subagents";
 import {
   migrateLegacyPromptEnhancementSettings,
   PROMPT_ENHANCEMENT_PLUGIN_ID,
@@ -185,6 +186,11 @@ export type RegisteredPluginTool = {
        * (overlays, caches, helper sessions) to one host turn.
        */
       turnId?: string;
+      /**
+       * Runtime tool call id. The parent of any subagent the plugin starts
+       * during this call (`agent.subagent`); never exposed to plugin code.
+       */
+      toolCallId?: string;
       signal?: AbortSignal;
       mode?: "agent" | "plan" | "goal";
       modelKey?: string;
@@ -573,6 +579,8 @@ export type PluginHostServices = {
   usage?: {
     listTurns: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
+  /** Plugin-started delegations, served by the agent sidecar (`agent.subagent`). */
+  subagents?: PluginSubagentServices;
 };
 
 export type PluginOAuthProvider = {
@@ -702,6 +710,9 @@ const HOST_API_ALLOWLIST = new Set([
   "session.truncateFrom",
   "usage.listTurns",
   "agent.complete",
+  "agent.startSubagent",
+  "agent.waitSubagents",
+  "agent.stopSubagents",
   "providers.oauth.prompt",
   "providers.oauth.notify",
   "keyboard.registerGlobalShortcut",
@@ -1527,6 +1538,10 @@ export class PluginRuntime {
   private busSubscriptions = new Map<string, BusSubscription>();
   private busRate = new Map<string, { windowStart: number; count: number }>();
   private readonly toolInvocations = new PluginToolInvocations();
+  private readonly subagents = new PluginSubagentBroker({
+    services: () => this.services.subagents,
+    audit: () => this.services.audit,
+  });
   private readonly rendererCalls = new RendererCallRelay();
   private completeRate = new Map<string, { windowStart: number; count: number }>();
   /**
@@ -3116,6 +3131,7 @@ export class PluginRuntime {
               sessionId,
               toolName: name,
               turnId: ctx?.turnId,
+              toolCallId: ctx?.toolCallId,
               signal: ctx?.signal,
             });
             try {
@@ -3441,6 +3457,18 @@ export class PluginRuntime {
       case "agent.complete": {
         return this.runAgentComplete(loaded, (args[0] ?? {}) as PluginCompleteInput);
       }
+      case "agent.startSubagent":
+      case "agent.waitSubagents":
+      case "agent.stopSubagents": {
+        // Plugin-started subagents (spec 07-plugins/03 §agent.subagent): only
+        // inside this plugin's own in-flight tool call, which supplies the
+        // session, turn and parent tool call.
+        this.assertPermission(loaded, "agent.subagent");
+        const invocation = this.inFlightTool(pluginId);
+        if (api === "agent.startSubagent") return this.subagents.start(pluginId, invocation, args[0]);
+        if (api === "agent.waitSubagents") return this.subagents.wait(pluginId, invocation, args[0]);
+        return this.subagents.stop(pluginId, invocation, args[0]);
+      }
       default: {
         if (!HOST_API_ALLOWLIST.has(api)) {
           this.services.audit?.({
@@ -3748,6 +3776,9 @@ export class PluginRuntime {
   }
 
   private clearContributions(pluginId: string): void {
+    // Started delegations keep running, as Task runs outlive their call; only
+    // this plugin's handle on them ends.
+    this.subagents.forgetPlugin(pluginId);
     for (const [id, cmd] of this.commands) {
       if (cmd.pluginId === pluginId) this.commands.delete(id);
     }

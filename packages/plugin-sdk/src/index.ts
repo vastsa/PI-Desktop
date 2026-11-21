@@ -1093,6 +1093,67 @@ export type PluginCompleteResult = {
   };
 };
 
+/**
+ * Start one subagent (`agent.subagent`) through the same runtime path as a
+ * model-issued `Task` call. Valid only during this plugin's own Agent tool
+ * call; the session, turn, and parent tool call come from that call.
+ */
+export type PluginStartSubagentInput = {
+  /** Subagent definition name, from the same catalog `Task` uses. */
+  agent: string;
+  /** The delegate's only instruction; non-empty, at most 100,000 characters. */
+  task: string;
+  /** Short label for the running-tasks UI (at most 200 characters). */
+  description?: string;
+  /** Optional `providerId/modelId` override; same opt-in rules as `Task.model`. */
+  model?: string;
+};
+
+export type PluginStartSubagentResult = {
+  delegationId: string;
+  agent: string;
+  modelId: string;
+};
+
+export type PluginWaitSubagentsInput = {
+  /**
+   * Delegations to wait for (1..32). Default: every delegation this plugin
+   * started in this session that it has not yet received.
+   */
+  delegationIds?: string[];
+  /** `all` (default) waits for every target; `any` returns once one settles. */
+  mode?: "all" | "any";
+  /** 1..90 seconds; default 60. Stays below the plugin tool budget. */
+  timeoutSeconds?: number;
+};
+
+/** One settled delegation, as structured data. */
+export type PluginSubagentResult = {
+  delegationId: string;
+  agent: string;
+  status: "completed" | "failed" | "aborted" | "stopped" | (string & {});
+  modelId: string;
+  report: string;
+  turns: number;
+  toolCalls: number;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    [key: string]: unknown;
+  };
+  modelFailures?: Array<{ model: string; code: string; message: string }>;
+  error?: { code: string; message: string; [key: string]: unknown };
+};
+
+export type PluginWaitSubagentsResult = {
+  /** Settled targets only. Each counts as delivered to the plugin. */
+  results: PluginSubagentResult[];
+  /** Targets still running when the wait ended. */
+  running: string[];
+};
+
 export type PluginServiceContext = {
   /** Appends a line to the plugin's host log. */
   log: (msg: string) => void;
@@ -1534,6 +1595,20 @@ export type PluginHostApi = {
     registerTool: (tool: PluginTool) => Promise<void>;
     unregisterTool: (name: string) => Promise<void>;
     complete: (input: PluginCompleteInput) => Promise<PluginCompleteResult>;
+    /**
+     * Start a subagent in the background (`agent.subagent`). Only during this
+     * plugin's own tool call; subagents must be configured and the session
+     * mode must allow `Task`. The run outlives the tool call, like `Task`.
+     */
+    startSubagent: (input: PluginStartSubagentInput) => Promise<PluginStartSubagentResult>;
+    /**
+     * Bounded wait for delegations this plugin started in this session.
+     * Reports returned here are not fed to the parent model again; reports
+     * the plugin never reads still reach it through the idle auto-resume.
+     */
+    waitSubagents: (input?: PluginWaitSubagentsInput) => Promise<PluginWaitSubagentsResult>;
+    /** Stop delegations this plugin started in this session (default: all it has not received). */
+    stopSubagents: (input?: { delegationIds?: string[] }) => Promise<{ stopped: string[] }>;
   };
   models: {
     list: () => Promise<PluginModelInfo[]>;
@@ -1751,6 +1826,9 @@ export const PLUGIN_PERMISSIONS = [
   "agent.tool.register",
   "agent.prompt.inject",
   "agent.complete",
+  // Start, wait for, and stop subagents from inside the plugin's own tool call
+  // (pi.agent.startSubagent / waitSubagents / stopSubagents).
+  "agent.subagent",
   "agent.modelContext",
   "composer.transform",
   // One dismissible line in the composer's placeholder layer. A grant here can

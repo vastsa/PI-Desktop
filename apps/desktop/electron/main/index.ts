@@ -317,6 +317,7 @@ const pluginServices = createPluginServices({
   pluginActiveInProject,
   getMainWindow,
   getHost,
+  getSidecar,
   sendToRenderer,
   safeOpenExternal,
   stripWinLongPrefix,

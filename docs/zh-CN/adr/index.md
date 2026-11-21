@@ -71,6 +71,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 
 | 编号 | 标题 | 状态 |
 |---|---|---|
+| plugin-started-subagents | [插件通过 Task 路径启动子代理](/adr/plugin-started-subagents) | 已接受待实现 |
 | subagent-model-opt-in | [区分子代理模型自动调度许可与定义固定模型](/adr/subagent-model-opt-in) | 已接受待实现 |
 | 0001 | [Electron 桌面壳](/adr/0001-use-electron) | 已接受 |
 | 0002 | [使用 pi Agent Harness 作为内核](/adr/0002-use-pi-agent-harness) | 已接受 |

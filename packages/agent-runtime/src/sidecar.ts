@@ -27,6 +27,7 @@ import {
   normalizeThinkingLevel,
 } from "./sidecar-config.js";
 import { matchesExpectedTurnId } from "./turn-target.js";
+import { parseStartSubagentParams, parseWaitSubagentsParams } from "./plugin-subagent-rpc.js";
 import { applyNodeNetworkProxy } from "./node-proxy.js";
 import { applyAdditiveDefaultCaCertificates } from "./system-ca.js";
 import { NATIVE_PI_SESSION_PREFIX } from "./native-pi-session-id.js";
@@ -607,7 +608,36 @@ async function handle(method: string, params: any): Promise<unknown> {
         throw new Error("Invalid delegation IDs");
       }
       const result = await runtime.stopSubagents(ids as string[] | undefined);
-      return { pending: result.details.stopPending?.flatMap(record => typeof record.delegationId === "string" ? [record.delegationId] : []) ?? [] };
+      const idsOf = (records: Array<Record<string, unknown>> | undefined) =>
+        records?.flatMap(record => typeof record.delegationId === "string" ? [record.delegationId] : []) ?? [];
+      // `stopped` is additive: desktop controls read `pending`, the plugin
+      // `stopSubagents` path reports the ids that confirmed termination.
+      return { pending: idsOf(result.details.stopPending), stopped: idsOf(result.details.stopped) };
+    }
+    case "agent.startSubagent": {
+      // Plugin-started delegation (issue #2508). Electron main takes
+      // sessionId/turnId/toolCallId from the live plugin tool invocation; the
+      // runtime re-checks that turn and call before running the Task path.
+      const { sessionId, input } = parseStartSubagentParams(params);
+      const runtime = runtimes.get(sessionId);
+      if (!runtime) {
+        throw Object.assign(new Error("runtime not found for session"), {
+          rpcCode: -32000,
+          errorCode: "RUNTIME_NOT_FOUND",
+        });
+      }
+      return runtime.startSubagentForTool(input);
+    }
+    case "agent.waitSubagents": {
+      const { sessionId, input } = parseWaitSubagentsParams(params);
+      const runtime = runtimes.get(sessionId);
+      if (!runtime) {
+        throw Object.assign(new Error("runtime not found for session"), {
+          rpcCode: -32000,
+          errorCode: "RUNTIME_NOT_FOUND",
+        });
+      }
+      return runtime.waitSubagents(input);
     }
     case "agent.stop": {
       const sessionId = String(params.sessionId);

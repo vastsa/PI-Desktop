@@ -318,6 +318,7 @@ Metadata reads need no permission; file operations require their declared grants
 - `pi.session.delete()` // `session.delete.own`
 - `pi.usage.listTurns()` // `usage.read`; read-only completed-turn facts, no message bodies
 - `pi.agent.complete(input)` // `agent.complete`; host-owned one-shot
+- `pi.agent.startSubagent(input)` / `waitSubagents(input)` / `stopSubagents(input)` // `agent.subagent`; Task-path delegation from inside the plugin's own tool call
 
 Skills are contributed declaratively (`contributes.skills` + `agent.prompt.inject`),
 not invoked by the plugin: the host puts the catalog in the system prompt and the
