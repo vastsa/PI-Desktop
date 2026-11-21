@@ -124,10 +124,12 @@ test("the timeout aborts a pending response", async (t) => {
   await assert.rejects(call({ url, redirect: "manual", timeoutMs: 25 }), { code: "TIMEOUT" });
 });
 
-test("capability query exposes supported policies without making a request", async (t) => {
+test("capability query exposes text and bounded binary response support without making a request", async (t) => {
   const { runtime } = await fixture(t);
   assert.deepEqual(await runtime.invokePanelBridge("test.redirect", "net.getCapabilities"), {
     fetchRedirectModes: ["follow", "error", "manual"],
+    binaryResponseBody: true,
+    maxResponseBodyBytes: 16 * 1024 * 1024,
   });
 });
 
@@ -176,4 +178,16 @@ test("net.anyHost does not override a no-follow policy", async (t) => {
   assert.equal(hits, 1);
   assert.equal((await call({ url, redirect: "manual" })).bodyText, "original");
   assert.equal(hits, 2);
+});
+test("base64 response preserves bytes and enforces the requested response limit", async (t) => {
+  const bytes = Buffer.from([0, 1, 2, 127, 128, 254, 255]);
+  const url = await server(t, (_req, res) => res.writeHead(200, { "content-type": "image/png" }).end(bytes));
+  const { call } = await fixture(t);
+  const result = await call({ url, responseType: "base64", maxResponseBytes: bytes.length });
+  assert.equal(result.bodyBase64, bytes.toString("base64"));
+  assert.equal(result.contentType, "image/png");
+  assert.equal(result.byteLength, bytes.length);
+  assert.equal(result.bodyText, "");
+  await assert.rejects(call({ url, responseType: "base64", maxResponseBytes: bytes.length - 1 }), { code: "RESPONSE_TOO_LARGE" });
+  await assert.rejects(call({ url, responseType: "binary" }), { code: "INVALID_ARGUMENT" });
 });

@@ -24,6 +24,10 @@ export type PluginNetFetchInput = {
   headers?: Record<string, string>;
   body?: string;
   timeoutMs?: number;
+  /** Defaults to text. Base64 returns bounded binary response bytes. */
+  responseType?: "text" | "base64";
+  /** Required upper bound for base64 responses when supplied. */
+  maxResponseBytes?: number;
   /** Defaults to follow. error refuses any 3xx; manual returns it unchanged. */
   redirect?: "follow" | "error" | "manual";
 };
@@ -32,6 +36,16 @@ export type PluginNetFetchResult = {
   status: number;
   headers: Record<string, string>;
   bodyText: string;
+  /** Present only when responseType is base64. */
+  bodyBase64?: string;
+  contentType?: string;
+  byteLength?: number;
+};
+
+export type PluginNetCapabilities = {
+  fetchRedirectModes: ("follow" | "error" | "manual")[];
+  binaryResponseBody?: true;
+  maxResponseBodyBytes?: number;
 };
 
 /**
@@ -1664,7 +1678,7 @@ export type PluginHostApi = {
   };
   net: {
     /** Query before using redirect on hosts that may predate this API. */
-    getCapabilities: () => Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>;
+    getCapabilities: () => Promise<PluginNetCapabilities>;
     fetch: (input: PluginNetFetchInput) => Promise<PluginNetFetchResult>;
     /**
      * Real-time bidirectional sockets (`net.websocket`). A connect is confined
