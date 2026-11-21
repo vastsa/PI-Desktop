@@ -2477,6 +2477,21 @@ are withdrawn with ADR 0165.
 - Automated coverage: `read_powershell_utf16le_log`,
   `read_and_edit_utf16be_chinese_text`, and the existing binary/CRLF tool tests.
 
+## Edit parse diagnostics name corrective operations
+
+- Submit an empty `PUT`, a unified-diff hunk, a Markdown heading, a colon-
+  terminated `CUT`, an orphan body row, and an invalid `PUT` locator against a
+  read file. Follow them with a valid range `PUT` as a control.
+- Expected: every malformed payload fails before writing with
+  `EDIT_PARSE_FAILED`; the result names a concrete replacement `PUT`, `CUT`, or
+  gap-insert form. A unified-diff hunk is identified explicitly, and foreign
+  patch/Markdown wrappers are never silently stripped. The valid control edit
+  succeeds. The tool description says to delete with `CUT`, not an empty `PUT`,
+  and not to paste unified-diff or Markdown wrappers into `ops`.
+- Automated coverage: `cargo test -p host-core
+  tools::hashline::parse::tests` and `cargo test -p host-core
+  tool_defs_advertise_the_scoping_parameters`; no real provider is used.
+
 ## Delegate mutation recovery isolation
 
 - Start two Task delegates editing the same file. Delegate A produces text and

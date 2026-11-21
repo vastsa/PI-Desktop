@@ -3362,7 +3362,7 @@ pub fn builtin_tool_defs() -> Value {
             "name": "Edit",
             "description": "Replace, insert, or delete lines in an existing file. Names positions and supplies new content only — never old_string. Required args: path, tag (4 hex from the latest Read/Grep/Write/Edit), ops. \
     Ops: `PUT N.=M:` replace inclusive lines N–M (body rows required); `PUT <N:` insert before N; `PUT >N:` insert after N; `PUT >$:` append; `CUT N.=M` delete; `REM` delete the file; `MV DEST` rename after other ops. \
-    Body rows are `+` plus the final line text; a bare `+` is an empty line. Every PUT with body rows must include the trailing colon, for example `PUT 48.=48:` followed by a `+replacement` row; `PUT 48.=48` followed by `+` rows is invalid. A colonless PUT is only for a register paste such as `PUT <1 @name`. No `-old` or context rows. Ranges name only the lines being changed — a pure insert uses a gap locator, not a widened PUT that restates survivors. \
+    Delete with `CUT`, not an empty `PUT`. Do not paste unified-diff or Markdown wrappers into ops. Body rows are `+` plus the final line text; a bare `+` is an empty line. Every PUT with body rows must include the trailing colon, for example `PUT 48.=48:` followed by a `+replacement` row; `PUT 48.=48` followed by `+` rows is invalid. A colonless PUT is only for a register paste such as `PUT <1 @name`. No `-old` or context rows. Ranges name only the lines being changed — a pure insert uses a gap locator, not a widened PUT that restates survivors. \
     All line numbers refer to the tagged snapshot and are 1-indexed. Re-ground on the tag returned by every successful write. After one failed Edit, classify the error: Read the live file for a stale tag or unseen lines (or retry unchanged on a complete EDIT_LINES_UNSEEN reveal), but correct syntax or range errors directly; do not guess.",
             "risk": "high",
             "parameters": {
@@ -4922,6 +4922,18 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("PUT 48.=48` followed by `+` rows is invalid"));
+        assert!(edit["description"]
+            .as_str()
+            .unwrap()
+            .contains("Delete with `CUT`, not an empty `PUT`"));
+        assert!(edit["description"]
+            .as_str()
+            .unwrap()
+            .contains("unified-diff or Markdown wrappers"));
+        assert!(edit["description"]
+            .as_str()
+            .unwrap()
+            .contains("survivors. All line numbers"));
         assert!(edit["description"]
             .as_str()
             .unwrap()
