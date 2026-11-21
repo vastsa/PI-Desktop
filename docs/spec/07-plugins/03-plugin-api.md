@@ -1242,10 +1242,37 @@ pi.net.fetch(input: {
  headers?: Record<string, string>
  body?: string
  timeoutMs?: number
+ responseType?: "text" | "base64"
+ maxResponseBytes?: number
  redirect?: "follow" | "error" | "manual"
-}): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
+}): Promise<{
+ status: number
+ headers: Record<string, string>
+ bodyText: string
+ bodyBase64?: string
+ contentType?: string
+ byteLength?: number
+}>
 ```
 
+`responseType` defaults to `text` and preserves the existing bodyText response.
+`responseType: "base64"` reads the response body as bounded bytes and returns
+canonical standard Base64 in `bodyBase64`, with `contentType` and `byteLength`.
+The host enforces a maximum of 16 MiB and accepts a smaller positive integer in
+`maxResponseBytes`. A response over the limit fails with
+`RESPONSE_TOO_LARGE`; no partial bytes are returned. Binary response mode is
+intended for bounded media downloads and does not grant filesystem access.
+
+Before using the redirect option or binary mode on a potentially older host,
+query
+`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[]; binaryResponseBody?: true; maxResponseBodyBytes?: number }>`
+and require the desired redirect mode, or `binaryResponseBody` plus a
+sufficient `maxResponseBodyBytes`. This read-only query needs no network
+permission and performs no network I/O. A missing method, rejected query,
+absent mode, or absent binary capability means unsupported: do not send the
+request. Older hosts may silently ignore unknown fetch options, so passing
+`redirect` or `responseType` alone is **not** capability detection.
+No same-origin-only mode is introduced by this change.
 
 `redirect` is optional: omitted or `follow` preserves the existing policy (up to
 five followed 3xx responses with Location, relative to the current URL, each
@@ -1264,22 +1291,13 @@ transport. Every followed hop still passes the existing permission/egress
 checks; these modes grant no additional network access. Policy refusals are
 audited without response bodies or headers.
 
-Before using the option on a potentially older host, query
-`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>` and require
-the desired mode. This read-only query needs no network permission and performs
-no network I/O. A missing method, rejected query, or absent mode means
-unsupported: do not send the request. Older hosts may silently ignore unknown
-fetch options, so passing `redirect` alone is **not** capability detection.
-Current source implements this query; older hosts may not advertise it.
-No same-origin-only mode is introduced by this change.
-
-`fetch` answers with the upstream response unchanged — `status`, `headers`, and
-`bodyText` — so a `429` is data your plugin can read, `Retry-After` included,
-rather than an error the host hides. The host does not retry, throttle, or
-re-issue the request: retry and backoff after a `429` are your plugin's own
-policy, and the response headers are the only backoff signal you get. A failed
-call (`status >= 400`) is audited as `ok: false`, together with the
-`retryAfter` it advertised when the response states one (§7).
+`fetch` answers with the upstream response unchanged — `status`, `headers`,
+and either text or bounded Base64 body data — so a `429` is data your plugin can
+read, `Retry-After` included, rather than an error the host hides. The host does
+not retry, throttle, or re-issue the request: retry and backoff after a `429`
+are your plugin's own policy, and the response headers are the only backoff
+signal you get. A failed call (`status >= 400`) is audited as `ok: false`,
+together with the `retryAfter` it advertised when the response states one (§7).
 
 ```ts
 pi.net.websocket.connect(input: {

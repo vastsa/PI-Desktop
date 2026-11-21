@@ -12,7 +12,7 @@ import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
+import { MAX_PLUGIN_BINARY_RESPONSE_BYTES, pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
 import { assertLocalPluginRoot, pluginFsReadOptions, readRemotePluginFiles, type PluginRemoteFilesRead } from "./plugin-remote-files";
 import { getModuleDirectory } from "./module-path";
@@ -2660,6 +2660,8 @@ export class PluginRuntime {
           headers: (payload?.headers as Record<string, string> | undefined) ?? undefined,
           body: payload?.body ? String(payload.body) : undefined,
           timeoutMs: typeof payload?.timeoutMs === "number" ? payload.timeoutMs : undefined,
+          responseType: payload?.responseType === undefined ? undefined : String(payload.responseType) as "text" | "base64",
+          maxResponseBytes: typeof payload?.maxResponseBytes === "number" ? payload.maxResponseBytes : undefined,
           redirect: payload?.redirect,
         });
       case "plugin.getSettings":
@@ -6646,13 +6648,15 @@ export class PluginRuntime {
         closeOutput: async () => this.refuseAudio(loaded, "audio.closeOutput"),
       },
       net: {
-        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"] }),
+        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"], binaryResponseBody: true, maxResponseBodyBytes: MAX_PLUGIN_BINARY_RESPONSE_BYTES }),
         fetch: async (input: {
           url: string;
           method?: string;
           headers?: Record<string, string>;
           body?: string;
           timeoutMs?: number;
+          responseType?: "text" | "base64";
+          maxResponseBytes?: number;
           redirect?: unknown;
         }) => {
           this.assertPermission(loaded, "net.fetch");
