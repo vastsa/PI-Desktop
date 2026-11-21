@@ -138,6 +138,27 @@ describe("buildSessionContext", () => {
     expect(reopened[2]).toMatchObject({ role: "user", content: "Change direction" });
   });
 
+  it("keeps the recovery notice before a fallback's sole retained user message", () => {
+    const original = user("u1", "Set up the empty project", 1);
+    const entry = compaction("c1", 3, [original.message]);
+    entry.summary = "The summary request failed. Continue from the recent messages below.";
+    entry.details = {
+      fallback: "retained_tail",
+      retainedTailMode: "active_turn",
+      retainedTailShape: "recent_window",
+    };
+
+    const request = convertToLlm(buildSessionContext([original, entry]).messages);
+    expect(request).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: [{ type: "text", text: expect.stringContaining(entry.summary) }],
+      }),
+      original.message,
+    ]);
+    expect(JSON.stringify(request[0])).not.toContain("first unchecked step");
+  });
+
   it("does not add resume framing to completed or empty checkpoints", () => {
     const completed = compaction("c1", 2);
     completed.details = { retainedTailMode: "completed_turn" };

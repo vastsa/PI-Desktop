@@ -7,12 +7,15 @@ import { recoverMalformedToolCalls } from "./tool-call-recovery.js";
  * desktop-only entries and persisted host checkpoints. It keeps the
  * `{ messages }` shape consumed by the agent loop.
  *
- * An active-turn summary follows the original request so the model resumes
- * from the checkpoint rather than treating that request as new. Preserve the
- * existing order when replaying provider-specific reasoning turns (#296).
+ * Context starts at the latest compaction (D203). Summary-first order keeps
+ * recovery notices ahead of the messages they describe and retained reasoning
+ * between the summary and the user tail (#296). A successful active-turn
+ * checkpoint without reasoning to replay can follow its retained request so
+ * the model resumes from the checkpoint.
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { checkpointFallback } from "@pi-desktop/shared";
 import {
   createBranchSummaryMessage,
   createCompactionSummaryMessage,
@@ -70,6 +73,7 @@ export function sessionEntryToContextMessages(
         !(message.role === "system" && system.length > 0));
       const resume = details && typeof details === "object" &&
         "retainedTailMode" in details && details.retainedTailMode === "active_turn" &&
+        checkpointFallback(details) === undefined &&
         entry.summary.trim().length > 0 && reasoning.length === 0 &&
         tail.length === 1 && tail[0]?.role === "user";
       const summary = createCompactionSummaryMessage(
