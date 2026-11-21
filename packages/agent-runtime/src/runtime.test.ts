@@ -8374,8 +8374,8 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       (runtime as any).entriesWithCompaction(checkpoint),
     ).messages;
     expect(compacted.map((message: any) => message.role)).toEqual([
-      "compactionSummary",
       "user",
+      "compactionSummary",
     ]);
     // No assistant message means no toolCall block, so no orphaned tool call can
     // reach a provider.
