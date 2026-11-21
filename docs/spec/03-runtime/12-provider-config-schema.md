@@ -673,13 +673,16 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
   never overwrites an edit or delete made while it was in flight.
 
 ### `providers.cacheModels` (internal host RPC)
-- in: `{ providerId, models: DiscoveredModelInput[], complete?: boolean }`
+- in: `{ providerId, models: DiscoveredModelInput[], complete?: boolean, endpoint?: { baseUrl, apiStyle } }`
 - behavior: atomically upsert discovered rows with `discoveryState: "published"`.
   Only an explicitly complete, nonempty, valid answer marks previously published
   missing rows `"unlisted"`; missing configured rows are retained with that state,
   while unconfigured discovered rows may be pruned. An omitted `complete` means
   additive-only for backward compatibility. User-owned rows, bindings, defaults,
   and conversation history are never rewritten by discovery.
+  A supplied endpoint must still match the saved provider at write time. For
+  runtime budgeting, `reportedContextWindow` is populated only from a limit
+  explicitly present in the discovery response.
 - failure/partial behavior: failed or empty responses cannot narrow the cache;
   paginated, truncated, malformed-row, and larger-reported-total responses are
   additive-only. The client does not claim to detect undisclosed truncation.

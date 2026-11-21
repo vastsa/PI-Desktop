@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v33)
+# 04. Data Storage (Schema v34)
 
 ### Project path aliases (#2148)
 
@@ -698,6 +698,7 @@ CREATE TABLE models (
   source            TEXT NOT NULL DEFAULT 'user',  -- bundled | discovered | user
   capabilities_json TEXT NOT NULL DEFAULT '[]',
   context_window    INTEGER,
+  reported_context_window INTEGER,
   max_output_tokens INTEGER,
   deprecated        INTEGER NOT NULL DEFAULT 0,
   discovery_state   TEXT CHECK (discovery_state IN ('published', 'unlisted')),
@@ -709,6 +710,10 @@ CREATE TABLE models (
 Refresh (spec 13 §6/§9) upserts `discovered` rows and **never overwrites
 `source='user'`** rows. Recent-model MRU stays in `kv(cache)` — it is a
 bounded display list, not relational data.
+
+Schema v34 adds nullable `models.reported_context_window` for a limit explicitly
+reported by the endpoint. The backed-up migration preserves the display cache
+and leaves the new field unknown until the next successful discovery refresh.
 
 Schema v25 adds nullable `discovery_state`, distinct from metadata deprecation.
 The v24 upgrade backs up first, adds the field transactionally, and marks
