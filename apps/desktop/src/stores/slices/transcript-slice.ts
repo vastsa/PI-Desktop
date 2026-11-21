@@ -495,6 +495,19 @@ export function createTranscriptSlice({
         }));
         // Bypass in-flight pre-abort detail reads; request settled source state.
         const detail = await api.getSession(sessionId);
+        // A turn that started while this settled-state read was in flight owns
+        // the transcript now: the composer unlocked at the isRunning clear
+        // above, so the user can already be streaming a new prompt. Its
+        // optimistic rows are newer than any snapshot this read can return,
+        // and forcing isRunning false would mute the new turn's spinner —
+        // leave the newer state alone; the live flow reconciles from here.
+        const stateAfterRead = get();
+        const turnOwnsTranscript =
+          stateAfterRead.runningSessions[sessionId] === true ||
+          runtime.liveSessionTranscripts?.has(sessionId) === true ||
+          (stateAfterRead.activeSessionId === sessionId &&
+            stateAfterRead.isRunning === true);
+        if (turnOwnsTranscript) return;
         const messages = detail.session?.messages;
         if (messages) runtime.cacheSessionTranscript(sessionId, messages);
         set((current) => ({

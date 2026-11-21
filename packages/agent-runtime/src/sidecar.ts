@@ -125,6 +125,8 @@ type RuntimeParams = {
   fastMode?: boolean;
   /** Opt-in TypeSafe classifier credential resolved by Electron main. */
   jevApiKey?: string;
+  /** Set by main only for Agent sessions with computer use switched on. */
+  computerUseEnabled?: boolean;
   provider: RuntimeProviderConfig;
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
@@ -255,6 +257,7 @@ async function runtimeFor(
     subagentProviders,
     subagentModelKeys,
     jevApiKey: params.jevApiKey,
+    computerUseEnabled: params.computerUseEnabled === true,
     projectInstructions: params.projectInstructions,
     customSystemPrompt: params.customSystemPrompt,
     projectMemory: params.projectMemory,
@@ -340,6 +343,7 @@ async function runtimeFor(
     backgroundJobContinuationEnabled: params.backgroundJobContinuationEnabled === true,
     fastMode: params.fastMode === true,
     jevApiKey: params.jevApiKey,
+    computerUseEnabled: config.computerUseEnabled,
     history,
     compaction,
     compactionSettings: params.compactionSettings,

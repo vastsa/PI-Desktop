@@ -288,11 +288,13 @@ test("work panel header exposes a scrollable tab strip and direct new-page actio
   // tab kind and no separate back control exists.
   assert.match(panelSource, /subagent: IconBot/);
   assert.doesNotMatch(panelSource, /work-panel-subagent-back|IconChevronLeft/);
-  // Reopening an already-open plugin view must reuse its tab so the browser
-  // keeps its location instead of being replaced by a blank singleton.
+  // Reopening an already-open plugin view must not replace its tab with a
+  // blank one: other views reuse it, and Browser opens another page beside it
+  // (`launcherWorkPanelTab`, covered in work-panel-tabs.test.mjs).
+  assert.match(panelSource, /const tab = launcherWorkPanelTab\(tabs, item\.tab\)/);
   assert.match(
     panelSource,
-    /const existing = tabs\.find\(\(tab\) => tab\.id === item\.tab\.id\)/,
+    /const existing = tabs\.find\(\(candidate\) => candidate\.id === tab\.id\)/,
   );
   assert.match(panelSource, /if \(existing\) activateTab\(existing\.id\)/);
   assert.doesNotMatch(panelSource, /collapsePanel/);

@@ -561,9 +561,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   body offers Browser or an in-scope plugin view.
 - An artifact trigger atomically creates or reuses its resource, activates it,
   and opens the panel. Background artifacts never open the visible panel.
-- File resources use normalized paths as identity. Browser and plugin views
-  are singletons; repeated triggers preserve resource order and activate the
-  existing resource.
+- File resources use normalized paths as identity. Plugin views are
+  singletons; repeated triggers preserve resource order and activate the
+  existing resource. Browser is the exception: each page has its own tab, so
+  a clicked link opens another Browser tab and selecting Browser in the
+  launcher while one is open adds a blank Browser tab instead of activating
+  the existing page.
 - Once open, the panel header is a `tablist` that scrolls horizontally while a
   tight `+` trigger stays fixed beside it. Each tab owns its active state and
   close button; the active tab is scrolled into view. Clicking `+` creates a
@@ -659,6 +662,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   Info continues to show the available version and the Releases action.
 - `downloaded` remains actionable until Restart to update or normal app quit;
   later scheduled/manual checks do not replace it with `checking`.
+- On Windows, Restart to update reuses the registered NSIS install scope when
+  exactly one exists. An all-users update requests elevation when needed.
+  The installer asks for the scope when it finds no registered install or finds both.
 - A compact update notice appears in the main pane's top-right safe area for
   the one-time manual reminder, in-app `downloading`, or `downloaded`. It stays
   clear of the bottom composer at every supported window size and draft height.
@@ -2031,6 +2037,13 @@ This does not prevent state changes — it makes them instant.
 - A settled cross-display move refreshes the native minimum without enlarging a
   window already placed in a narrower tile. Normal bounds persistence and the
   internal work-panel/chat-width IPC contracts are unchanged.
+
+## Background task details
+
+The task header keeps the command on a single line with an ellipsis when it
+overflows. Expanding the row shows the full, selectable command above the
+output, preserving whitespace and wrapping long lines within the dock. The
+command is visible as soon as the row expands, even when output is empty.
 
 ## Background completion continuation
 

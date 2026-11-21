@@ -127,6 +127,25 @@ test("the container counts the rows it can render", async () => {
   });
 });
 
+test("an expanded task shows the complete multiline command above its output", async () => {
+  await withDockRender(({ render }) => {
+    const command = `# ${"long-argument-".repeat(100)}\n  sleep 60 # end of command`;
+    const running = { ...task("t-running", "running"), command };
+    const fixture = { tasks: [running], sessionTasks: [running], collapsed: false };
+    assert.doesNotMatch(render(fixture), /class="task-command-detail"/);
+
+    const html = render({
+      ...fixture,
+      expandedId: running.id,
+      output: { id: running.id, stdout: "", stderr: "", truncated: false },
+    });
+    const detail = html.match(/<code class="task-command-detail">([\s\S]*?)<\/code>/);
+    assert.equal(detail?.[1], command);
+    const output = html.indexOf('<pre class="task-output">—</pre>');
+    assert.ok(output > html.indexOf(detail[0]), "the command appears above its empty output");
+  });
+});
+
 test("a finished row inside its grace window still counts", async () => {
   await withDockRender(({ render }) => {
     const finished = task("t-grace", "exited", 0);
