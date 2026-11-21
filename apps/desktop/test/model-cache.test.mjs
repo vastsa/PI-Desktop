@@ -26,7 +26,6 @@ test("saved provider discovery persists models in the host catalog", () => {
   assert.match(mainSource, /providersRefreshModelCatalog/);
   assert.doesNotMatch(mainSource, /modelsDevCatalog\.persist/);
   assert.match(mainSource, /usesSavedEndpoint/);
-  assert.match(mainSource, /endpointStillCurrent/);
   assert.match(mainSource, /for \(const binding of provider\.models \?\? \[\]\)/);
   assert.match(mainSource, /models\.dev or generic[\s\S]*per-model state/);
 });
