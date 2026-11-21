@@ -121,6 +121,41 @@ pub(super) fn reconcile_project_paths(conn: &Connection, target: Option<&str>) -
     Ok(())
 }
 
+fn scheduled_task_workspace_paths(conn: &Connection) -> Result<Vec<(String, Option<String>)>> {
+    let mut statement = conn.prepare(
+        "SELECT id,json_extract(config_json,'$.workspacePath') FROM scheduled_tasks
+         WHERE json_extract(config_json,'$.workspacePath') IS NOT NULL",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// Whether the canonical `path` owns chats, scheduled tasks (by project id or
+/// bound `workspacePath`), or path-scoped memory. Relocation moves such data
+/// only onto a path that owns none of it.
+pub(super) fn project_path_owns_data(conn: &Connection, path: &str) -> Result<bool> {
+    let project = conn
+        .query_row("SELECT id FROM projects WHERE path=?1", [path], |row| {
+            row.get::<_, i64>(0)
+        })
+        .optional()?;
+    let bound_task = scheduled_task_workspace_paths(conn)?
+        .iter()
+        .any(|(_, task)| task.as_deref().and_then(canonical_project_path).as_deref() == Some(path));
+    Ok(bound_task
+        || conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM kv WHERE ns='projectMemory' AND key=?1)
+                OR EXISTS(SELECT 1 FROM sessions WHERE project_id=?2)
+                OR EXISTS(SELECT 1 FROM scheduled_tasks WHERE project_id=?2)",
+            params![path, project],
+            |row| row.get(0),
+        )?)
+}
+
 /// Move one explicitly selected project to its replacement directory while
 /// retaining the project id used by sessions and scheduled tasks. The target
 /// may be an empty shadow row created by opening the replacement path first;
@@ -137,30 +172,8 @@ pub(super) fn relocate_project_path(conn: &Connection, old: &str, new: &str) -> 
             row.get::<_, i64>(0)
         })
         .optional()?;
-    let task_paths = {
-        let mut statement = conn.prepare(
-            "SELECT id,json_extract(config_json,'$.workspacePath') FROM scheduled_tasks
-             WHERE json_extract(config_json,'$.workspacePath') IS NOT NULL",
-        )?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        rows
-    };
-    let target_task = task_paths
-        .iter()
-        .any(|(_, path)| path.as_deref().and_then(canonical_project_path).as_deref() == Some(new));
-    let occupied: bool = target_task
-        || conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM kv WHERE ns='projectMemory' AND key=?1)
-                OR EXISTS(SELECT 1 FROM sessions WHERE project_id=?2)
-                OR EXISTS(SELECT 1 FROM scheduled_tasks WHERE project_id=?2)",
-            params![new, target],
-            |row| row.get(0),
-        )?;
-    if occupied {
+    let task_paths = scheduled_task_workspace_paths(conn)?;
+    if project_path_owns_data(conn, new)? {
         return Err(anyhow!(
             "replacement folder belongs to a non-empty project: {new}"
         ));
@@ -232,5 +245,25 @@ impl Database {
             )
             .optional()?;
         Ok(exact.or_else(|| canonical_project_path(raw)))
+    }
+
+    /// Id of the project row stored at the given spelling or its canonical
+    /// form, without creating one. Lets callers notice an explicit relocation.
+    pub(crate) fn project_id_at_path(&self, raw: &str) -> Result<Option<i64>> {
+        for path in [normalize_project_path(raw), canonical_project_path(raw)]
+            .into_iter()
+            .flatten()
+        {
+            let id = self
+                .conn
+                .query_row("SELECT id FROM projects WHERE path=?1", [&path], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .optional()?;
+            if id.is_some() {
+                return Ok(id);
+            }
+        }
+        Ok(None)
     }
 }

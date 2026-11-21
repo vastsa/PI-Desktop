@@ -92,13 +92,21 @@ legacy group; removing a root from group membership never deletes sessions or fi
 Existing path projects are projected as legacy single-root groups at read time;
 their path-scoped memory and filesystem instructions remain readable.
 Replacing the sole root of a legacy or stored single-root group is an explicit
-project relocation, not a detach. The host retains the original project id and
-updates its canonical path in the same transaction as the group edit, moves the
-old path's `projectMemory` key and bound scheduled-task `workspacePath`, and
-absorbs only an empty target project row. Existing chats and scheduled tasks
-therefore retain their owner. A target that already owns chats, tasks, or memory
-blocks the edit without changing either project. Multi-root detachment keeps the
-existing standalone-project behavior.
+project relocation, not a detach, only when the old root no longer exists on
+disk. The host retains the original project id and updates its canonical path
+in the same transaction as the group edit, moves the old path's
+`projectMemory` key and bound scheduled-task `workspacePath`, and absorbs only
+an empty target project row. Existing chats and scheduled tasks therefore
+retain their owner. A target that already owns chats, tasks, or memory blocks
+the edit without changing either project. When the old root still exists, the
+edit is an ordinary swap: the old project keeps its chats, tasks, and memory
+and stays readable as a standalone project. The two-step repair (#1869) is
+covered too: after the replacement was first saved next to the missing root,
+an edit that leaves only the replacement relocates the missing root's project
+onto it when exactly one removed root is missing on disk and owns chats, tasks,
+or memory and the replacement's project owns none; the stored group id is kept.
+Otherwise, and for removed roots that still exist, multi-root detachment keeps
+the existing standalone-project behavior.
 5. **Plan/Goal checkpoints are immutable host artifacts** with recorded path,
    hash, and size; the existing approval row also carries execution fields.
    Startup interruption is the process-epoch fence and no work is replayed.

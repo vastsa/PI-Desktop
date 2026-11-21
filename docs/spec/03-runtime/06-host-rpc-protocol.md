@@ -286,12 +286,21 @@ type ToolBudgetHealth = {
   are removed, a `primary` outside `folders` is rejected, roots owned by
   another non-legacy group are rejected, and a root with existing chats cannot
   be detached. Removed roots are retained as suppressed historical paths rather
-  than reappearing as standalone legacy groups. Replacing the only root of a
-  legacy or stored single-root group instead relocates its existing project row:
-  the canonical path and path-scoped memory move while the project id, chats,
-  scheduled tasks, and group id remain stable. An empty shadow row at the new
-  path is absorbed; a target with its own chats, tasks, or memory is rejected,
-  and every database change rolls back together on failure.
+  than reappearing as standalone legacy groups. When the old root no longer
+  exists on disk, replacing the only root of a legacy or stored single-root
+  group instead relocates its existing project row: the canonical path and
+  path-scoped memory move while the project id, chats, scheduled tasks, and
+  group id remain stable. An empty shadow row at the new path is absorbed; a
+  target with its own chats, tasks, or memory is rejected, and every database
+  change rolls back together on failure. If the old root still exists, the
+  replacement is an ordinary swap and nothing is relocated. The two-step repair
+  (first save the replacement next to the missing root, then save with only
+  the replacement) relocates the same way when exactly one removed root is
+  missing on disk and owns chats, tasks, or memory and the remaining root's
+  project owns none; otherwise removed roots detach as described above. When
+  the active workspace's project is relocated, the host moves the workspace to
+  the new path exactly as `workspace.set` does (hashline anchors are dropped
+  and `currentProjectId` follows).
 - `project.group.memory.get/set({ groupId, entries })` — reads or normalizes
   shared group memory using the existing 32 KiB entry limit.
 - `project.group.instructions.get/set({ groupId, content })` — reads or stores

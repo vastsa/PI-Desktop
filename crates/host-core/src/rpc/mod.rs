@@ -2174,10 +2174,16 @@ async fn handle_request(
                 .collect::<Vec<_>>();
             let primary = params.get("primary").and_then(Value::as_str);
             let mut st = state.lock().await;
-            let active_group = match st.workspace.path.as_deref() {
+            // The active project's id survives an explicit relocation while its
+            // stored path changes; detect that to follow it with the workspace.
+            let active_project = match st.workspace.path.as_deref() {
                 Some(path) => st
                     .db
-                    .project_group_for_path(path)
+                    .project_id_at_path(path)
+                    .and_then(|id| match id {
+                        Some(id) => Ok(st.db.project_path(id)?.map(|path| (id, path))),
+                        None => Ok(None),
+                    })
                     .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
                 None => None,
             };
@@ -2185,12 +2191,27 @@ async fn handle_request(
                 .db
                 .update_project_group(group_id, name, &folders, primary)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
-            if active_group.is_some_and(|current| {
-                current.id == group_id
-                    && current.roots.len() == 1
-                    && current.primary_path != group.primary_path
-            }) {
-                st.workspace.set(PathBuf::from(&group.primary_path));
+            if let Some((id, before)) = active_project {
+                let relocated = st
+                    .db
+                    .project_path(id)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                    .filter(|after| {
+                        after != &before && group.roots.iter().any(|root| &root.path == after)
+                    });
+                if let Some(path) = relocated {
+                    // Mirror `workspace.set`: hashline anchors belong to the old
+                    // root, and the current project id follows the new path.
+                    st.hashline.drop_all();
+                    let ws = st.workspace.set(PathBuf::from(&path));
+                    let pid = st
+                        .db
+                        .ensure_project(&ws.path, true)
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                    st.db
+                        .kv_set("app", "currentProjectId", &json!(pid))
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                }
             }
             Ok(json!({ "group": group }))
         }
@@ -6601,6 +6622,119 @@ mod tests {
             workspace["workspace"]["path"],
             json!(crate::db::canonical_project_path(&new.to_string_lossy()).unwrap())
         );
+    }
+
+    #[tokio::test]
+    async fn project_group_update_rpc_follows_a_two_step_relocation() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let old = data_dir.path().join("old");
+        let new = data_dir.path().join("new");
+        fs::create_dir(&old).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        app_state.workspace.set(&old);
+        let state = Arc::new(Mutex::new(app_state));
+        let send = |method: &'static str, params: Value| {
+            let state = state.clone();
+            async move {
+                handle_request(state, method, params, mpsc::unbounded_channel().0)
+                    .await
+                    .unwrap()
+            }
+        };
+        let created = send(
+            "project.group.create",
+            json!({ "name": "Movable", "folders": [old] }),
+        )
+        .await;
+        let group_id = created["group"]["id"].as_str().unwrap().to_string();
+        let old_path = created["group"]["primaryPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        {
+            let st = state.lock().await;
+            crate::sessions::create_session(
+                &st.db,
+                Some("Existing chat".into()),
+                Some("agent".into()),
+                None,
+                None,
+                Some(old_path.clone()),
+            )
+            .unwrap();
+        }
+        fs::rename(&old, &new).unwrap();
+        let new_path = crate::db::canonical_project_path(&new.to_string_lossy()).unwrap();
+
+        send(
+            "project.group.update",
+            json!({
+                "groupId": group_id,
+                "name": "Movable",
+                "folders": [old_path, new],
+                "primary": new,
+            }),
+        )
+        .await;
+        let workspace = send("workspace.get", json!({})).await;
+        assert_eq!(workspace["workspace"]["path"], json!(old_path));
+
+        send(
+            "project.group.update",
+            json!({
+                "groupId": group_id,
+                "name": "Movable",
+                "folders": [new],
+                "primary": new,
+            }),
+        )
+        .await;
+        let workspace = send("workspace.get", json!({})).await;
+        assert_eq!(workspace["workspace"]["path"], json!(new_path));
+    }
+
+    #[tokio::test]
+    async fn project_group_update_rpc_keeps_workspace_when_the_old_folder_exists() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let old = data_dir.path().join("old");
+        let other = data_dir.path().join("other");
+        fs::create_dir(&old).unwrap();
+        fs::create_dir(&other).unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let before = app_state.workspace.set(&old).path;
+        let state = Arc::new(Mutex::new(app_state));
+        let created = handle_request(
+            state.clone(),
+            "project.group.create",
+            json!({ "name": "Swap", "folders": [old] }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        handle_request(
+            state.clone(),
+            "project.group.update",
+            json!({
+                "groupId": created["group"]["id"],
+                "name": "Swap",
+                "folders": [other],
+                "primary": other,
+            }),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        let workspace = handle_request(
+            state,
+            "workspace.get",
+            json!({}),
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        .unwrap();
+        assert_eq!(workspace["workspace"]["path"], json!(before));
     }
 
     #[tokio::test]

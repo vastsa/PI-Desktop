@@ -401,37 +401,62 @@ impl Database {
         let mut ordered = vec![primary.clone()];
         ordered.extend(selected.into_iter().filter(|path| path != &primary));
 
-        let relocating_single_root =
-            current.roots.len() == 1 && ordered.len() == 1 && primary != current_primary;
         let removed = current
             .roots
             .iter()
             .map(|root| root.path.as_str())
             .filter(|path| !ordered.iter().any(|candidate| candidate == path))
             .collect::<Vec<_>>();
-        let mut removed_without_sessions = Vec::new();
-        if !relocating_single_root {
+        // An edit that leaves one root is an explicit relocation only when the
+        // project being replaced no longer exists on disk; replacing a folder
+        // that still exists keeps the detach semantics below (#2469).
+        let relocation_source = if ordered.len() != 1 {
+            None
+        } else if current.roots.len() == 1 {
+            // One-save repair: the sole root is swapped for its replacement.
+            (primary != current_primary && !Path::new(&current_primary).is_dir())
+                .then(|| current_primary.clone())
+        } else {
+            // Two-step repair (#1869): the replacement was saved next to the
+            // stale root first and the stale root is dropped now. Relocate only
+            // one unambiguous stale project with data onto an empty target;
+            // otherwise the stale root detaches as before.
+            let mut stale = Vec::new();
             for path in &removed {
-                let has_sessions: bool = self.conn.query_row(
-                    "SELECT EXISTS(
-                        SELECT 1 FROM sessions s
-                        JOIN projects p ON p.id = s.project_id
-                        WHERE p.path = ?1
-                    )",
-                    params![path],
-                    |row| row.get(0),
-                )?;
-                if !has_sessions {
-                    removed_without_sessions.push(*path);
+                if !Path::new(path).is_dir()
+                    && super::project_path_migration::project_path_owns_data(&self.conn, path)?
+                {
+                    stale.push(path.to_string());
                 }
             }
-        }
-        if relocating_single_root {
-            super::project_path_migration::relocate_project_path(
-                &self.conn,
-                &current_primary,
-                &primary,
+            if stale.len() == 1
+                && !super::project_path_migration::project_path_owns_data(&self.conn, &primary)?
+            {
+                stale.pop()
+            } else {
+                None
+            }
+        };
+        let mut removed_without_sessions = Vec::new();
+        for path in &removed {
+            if relocation_source.as_deref() == Some(*path) {
+                continue;
+            }
+            let has_sessions: bool = self.conn.query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM sessions s
+                    JOIN projects p ON p.id = s.project_id
+                    WHERE p.path = ?1
+                )",
+                params![path],
+                |row| row.get(0),
             )?;
+            if !has_sessions {
+                removed_without_sessions.push(*path);
+            }
+        }
+        if let Some(source) = relocation_source.as_deref() {
+            super::project_path_migration::relocate_project_path(&self.conn, source, &primary)?;
         } else {
             for path in &ordered {
                 self.ensure_project(path, false)?;
@@ -444,7 +469,7 @@ impl Database {
                 .execute(params![name, primary])?;
             let mut legacy = current;
             legacy.name = name.to_string();
-            if relocating_single_root {
+            if relocation_source.is_some() {
                 legacy.id = format!("legacy:{primary}");
                 legacy.primary_path = primary.clone();
                 legacy.roots[0].path = primary.clone();

@@ -572,24 +572,37 @@ journeys cover successful reads, saves and directory browsing.
   Read or Bash call. 4) Inspect project memory, the scheduled task, the project
   list, and the binding after restart. 5) Repeat with an empty shadow project
   previously opened at the replacement path. 6) Repeat with a non-empty
-  independent target project and verify that saving is rejected.
+  independent target project and verify that saving is rejected. 7) Repeat the
+  two-step repair: save the replacement next to the stale row first, then save
+  again with only the replacement. 8) Repeat step 2 while the old folder still
+  exists (an ordinary swap to an unrelated folder).
 - **Expected**: The original project id and stored group id survive, its path
   becomes the canonical replacement, and the existing chat, scheduled task, and
   path-scoped memory remain available without recreating the session. The old
   workspace call succeeds at the replacement path. An empty shadow row is
   absorbed, leaving one project. A target with its own chats, tasks, or memory
   blocks the operation with both projects and the original group unchanged.
-  Multi-root detachment still preserves a removed root's chats as a standalone
-  project; no automatic directory-move detection or implicit project merge is
-  introduced.
+  The two-step repair ends in the same relocated state; if the replacement
+  already owns chats, tasks, or memory, the stale root detaches unchanged
+  instead. Relocation applies only when the old folder no longer exists: when
+  it still exists, its project keeps its chats, tasks, and memory and remains
+  a standalone project. Multi-root detachment still preserves a removed
+  existing root's chats as a standalone project; no automatic directory-move
+  detection or implicit merge of non-empty projects is introduced.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md` (Projects),
   `04-ux/08-component-spec.md` (project editor).
 - **Acceptance**: C (project and chat interaction), D (workspace identity),
   F (persistence), Quality.
 - **Milestone**: M5
-- **Status**: Host integration-covered by the four
-  `single_root_replacement_*` regressions and the active-workspace RPC regression; full UI scenario Draft
+- **Status**: Host integration-covered by the `single_root_replacement_*`,
+  `legacy_single_root_replacement_keeps_sessions_when_the_old_folder_still_exists`,
+  `two_step_stale_root_repair_*`, and
+  `removing_an_existing_root_with_chats_still_detaches_it` regressions and the
+  `project_group_update_rpc_relocates_the_active_single_root_workspace`,
+  `project_group_update_rpc_follows_a_two_step_relocation`, and
+  `project_group_update_rpc_keeps_workspace_when_the_old_folder_exists` RPC
+  regressions; full UI scenario Draft
 
 ## E2E-048c: Detach a project folder with chats and delete it
 
