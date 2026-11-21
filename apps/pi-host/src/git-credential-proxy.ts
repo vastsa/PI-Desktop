@@ -22,8 +22,7 @@
  * answers 401.
  */
 import { randomBytes } from "node:crypto";
-import { createServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { request as httpsRequest } from "node:https";
+import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { constants as zlibConstants, gunzipSync } from "node:zlib";
 
@@ -31,6 +30,7 @@ import type { WorkspaceGitRepository } from "@pi-desktop/shared";
 
 import { parseReceivePackCommands } from "./git-receive-pack.js";
 import { createLoopbackPeerUidLookup, type LoopbackPeerUidLookup } from "./loopback-peer.js";
+import { sendUpstreamRequest, type UpstreamTlsOptions } from "./upstream-proxy.js";
 
 export type GitProxyScope = { installationId: string; sessionId: string; repository: WorkspaceGitRepository; workBranch: string };
 
@@ -174,7 +174,7 @@ function forwardedHeaders(headers: IncomingHttpHeaders): Record<string, string |
  * settable only through this argument: no flag, environment variable, or RPC
  * can point the credential at another server.
  */
-export function createGitCredentialProxy(options: {
+export type GitCredentialProxyOptions = {
   upstream?: string;
   log?: ProxyLog;
   /**
@@ -182,10 +182,15 @@ export function createGitCredentialProxy(options: {
    * By default the kernel's socket table on Linux; no check elsewhere.
    */
   peerUid?: LoopbackPeerUidLookup;
-} = {}): GitCredentialProxy {
+  /** Environment used for HTTP_PROXY / HTTPS_PROXY / ALL_PROXY / NO_PROXY lookup. Defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv;
+  /** Optional TLS overrides for upstream HTTPS connections (e.g. a test CA certificate). */
+  upstreamTls?: UpstreamTlsOptions;
+};
+
+export function createGitCredentialProxy(options: GitCredentialProxyOptions = {}): GitCredentialProxy {
   const upstream = new URL(options.upstream ?? DEFAULT_UPSTREAM);
   const upstreamBasePath = upstream.pathname.replace(/\/+$/u, "");
-  const sendUpstream = upstream.protocol === "https:" ? httpsRequest : httpRequest;
   const log: ProxyLog = options.log ?? (() => undefined);
   const tokens = new Map<string, string>();
   const scopes = new Map<string, GitProxyScope>();
@@ -212,27 +217,35 @@ export function createGitCredentialProxy(options: {
   const forward = (req: IncomingMessage, res: ServerResponse, path: string, authorization: string | null, body: { buffered: Buffer[]; ended: boolean } | null, sessionId: string) => {
     const headers = forwardedHeaders(req.headers);
     if (authorization) headers.authorization = authorization;
-    const outbound = sendUpstream({
-      protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port || undefined,
-      method: req.method, path: `${upstreamBasePath}${path}`, headers,
-    }, (inbound) => {
-      const responseHeaders: Record<string, string | string[]> = {};
-      for (const [name, value] of Object.entries(inbound.headers)) {
-        if (value !== undefined && !DROPPED_RESPONSE_HEADERS.has(name.toLowerCase())) responseHeaders[name] = value;
-      }
-      res.writeHead(inbound.statusCode ?? 502, responseHeaders);
-      inbound.pipe(res);
-      inbound.on("error", () => res.destroy());
-    });
-    outbound.on("error", (error) => {
-      // The message of a socket error names a host or an errno, never a path.
-      log("warn", "git proxy upstream request failed", { sessionId, error: (error as NodeJS.ErrnoException).code ?? "ERROR" });
-      reply(res, 502, "pi-host git proxy: GitHub could not be reached");
+    const outbound = sendUpstreamRequest({
+      upstream,
+      method: req.method,
+      path: `${upstreamBasePath}${path}`,
+      headers,
+      env: options.env,
+      upstreamTls: options.upstreamTls,
+    }, {
+      onReady(clientReq) {
+        for (const chunk of body?.buffered ?? []) clientReq.write(chunk);
+        if (body?.ended || req.readableEnded) clientReq.end();
+        else req.pipe(clientReq);
+      },
+      onResponse(inbound) {
+        const responseHeaders: Record<string, string | string[]> = {};
+        for (const [name, value] of Object.entries(inbound.headers)) {
+          if (value !== undefined && !DROPPED_RESPONSE_HEADERS.has(name.toLowerCase())) responseHeaders[name] = value;
+        }
+        res.writeHead(inbound.statusCode ?? 502, responseHeaders);
+        inbound.pipe(res);
+        inbound.on("error", () => res.destroy());
+      },
+      onError(error) {
+        // The message of a socket error names a host or an errno, never a path or credential.
+        log("warn", "git proxy upstream request failed", { sessionId, error: (error as NodeJS.ErrnoException).code ?? "ERROR" });
+        reply(res, 502, "pi-host git proxy: GitHub could not be reached");
+      },
     });
     res.on("close", () => { if (!res.writableEnded) outbound.destroy(); });
-    for (const chunk of body?.buffered ?? []) outbound.write(chunk);
-    if (body?.ended) outbound.end();
-    else req.pipe(outbound);
   };
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
