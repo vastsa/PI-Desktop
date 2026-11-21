@@ -11443,6 +11443,10 @@ describe("DesktopAgentRuntime subagents", () => {
     );
     expect(listed.details.resumable).toEqual([]);
     expect(listed.content[0].text).not.toContain("Reusable subagent sessions");
+    // TaskList must not advertise the `job` shape that made strict models
+    // resend a job next to a multi-id TaskWait (#2487).
+    expect(listed.content[0].text).toContain(`delegationIds=["${delegationId}"]`);
+    expect(listed.content[0].text).not.toContain("job=");
 
     subagentRuns.deferred = false;
     await runtime.dispose();
