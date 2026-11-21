@@ -102,6 +102,7 @@ export function modelConfigWithBinding(
         | "supportsImages"
         | "supportsDocuments"
         | "nativeWebSearch"
+        | "allowEmptyThinkingSignature"
       >
     | null,
 ): ModelConfig {
@@ -141,6 +142,19 @@ export function modelConfigWithBinding(
         forceAdaptiveThinking: binding.thinkingProtocol === "adaptive",
       }
     : model.compat;
+  // A user-added Anthropic-compatible row can declare that its endpoint emits
+  // unsigned thinking blocks and accepts them back. pi-ai keeps an unsigned
+  // block only when this flag is set; without it the block is rewritten as
+  // assistant text, which the model then imitates on later turns. Catalog rows
+  // carry the flag already (generated metadata); this is the only path for a
+  // row the catalog does not describe.
+  const effectiveCompat =
+    binding.allowEmptyThinkingSignature === undefined
+      ? compat
+      : {
+          ...(compat ?? {}),
+          allowEmptySignature: binding.allowEmptyThinkingSignature,
+        };
   // pi-ai treats xhigh/max as unsupported when their adapter-facing mapping
   // is absent or null. The explicit binding is authoritative, so an enabled
   // extended level without a catalog translation must pass through as-is.
@@ -183,7 +197,7 @@ export function modelConfigWithBinding(
     ...(binding.thinkingProtocol
       ? { thinkingProtocol: binding.thinkingProtocol }
       : {}),
-    ...(compat ? { compat } : {}),
+    ...(effectiveCompat ? { compat: effectiveCompat } : {}),
     ...(Object.keys(thinkingLevelMap).length > 0 ? { thinkingLevelMap } : {}),
     ...modalityOverride(model, binding),
     ...(binding.nativeWebSearch === true ? { webSearch: true } : {}),

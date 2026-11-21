@@ -262,6 +262,21 @@ export type ModelBinding = {
    * tier; only Responses wires carry it (`fastModeSupportedOn`).
    */
   fastModeAllowed?: boolean;
+  /**
+   * Whether this endpoint returns thinking blocks that carry no signature, and
+   * accepts them back on replay. Absent/false keeps the adapter default, which
+   * rewrites an unsigned thinking block as assistant text (pi-ai
+   * `compat.allowEmptySignature`, default false).
+   *
+   * The flag exists in pi-ai and the generated catalogs already use it for
+   * gateway rows (`fireworks`, `vercel-ai-gateway`, `opencode`,
+   * `opencode-go`). A user-added or plugin-declared Anthropic-compatible row had
+   * no way to request it, so reasoning from a relay without a signing key was
+   * replayed as the assistant's own answer and the model imitated that shape.
+   * The user's own knowledge of the endpoint is the only source, exactly like
+   * `nativeWebSearch`.
+   */
+  allowEmptyThinkingSignature?: boolean;
 };
 
 export const MODEL_MODALITIES = ["text", "image", "audio", "video", "pdf"] as const;
