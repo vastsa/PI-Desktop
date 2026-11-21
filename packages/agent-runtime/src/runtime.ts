@@ -6139,7 +6139,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           delegations.length === 0
             ? "No subagents have been started in this session."
             : delegations
-                .map((record) => `- ${formatDelegationHeartbeat(record)}; job=${JSON.stringify({ kind: "delegation", id: record.delegationId })}`)
+                .map((record) => `- ${formatDelegationHeartbeat(record)}; delegationIds=${JSON.stringify([record.delegationId])}`)
                 .join("\n"),
           this.delegationChains.resumableBlock({ runningDelegationIds }),
         ]
