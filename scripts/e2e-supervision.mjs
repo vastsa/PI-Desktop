@@ -26,14 +26,17 @@ if (!existsSync(electronBin)) {
 }
 
 const dataDir = createTempDataDir("pi-desktop-sup-");
+const env = {
+  ...process.env,
+  PI_DESKTOP_DATA_DIR: dataDir,
+  PI_DESKTOP_SUPERVISION_PROBE: "1",
+  ELECTRON_RENDERER_URL: "",
+};
+// Inherited from an Electron-hosted shell, this would boot the app as plain Node.
+delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(electronBin, ["."], {
   cwd: appDir,
-  env: {
-    ...process.env,
-    PI_DESKTOP_DATA_DIR: dataDir,
-    PI_DESKTOP_SUPERVISION_PROBE: "1",
-    ELECTRON_RENDERER_URL: "",
-  },
+  env,
   stdio: ["ignore", "pipe", "pipe"],
 });
 
