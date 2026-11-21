@@ -1,4 +1,5 @@
 import i18n from "i18next";
+import { isGlobalPermissionMode, normalizeGlobalPermissionMode } from "@pi-desktop/shared";
 import { safeSessionSummary } from "../../lib/remote-session-safety";
 import { api } from "../../lib/api";
 import { useSessionTargetStore } from "../../features/chat/session-target/session-target-store";
@@ -31,11 +32,15 @@ export async function materializeRemoteTargetSession(
       : undefined;
     const requestedMode = initial.draftConfiguration?.mode ?? initial.settings?.defaultMode;
     const mode = requestedMode === "plan" ? "plan" : requestedMode === "goal" ? "goal" : "agent";
+    const draftPermissionMode = initial.draftConfiguration?.permissionMode;
+    const permissionMode = isGlobalPermissionMode(draftPermissionMode)
+      ? draftPermissionMode
+      : normalizeGlobalPermissionMode(initial.settings?.defaultPermissionMode, "ask");
     const { session: created } = await api.createRemoteSession({
       hostKey: environment.hostKey,
       projectId,
       mode,
-      permissionMode: "ask",
+      permissionMode,
     });
     const session = safeSessionSummary(created);
     set((state) => ({

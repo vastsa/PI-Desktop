@@ -1,4 +1,4 @@
-import type { SessionSummary } from "@pi-desktop/shared";
+import { normalizeGlobalPermissionMode, type SessionSummary } from "@pi-desktop/shared";
 import { api } from "./api";
 import { isRemoteSession, safeSessionSummary } from "./remote-session-safety";
 import { sessionIsReusableEmpty } from "./session-create";
@@ -52,8 +52,16 @@ export async function openRemoteProjectSession(
         return runtime.navigationIntentIsCurrent(intent) ? latest.id : null;
       }
     }
-    const result = await api.createRemoteSession({ hostKey: project.hostKey,
-      projectId: project.projectId, mode: "agent", permissionMode: "ask" });
+    const settings = get().settings;
+    const requestedMode = settings?.defaultMode;
+    const mode = requestedMode === "plan" ? "plan" : requestedMode === "goal" ? "goal" : "agent";
+    const permissionMode = normalizeGlobalPermissionMode(settings?.defaultPermissionMode, "ask");
+    const result = await api.createRemoteSession({
+      hostKey: project.hostKey,
+      projectId: project.projectId,
+      mode,
+      permissionMode,
+    });
     const session = safeSessionSummary(result.session);
     // Preserve a successful creation even if the user navigated away while it ran.
     set((current) => ({ sessions: [session, ...current.sessions.filter((item) => item.id !== session.id)] }));

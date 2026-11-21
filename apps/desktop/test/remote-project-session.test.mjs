@@ -34,11 +34,12 @@ beforeEach(() => {
 afterEach(() => {
   api.getSession = originalRead;
 });
-function fixture(sessions = []) {
+function fixture(sessions = [], settings = undefined) {
   const nav = createNavigationIntentController();
   const selections = [];
   let state = {
     sessions,
+    settings,
     sessionMeta: {},
     runningSessions: {},
     workspace: { path: "/local/app" },
@@ -314,6 +315,49 @@ test("a chat archived during history confirmation is not reused", async () => {
     resolve({ session: { ...remote(), messages: [] } });
     await pending;
     assert.equal(f.selections[0].id, "remote:ssh-one:new");
+  } finally {
+    api.createRemoteSession = original;
+  }
+});
+
+test("remote project creation forwards configured defaultMode and defaultPermissionMode", async () => {
+  const original = api.createRemoteSession;
+  const calls = [];
+  api.createRemoteSession = async (input) => {
+    calls.push(input);
+    return { session: { ...remote(), id: `remote:ssh-one:${calls.length}` } };
+  };
+  try {
+    const cases = [
+      {
+        settings: { defaultMode: "plan", defaultPermissionMode: "accept-edits" },
+        expected: { mode: "plan", permissionMode: "accept-edits" },
+      },
+      {
+        settings: { defaultMode: "goal", defaultPermissionMode: "auto" },
+        expected: { mode: "goal", permissionMode: "auto" },
+      },
+      {
+        settings: { defaultMode: "agent", defaultPermissionMode: "ask" },
+        expected: { mode: "agent", permissionMode: "ask" },
+      },
+      {
+        settings: { defaultMode: "custom", defaultPermissionMode: "inherit" },
+        expected: { mode: "agent", permissionMode: "ask" },
+      },
+    ];
+    for (const testCase of cases) {
+      const f = fixture([], testCase.settings);
+      await openRemoteProjectSession(f, project);
+    }
+    assert.deepEqual(
+      calls,
+      cases.map(({ expected }) => ({
+        hostKey: project.hostKey,
+        projectId: project.projectId,
+        ...expected,
+      })),
+    );
   } finally {
     api.createRemoteSession = original;
   }
