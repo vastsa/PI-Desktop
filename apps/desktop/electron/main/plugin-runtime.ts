@@ -325,7 +325,33 @@ export type PluginDesktopConsentRequest = {
   description: string;
   /** Positional arguments as the plugin supplied them (secret-stripped later). */
   args: unknown[];
+  /**
+   * Whether the dialog may offer "Allow this session". Only operations that
+   * answer a prompt the host already shows the user can be remembered.
+   */
+  offerSession?: boolean;
 };
+
+/**
+ * `session` allows this plugin the same operation for the rest of the run.
+ * `true` / `false` are accepted from older consent services as once / deny.
+ */
+export type PluginDesktopConsentAnswer = "once" | "session" | "deny";
+
+/**
+ * Dangerous operations whose consent may be remembered for the run. Each one
+ * only answers a question, permission, plan, or extension prompt the host has
+ * already put in front of the user, so a plugin panel that relays the user's
+ * click (for example from an agent overview) does not need a second native
+ * dialog for every answer. Operations that delete data, change a permission
+ * mode, or write instructions are never remembered.
+ */
+export const DESKTOP_CONSENT_SESSION_OPERATIONS: ReadonlySet<string> = new Set([
+  "agent/askTool/resolve",
+  "tool/resolvePermission",
+  "plans/resolve",
+  "extensions/ui/respond",
+]);
 
 export type PluginHostServices = {
   getWorkspacePath: () => string | null;
@@ -421,7 +447,9 @@ export type PluginHostServices = {
    * user decides here. Without this service every dangerous operation from a
    * plugin is refused, which is the safe default for a headless host.
    */
-  confirmDesktopControl?: (request: PluginDesktopConsentRequest) => Promise<boolean>;
+  confirmDesktopControl?: (
+    request: PluginDesktopConsentRequest,
+  ) => Promise<boolean | PluginDesktopConsentAnswer>;
   audit?: (entry: Record<string, unknown>) => void;
   /**
    * Blocking, native consent for a file access the manifest did not declare.
@@ -1535,6 +1563,12 @@ export class PluginRuntime {
    * session would be a standing permission nobody reviewed.
    */
   private fsConsent = new Map<string, Set<string>>();
+  /**
+   * Dangerous desktop operations the user allowed a plugin for the rest of
+   * the run, keyed by operation id (only DESKTOP_CONSENT_SESSION_OPERATIONS).
+   * In memory only, and dropped when the plugin is stopped.
+   */
+  private desktopConsent = new Map<string, Set<string>>();
   /** Cached write ledgers, keyed by plugin id. */
   private writeLedgers = new Map<string, Record<string, number>>();
   private nextBusSubscription = 1;
@@ -2354,7 +2388,10 @@ export class PluginRuntime {
       loaded.disposing = true;
       this.toolInvocations.cancelOwner(loaded, "Plugin unloaded");
       // An explicit stop ends supervision; a supervisor-driven reload keeps it.
-      if (!this.restarting.has(pluginId)) this.cancelRestarts(pluginId);
+      if (!this.restarting.has(pluginId)) {
+        this.cancelRestarts(pluginId);
+        this.desktopConsent.delete(pluginId);
+      }
       await this.stopServices(loaded);
     }
     if (loaded?.child) {
@@ -6012,6 +6049,7 @@ export class PluginRuntime {
           // caller, not a decision by the user. A plugin can set it at will,
           // so a dangerous operation additionally needs the host's native
           // consent; a host without that service refuses outright.
+          let consentAnswer: PluginDesktopConsentAnswer | undefined;
           if (operationInfo?.risk === "dangerous") {
             if (input.confirm !== true) {
               throw apiError(
@@ -6020,20 +6058,38 @@ export class PluginRuntime {
               );
             }
             const consent = this.services.confirmDesktopControl;
-            const granted = consent
-              ? await consent({
-                  pluginId,
-                  pluginName: resolvePluginLocalizedString(
-                    loaded.manifest.name,
-                    this.services.getLocale?.(),
+            const offerSession = DESKTOP_CONSENT_SESSION_OPERATIONS.has(operation);
+            const remembered =
+              offerSession && this.desktopConsent.get(pluginId)?.has(operation) === true;
+            const rawAnswer = remembered
+              ? "session"
+              : consent
+                ? await consent({
                     pluginId,
-                  ),
-                  operation,
-                  description: operationInfo.description,
-                  args,
-                })
-              : false;
-            if (!granted) {
+                    pluginName: resolvePluginLocalizedString(
+                      loaded.manifest.name,
+                      this.services.getLocale?.(),
+                      pluginId,
+                    ),
+                    operation,
+                    description: operationInfo.description,
+                    args,
+                    offerSession,
+                  })
+                : "deny";
+            const answer: PluginDesktopConsentAnswer =
+              rawAnswer === true
+                ? "once"
+                : rawAnswer === "once" || (rawAnswer === "session" && offerSession)
+                  ? rawAnswer
+                  : "deny";
+            consentAnswer = answer;
+            if (answer === "session" && !remembered) {
+              const grants = this.desktopConsent.get(pluginId) ?? new Set<string>();
+              grants.add(operation);
+              this.desktopConsent.set(pluginId, grants);
+            }
+            if (answer === "deny") {
               this.services.audit?.({
                 pluginId,
                 api: "desktop.invoke",
@@ -6074,6 +6130,7 @@ export class PluginRuntime {
               risk: operationInfo?.risk,
               ok: true,
               ts: Date.now(),
+              ...(consentAnswer ? { data: { consent: consentAnswer } } : {}),
             });
             return scopedResult;
           } catch (error) {

@@ -129,6 +129,7 @@ export const ptBR = {
     arguments: "Argumentos: {args}",
     detail: "Esta é uma operação perigosa de desktop. O plugin reconheceu o risco; a execução depende de você. Negue se não a estava esperando.",
     allowOnce: "Permitir uma vez",
+    allowSession: "Permitir até sair",
     deny: "Negar"
   },
   pluginFsConsent: {

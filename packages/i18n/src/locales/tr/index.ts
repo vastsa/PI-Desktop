@@ -138,6 +138,7 @@ export const tr = {
     detail:
       "Bu tehlikeli bir masaüstü işlemidir. Eklenti riski kabul etti; çalışıp çalışmayacağına siz karar verirsiniz. Beklemiyorsanız reddedin.",
     allowOnce: "Bir kez izin ver",
+    allowSession: "Çıkışa kadar izin ver",
     deny: "Reddet",
   },
   pluginFsConsent: {

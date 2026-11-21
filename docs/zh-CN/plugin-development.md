@@ -1057,6 +1057,8 @@ CDP 使用允许列表，Cookie、存储、目标管理、网络拦截仍拒绝�
 `desktop.control` 通过 `pi.desktop.listOperations()` 与
 `pi.desktop.invoke({ operation, args, confirm? })` 访问审定目录，不开放任意 IPC。
 危险操作同时需要 `confirm: true` 和宿主原生对话框中的用户确认。
+仅回答宿主已显示提示的操作（`agent/askTool/resolve`、`tool/resolvePermission`、
+`plans/resolve`、`extensions/ui/respond`）还提供“本次运行内允许”，按插件与操作记住，插件停止即失效。
 会话协作的 `spawn` / `send` 还要求有效的插件 Agent 工具调用，来源会话与轮次由宿主注入。
 在创建、发消息、取消或删除会话前，请读[桌面控制契约](/spec/07-plugins/03-plugin-api)。
 

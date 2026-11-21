@@ -130,6 +130,7 @@ export const fr = {
     "detail":
       "Il s'agit d'une opération de bureau dangereuse. Le plugin a reconnu le risque ; son exécution dépend de vous. Refusez si vous ne l'attendiez pas.",
     "allowOnce": "Autoriser une fois",
+    "allowSession": "Autoriser jusqu'à quitter",
     "deny": "Refuser",
   },
   "pluginFsConsent": {
