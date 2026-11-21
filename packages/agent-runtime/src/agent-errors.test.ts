@@ -1076,6 +1076,7 @@ describe("classifyAgentError", () => {
     ).toMatchObject({
       code: "CONTEXT_COMPACTION_FAILED",
       retriable: false,
+      details: { origin: "local" },
     });
   });
 

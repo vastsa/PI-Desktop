@@ -9179,6 +9179,102 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("shrinks the retained-tail fallback until it fits a calibrated budget (#2494)", async () => {
+    // A provider tokenizer that counts more tokens than the local estimate
+    // (CJK text, for one) teaches the calibration a ratio above 1. The
+    // fallback tail used to be sized by the raw estimate while the install
+    // check used the calibrated one, so every summary failure past the hard
+    // limit ended the turn with CONTEXT_COMPACTION_FAILED, on every retry.
+    const onEvent = vi.fn();
+    const host = {
+      call: vi.fn(async (method: string) => {
+        if (method === "project.instructions.resolve") return { entries: [] };
+        if (method === "tools.execute") return { ok: true, content: "x ".repeat(6_000) };
+        return undefined;
+      }),
+      onNotification: vi.fn(() => () => {}),
+    };
+    const runtime = createRuntime({
+      host,
+      onEvent,
+      provider: {
+        ...provider,
+        modelConfig: { ...provider.modelConfig!, contextWindow: 128_000, maxTokens: 128_000 },
+      },
+    });
+    const internal = runtime as any;
+    let requests = 0;
+    const usage = (input: number) => ({
+      input,
+      output: 50,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: input + 50,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    });
+    internal.models = {
+      streamSimple: (_model: unknown, context: any) => {
+        requests += 1;
+        const done = requests > 12;
+        const chars =
+          JSON.stringify(context.messages).length +
+          String(context.systemPrompt ?? "").length +
+          JSON.stringify(context.tools ?? []).length;
+        const message = {
+          ...assistantMessage({
+            content: done
+              ? [{ type: "text", text: "done" }]
+              : [{ type: "toolCall", id: `read-${requests}`, name: "Read", arguments: { path: `f${requests}.ts` } }],
+            stopReason: done ? "stop" : "toolUse",
+          }),
+          usage: usage(Math.round((chars / 4) * 1.8)),
+          timestamp: Date.now(),
+        } as AssistantMessage;
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", reason: done ? "stop" : "toolUse", message } as never);
+          stream.end(message);
+        });
+        return stream;
+      },
+      completeSimple: async () => {
+        throw new Error("summary relay unavailable");
+      },
+    };
+
+    try {
+      await runtime.prompt("Read every file.", "user-2494");
+
+      const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: "compaction_end", ok: true, fallback: "retained_tail" }),
+      );
+      expect(events.filter((event) => event.type === "error")).toEqual([]);
+      expect(requests).toBe(13);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("names the checkpoint failure cause in the turn error (#2494)", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 225_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+    });
+    vi.spyOn(runtime as any, "performCompaction").mockImplementation(async () => {
+      (runtime as any).emitCompactionFailure("threshold", 225_000, "summary relay unavailable");
+      return false;
+    });
+
+    await expect((runtime as any).prepareNextTurn(nextTurn)).rejects.toThrow(
+      "CONTEXT_COMPACTION_FAILED: unable to create a checkpoint before the next model request: summary relay unavailable",
+    );
+    await runtime.dispose();
+  });
+
   it("keeps manual compaction failures terminal instead of silently dropping context", async () => {
     const host = { call: vi.fn().mockResolvedValue(undefined) };
     const onEvent = vi.fn();
