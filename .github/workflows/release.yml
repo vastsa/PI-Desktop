@@ -1,7 +1,7 @@
 # Release pipeline
 #
-# Trigger: push a tag `vX.Y.Z` (must match apps/desktop/package.json version).
-# The easiest way to cut a release:
+# Merging a PR into main publishes a prerelease for that merge commit.
+# To cut a stable release:
 #
 #   node scripts/release.mjs 0.2.0 --tag   # bump versions + commit + create tag v0.2.0
 #   git push origin <branch> v0.2.0        # push → this workflow builds & publishes
@@ -9,7 +9,7 @@
 # This fork builds the desktop for macOS arm64 only (dmg/zip, with its native
 # pi-desktop-host-core Rust sidecar) and publishes it, with the electron-updater
 # latest-mac.yml feed, to the GitHub Release (D686). The fork has no Developer
-# ID certificate, so tag artifacts are unsigned and stamped
+# ID certificate, so its artifacts are unsigned and stamped
 # `piDistribution: "unsigned"`, which makes the app deliver updates manually.
 # The upstream signed, notarized, and stapled lane (D450 / ADR 0289) is kept
 # below unchanged and runs only when the repository variable
@@ -28,6 +28,9 @@ name: Release
 on:
   push:
     tags: ['v*.*.*']
+  pull_request_target:
+    branches: [main]
+    types: [closed]
   workflow_dispatch:
     inputs:
       sign_macos:
@@ -41,18 +44,71 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'pull_request_target' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Resolve release version
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+      tag: ${{ steps.release.outputs.tag }}
+      preview_version: ${{ steps.release.outputs.preview_version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # PR-triggered builds use the commit already merged into main.
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merge_commit_sha || github.sha }}
+          # Checkout v7 blocks even the final merge SHA from a fork PR.
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merged == true }}
+          persist-credentials: false
+
+      - name: Resolve release inputs
+        id: release
+        env:
+          PR_NUMBER: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || '' }}
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node <<'NODE'
+          const { appendFileSync } = require('node:fs');
+          const { version } = require('./apps/desktop/package.json');
+          const { PR_NUMBER, GITHUB_REF_TYPE, GITHUB_REF_NAME, GITHUB_OUTPUT } = process.env;
+          let tag = '';
+          let previewVersion = '';
+
+          if (PR_NUMBER) {
+            const base = /^(\d+)\.(\d+)\.(\d+)(?:-[\w.-]+)?$/.exec(version);
+            if (!base || !/^[1-9]\d*$/.test(PR_NUMBER)) {
+              throw new Error('A valid app version and PR number are required.');
+            }
+            const [, major, minor, patch] = base;
+            previewVersion = `${major}.${minor}.${Number(patch) + 1}-pr.${PR_NUMBER}`;
+            tag = `v${previewVersion}`;
+          } else if (GITHUB_REF_TYPE === 'tag' && GITHUB_REF_NAME.startsWith('v')) {
+            tag = GITHUB_REF_NAME;
+            if (tag !== `v${version}`) {
+              throw new Error(`Tag ${tag} does not match apps/desktop/package.json version ${version}.`);
+            }
+          }
+
+          appendFileSync(GITHUB_OUTPUT, `tag=${tag}\npreview_version=${previewVersion}\n`);
+          NODE
+
   verify:
-    # Same gate as ci.yml. A tag push does not trigger ci.yml, so without this
-    # job a broken tree could be built and published untested.
+    # Run the release gate alongside packaging. Publish waits for both.
     name: Verify (build / typecheck / lint / test)
+    needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merged == true }}
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6
 
@@ -85,7 +141,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.name }}
-    needs: verify
+    needs: prepare
     env:
       PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID: ${{ vars.PI_DESKTOP_GITHUB_OAUTH_CLIENT_ID }}
       # Signing is opt-in per repository: nothing signs unless the repository
@@ -110,6 +166,10 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merged == true }}
+          persist-credentials: false
 
       - name: Verify native runner architecture
         # A mislabelled or emulated runner would wrap one architecture's
@@ -123,17 +183,6 @@ jobs:
           expected_arch="${{ matrix.runner_arch }}"
           if [ "$actual_arch" != "$expected_arch" ]; then
             echo "::error::Expected $expected_arch runner, got $actual_arch."
-            exit 1
-          fi
-
-      - name: Compare tag with apps/desktop/package.json
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          APP_VERSION="$(node -p "require('./apps/desktop/package.json').version")"
-          if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
-            echo "::error::Tag v$TAG_VERSION does not match apps/desktop/package.json version $APP_VERSION."
-            echo "Run 'node scripts/release.mjs $TAG_VERSION --tag' to bump versions before tagging."
             exit 1
           fi
 
@@ -161,6 +210,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Stamp prerelease version
+        if: needs.prepare.outputs.preview_version != ''
+        env:
+          PREVIEW_VERSION: ${{ needs.prepare.outputs.preview_version }}
+        run: node scripts/release.mjs "$PREVIEW_VERSION"
 
       - name: Prepare package inputs
         run: |
@@ -401,7 +456,7 @@ jobs:
 
   pi-host-bundle:
     name: Bundle pi-host (Linux ${{ matrix.arch }})
-    needs: verify
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -426,16 +481,10 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
-
-      - name: Compare tag with apps/desktop/package.json
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          APP_VERSION="$(node -p "require('./apps/desktop/package.json').version")"
-          if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
-            echo "::error::Tag v$TAG_VERSION does not match apps/desktop/package.json version $APP_VERSION."
-            exit 1
-          fi
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merged == true }}
+          persist-credentials: false
 
       - name: Verify native runner architecture
         if: matrix.runner_arch
@@ -458,6 +507,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Stamp prerelease version
+        if: needs.prepare.outputs.preview_version != ''
+        env:
+          PREVIEW_VERSION: ${{ needs.prepare.outputs.preview_version }}
+        run: node scripts/release.mjs "$PREVIEW_VERSION"
 
       - name: Build inputs (host-core, workspace, sidecar bundle)
         run: |
@@ -509,8 +564,8 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, pi-host-bundle]
+    if: needs.prepare.outputs.tag != ''
+    needs: [prepare, verify, build, pi-host-bundle]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -564,5 +619,7 @@ jobs:
           # (delivery is manual for unsigned builds), and the two Linux
           # pi-host bundles with their checksums.
           files: dist/*
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ needs.prepare.outputs.sha }}
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(needs.prepare.outputs.tag, '-') }}
