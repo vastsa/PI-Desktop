@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const LOCALES = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko", "pt-BR"];
+const LOCALES = ["en", "zh-CN", "zh-TW", "tr", "de", "es", "fr", "ko", "pt-BR", "ru"];
 
 const [capsule, shared, css, componentSpec, ...catalogs] = await Promise.all([
   read("../src/features/chat/transcript/TurnUsageCapsule.tsx"),

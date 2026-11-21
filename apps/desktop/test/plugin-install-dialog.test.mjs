@@ -20,11 +20,12 @@ import { es } from "../../../packages/i18n/dist/locales/es/index.js";
 import { fr } from "../../../packages/i18n/dist/locales/fr/index.js";
 import { ko } from "../../../packages/i18n/dist/locales/ko/index.js";
 import { ptBR } from "../../../packages/i18n/dist/locales/pt-BR/index.js";
+import { ru } from "../../../packages/i18n/dist/locales/ru/index.js";
 import { tr } from "../../../packages/i18n/dist/locales/tr/index.js";
 import { zhCN } from "../../../packages/i18n/dist/locales/zh-CN/index.js";
 import { zhTW } from "../../../packages/i18n/dist/locales/zh-TW/index.js";
 
-const catalogs = { en, "zh-CN": zhCN, "zh-TW": zhTW, de, es, fr, ko, "pt-BR": ptBR, tr };
+const catalogs = { en, "zh-CN": zhCN, "zh-TW": zhTW, de, es, fr, ko, "pt-BR": ptBR, ru, tr };
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dialogSrc = readFileSync(
