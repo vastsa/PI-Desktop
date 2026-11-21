@@ -181,6 +181,7 @@ export function createProviderCatalogRuntime({
       scheduledTasksEnabled: (value as T & { scheduledTasksEnabled?: unknown })
         .scheduledTasksEnabled !== false,
       jevEnabled: (value as T & { jevEnabled?: unknown }).jevEnabled === true,
+      codemodeEnabled: (value as T & { codemodeEnabled?: unknown }).codemodeEnabled === true,
       transcriptDisplayMode:
         (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode === "flat" ||
         (value as T & { transcriptDisplayMode?: unknown }).transcriptDisplayMode === "command-first" ||
@@ -216,6 +217,7 @@ export function createProviderCatalogRuntime({
       keepAwakeWhileRunning?: unknown;
       scheduledTasksEnabled?: unknown;
       jevEnabled?: unknown;
+      codemodeEnabled?: unknown;
       updatePreference?: unknown;
       lastNotifiedUpdateVersion?: unknown;
       networkProxy?: unknown;
@@ -266,6 +268,14 @@ export function createProviderCatalogRuntime({
       typeof value.jevEnabled !== "boolean"
     ) {
       throw Object.assign(new Error("jevEnabled is invalid"), {
+        errorCode: ErrorCodes.INVALID_PARAMS,
+      });
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(value, "codemodeEnabled") &&
+      typeof value.codemodeEnabled !== "boolean"
+    ) {
+      throw Object.assign(new Error("codemodeEnabled is invalid"), {
         errorCode: ErrorCodes.INVALID_PARAMS,
       });
     }
