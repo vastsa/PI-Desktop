@@ -26,6 +26,7 @@ git history.
 
 | ID | Title | Status |
 |---|---|---|
+| plugin-started-subagents | [Plugin-started subagents through the Task path](plugin-started-subagents.md) | Accepted for implementation |
 | mode-definitions | [User-definable modes as staged workflows](mode-definitions.md) | Proposed |
 | sidebar-layout-recovery | [Recover sidebar layout independently of Chromium storage](sidebar-layout-recovery.md) | Accepted |
 | steering-local-tool-interruption | [Steering waits for confirmed tool settlement](steering-local-tool-interruption.md) | Accepted |

@@ -209,6 +209,11 @@ export const MAX_SUBAGENT_DEFINITIONS = 16;
 export const MAX_SUBAGENT_PROVIDERS = 8;
 /** Running delegates per session, across batches (see ADR 0089). */
 export const MAX_SUBAGENT_CONCURRENCY = 10;
+/** Plugin-started delegation (`agent.subagent`, issue #2508): `task` brief cap,
+ * since `Task` itself sets none. */
+export const MAX_PLUGIN_SUBAGENT_TASK_CHARS = 100_000;
+/** Delegation ids one plugin `waitSubagents` / `stopSubagents` call may name. */
+export const MAX_PLUGIN_SUBAGENT_IDS = 32;
 /** Resumable chains kept per subagent name before the oldest is evicted
  * (ADR 0279). A chain is one delegate session across any number of `resume`s. */
 export const MAX_RESUMABLE_CHAINS_PER_AGENT = 2;

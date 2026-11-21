@@ -60,6 +60,7 @@ Provide a permission–capability–risk–default-policy reference table for re
 | `session.delete.all` | high | `pi.session.delete`, `pi.session.deleteMessage`, `pi.session.truncateFrom` | Confirm at install | Trash/purge any session and cut or delete its messages. Keeps the session-delete rate limit; message rewrites share a 60/min message-write budget |
 | `usage.read` | medium | `pi.usage.listTurns` | Confirm at install | Read-only listing of completed-turn facts (per-turn token counters and identifiers, keyset-paginated); no message body and no write path |
 | `agent.complete` | high | `pi.agent.complete` | Confirm at install | Host-owned one-shot; spends user quota; `includeSessionContext` also needs `session.read` |
+| `agent.subagent` | high | `pi.agent.startSubagent` / `waitSubagents` / `stopSubagents` | Confirm at install | Only during the plugin's own tool call; runs the `Task` path with the session's tools and spends user quota; ids are owned per plugin and session |
 | `speech.adapter.register` | high | `pi.speech.registerAdapter` / `unregisterAdapter` | Confirm at install | Registers a speech protocol. Handles stay in the guest; HTTP plans are executed by the host with the bound provider key and must stay on that origin. Built-in protocol ids are reserved |
 
 The Default policy column is the intended policy. The current host does not
@@ -187,6 +188,7 @@ plugin's row (Files), so "Edit files" is followed by the list.
 | `session.read` | Read the current conversation sent to the model | 读取当前发给模型的对话 |
 | `usage.read` | Read usage statistics | 读取用量统计 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
+| `agent.subagent` | Start subagents during its tools | 在其工具运行时启动子代理 |
 | `composer.transform` | Transform text in the Composer | 转换输入框中的文本 |
 | `composer.suggest` | Offer a suggestion in the Composer | 在输入框中给出建议 |
 | `speech.adapter.register` | Register a speech adapter | 注册语音适配器 |

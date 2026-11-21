@@ -11132,6 +11132,264 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
+  describe("plugin-started delegation (agent.startSubagent, #2508)", () => {
+    const pluginCall = "plugin-call-1";
+
+    async function startPluginToolCall(runtime: DesktopAgentRuntime, toolCallId = pluginCall) {
+      await (runtime as any).handleAgentEvent({
+        type: "tool_execution_start",
+        toolCallId,
+        toolName: "plugin_demo_orchestrate",
+        args: {},
+      });
+    }
+
+    function resetRuns(deferred: boolean) {
+      subagentRuns.calls.length = 0;
+      subagentRuns.instances.length = 0;
+      subagentRuns.deferred = deferred;
+      subagentRuns.resolveRun = undefined;
+      subagentRuns.result = undefined;
+    }
+
+    it("runs the Task path with the plugin tool call as the delegate's parent", async () => {
+      const events: any[] = [];
+      const runtime = createRuntime({
+        subagents: [explorer],
+        turnId: "turn-1",
+        onEvent: (envelope) => events.push(envelope),
+      });
+      resetRuns(true);
+      try {
+        await startPluginToolCall(runtime);
+        const started = await runtime.startSubagentForTool({
+          turnId: "turn-1",
+          toolCallId: pluginCall,
+          agent: "explorer",
+          task: "Find the entry point.",
+          description: "find entry",
+        });
+        expect(started).toEqual({
+          delegationId: expect.any(String),
+          agent: "explorer",
+          modelId: provider.modelId,
+        });
+        // Same registry and SubagentRun options a Task call produces.
+        const record = (runtime as any).delegations.get(started.delegationId);
+        expect(record).toMatchObject({
+          status: "running",
+          parentToolCallId: pluginCall,
+          taskTurnId: "turn-1",
+          reportDelivered: false,
+        });
+        expect(subagentRuns.calls).toHaveLength(1);
+        expect(subagentRuns.calls[0]).toMatchObject({
+          parentToolCallId: pluginCall,
+          turnId: "turn-1",
+          delegationId: started.delegationId,
+          task: "Find the entry point.",
+        });
+        // A plugin start never marks the plugin tool call as a failed host call.
+        expect((runtime as any).failedHostToolCalls.has(pluginCall)).toBe(false);
+        // No Task row exists, so settlement does not re-emit any tool row.
+        subagentRuns.resolveRun!({
+          agentName: "explorer",
+          status: "completed",
+          report: "src/main.ts:1",
+          turns: 2,
+          toolCalls: 3,
+        });
+        await vi.waitFor(() => expect(record.status).toBe("completed"));
+        expect(record.taskMessage).toBeUndefined();
+        expect(
+          events.filter((envelope) => envelope.event?.type === "message_end"),
+        ).toEqual([]);
+      } finally {
+        subagentRuns.deferred = false;
+        await runtime.dispose();
+      }
+    });
+
+    it("waits all or any, returns structured results, and marks them delivered", async () => {
+      const runtime = createRuntime({ subagents: [explorer], turnId: "turn-1" });
+      resetRuns(true);
+      try {
+        await startPluginToolCall(runtime);
+        const start = (task: string) =>
+          runtime.startSubagentForTool({ turnId: "turn-1", toolCallId: pluginCall, agent: "explorer", task });
+        const first = await start("one");
+        const second = await start("two");
+
+        const any = runtime.waitSubagents({
+          delegationIds: [first.delegationId, second.delegationId],
+          mode: "any",
+          timeoutMs: 5_000,
+          toolCallId: pluginCall,
+        });
+        subagentRuns.resolveRun!({
+          agentName: "explorer",
+          status: "completed",
+          report: "first report",
+          turns: 1,
+          toolCalls: 2,
+          usage: { inputTokens: 10, outputTokens: 5 },
+        });
+        const anyResult = await any;
+        expect(anyResult).toEqual({
+          results: [
+            expect.objectContaining({
+              delegationId: first.delegationId,
+              agent: "explorer",
+              status: "completed",
+              report: "first report",
+              turns: 1,
+              toolCalls: 2,
+              usage: { inputTokens: 10, outputTokens: 5 },
+            }),
+          ],
+          running: [second.delegationId],
+          unknown: [],
+        });
+        // Read by the plugin: the idle auto-resume must not deliver it again.
+        expect((runtime as any).delegations.get(first.delegationId).reportDelivered).toBe(true);
+        expect(
+          (runtime as any).pendingCurrentTurnDelegations().map((record: any) => record.delegationId),
+        ).toEqual([second.delegationId]);
+
+        // An unknown target is reported before anything is awaited or consumed.
+        expect(
+          await runtime.waitSubagents({
+            delegationIds: [second.delegationId, "missing"],
+            timeoutMs: 5_000,
+            toolCallId: pluginCall,
+          }),
+        ).toEqual({ results: [], running: [], unknown: ["missing"] });
+
+        const all = runtime.waitSubagents({
+          delegationIds: [first.delegationId, second.delegationId],
+          timeoutMs: 5_000,
+          toolCallId: pluginCall,
+        });
+        subagentRuns.resolveRun!({
+          agentName: "explorer",
+          status: "failed",
+          report: "",
+          turns: 1,
+          toolCalls: 0,
+          error: { code: "SUBAGENT_FAILED", message: "boom" },
+        });
+        const allResult = await all;
+        expect(allResult.running).toEqual([]);
+        expect(allResult.unknown).toEqual([]);
+        expect(allResult.results.map((result) => [result.delegationId, result.status])).toEqual([
+          [first.delegationId, "completed"],
+          [second.delegationId, "failed"],
+        ]);
+        expect(allResult.results[1].error).toEqual({ code: "SUBAGENT_FAILED", message: "boom" });
+        expect((runtime as any).pendingCurrentTurnDelegations()).toEqual([]);
+      } finally {
+        subagentRuns.deferred = false;
+        await runtime.dispose();
+      }
+    });
+
+    it("returns running ids on timeout and keeps reports read after the call ended pending", async () => {
+      const runtime = createRuntime({ subagents: [explorer], turnId: "turn-1" });
+      resetRuns(true);
+      try {
+        await startPluginToolCall(runtime);
+        const { delegationId } = await runtime.startSubagentForTool({
+          turnId: "turn-1",
+          toolCallId: pluginCall,
+          agent: "explorer",
+          task: "slow",
+        });
+        vi.useFakeTimers();
+        try {
+          const waiting = runtime.waitSubagents({ delegationIds: [delegationId], timeoutMs: 1_000, toolCallId: pluginCall });
+          await vi.advanceTimersByTimeAsync(1_000);
+          expect(await waiting).toEqual({ results: [], running: [delegationId], unknown: [] });
+        } finally {
+          vi.useRealTimers();
+        }
+        // The plugin tool call ended: a late read must not consume the report.
+        (runtime as any).activeToolCalls.delete(pluginCall);
+        subagentRuns.resolveRun!({ agentName: "explorer", status: "completed", report: "late", turns: 1, toolCalls: 0 });
+        const late = await runtime.waitSubagents({ delegationIds: [delegationId], timeoutMs: 0, toolCallId: pluginCall });
+        expect(late.results.map((result) => result.report)).toEqual(["late"]);
+        expect((runtime as any).delegations.get(delegationId).reportDelivered).toBe(false);
+      } finally {
+        subagentRuns.deferred = false;
+        await runtime.dispose();
+      }
+    });
+
+    it("refuses a stale turn or a tool call that is not running", async () => {
+      const runtime = createRuntime({ subagents: [explorer], turnId: "turn-1" });
+      resetRuns(false);
+      try {
+        await startPluginToolCall(runtime);
+        const input = { turnId: "turn-1", toolCallId: pluginCall, agent: "explorer", task: "x" };
+        await expect(runtime.startSubagentForTool({ ...input, turnId: "turn-0" })).rejects.toMatchObject({
+          errorCode: "TURN_MISMATCH",
+        });
+        await expect(runtime.startSubagentForTool({ ...input, turnId: "" })).rejects.toMatchObject({
+          errorCode: "TURN_MISMATCH",
+        });
+        await expect(runtime.startSubagentForTool({ ...input, toolCallId: "not-running" })).rejects.toMatchObject({
+          errorCode: "TURN_MISMATCH",
+        });
+        await expect(runtime.startSubagentForTool({ ...input, agent: "nobody" })).rejects.toMatchObject({
+          errorCode: "INVALID_ARGUMENT",
+          message: expect.stringContaining('Unknown subagent "nobody"'),
+        });
+        expect(subagentRuns.calls).toHaveLength(0);
+        expect((runtime as any).delegations.size).toBe(0);
+      } finally {
+        await runtime.dispose();
+      }
+    });
+
+    it("refuses when Task is not in the session catalog or the mode denies it", async () => {
+      const bare = createRuntime({ turnId: "turn-1" });
+      const plan = createRuntime({ subagents: [explorer], turnId: "turn-1", mode: "plan" });
+      resetRuns(false);
+      try {
+        for (const runtime of [bare, plan]) {
+          await startPluginToolCall(runtime);
+          await expect(
+            runtime.startSubagentForTool({ turnId: "turn-1", toolCallId: pluginCall, agent: "explorer", task: "x" }),
+          ).rejects.toMatchObject({ errorCode: "PERMISSION_DENIED" });
+        }
+        expect(subagentRuns.calls).toHaveLength(0);
+      } finally {
+        await bare.dispose();
+        await plan.dispose();
+      }
+    });
+
+    it("shares the per-session concurrency cap with Task", async () => {
+      const runtime = createRuntime({ subagents: [explorer], turnId: "turn-1" });
+      resetRuns(true);
+      try {
+        for (let index = 0; index < MAX_SUBAGENT_CONCURRENCY; index += 1) {
+          await taskTool(runtime).execute(`task-${index}`, { agent: "explorer", task: "Find it." });
+        }
+        await startPluginToolCall(runtime);
+        await expect(
+          runtime.startSubagentForTool({ turnId: "turn-1", toolCallId: pluginCall, agent: "explorer", task: "x" }),
+        ).rejects.toMatchObject({
+          errorCode: "RATE_LIMITED",
+          message: expect.stringContaining(`${MAX_SUBAGENT_CONCURRENCY} subagents are already running`),
+        });
+        expect((runtime as any).runningDelegations()).toHaveLength(MAX_SUBAGENT_CONCURRENCY);
+      } finally {
+        subagentRuns.deferred = false;
+        await runtime.dispose();
+      }
+    });
+  });
+
   it("caps running delegates per session at MAX_SUBAGENT_CONCURRENCY", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     subagentRuns.calls.length = 0;

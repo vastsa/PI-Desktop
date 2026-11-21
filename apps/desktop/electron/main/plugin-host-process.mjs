@@ -413,6 +413,12 @@ function buildApi() {
         await call("agent.unregisterTool", [name]);
       },
       complete: (input) => call("agent.complete", [input ?? {}]),
+      // Plugin-started subagents (`agent.subagent`). Valid only inside this
+      // plugin's own tool call: `call` attaches the invocation id, and main
+      // takes the session, turn and parent tool call from it, never from args.
+      startSubagent: (input) => call("agent.startSubagent", [input ?? {}]),
+      waitSubagents: (input) => call("agent.waitSubagents", [input ?? {}]),
+      stopSubagents: (input) => call("agent.stopSubagents", [input ?? {}]),
     },
     models: {
       list: () => call("models.list"),

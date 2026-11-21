@@ -417,6 +417,7 @@ type PluginPermission =
  | "agent.tool.register"
  | "agent.prompt.inject"
  | "agent.complete"
+ | "agent.subagent"
  | "agent.modelContext"
  | "agent.extension"
  | "composer.transform"

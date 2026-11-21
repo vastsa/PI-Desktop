@@ -61,6 +61,7 @@ import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { ClipboardHistory } from "../clipboard-history";
 import type { TurnEndedPayload } from "../runtime/session-coordination";
 import type { HostProcess } from "../host-process";
+import type { AgentSidecar } from "../agent-sidecar";
 import { createPluginSessionContext } from "./plugin-session-context";
 import { createPluginProjectLister } from "./plugin-projects";
 import { createPluginSessionProjectResolver } from "./plugin-session-project";
@@ -74,6 +75,8 @@ export type PluginServicesDependencies = {
   logger: Logger;
   getMainWindow: () => BrowserWindow | null;
   getHost: () => HostProcess | null;
+  /** Agent sidecar that runs plugin-started delegations (`agent.subagent`). */
+  getSidecar: () => AgentSidecar | null;
   sendToRenderer: (channel: string, payload: unknown) => void;
   safeOpenExternal: (rawUrl: unknown) => Promise<void>;
   stripWinLongPrefix: (path: string) => string;
@@ -115,6 +118,7 @@ export function createPluginServices({
   logger,
   getMainWindow,
   getHost,
+  getSidecar,
   sendToRenderer,
   safeOpenExternal,
   stripWinLongPrefix,
@@ -133,6 +137,13 @@ export function createPluginServices({
   isPluginActiveInProject,
   pluginActiveInProject,
 }: PluginServicesDependencies) {
+  const requireSidecar = (): AgentSidecar => {
+    const sidecar = getSidecar();
+    if (!sidecar) {
+      throw Object.assign(new Error("agent sidecar unavailable"), { code: "UNSUPPORTED" });
+    }
+    return sidecar;
+  };
   // A plugin request can lose its race with host shutdown or restart.
   const isHostUnavailable = (error: unknown): boolean =>
     (error as { errorCode?: string } | null | undefined)?.errorCode ===
@@ -430,6 +441,14 @@ export function createPluginServices({
     usage: {
       listTurns: (pluginId, input) =>
         callPluginSessionHost("plugin.usage.listTurns", pluginId, input),
+    },
+    // Plugin-started delegations run in the session's live agent runtime
+    // through the Task path (`agent.subagent`). The plugin runtime already
+    // checked the permission, the in-flight invocation, and id ownership.
+    subagents: {
+      start: (input) => requireSidecar().call("agent.startSubagent", input),
+      wait: (input) => requireSidecar().call("agent.waitSubagents", input),
+      stop: (input) => requireSidecar().call("agent.stopSubagents", input),
     },
     complete: async (input): Promise<PluginCompleteResult> => {
       if (!getHost()) {
