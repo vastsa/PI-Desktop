@@ -1456,6 +1456,39 @@ does not automatically trigger another callback. This path does not restore
 the withdrawn `A2A` or `Peer` tools and does not change `Task`, `TaskWait`,
 `TaskList`, or `TaskStop` semantics.
 
+### 5f.4 Plugin-started delegations (`agent.subagent`, ADR plugin-started-subagents)
+
+A plugin holding `agent.subagent` can start delegations from inside its own
+Agent tool call (issue #2508; plugin API in
+[03-plugin-api.md](../07-plugins/03-plugin-api.md#agent-subagent-requires-agent-subagent)).
+Electron main takes `sessionId`, `turnId`, and `toolCallId` from the live
+plugin tool invocation and calls two sidecar methods:
+
+- `agent.startSubagent {sessionId, turnId, toolCallId, agent, task,
+  description?, model?}` → `{delegationId, agent, modelId}`. The runtime
+  (`startSubagentForTool`) requires `turnId` to be the current turn and
+  `toolCallId` to be a running parent tool call (`TURN_MISMATCH`), and `Task`
+  to be in the session catalog and allowed by the mode (`PERMISSION_DENIED`).
+  It then runs the same `startDelegation` path as the `Task` tool, so the
+  definition catalog, model opt-in, `MAX_SUBAGENT_CONCURRENCY`
+  (`RATE_LIMITED`), worktree isolation, turn-epoch checks, abort on user Stop,
+  and child events are unchanged. Child events carry the plugin tool call's id
+  as `parentToolCallId`. No `Task` row exists, so the settlement refresh of a
+  `Task` row does not apply. `resume` is not offered. Refusals are thrown as
+  RPC errors with `errorCode`; the `Task` tool keeps returning the same text
+  through its tool-error channel.
+- `agent.waitSubagents {sessionId, delegationIds (1..32), mode?, timeoutMs
+  (0..90000), toolCallId?}` → `{results, running, unknown}`. Settled targets
+  come back as structured `SubagentRunResult` fields, not `TaskWait` text, and
+  are marked `reportDelivered` while the waiting tool call is still running, so
+  the idle auto-resume does not deliver them again. Unread reports keep their
+  auto-delivery. An unknown id returns `unknown` before anything is awaited or
+  marked. The transport deadline is the wait bound plus 15 s
+  (`PLUGIN_SUBAGENT_WAIT_MAX_MS`, `rpcTimeoutMs`).
+- Stopping reuses `agent.stopSubagents`. Its reply now also carries the
+  additive `stopped` id list. Electron main never forwards an empty id list for
+  a plugin, because the runtime reads that as "every running delegation".
+
 ## 6. Providers & models
 
 > Full policy: `11-provider-model-system.md`, `12-provider-config-schema.md`, `13-model-catalog-and-selection.md`.

@@ -21,6 +21,8 @@ import {
   STREAM_IDLE_TIMEOUT_MS,
   TOOL_QUEUE_WAIT_MS,
   WORKTREE_DELEGATE_RPC_TIMEOUT_MS,
+  PLUGIN_SUBAGENT_WAIT_MAX_MS,
+  PLUGIN_SUBAGENT_WAIT_RPC_SLACK_MS,
   rpcTimeoutMs,
   type PlanExecution,
   type PlanArtifact,
@@ -272,6 +274,19 @@ describe("Plan protocol contracts", () => {
     expect(rpcTimeoutMs("tools.abort", { sessionId: "s", toolCallId: "t" })).toBe(
       130_000,
     );
+  });
+
+  it("lets a plugin subagent wait answer before its transport deadline (#2508)", () => {
+    expect(PLUGIN_SUBAGENT_WAIT_MAX_MS).toBe(90_000);
+    expect(rpcTimeoutMs("agent.waitSubagents", { timeoutMs: 60_000 })).toBe(75_000);
+    // The wait bound is clamped, so a larger request cannot widen the deadline.
+    expect(rpcTimeoutMs("agent.waitSubagents", { timeoutMs: 10 * 60_000 })).toBe(
+      PLUGIN_SUBAGENT_WAIT_MAX_MS + PLUGIN_SUBAGENT_WAIT_RPC_SLACK_MS,
+    );
+    expect(rpcTimeoutMs("agent.waitSubagents", {})).toBe(
+      PLUGIN_SUBAGENT_WAIT_MAX_MS + PLUGIN_SUBAGENT_WAIT_RPC_SLACK_MS,
+    );
+    expect(rpcTimeoutMs("agent.startSubagent", { sessionId: "s" })).toBe(130_000);
   });
 
   it("lets a subagent worktree merge outlast its permit waits (ADR 0329)", () => {

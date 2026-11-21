@@ -985,6 +985,38 @@ await pi.ui.showToast(answer.text);
 后台服务、输入框转换、当前会话快照都不授予读取正文的能力。
 处理 `TIMEOUT`、`RATE_LIMITED` 及 Provider 分类错误，避免无限重试。
 
+### 6.15a 在自己的工具中启动子代理
+
+`agent.subagent` 让 Agent 工具运行自己的工作循环。在工具的 `execute` 中，从会话的子代理目录启动子代理、
+等待它们的报告，再决定下一步。这些子代理与模型发起的 `Task` 调用完全一致：相同的模型、工具、并发上限和
+停止行为，其记录会嵌套在你的工具行下。
+
+```js
+await pi.agent.registerTool({
+  name: "superagent",
+  description: "Split a task across explorer subagents and merge the findings.",
+  schema: { type: "object", properties: { areas: { type: "array", items: { type: "string" } } } },
+  execute: async ({ areas }) => {
+    for (const area of areas) {
+      await pi.agent.startSubagent({
+        agent: "explorer",
+        task: `Map ${area}: entry points, key files with line numbers, open questions.`,
+        description: `map ${area}`,
+      });
+    }
+    // 每次等待都有上限（1..90 秒，默认 60），工具不会超出 110 秒预算。
+    // 未完成的子代理继续运行，可在之后的调用中再次等待。
+    const { results, running } = await pi.agent.waitSubagents({ timeoutSeconds: 80 });
+    return { reports: results.map((r) => ({ agent: r.agent, status: r.status, report: r.report })), running };
+  },
+});
+```
+
+这些调用只在你自己的工具运行期间有效，其他场景返回 `INVALID_ARGUMENT`。会话需要已配置子代理，且当前模式允许
+`Task`（否则返回 `PERMISSION_DENIED`）。你只能等待或停止本插件在该会话中启动的委派；工具的后续调用可以等待
+先前调用启动的子代理。你收到的报告不会再次发给模型；从未读取的报告会在回合空闲时照常送达模型。
+工具结束或被取消不会停止已启动的子代理，需要时请调用 `stopSubagents`。
+
 ### 6.16 输入框转换与建议
 
 转换由用户主动触发，只收到 `{ id, text, modelKey? }`。声明
@@ -1070,7 +1102,7 @@ CDP 使用允许列表，Cookie、存储、目标管理、网络拦截仍拒绝�
 |---|---|
 | 低 | `ui.panel`, `ui.view`, `ui.theme`, `ui.settings`, `ui.window.appearance`, `notify` |
 | 中等 | `ui.microphone`, `clipboard.read`, `clipboard.write`, `fs.read`, `composer.transform`, `composer.suggest`, `models.list`, `session.read.own`, `session.update.own`, `usage.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `audio.playback.background`, `keyboard.globalShortcut` |
-| 高 | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `agent.complete`, `agent.extension`, `renderer.extension`, `provider.register`, `provider.oauth`, `desktop.control`, `project.create`, `session.read`, `session.import`, `session.delete.own`, `session.autoTitle`, `net.fetch`, `net.anyHost`, `mcp.server.local`, `mcp.server.remote`, `browser.cdp`, `audio.capture.background`, `speech.adapter.register`, `net.websocket` |
+| 高 | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `agent.complete`, `agent.subagent`, `agent.extension`, `renderer.extension`, `provider.register`, `provider.oauth`, `desktop.control`, `project.create`, `session.read`, `session.import`, `session.delete.own`, `session.autoTitle`, `net.fetch`, `net.anyHost`, `mcp.server.local`, `mcp.server.remote`, `browser.cdp`, `audio.capture.background`, `speech.adapter.register`, `net.websocket` |
 
 `keyboard.globalShortcut` 与 `net.websocket` 已实现。`pi.audio.*` 已经存在并且
 可以调用，其方法仍由权限把关，但当前宿主还没有设备后端：获得授权的调用会以
@@ -1265,7 +1297,7 @@ SHA-256 并发布该版本，再把目录与安装包同步到
 | `pi.audio` | `getInputDevices`, `openInput`, `closeInput`, `getCaptureState`, `onInputFrame`, `offInputFrame`, `openOutput`, `writeOutput`, `stopOutput`, `closeOutput` |
 | `pi.keyboard` | `registerGlobalShortcut`, `unregisterGlobalShortcut`, `listGlobalShortcuts` |
 | `pi.fs` | `readText`, `stat`, `readRange`, `readPreview`, `openDefault`, `openInBrowser`, `reveal`, `writeText`, `glob`, `list`, `remove`, `requestDirectory` |
-| `pi.agent` | `registerTool`, `unregisterTool`, `complete` |
+| `pi.agent` | `registerTool`, `unregisterTool`, `complete`, `startSubagent`, `waitSubagents`, `stopSubagents` |
 | `pi.models` | `list` |
 | `pi.session` | `getLlmContext`, `getActive`, `getAutoTitleContext`, `setAutoTitle`, `list`, `get`, `listMessages`, `import`, `importBatch`, `rename`, `delete` |
 | `pi.usage` | `listTurns` |

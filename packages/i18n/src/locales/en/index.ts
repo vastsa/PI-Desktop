@@ -2809,6 +2809,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "agent.prompt.inject": "Adjust agent instructions",
       "agent.modelContext": "Contribute text to model requests",
       "agent.complete": "Run a one-shot completion with your models",
+      "agent.subagent": "Start subagents during its tools",
       "composer.transform": "Transform text in the Composer",
       "composer.suggest": "Offer a suggestion in the Composer",
       "agent.extension": "Run code inside the agent",
@@ -2865,6 +2866,8 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "agent.modelContext": "Can supply additional reference text to the model during a turn. Does not grant transcript access or control over tool approvals.",
       "agent.complete":
         "Can spend your model quota on a one-shot completion. The plugin never receives your API keys.",
+      "agent.subagent":
+        "Can start, wait for, and stop subagents while one of its tools runs. Subagents spend your model quota and use this session's tools, like Task.",
       "composer.transform":
         "Lets this plugin transform text you explicitly select in the Composer. It receives the draft and selected model key, but no conversation history or attachments.",
       "composer.suggest":

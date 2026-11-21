@@ -290,6 +290,8 @@ export function createHostRuntime({
               const result = await tool.execute(q.args, {
                 sessionId: q.sessionId,
                 turnId: q.turnId,
+                // The parent of any subagent this call starts (`agent.subagent`).
+                toolCallId: q.toolCallId,
                 mode: sessionMode,
                 modelKey,
                 thinkingLevel,

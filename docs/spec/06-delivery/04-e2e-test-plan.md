@@ -279,6 +279,9 @@ identify the platform validation still needed.
 | G — Plugins (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Security (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Quality (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
+| G — Plugins (plugin-started subagents) | E2E-PLUGIN-subagent-worker-loop |
+| Security (plugin-started subagents) | E2E-PLUGIN-subagent-worker-loop |
+| Quality (plugin-started subagents) | E2E-PLUGIN-subagent-worker-loop |
 | D — Workspace (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | F — Persistence (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Quality (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
@@ -317,6 +320,7 @@ identify the platform validation still needed.
 | M5 (Conversation MP4 attachments) | E2E-CHAT-mp4-attachment-opens-in-system-player |
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
+| M6+ (plugin-started subagents) | E2E-PLUGIN-subagent-worker-loop |
 | Post-MVP | E2E-022A, E2E-022B, E2E-022C, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M (plugin roadmap R2/R3/R6) |
 | Post-baseline local automation | E2E-220 |
 | Post-baseline local automation (MCP `pi_session_get` large compaction) | E2E-MCP-session-get-projects-large-compaction |

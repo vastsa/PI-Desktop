@@ -37,6 +37,7 @@ export const HIGH_RISK_PERMISSIONS = [
   "agent.tool.register",
   "agent.extension",
   "agent.complete",
+  "agent.subagent",
   "renderer.extension",
   "provider.register",
   "provider.oauth",
@@ -81,6 +82,7 @@ const PERMISSION_API_HINTS: Record<string, string[]> = {
   "fs.write": ["fs.writeText"],
   "fs.delete": ["fs.remove"],
   "agent.tool.register": ["agent.registerTool"],
+  "agent.subagent": ["agent.startSubagent", "agent.waitSubagents", "agent.stopSubagents"],
   "speech.adapter.register": ["speech.registerAdapter"],
   "net.fetch": ["net.fetch"],
   "audio.capture.background": [

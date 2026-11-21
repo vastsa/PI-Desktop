@@ -2326,6 +2326,37 @@ window; opening a normal panel afterward must still work.
 - **Status**: Unit/RPC/wiring-covered (`plugin-session-api.test.mjs`,
   host-core `plugin_usage`); full UI journey Draft
 
+## E2E-PLUGIN-subagent-worker-loop: Plugin-started subagents run through the Task path
+
+- **Preconditions**: Agent mode with at least one subagent definition (for
+  example `explorer`). A test plugin is granted `agent.tool.register` and
+  `agent.subagent` and registers a tool that calls `pi.agent.startSubagent`,
+  then `pi.agent.waitSubagents`, and returns the reports. A second plugin
+  without the permission, and a third with the permission but its own ids only.
+- **Steps**: 1) Ask the model to run the plugin tool; let it start two
+  delegations and wait with `mode: "any"`, then call the tool again to wait for
+  the rest. 2) Expand the plugin tool row. 3) Call the APIs from a plugin
+  command (outside a tool call), from the plugin without the permission, and
+  with the other plugin's delegation id. 4) Start a delegation, let the plugin
+  tool return without waiting, and let the turn go idle. 5) Start one and press
+  Stop. 6) Repeat step 1 in Plan mode and in a session with no subagents.
+- **Expected**: The delegates run with the same model, tools, concurrency cap,
+  and worktree rules as a `Task` call, and their rows nest under the plugin tool
+  row. Reports read by the plugin are not delivered to the parent model a second
+  time; an unread report reaches it through the idle auto-resume. A command
+  call is `INVALID_ARGUMENT`, a missing grant or a foreign id is
+  `PERMISSION_DENIED`, and Plan mode or no subagents is `PERMISSION_DENIED`.
+  Each wait answers within its 1–90 s bound. User Stop stops the delegates. The
+  audit log has counts and ids but never the brief or report text.
+- **Specs linked**: `07-plugins/03-plugin-api.md` §agent.subagent,
+  `07-plugins/13-plugin-permissions-matrix.md`, `03-runtime/02-agent-runtime.md`
+  §5f.4, ADR `plugin-started-subagents`, D686
+- **Acceptance**: G — Plugins, Security, Quality
+- **Milestone**: M6+
+- **Status**: Unit/contract-covered (`packages/agent-runtime/src/runtime.test.ts`
+  "plugin-started delegation", `plugin-subagent-rpc.test.ts`,
+  `apps/desktop/test/plugin-subagent.test.mjs`); full UI journey Draft
+
 ## E2E-216: Explicit plugin project binding and host-owned sidebar refresh
 
 - **Preconditions**: A test plugin has `project.create` and `session.import`

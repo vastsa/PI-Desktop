@@ -47,6 +47,9 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "agent.modelContext": "high",
   "agent.tool.register": "high",
   "agent.complete": "high",
+  // Spends the user's model budget on background delegates that run with the
+  // session's tools, so it sits with the other agent capabilities.
+  "agent.subagent": "high",
   "agent.extension": "high",
   // Its code runs in the app's own document, so the grant is the boundary.
   "renderer.extension": "high",
