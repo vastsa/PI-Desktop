@@ -40,14 +40,14 @@ const main = `
 import assert from "node:assert/strict";
 import { app, BrowserWindow, Menu } from "electron";
 import { installEditableContextMenu } from "../../apps/desktop/electron/main/application-menu";
+import { waitFor } from "./wait.mjs";
 app.setPath("userData", process.argv[2]);
 app.whenReady().then(async () => {
 const win = new BrowserWindow({ show: true, width: 800, height: 600,
   webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
 const wc = win.webContents;
 let opened;
-// Only the popup boundary is replaced. The role each item was built with is asserted
-// before the platform performs the edit, so a mis-wired menu cannot pass.
+// Keep native editing roles while replacing the OS popup boundary.
 Menu.prototype.popup = function (options) { opened = { menu: this, options }; };
 installEditableContextMenu(win);
 const read = (expression) => wc.executeJavaScript(expression);
@@ -59,18 +59,18 @@ async function openMenu() {
   wc.sendInputEvent({ type: "mouseUp", button: "right", clickCount: 1, ...point });
   return event;
 }
-function command(role) {
+async function command(role, expression, expected) {
   const item = opened.menu.items.find((candidate) => candidate.role === role);
   assert.equal(item?.enabled, true, role + " must be enabled");
-  // The role assert above runs before anything executes, so a menu that wires the wrong
-  // role fails here even though the platform performs the edit itself.
   if (process.platform === "darwin") Menu.sendActionToFirstResponder(role === "selectall" ? "selectAll:" : role + ":");
   else item.click({}, win, wc);
+  await waitFor(async () => (await read(expression)) === expected, 5_000, role + " to update the editor");
 }
 try {
   Menu.setApplicationMenu(null);
   await win.loadFile(process.argv[3]);
   win.focus();
+  await waitFor(() => win.isFocused(), 5_000, "fixture window focus");
   await read('document.querySelector(".composer-input").focus()');
   await wc.insertText("alpha beta");
   await read('const range = document.createRange(); const node = document.querySelector(".composer-input").firstChild; range.setStart(node, 0); range.setEnd(node, 5); window.getSelection().removeAllRanges(); window.getSelection().addRange(range)');
@@ -85,16 +85,11 @@ try {
   assert.equal(await read('window.getSelection().toString()'), "alpha");
   await wc.insertText("gamma");
   assert.equal(await read("window.probe.value"), "gamma beta");
-  await openMenu(); command("undo");
-  assert.equal(await read("window.probe.value"), "alpha beta");
-  await openMenu(); command("redo");
-  assert.equal(await read("window.probe.value"), "gamma beta");
-  await openMenu(); command("selectall");
-  assert.equal(await read('window.getSelection().toString()'), "gamma beta");
+  await openMenu(); await command("undo", "window.probe.value", "alpha beta");
+  await openMenu(); await command("redo", "window.probe.value", "gamma beta");
+  await openMenu(); await command("selectall", "window.getSelection().toString()", "gamma beta");
   await read('document.querySelector(".composer-input").contentEditable = "false"');
   await openMenu();
-  // A read-only control must not open this menu at all; whatever Electron itself does on a
-  // real right-click is outside this test's replaced popup boundary.
   assert.equal(opened, undefined, "read-only controls do not open the editing menu");
   console.log("EDITABLE_MENU_PROBE passed");
 } catch (error) {

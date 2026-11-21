@@ -84,9 +84,7 @@
   `04-ux/09-interaction-patterns.md`
 - **Acceptance**: Quality (key operations feel polished)
 - **Milestone**: M5
-- **Status**: Unit-covered (`user-select.test.mjs`); native composer menu,
-  selection, and undo/redo automated (`editable-context-menu-user-path.test.mjs`);
-  full shell scenario Documented.
+- **Status**: Unit-covered (`user-select.test.mjs`); scenario Documented
 
 ## E2E-047b: Sidebar session hover card surfaces rich metadata
 
