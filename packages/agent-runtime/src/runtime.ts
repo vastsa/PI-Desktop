@@ -70,6 +70,7 @@ import {
   OAUTH_AUTH_KIND,
   type TrustedExtensionCommand,
   type TrustedExtensionDiagnostic,
+  type NativeContextSnapshot,
   type TrustedExtensionSpec,
   type TrustedExtensionUiResponse,
 } from "@pi-desktop/shared";
@@ -329,6 +330,7 @@ import {
 } from "./provider-retry.js";
 
 import {
+  CONTEXT_CALIBRATION_FACTOR_MIN,
   ContextEstimateCalibration,
   type ContextCalibration,
 } from "./context-calibration.js";
@@ -1844,6 +1846,36 @@ export function isolatedWorkspaceGuidance(): string {
   ].join(" ");
 }
 
+type ProviderRequestContext = {
+  model: Model<Api>;
+  compaction?: ContextCompactionRecord;
+  lastInputMessage?: AgentMessage;
+  assistantMessage?: AgentMessage;
+  settled?: "ok" | "failed";
+};
+
+type UpstreamBudgetAnchor = {
+  used: number;
+  compactionKey: string;
+  request?: ProviderRequestContext;
+  tailMessage?: AgentMessage;
+};
+
+function compactionBoundaryKey(messages: readonly AgentMessage[]): string {
+  const entry = messages.find((m) => m.role === "compactionSummary") as
+    | { summary?: unknown; tokensBefore?: unknown; timestamp?: unknown }
+    | undefined;
+  if (!entry) return "";
+  return JSON.stringify([entry.timestamp ?? null, entry.tokensBefore ?? null, entry.summary ?? ""]);
+}
+
+function lastNonSystemMessage<T extends { role: string }>(messages: readonly T[]): T | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role !== "system") return messages[i];
+  }
+  return undefined;
+}
+
 export class DesktopAgentRuntime {
   private agent: Agent;
   private models: Models;
@@ -1875,6 +1907,15 @@ export class DesktopAgentRuntime {
   private pluginSkills: PluginSkillDef[];
   private trustedExtensionSpecs: TrustedExtensionSpec[];
   private extensionRunner?: TrustedExtensionRunner;
+  private inFlightProviderRequest?: ProviderRequestContext;
+  private lastProviderRequest?: ProviderRequestContext;
+  private contextWatch?: {
+    spec: TrustedExtensionSpec;
+    model: Model<Api>;
+    sent?: string;
+    anchor?: UpstreamBudgetAnchor;
+    prevAnchor?: UpstreamBudgetAnchor;
+  };
   private trustedExtensionLoad?: Promise<void>;
   private extensionSessionName?: string;
   private extensionTurnIndex = 0;
@@ -2240,6 +2281,17 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           context.messages ?? [],
           m,
         );
+        const providerRequest: ProviderRequestContext | undefined = !this.compactionInProgress
+          ? {
+              model: m,
+              compaction: this.activeCompaction,
+              lastInputMessage: lastNonSystemMessage(context.messages ?? []),
+            }
+          : undefined;
+        this.inFlightProviderRequest = providerRequest;
+        if (providerRequest && !this.extensionRunner?.hasHandlers("before_provider_request")) {
+          this.lastProviderRequest = providerRequest;
+        }
         // A new model request starts a new transport streak: the evidence that
         // justified a rebuild does not carry into the next request (issue #234).
         this.providerFetchFailure = undefined;
@@ -2274,7 +2326,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                 ),
                 this.provider.authKind,
               ),
+              ...(providerRequest || options?.onPayload
+                ? {
+                    onPayload: async (payload, payloadModel) => {
+                      if (providerRequest && providerRequest.settled !== "failed") {
+                        this.lastProviderRequest = providerRequest;
+                      }
+                      return options?.onPayload?.(payload, payloadModel);
+                    },
+                  }
+                : {}),
               onResponse: async (response, responseModel) => {
+                if (providerRequest && providerRequest.settled !== "failed") {
+                  this.lastProviderRequest = providerRequest;
+                }
                 this.providerResponseStatus = response.status;
                 await options?.onResponse?.(response, responseModel);
               },
@@ -2954,6 +3019,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // stored model through `setFastMode`.
     this.fastMode = false;
     this.provider = this.extensionProviderFor(agent, model);
+    if (this.contextWatch) this.detachNativeContext();
     this.model = model;
     this.models = createExtensionAgentModels({
       providerId: agent.providerId,
@@ -3079,6 +3145,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         runtime.pendingModelCompaction = true;
       },
       getSystemPrompt: () => runtime.agent.state.systemPrompt,
+      setProviderContext: (spec, reading) => runtime.acceptProviderContext(spec, reading),
       getActiveTools: () => runtime.activeTools().map((tool) => tool.name),
       getAllTools: () => {
         const active = new Set(runtime.activeTools().map((tool) => tool.name));
@@ -7221,6 +7288,192 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.pendingModelCompaction = false;
     this.rebuildToolCatalog();
     this.setAgentTools(this.activeTools());
+    if (this.contextWatch) this.publishNativeBudget(this.contextBudget(this.agent.state.messages));
+  }
+
+  /** Never alters history, model usage, billing, or `hardLimit`; `upstream.used` calibrates only the budget numerator on matching prefixes. */
+  private sendNativeContext(spec: TrustedExtensionSpec, snapshot: NativeContextSnapshot | null): void {
+    try {
+      void this.host.call("extensions.ui.request", { sessionId: this.sessionId, extensionId: spec.id,
+        extensionLabel: spec.label, request: { kind: "contextSnapshot", snapshot } }).catch(() => {});
+    } catch { /* Losing the UI cannot break a model request. */ }
+  }
+
+  private detachNativeContext(): void {
+    const watch = this.contextWatch;
+    this.contextWatch = undefined;
+    if (watch) this.sendNativeContext(watch.spec, null);
+  }
+
+  private acceptProviderContext(spec: TrustedExtensionSpec, reading: unknown): void {
+    if (reading === undefined) {
+      if (this.contextWatch?.spec === spec) this.detachNativeContext();
+      return;
+    }
+    if (this.disposed || !isRecord(reading) || Object.keys(reading).some(k => k !== "used" && k !== "size")) return;
+    const { used, size } = reading;
+    if ((used !== undefined && (typeof used !== "number" || !Number.isSafeInteger(used) || used < 0)) ||
+        (size !== undefined && (used === undefined || typeof size !== "number" || !Number.isSafeInteger(size) || size <= 0))) return;
+    if (this.contextWatch && (this.contextWatch.spec !== spec || this.contextWatch.model !== this.model)) this.detachNativeContext();
+    const watch = (this.contextWatch ??= { spec, model: this.model });
+    if (!this.compactionInProgress) {
+      if (typeof used === "number") {
+        const req =
+          this.lastProviderRequest?.model === this.model &&
+          this.lastProviderRequest.compaction === this.activeCompaction &&
+          this.lastProviderRequest.settled !== "failed"
+            ? this.lastProviderRequest
+            : undefined;
+        if (
+          watch.anchor &&
+          watch.anchor.request !== req &&
+          watch.anchor.request?.settled !== "failed"
+        ) {
+          watch.prevAnchor = watch.anchor;
+        }
+        const messages = this.agent.state.messages;
+        watch.anchor = {
+          used,
+          compactionKey: compactionBoundaryKey(messages),
+          request: req,
+          tailMessage: req
+            ? req.assistantMessage ?? req.lastInputMessage
+            : lastNonSystemMessage(messages),
+        };
+        if (req?.settled === "ok") watch.prevAnchor = undefined;
+      } else if (watch.anchor?.request && watch.anchor.request.settled !== "ok") {
+        watch.anchor = watch.prevAnchor;
+        watch.prevAnchor = undefined;
+      }
+    }
+    this.publishNativeBudget(this.contextBudget(this.agent.state.messages));
+  }
+
+  private retireProviderRequestAnchor(req: ProviderRequestContext | undefined): void {
+    if (!req) return;
+    req.settled = "failed";
+    req.assistantMessage = undefined;
+    const watch = this.contextWatch;
+    if (watch?.anchor?.request === req) {
+      watch.anchor = watch.prevAnchor;
+      watch.prevAnchor = undefined;
+      this.publishNativeBudget(this.contextBudget(this.agent.state.messages));
+    }
+  }
+
+  private settleProviderRequestOnAssistantEnd(message: AgentMessage): void {
+    if (message.role !== "assistant" || !this.currentAssistant) return;
+    const req = this.inFlightProviderRequest ?? this.lastProviderRequest;
+    this.inFlightProviderRequest = undefined;
+    if (!req || req.settled) return;
+    const localError = readLocalRequestErrorDetails(message);
+    const overflow =
+      !localError &&
+      isContextOverflow(
+        message,
+        effectiveModelContextWindow(this.model) || DEFAULT_CONTEXT_WINDOW,
+      );
+    const aborted =
+      message.stopReason === "aborted" || localError?.causeName === "AbortError";
+    const failed = !aborted && (message.stopReason === "error" || overflow);
+    const content = assistantContent((message as any).content);
+    const responseText = content.hasText ? content.text : "";
+    const silence =
+      !failed &&
+      !aborted &&
+      responseText.trim().length === 0 &&
+      !messageRequestsTools(message);
+    const exemptSilence = silence && this.allowSilentCompletion;
+    const silentTurn = silence && !exemptSilence;
+    const progressOnlyTurn =
+      !failed &&
+      !aborted &&
+      !silentTurn &&
+      this.autonomousExecution &&
+      !this.silentTurnRerunAttempted &&
+      !this.progressTurnRerunAttempted &&
+      isProgressOnlyAssistantTurn(message);
+    if (failed || aborted || silentTurn || progressOnlyTurn) {
+      this.retireProviderRequestAnchor(req);
+      return;
+    }
+    this.lastProviderRequest = req;
+    req.settled = "ok";
+    if (!exemptSilence) {
+      req.assistantMessage = message;
+      if (this.contextWatch?.anchor?.request === req) {
+        this.contextWatch.anchor.tailMessage = message;
+        this.contextWatch.prevAnchor = undefined;
+      }
+    } else if (this.contextWatch?.anchor?.request === req) {
+      this.contextWatch.prevAnchor = undefined;
+    }
+  }
+
+  private matchUpstreamAnchor(
+    anchor: UpstreamBudgetAnchor | undefined,
+    messages: readonly AgentMessage[],
+    boundaryKey: string,
+  ): { used: number; trailing: AgentMessage[] } | undefined {
+    if (!anchor || anchor.compactionKey !== boundaryKey || anchor.request?.settled === "failed") {
+      return undefined;
+    }
+    if (anchor.request?.assistantMessage !== undefined) {
+      const idx = messages.lastIndexOf(anchor.request.assistantMessage);
+      if (idx < 0) return undefined;
+      return { used: anchor.used, trailing: messages.slice(idx + 1) };
+    }
+    if (anchor.tailMessage !== undefined) {
+      const idx = messages.lastIndexOf(anchor.tailMessage);
+      if (idx < 0) return undefined;
+      return { used: anchor.used, trailing: messages.slice(idx + 1) };
+    }
+    if (anchor.request?.lastInputMessage !== undefined) return undefined;
+    return {
+      used: anchor.used,
+      trailing: messages.filter((message) => message.role !== "system"),
+    };
+  }
+
+  private upstreamAnchoredTokens(messages: AgentMessage[]): number | undefined {
+    const watch = this.contextWatch;
+    if (!watch || watch.model !== this.model) return undefined;
+    const boundaryKey = compactionBoundaryKey(messages);
+    const matched =
+      this.matchUpstreamAnchor(watch.anchor, messages, boundaryKey) ??
+      this.matchUpstreamAnchor(watch.prevAnchor, messages, boundaryKey);
+    if (!matched || matched.used <= 0) return undefined;
+    if (matched.trailing.length === 0) return matched.used;
+    const rawTrailing = matched.trailing.reduce(
+      (sum, message) => sum + estimateTokens(message, this.model),
+      0,
+    );
+    const capTrailing = estimateOutputCapInputTokens(
+      {
+        messages: matched.trailing.filter(
+          (message): message is Extract<AgentMessage, { content: unknown }> =>
+            "content" in message,
+        ),
+      },
+      this.model,
+    );
+    return matched.used + Math.max(rawTrailing, capTrailing);
+  }
+
+  private publishNativeBudget(budget: ContextBudget): void {
+    const watch = this.contextWatch;
+    if (!watch) return;
+    if (watch.model !== this.model) { this.detachNativeContext(); return; }
+    const snapshot: NativeContextSnapshot = {
+      providerId: this.provider.id,
+      modelId: this.provider.modelId,
+      tokens: budget.tokens,
+      hardLimit: budget.hardLimit,
+    };
+    const encoded = JSON.stringify(snapshot);
+    if (watch.sent === encoded) return;
+    watch.sent = encoded;
+    this.sendNativeContext(watch.spec, snapshot);
   }
 
   private contextBudget(messages: AgentMessage[]): ContextBudget {
@@ -7233,12 +7486,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const calibratedMessageTokens = this.contextCalibration.correct(
       estimateContextTokens(messages, this.model),
     );
+    const nonSystemMessages = messages.filter(
+      (message): message is Extract<AgentMessage, { content: unknown }> =>
+        message.role !== "system" && "content" in message,
+    );
     const requestTokens = estimateOutputCapInputTokens(
       {
-        messages: messages.filter(
-          (message): message is Extract<AgentMessage, { content: unknown }> =>
-            message.role !== "system" && "content" in message,
-        ),
+        messages: nonSystemMessages,
         ...(typeof this.agent.state.systemPrompt === "string"
           ? { systemPrompt: this.agent.state.systemPrompt }
           : {}),
@@ -7246,9 +7500,25 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       },
       this.model,
     );
+    const localTokens = Math.max(calibratedMessageTokens, requestTokens);
+    const anchoredTokens = this.upstreamAnchoredTokens(messages);
+    const rawTranscriptTokens =
+      anchoredTokens === undefined
+        ? 0
+        : Math.max(
+            messages.reduce((sum, message) => sum + estimateTokens(message, this.model), 0),
+            estimateOutputCapInputTokens({ messages: nonSystemMessages }, this.model),
+          );
+    const tokens =
+      anchoredTokens === undefined
+        ? localTokens
+        : Math.max(
+            Math.floor(rawTranscriptTokens * CONTEXT_CALIBRATION_FACTOR_MIN),
+            anchoredTokens,
+          );
     return {
       ...budget,
-      tokens: Math.max(calibratedMessageTokens, requestTokens),
+      tokens,
     };
   }
 
@@ -7298,10 +7568,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const context = this.liveSessionContext();
     const messages = [...context.messages, ...additionalMessages];
     const budget = this.contextBudget(messages);
-    return (
-      this.compactionEnabled &&
-      budget.tokens >= automaticCompactionThresholdFor(budget)
-    );
+    const needed = this.compactionEnabled && budget.tokens >= automaticCompactionThresholdFor(budget);
+    if (this.contextWatch) this.publishNativeBudget(budget);
+    return needed;
   }
 
   private automaticCompactionWouldExceedHardLimit(
@@ -7310,6 +7579,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const context = this.liveSessionContext();
     const messages = [...context.messages, ...additionalMessages];
     const budget = this.contextBudget(messages);
+    if (this.contextWatch) this.publishNativeBudget(budget);
     return budget.tokens >= budget.hardLimit;
   }
 
@@ -7471,6 +7741,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     let context = this.rebuiltAgentContext();
     const budget = this.contextBudget(context.messages);
     const hardLimitReached = budget.tokens >= budget.hardLimit;
+    if (this.contextWatch) this.publishNativeBudget(budget);
     if (!this.compactionEnabled) {
       this.pendingModelCompaction = false;
       if (hardLimitReached) {
@@ -7517,6 +7788,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     context = this.rebuiltAgentContext();
     const postCompactionBudget = this.contextBudget(context.messages);
+    if (this.contextWatch) this.publishNativeBudget(postCompactionBudget);
     if (postCompactionBudget.tokens >= postCompactionBudget.hardLimit) {
       throw new Error(
         "CONTEXT_COMPACTION_FAILED: checkpoint remained above the safe model context budget",
@@ -7576,6 +7848,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     retentionMode: CompactionRetentionMode = "completed_turn",
   ): Promise<boolean> {
     if (this.compactionInProgress) return false;
+    if (this.contextWatch) this.publishNativeBudget(this.contextBudget(this.liveSessionContext().messages));
     this.compactionInProgress = true;
     this.compactionAborted = false;
     const previous = this.agentActivity;
@@ -8028,6 +8301,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
 
     this.activeCompaction = checkpoint;
+    if (this.contextWatch) {
+      this.contextWatch.anchor = undefined;
+      this.contextWatch.prevAnchor = undefined;
+      this.publishNativeBudget(compactedBudget);
+    }
     // A new window means both reminders are available again, matching Codex
     // resetting its `claim_*` flags when the context window turns over.
     this.contextReminderClaimed = false;
@@ -8574,6 +8852,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private async handleAgentEvent(event: AgentEvent) {
+    if (event.type === "message_end" && event.message.role === "assistant") {
+      this.settleProviderRequestOnAssistantEnd(event.message);
+    }
     this.forwardAgentEventToExtensions(event);
     switch (event.type) {
       case "agent_start":
@@ -8740,10 +9021,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             this.pendingUserMessageId = undefined;
           }
           this.appendLiveEntry(id, event.message);
+          if (this.contextWatch) this.publishNativeBudget(this.contextBudget(this.agent.state.messages));
           break;
         }
         if (event.message.role === "toolResult") {
           this.appendLiveEntry(event.message.toolCallId || randomUUID(), event.message);
+          if (this.contextWatch) this.publishNativeBudget(this.contextBudget(this.agent.state.messages));
           break;
         }
         if (this.currentAssistant && event.message.role === "assistant") {
@@ -9083,6 +9366,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             }
           } else if (!failed && !aborted && !emptyResponse) {
             this.appendLiveEntry(assistantId, event.message);
+            if (this.contextWatch) this.publishNativeBudget(this.contextBudget(this.agent.state.messages));
           } else {
             this.turnHadError = true;
           }
@@ -9202,6 +9486,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         this.retainPendingSteering();
         this.autonomousExecution = false;
         this.clearAgentActivity();
+        if (this.contextWatch) this.publishNativeBudget(this.contextBudget(this.agent.state.messages));
         this.reportMutationTermination();
         this.emit({
           type: "agent_end",
@@ -9895,6 +10180,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
 
   async dispose(): Promise<void> {
     if (this.disposed) return;
+    if (this.contextWatch) this.detachNativeContext();
     const runner = this.extensionRunner;
     this.extensionRunner = undefined;
     const closingExtensions = runner?.dispose();

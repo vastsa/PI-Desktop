@@ -66,6 +66,7 @@ function dismissedResponse(kind: PendingPrompt["kind"]): TrustedExtensionUiRespo
 export class AgentExtensionBridge {
   private readonly options: AgentExtensionBridgeOptions;
   private readonly sessions = new Map<string, SessionState>();
+  private readonly contextSources = new Map<string, string>();
   private readonly pending = new Map<string, PendingPrompt>();
   /** One interactive prompt per session at a time (spec §9). */
   private readonly promptQueues = new Map<string, Promise<unknown>>();
@@ -109,6 +110,11 @@ export class AgentExtensionBridge {
   }
 
   clearSession(sessionId: string): void {
+    const source = this.contextSources.get(sessionId);
+    if (source) {
+      this.contextSources.delete(sessionId);
+      this.options.onStatus({ sessionId, extensionId: source, key: "contextSnapshot", text: undefined, contextSnapshot: null });
+    }
     this.cancelPrompts(sessionId);
     if (this.sessions.delete(sessionId)) this.options.onChanged();
   }
@@ -151,6 +157,13 @@ export class AgentExtensionBridge {
       case "notify":
         this.options.onToast(`${envelope.extensionLabel}: ${request.message}`, request.level);
         return { kind: "notify" };
+      case "contextSnapshot": {
+        if (request.snapshot) this.contextSources.set(envelope.sessionId, envelope.extensionId);
+        else if (this.contextSources.get(envelope.sessionId) === envelope.extensionId) this.contextSources.delete(envelope.sessionId);
+        this.options.onStatus({ sessionId: envelope.sessionId, extensionId: envelope.extensionId,
+          key: "contextSnapshot", text: undefined, contextSnapshot: request.snapshot });
+        return { kind: "contextSnapshot" };
+      }
       case "setStatus":
         this.options.onStatus({
           sessionId: envelope.sessionId,
