@@ -561,9 +561,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   body offers Browser or an in-scope plugin view.
 - An artifact trigger atomically creates or reuses its resource, activates it,
   and opens the panel. Background artifacts never open the visible panel.
-- File resources use normalized paths as identity. Browser and plugin views
-  are singletons; repeated triggers preserve resource order and activate the
-  existing resource.
+- File resources use normalized paths as identity. Plugin views are
+  singletons; repeated triggers preserve resource order and activate the
+  existing resource. Browser is the exception: each page has its own tab, so
+  a clicked link opens another Browser tab and selecting Browser in the
+  launcher while one is open adds a blank Browser tab instead of activating
+  the existing page.
 - Once open, the panel header is a `tablist` that scrolls horizontally while a
   tight `+` trigger stays fixed beside it. Each tab owns its active state and
   close button; the active tab is scrolled into view. Clicking `+` creates a
