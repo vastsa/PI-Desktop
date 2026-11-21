@@ -287,6 +287,7 @@ import {
   openCodeEndpointFromProvider,
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
+import { withCodexCacheableInstructions } from "./codex-cacheable-instructions.js";
 import { withFastModeOptions } from "./fast-mode.js";
 import { withSessionAffinityOptions } from "./session-affinity.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
@@ -2293,7 +2294,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // one-shot requests build their own options and keep the default.
         const hookedOptions = withFastModeOptions(
           withSessionAffinityOptions(
-            this.withExtensionProviderHooks(requestOptions, m),
+            this.withExtensionProviderHooks(
+              withCodexCacheableInstructions(requestOptions, m),
+              m,
+            ),
             {
               provider: this.provider,
               api: m.api,
