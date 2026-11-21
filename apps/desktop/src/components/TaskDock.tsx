@@ -227,11 +227,7 @@ function TaskDockPanel({ sessionId }: { sessionId: string }) {
   );
 }
 
-/**
- * Task rows. `Output` and `Stop`/`Remove` sit outside the row body so the
- * clickable band never swallows a control, and the whole row stays one line:
- * a long command ellipsizes with its full text in `title`.
- */
+/** The command preview and its actions share one line above the expanded details. */
 function TaskPanel({
   listId,
   tasks,
@@ -322,7 +318,10 @@ function TaskPanel({
                 ) : null}
               </div>
               {expanded ? (
-                <pre className="task-output">{formatOutput(output, task.id)}</pre>
+                <>
+                  <code className="task-command-detail">{task.command}</code>
+                  <pre className="task-output">{formatOutput(output, task.id)}</pre>
+                </>
               ) : null}
             </div>
           );
