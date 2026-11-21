@@ -127,6 +127,8 @@ type RuntimeParams = {
   jevApiKey?: string;
   /** Set by main only for Agent sessions with computer use switched on. */
   computerUseEnabled?: boolean;
+  /** Set by main only for Agent sessions with codemode switched on. */
+  codemodeEnabled?: boolean;
   provider: RuntimeProviderConfig;
   commandShell: CommandShellOption;
   pluginTools?: PluginToolDef[];
@@ -258,6 +260,7 @@ async function runtimeFor(
     subagentModelKeys,
     jevApiKey: params.jevApiKey,
     computerUseEnabled: params.computerUseEnabled === true,
+    codemodeEnabled: params.codemodeEnabled === true,
     projectInstructions: params.projectInstructions,
     customSystemPrompt: params.customSystemPrompt,
     projectMemory: params.projectMemory,
@@ -344,6 +347,7 @@ async function runtimeFor(
     fastMode: params.fastMode === true,
     jevApiKey: params.jevApiKey,
     computerUseEnabled: config.computerUseEnabled,
+    codemodeEnabled: config.codemodeEnabled,
     history,
     compaction,
     compactionSettings: params.compactionSettings,

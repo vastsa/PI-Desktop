@@ -1742,6 +1742,8 @@ sklm: {
     "enterToSendDesc": "Désactivé : appuyez sur ⌘/Ctrl+Entrée pour envoyer.",
     backgroundJobContinuation: "Reprendre après les tâches en arrière-plan",
     backgroundJobContinuationDesc: "Autoriser la reprise d’une conversation locale après les tests ou compilations demandés, avec les permissions actuelles. Désactivé par défaut. La désactivation annule les reprises en attente, sans arrêter les processus.",
+    codemode: "Scripts Codemode",
+    codemodeDesc: "Permet à l’assistant d’exécuter un court JavaScript dans un bac à sable isolé pour regrouper, enchaîner ou filtrer les appels d’outils et de modèles, afin que seul le résultat final entre dans la conversation. Chaque appel imbriqué respecte toujours votre mode d’autorisation et vos approbations. Désactivé par défaut.",
     "infiniteProviderRetry": "Réessayer jusqu’à réussite",
     "infiniteProviderRetryDesc": "Réessaie les erreurs réseau et temporaires jusqu’à la réussite. Vous pouvez toujours arrêter le tour ; la consommation d’API peut continuer.",
     "smoothStreaming": "Streaming fluide",

@@ -26,6 +26,7 @@ git history.
 
 | ID | Title | Status |
 |---|---|---|
+| codemode-sandbox-boundary | [Codemode sandbox execution boundary](codemode-sandbox-boundary.md) | Accepted |
 | mode-definitions | [User-definable modes as staged workflows](mode-definitions.md) | Proposed |
 | sidebar-layout-recovery | [Recover sidebar layout independently of Chromium storage](sidebar-layout-recovery.md) | Accepted |
 | steering-local-tool-interruption | [Steering waits for confirmed tool settlement](steering-local-tool-interruption.md) | Accepted |

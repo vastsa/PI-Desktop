@@ -25,6 +25,8 @@ import { computerUseDescription, computerUseParameters } from "./computer-use/to
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
 import { createJevClassifierTool } from "./jev-classifier-tool.js";
+import { CODEMODE_TOOL_NAME } from "./codemode/limits.js";
+import { createSessionCodemodeTool } from "./codemode/session.js";
 import { scheduledToolParameters, scheduledToolDescriptions } from "./scheduled-tools.js";
 import { withPiFileOpToolNames } from "./pi-file-ops.js";
 import { remoteMutationIdentity } from "./remote-workspace.js";
@@ -752,6 +754,12 @@ const COMPACTION_FALLBACK_NOTICE_TOKENS = 512;
  * history than a successful checkpoint would (`fallbackRetainedTail`).
  */
 const COMPACTION_FALLBACK_KEEP_RECENT_RATIO = 0.25;
+/**
+ * Smallest fraction of that window the recovery path shrinks to before it
+ * gives up: seven halvings, enough for a calibrated estimate many times the
+ * local one (`recoverCompactionFailure`, issue #2494).
+ */
+const COMPACTION_FALLBACK_MIN_TAIL_SCALE = 1 / 128;
 export const COMPACTION_FALLBACK_MARKER =
   "[automatic context recovery: older context was omitted after summary generation failed]";
 /** Stored in place of a carried-forward summary when a fallback had none. */
@@ -972,6 +980,23 @@ function turnAbortedError(message: string): Error {
 }
 
 const CONTEXT_COMPACTION_TOOL_NAME = "new_context";
+/**
+ * Tools a codemode script never calls: tool discovery, user interaction, mode
+ * and stage control, context control, and delegation lifecycle all belong to
+ * the model's own turn, not to a script.
+ */
+const CODEMODE_EXCLUDED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  CODEMODE_TOOL_NAME,
+  TOOL_SEARCH_NAME,
+  ASK_TOOL_NAME,
+  ...MODE_TRANSITION_TOOL_NAMES,
+  COMPLETE_STAGE_TOOL_NAME,
+  CONTEXT_COMPACTION_TOOL_NAME,
+  SUBAGENT_TOOL_NAME,
+  SUBAGENT_WAIT_TOOL_NAME,
+  SUBAGENT_LIST_TOOL_NAME,
+  SUBAGENT_STOP_TOOL_NAME,
+]);
 /** Tools the read-only contract level may execute, besides plan-safe plugins. */
 const CONTRACT_ALLOWED_TOOL_NAMES = new Set([...CONTRACT_CORE_TOOL_NAMES, CONTEXT_COMPACTION_TOOL_NAME]);
 const CONTEXT_COMPACTION_TOOL_DESCRIPTION =
@@ -1064,6 +1089,11 @@ export type AgentRuntimeOptions = {
    * prompt rather than advertised and refused on every call.
    */
   computerUseEnabled?: boolean;
+  /**
+   * Whether the opt-in `codemode` tool is offered (ADR
+   * codemode-sandbox-boundary). Resolved by Electron main from settings.
+   */
+  codemodeEnabled?: boolean;
   systemPrompt?: string;
   /** pi-compatible SYSTEM.md / APPEND_SYSTEM.md resolved for the session (issue #542). */
   customSystemPrompt?: CustomSystemPrompt;
@@ -1141,6 +1171,7 @@ export type RuntimeMatchConfig = {
   thinkingLevel: SessionThinkingLevel;
   jevApiKey?: string;
   computerUseEnabled?: boolean;
+  codemodeEnabled?: boolean;
   pluginTools?: PluginToolDef[];
   pluginSkills?: PluginSkillDef[];
   trustedExtensions?: TrustedExtensionSpec[];
@@ -2003,6 +2034,7 @@ export class DesktopAgentRuntime {
   private fastMode = false;
   private jevApiKey?: string;
   private computerUseEnabled = false;
+  private codemodeEnabled = false;
   private activeProviderRetryAttempt = 0;
   private providerRetryInProgress = false;
   private suppressProviderRetryRunEnd = false;
@@ -2080,6 +2112,8 @@ export class DesktopAgentRuntime {
   private readonly activeTurnSettlements = new Map<string, Promise<void>>();
   /** The in-flight checkpoint was cut short by Stop/dispose, not by a failure. */
   private compactionAborted = false;
+  /** Why the latest checkpoint attempt failed, for the turn error it causes. */
+  private lastCompactionFailure?: string;
   /** Set by the `new_context` tool, consumed at the next turn boundary. */
   private pendingModelCompaction = false;
   /** One-shot request to finish the current turn at the next boundary. */
@@ -2119,6 +2153,7 @@ export class DesktopAgentRuntime {
     this.fastMode = opts.fastMode === true;
     this.jevApiKey = opts.jevApiKey;
     this.computerUseEnabled = opts.computerUseEnabled === true;
+    this.codemodeEnabled = opts.codemodeEnabled === true;
     this.host = opts.host;
     this.batchPlanner = new BatchPlanner(this.host, this.sessionId);
     this.onDiagnostic = opts.onDiagnostic ?? (() => undefined);
@@ -2859,6 +2894,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // Turning computer use on or off changes the tool list, so the runtime
       // is retired rather than left advertising a stale set.
       ["computerUseEnabled", this.computerUseEnabled === (config.computerUseEnabled === true)],
+      // Codemode changes the tool list as well.
+      ["codemodeEnabled", this.codemodeEnabled === (config.codemodeEnabled === true)],
       ["thinkingLevel", this.thinkingLevel === clampThinkingLevel(config.provider, config.thinkingLevel)],
       ["pluginTools", current === next],
       ["commandShell", safeJson(this.commandShell) === safeJson(config.commandShell)],
@@ -3224,6 +3261,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // report, and replaying a delegate's messages would both contradict that
       // and reintroduce the context cost delegation exists to avoid.
       if (m.parentToolCallId) continue;
+      // Calls a codemode script made are transcript children of the script's
+      // call. The model only ever saw the script's own result, and these rows
+      // have no issuing assistant call to attach to (ADR codemode-sandbox-boundary).
+      if (m.nestedParentToolCallId) continue;
       const timestamp = Date.parse(m.createdAt) || Date.now();
       if (m.role === "system" && m.modelSystem) {
         // An update recorded while a tool ran sits between the call and its
@@ -4207,6 +4248,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       agentLevel && this.jevApiKey
         ? [createJevClassifierTool(this.jevApiKey)]
         : [];
+    const codemodeTools: AgentTool[] =
+      agentLevel && this.codemodeEnabled ? [this.buildCodemodeTool()] : [];
 
     // Plugins contribute Agent tools by default. Plan/Goal modes only
     // expose plugins that declare plan-safe actions (ADR 0211); the
@@ -4313,6 +4356,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return [
       ...builtins,
       ...jevTools,
+      ...codemodeTools,
       askTool,
       ...pluginTools,
       ...skillTools,
@@ -4328,6 +4372,41 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    * declarations. Execution activation and Host permissions remain separate
    * from the provider-visible schemas.
    */
+  /**
+   * The opt-in `codemode` tool. Scripts call the session's active tools
+   * through the same hooks and Host path as direct calls; control,
+   * interactive and delegation tools stay out of reach.
+   */
+  private buildCodemodeTool(): AgentTool {
+    const tool = createSessionCodemodeTool({
+      sessionId: this.sessionId,
+      catalog: () => [...this.toolCatalog.values()],
+      active: () => this.activeTools().filter((tool) => this.isToolAllowedInMode(tool.name)),
+      excluded: CODEMODE_EXCLUDED_TOOL_NAMES,
+      hooks: {
+        beforeToolCall: (context) => this.beforeToolCall(context),
+        afterToolCall: (context) => this.afterToolCall(context),
+      },
+      model: () => this.model,
+      turnId: () => this.turnId,
+      emit: (envelope) => this.onEvent(envelope),
+      emitUsage: (usage, turnId) => this.emit({ type: "usage", usage }, turnId),
+      activeToolCalls: this.activeToolCalls,
+      settleBatch: (message) => this.batchPlanner.settleBatch(message),
+      provider: () => this.provider,
+      ...(this.jevApiKey ? { jevApiKey: this.jevApiKey } : {}),
+    });
+    return {
+      ...tool,
+      // Like a direct Read after a writable `Task` in the same message, a
+      // script waits for that delegate before any nested call runs.
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        await this.waitForBatchWritableDelegations(toolCallId, signal);
+        return tool.execute(toolCallId, params, signal, onUpdate);
+      },
+    };
+  }
+
   private guardSteeredTool(tool: AgentTool): AgentTool {
     return { ...tool, execute: async (id, args, signal, update) => {
       if (tool.name !== SUBAGENT_WAIT_TOOL_NAME && this.pendingSteering.size &&
@@ -4445,6 +4524,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       name === SUBAGENT_STOP_TOOL_NAME ||
       // A stage's completion must never hide behind ToolSearch.
       name === COMPLETE_STAGE_TOOL_NAME ||
+      // Codemode is opt-in; once enabled it is declared up front.
+      name === CODEMODE_TOOL_NAME ||
       (this.modeState.isAgentLevel()
         ? AGENT_CORE_TOOL_NAMES.has(name)
         : CONTRACT_CORE_TOOL_NAMES.has(name) || this.isPlanSafePluginTool(name))
@@ -7510,9 +7591,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }
       // Continuing would immediately issue the provider request that this
       // guard exists to prevent. The Agent wrapper converts this failure to
-      // the normal error/agent_end event sequence.
+      // the normal error/agent_end event sequence. The checkpoint's own cause
+      // rides along so the turn error says why (#2494).
+      const cause = this.lastCompactionFailure;
       throw new Error(
-        "CONTEXT_COMPACTION_FAILED: unable to create a checkpoint before the next model request",
+        `CONTEXT_COMPACTION_FAILED: unable to create a checkpoint before the next model request${cause ? `: ${cause}` : ""}`,
       );
     }
     context = this.rebuiltAgentContext();
@@ -7578,6 +7661,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.compactionInProgress) return false;
     this.compactionInProgress = true;
     this.compactionAborted = false;
+    this.lastCompactionFailure = undefined;
     const previous = this.agentActivity;
     this.setAgentActivity({
       phase: "compacting",
@@ -7629,6 +7713,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // A checkpoint cut short by the user's Stop is not a failed compaction;
     // it reports under the abort code so the turn reads as stopped.
     const aborted = this.compactionAborted;
+    if (!aborted) this.lastCompactionFailure = message;
     this.emit({
       type: "compaction_end",
       reason,
@@ -7805,6 +7890,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     retentionMode: CompactionRetentionMode,
     budget: ContextBudget,
     failureReason: CompactionFailureReason,
+    tailScale = 1,
   ): ContextCompactionRecord {
     const previousSummary = preparation.previousSummary
       ? boundedText(
@@ -7827,6 +7913,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       budget,
       maxSummaryChars,
       retentionMode,
+      tailScale,
     );
     return this.createCheckpoint(
       {
@@ -7864,6 +7951,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     budget: ContextBudget,
     maxSummaryChars: number,
     retentionMode: CompactionRetentionMode,
+    tailScale: number,
   ): AgentMessage[] {
     const summaryTokens = Math.ceil(maxSummaryChars / 4);
     const available = Math.max(
@@ -7879,7 +7967,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     );
     return selectRecentTail(
       preparation.messagesToSummarize,
-      Math.min(target, available),
+      Math.max(1, Math.floor(Math.min(target, available) * tailScale)),
       { latestUserGoal: retentionMode === "active_turn" },
     );
   }
@@ -8124,36 +8212,45 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       return false;
     }
 
-    const checkpoint = this.createFallbackCheckpoint(
-      fallbackPreparation,
-      throughMessageId,
-      Math.max(
-        256,
-        Math.min(
-          COMPACTION_FALLBACK_MAX_SUMMARY_CHARS,
-          Math.floor(budget.hardLimit * 0.75),
+    // The tail is sized from the local estimate, but the install check below
+    // measures the calibrated one. A provider whose tokenizer counts more than
+    // the estimate (CJK text, for one) makes the first window too large, and
+    // failing here leaves every later turn at the same hard limit (#2494).
+    // Halve the window until it fits; the newest message is always kept.
+    for (let tailScale = 1; ; tailScale /= 2) {
+      const checkpoint = this.createFallbackCheckpoint(
+        fallbackPreparation,
+        throughMessageId,
+        Math.max(
+          256,
+          Math.min(
+            COMPACTION_FALLBACK_MAX_SUMMARY_CHARS,
+            Math.floor(budget.hardLimit * 0.75),
+          ),
         ),
-      ),
-      retentionMode,
-      budget,
-      failureReason,
-    );
-    const persisted = await this.persistCheckpoint(
-      checkpoint,
-      reason,
-      willRetry,
-      true,
-      "retained_tail",
-    );
-    if (persisted === "persisted") return true;
-    if (persisted === "oversized") {
-      this.emitCompactionFailure(
-        reason,
-        checkpoint.tokensBefore,
-        "Automatic context recovery could not reduce the retained context below the safe model budget",
+        retentionMode,
+        budget,
+        failureReason,
+        tailScale,
       );
+      const persisted = await this.persistCheckpoint(
+        checkpoint,
+        reason,
+        willRetry,
+        true,
+        "retained_tail",
+      );
+      if (persisted === "persisted") return true;
+      if (persisted === "failed") return false;
+      if (tailScale <= COMPACTION_FALLBACK_MIN_TAIL_SCALE) {
+        this.emitCompactionFailure(
+          reason,
+          checkpoint.tokensBefore,
+          "Automatic context recovery could not reduce the retained context below the safe model budget",
+        );
+        return false;
+      }
     }
-    return false;
   }
 
   private async generateCompaction(

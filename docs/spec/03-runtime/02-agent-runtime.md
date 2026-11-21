@@ -735,9 +735,16 @@ The complete transcript remains durable and visible, while the next model
 request receives only that recovery checkpoint and applicable tail. The
 lifecycle event marks this as `fallback: "retained_tail"`, and the checkpoint's
 mark carries the same `fallback`, so the renderer shows a warning and labels
-the transcript row as a failed summary rather than a false success. If the
-fallback cannot be prepared, persisted, or kept below the safe budget, the user
-row and an assistant error remain durable and no provider request starts.
+the transcript row as a failed summary rather than a false success. The window
+is sized from the local estimate while installation re-estimates with the
+calibrated one, so a window the calibrated estimate still puts at or above the
+safe budget is halved and retried, down to 1/128 of its first size, before the
+recovery gives up (issue #2494). If the fallback cannot be prepared, persisted,
+or kept below the safe budget, the user row and an assistant error remain
+durable and no provider request starts. That `CONTEXT_COMPACTION_FAILED` error
+is classified as local (`details.origin: "local"`), so it carries no stream
+timings or HTTP status from an earlier request, and its message names the
+checkpoint failure that caused it.
 Provider-reported context overflow is the last recovery layer: omit the failed
 assistant from model context, compact once, and retry once. A second overflow
 remains terminal and is reported as `CONTEXT_TOO_LARGE`: the error classifier

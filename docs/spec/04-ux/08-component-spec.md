@@ -658,8 +658,17 @@ visually distinct from list content.
   removal of a folder that still owns chats. Every other folder row carries a
   Set as Primary action that promotes it: the row moves to the top, the Primary
   tag moves with it, and the host stores the promoted folder as the group's
-  primary root on save. A remote project keeps its host-owned binding and shows
-  no promotion action. Background session or run-status updates
+  primary root on save. When a single-root project's folder was moved
+  externally and the old folder no longer exists, adding its replacement,
+  promoting it, and removing the stale row in one save relocates the existing
+  project instead of creating a replacement with orphaned chats. Saving the
+  replacement next to the stale row first and removing the stale row in a
+  later save relocates the same way. If the old folder still exists, the save
+  is an ordinary swap and the old project keeps its chats. A non-empty
+  independent project at the replacement path rejects the one-save repair
+  unchanged and leaves the two-step repair on the ordinary detach. A remote
+  project keeps its host-owned binding and shows no promotion action.
+  Background session or run-status updates
   must preserve unsaved name, folder, and primary edits in the open editor.
   Git repository as equal filled tiles without strokes (D297); the active source
   uses a deeper tile, not a selected border. A repository URL reuses the clone
