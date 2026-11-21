@@ -9,7 +9,12 @@ import { spawn } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
-const { buildRemoteHostSupervisorScript, parseRemoteHostReady, ensureRemoteHostReady } = await import("../electron/main/remote/remote-host-supervisor.ts");
+const {
+  buildRemoteHostSupervisorScript,
+  isCompatibleRemoteHostVersion,
+  parseRemoteHostReady,
+  ensureRemoteHostReady,
+} = await import("../electron/main/remote/remote-host-supervisor.ts");
 const VERSION = "0.15.1-beta.5";
 const ready = { hostId: "durable-host", host: "127.0.0.1", port: 45678, version: VERSION };
 const line = value => `PI_HOST_READY ${JSON.stringify(value)}\n`;
@@ -26,6 +31,61 @@ test("readiness validates loopback, integral port, identity and version without 
   assert.throws(() => parseRemoteHostReady(line(ready), { version: VERSION, expectedHostId: "other" }), { errorCode: "HOST_AUTH_FAILED", retriable: false });
   assert.throws(() => parseRemoteHostReady(line({ ...ready, version: "older" }), { version: VERSION, expectedHostId: "other" }), { errorCode: "HOST_AUTH_FAILED", retriable: false }, "identity mismatch must not authorize automatic upgrade");
   assert.throws(() => buildRemoteHostSupervisorScript(0));
+});
+
+test("readiness checks semver major.minor compatibility and preserves identity precedence", () => {
+  const readyFor = version => line({ ...ready, version });
+
+  // Exact match (with optional leading v) passes.
+  assert.equal(isCompatibleRemoteHostVersion("0.23.0", "v0.23.0"), true);
+  assert.deepEqual(
+    parseRemoteHostReady(readyFor("0.23.0"), { version: "v0.23.0", expectedHostId: ready.hostId }),
+    { ...ready, version: "0.23.0" },
+  );
+
+  // Same major.minor with different patch or prerelease suffixes passes.
+  for (const [runningVersion, expectedVersion] of [
+    ["0.23.1-pr.6", "0.23.1-pr.12"],
+    ["0.23.0", "0.23.2"],
+    ["0.23.1-pr.6", "0.23.0"],
+    ["v0.23.0", "0.23.1-pr.7"],
+  ]) {
+    assert.equal(isCompatibleRemoteHostVersion(runningVersion, expectedVersion), true);
+    assert.deepEqual(
+      parseRemoteHostReady(readyFor(runningVersion), { version: expectedVersion, expectedHostId: ready.hostId }),
+      { ...ready, version: runningVersion },
+    );
+  }
+
+  // Different minor or major fails with non-retriable HOST_VERSION_MISMATCH.
+  for (const [runningVersion, expectedVersion] of [
+    ["0.22.9", "0.23.0"],
+    ["0.24.0", "0.23.0"],
+    ["1.23.0", "0.23.0"],
+  ]) {
+    assert.equal(isCompatibleRemoteHostVersion(runningVersion, expectedVersion), false);
+    assert.throws(
+      () => parseRemoteHostReady(readyFor(runningVersion), { version: expectedVersion, expectedHostId: ready.hostId }),
+      { errorCode: "HOST_VERSION_MISMATCH", retriable: false },
+    );
+  }
+
+  // Non-semver strings fall back to exact normalized equality.
+  assert.equal(isCompatibleRemoteHostVersion("other", "0.23.0"), false);
+  assert.equal(isCompatibleRemoteHostVersion("custom", "custom"), true);
+  assert.throws(
+    () => parseRemoteHostReady(readyFor("other"), { version: "0.23.0", expectedHostId: ready.hostId }),
+    { errorCode: "HOST_VERSION_MISMATCH", retriable: false },
+  );
+
+  // Host ID mismatch still takes precedence over minor/major version mismatch.
+  for (const runningVersion of ["0.22.9", "1.23.0"]) {
+    assert.throws(
+      () => parseRemoteHostReady(readyFor(runningVersion), { version: "0.23.0", expectedHostId: "different-host" }),
+      { errorCode: "HOST_AUTH_FAILED", retriable: false },
+      "identity mismatch must take precedence over version mismatch",
+    );
+  }
 });
 
 test("supervisor uses bounded stdin execution and refuses nonzero status", async () => {

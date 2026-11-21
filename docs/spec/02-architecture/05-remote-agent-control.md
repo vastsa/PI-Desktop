@@ -187,10 +187,11 @@ that other clients may use. Readiness is used for offline browse/files/shell
 discovery; tool execution itself never reconnects and replays a failed call.
 
 **Version realignment.** A paired Host is pinned to the release that installed
-it, so a desktop upgrade leaves it behind. Readiness therefore compares the
-running Host against *this desktop's* release — never against the version
-recorded at pairing time — and the RACP handshake is checked for the additive
-workspace services a remote project needs. On a mismatch the desktop re-runs the
+it, so a desktop upgrade can leave it behind. Readiness therefore validates
+semver `major.minor` compatibility of the running Host against *this desktop's*
+release — never against the version recorded at pairing time — while the live
+RACP handshake is checked for additive workspace capabilities within a minor
+series. On a `major.minor` or capability mismatch the desktop re-runs the
 same verified SSH install from the stored SSH descriptor and the encrypted login
 password, adopts the forward it opened, and re-pairs in place (ADR 0327).
 Automatic attempts are limited to one per release per host with a cooldown after

@@ -4,15 +4,44 @@ import type { SshTransport } from "./ssh-transport.js";
 
 export type RemoteHostSupervisorOptions = {
   /**
-   * Release the running Host must report. It is the release this desktop
-   * expects — not the version recorded when the host was paired — so a Host
-   * left behind by an upgrade is refused here and handed to realignment
+   * Release this desktop expects — not the version recorded when the host was
+   * paired. Readiness checks `major.minor` compatibility so patch and
+   * prerelease builds within the same minor series reuse a running Host while
+   * live RACP capability checks trigger realignment for additive capabilities
    * (ADR 0327).
    */
   version: string;
   expectedHostId?: string;
   readyTimeoutSec?: number;
 };
+
+const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+function normalizeVersion(version: string): string {
+  return version.trim().replace(/^v/, "");
+}
+
+function parseSemverMajorMinor(normalizedVersion: string): { major: number; minor: number } | null {
+  const match = SEMVER_PATTERN.exec(normalizedVersion);
+  if (!match) return null;
+  return { major: Number(match[1]), minor: Number(match[2]) };
+}
+
+/**
+ * Readiness accepts running Hosts in the same `major.minor` series so patch
+ * bumps and PR prereleases do not force SSH reinstall/re-pair; live RACP
+ * capability checks gate additive features within a minor series.
+ */
+export function isCompatibleRemoteHostVersion(runningVersion: string, expectedVersion: string): boolean {
+  const normalizedRunning = normalizeVersion(runningVersion);
+  const normalizedExpected = normalizeVersion(expectedVersion);
+  const running = parseSemverMajorMinor(normalizedRunning);
+  const expected = parseSemverMajorMinor(normalizedExpected);
+  if (running && expected) {
+    return running.major === expected.major && running.minor === expected.minor;
+  }
+  return normalizedRunning === normalizedExpected;
+}
 
 function failure(message: string, errorCode = "HOST_BOOTSTRAP_FAILED"): Error {
   return Object.assign(new Error(message), {
@@ -116,7 +145,7 @@ export function parseRemoteHostReady(stdout: string, options: RemoteHostSupervis
   if (options.expectedHostId !== undefined && hostId !== options.expectedHostId) {
     throw failure("Remote Host identity changed", "HOST_AUTH_FAILED");
   }
-  if (version.replace(/^v/, "") !== options.version.replace(/^v/, "")) {
+  if (!isCompatibleRemoteHostVersion(version, options.version)) {
     throw failure("the running remote Host does not match the release this Desktop expects", "HOST_VERSION_MISMATCH");
   }
   return { hostId, host, port, version };

@@ -17,13 +17,18 @@ in the RACP handshake.
 
 ## Decision
 
-1. Readiness compares the running Host against the release this desktop expects,
-   never against the pairing-time record, and a saved Host ID is validated first,
+1. Readiness validates semver `major.minor` compatibility of the running Host
+   against the release this desktop expects (falling back to exact normalized
+   equality for non-semver strings), never against the pairing-time record, so
+   patch updates and PR prereleases within the same minor series reuse a running
+   Host without forcing an SSH reinstall. A saved Host ID is validated first,
    with an identity mismatch staying `HOST_AUTH_FAILED` and never authorizing
    automatic realignment.
 2. After `connection/initialize`, live handshake capabilities are checked once per
-   connection; a Host that advertises no workspace tools and files, or reports no
-   capabilities at all, fails closed with `HOST_VERSION_MISMATCH`.
+   connection; a Host that lacks required additive capabilities (such as
+   workspace tools, files, or git services within the same minor series), or
+   reports no capabilities at all, fails closed with `HOST_VERSION_MISMATCH` and
+   triggers realignment.
 3. On that failure the boot layer re-runs the same verified SSH bootstrap the
    pairing path uses, from the stored descriptor and encrypted login password,
    adopts the forward it opened, and reconnects with the refreshed record. No new
