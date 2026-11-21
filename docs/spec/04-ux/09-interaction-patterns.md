@@ -1372,6 +1372,13 @@ Running turns and pending approvals continue to gate the controls.
 - Editable controls (`input`, `textarea`, `select`, and
   `[contenteditable]`) preserve normal text editing and `Cmd/Ctrl+A/C/V`
   behavior.
+- Editable text controls in the main window expose a native context menu:
+  Undo, Redo, Cut, Copy, Paste, and Select All. Availability follows Electron's
+  edit flags; native role labels use Electron/OS localization. The menu targets
+  the originating window and frame and retains the current text selection.
+- Menu Paste uses the existing paste event path, including composer text and
+  image/file attachments. Read-only controls and renderer-owned context menus
+  retain their existing behavior.
 - Transcript prose, rendered Markdown, code blocks, and tool input/output
   remain text-selectable for inspection and copying.
 - Interactive controls nested inside selectable content remain

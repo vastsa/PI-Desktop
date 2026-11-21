@@ -2844,3 +2844,28 @@ file, then reject a missing native session. The test asserts no native session
 or scratch RPC reaches Desktop storage. `native-workspace-files.test.mjs`
 additionally rejects replaced sidecars. No provider execution or native user
 session data is used.
+
+## E2E-CODEMODE-sandboxed-nested-calls
+
+- Entry: `pnpm --filter @pi-desktop/agent-runtime test -- src/codemode scripts/codemode-bundle.test.mjs`
+  and `node --test apps/desktop/test/codemode-settings-user-path.test.mjs
+  apps/desktop/test/jev-session-launch.test.mjs`.
+- Preconditions: deterministic localhost Responses fixture and a fake Host; no
+  external model account. The packaged probe runs from a temporary directory
+  with no reachable node_modules.
+- Steps: with the setting off, confirm `codemode` is not declared. Turn it on;
+  run a script that reads a file, calls a never-activated on-demand tool, lists
+  models and requests a sub-model completion. Activate a plugin tool with
+  ToolSearch and call it from a script while Host denies Bash. Stop a script
+  whose nested Bash call is held by Host. Replay a transcript that contains a
+  nested row. Toggle the Settings switch.
+- Expected: nested Host calls carry `<callId>/<n>` and `nestedParentToolCallId`
+  only; the inactive tool is absent from the sandbox; Host denial rejects inside
+  the script; Stop sends `tools.abort` for the nested call; only the script
+  result reaches the next request; model metadata carries no credential or
+  header; each physical request emits distinct identified usage; nested rows
+  are not replayed; the packaged worker and WASM run outside node_modules and a
+  missing asset fails the script; the switch is off by default and persists
+  `codemodeEnabled`, and Electron main forwards it only in Agent mode.
+- Specs: `03-runtime/03-tools-and-permissions.md` §2.2, `04-ux/06-settings-ia.md`.
+- Acceptance: C / E / Security / Quality. Milestone: M6+. Status: automated.

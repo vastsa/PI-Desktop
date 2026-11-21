@@ -1744,6 +1744,8 @@ sklm: {
     enterToSendDesc: "Kapalı: göndermek için ⌘/Ctrl+Enter.",
     backgroundJobContinuation: "Arka plan görevlerinden sonra devam et",
     backgroundJobContinuationDesc: "İstenen yerel test veya derlemeler bitince mevcut izinlerle konuşmaya devam et. Varsayılan olarak kapalıdır. Kapatmak bekleyen devamları iptal eder, işlemleri durdurmaz.",
+    codemode: "Codemode betikleri",
+    codemodeDesc: "Asistanın araç ve model çağrılarını toplu yürütmek, zincirlemek veya süzmek için yalıtılmış bir sanal alanda kısa JavaScript çalıştırmasına izin verir; konuşmaya yalnızca nihai sonuç girer. Her iç içe çağrı yine izin modunuzu ve onaylarınızı kullanır. Varsayılan olarak kapalı.",
     infiniteProviderRetry: "Başarılı olana kadar yeniden dene",
     infiniteProviderRetryDesc: "Ağ ve geçici sağlayıcı hataları istek başarılı olana kadar yeniden denenir. Çalışmayı yine durdurabilirsiniz; açıkken API kullanımı sürebilir.",
     smoothStreaming: "Düzgün akış",

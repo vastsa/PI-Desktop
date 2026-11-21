@@ -449,8 +449,12 @@ Card order is **Session defaults → Execution → Computer use**.
   anchored-menu surface rather than a platform-drawn `<select>` popup, so every
   Settings picker opens the same way. The closed trigger sizes to the current
   label, capped by the settings control column.
-- **Execution** card: the infinite provider retry switch and the app-wide
-  **Scheduled tasks** switch. The retry switch is off by default and explains
+- **Execution** card: the background-job continuation switch, the
+  **Codemode scripts** switch, the infinite provider retry switch and the
+  app-wide **Scheduled tasks** switch. The Codemode switch persists as optional
+  `AppSettings.codemodeEnabled`, off when absent; it offers the Agent-mode
+  `codemode` tool and states that every nested call still uses the permission
+  mode and approvals (ADR codemode-sandbox-boundary). The retry switch is off by default and explains
   that network/transient provider failures keep retrying until success; Stop
   still cancels the turn and the setting may continue API usage while enabled.
   The scheduled-tasks switch persists as optional

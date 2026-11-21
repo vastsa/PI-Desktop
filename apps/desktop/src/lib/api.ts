@@ -468,6 +468,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
     jevEnabled: (settings as { jevEnabled?: unknown }).jevEnabled === true,
+    codemodeEnabled: (settings as { codemodeEnabled?: unknown }).codemodeEnabled === true,
     defaultCommandShell: isCommandShellId(
       (settings as { defaultCommandShell?: unknown }).defaultCommandShell,
     )
@@ -550,6 +551,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
     jevEnabled?: unknown;
+    codemodeEnabled?: unknown;
     smoothStreaming?: unknown;
     sidebarRunningIndicators?: unknown;
     sidebarRunningBadge?: unknown;
@@ -614,6 +616,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     typeof value.jevEnabled !== "boolean"
   ) {
     throw Object.assign(new Error("jevEnabled is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "codemodeEnabled") &&
+    typeof value.codemodeEnabled !== "boolean"
+  ) {
+    throw Object.assign(new Error("codemodeEnabled is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }

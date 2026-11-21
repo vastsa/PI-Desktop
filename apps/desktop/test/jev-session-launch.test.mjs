@@ -146,6 +146,13 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
     assert.equal("jevApiKey" in plan.sidecarParams, false);
     assert.deepEqual(keyReads, []);
 
+    // Codemode is opt-in and Agent-only (ADR codemode-sandbox-boundary).
+    assert.equal("codemodeEnabled" in disabledAgent.sidecarParams, false);
+    const codemodeAgent = await launch("agent", false, { codemodeEnabled: true });
+    assert.equal(codemodeAgent.sidecarParams.codemodeEnabled, true);
+    const codemodePlan = await launch("plan", false, { codemodeEnabled: true });
+    assert.equal("codemodeEnabled" in codemodePlan.sidecarParams, false);
+
     failJevSecretRead = true;
     const unavailable = await launch("agent", true);
     assert.equal("jevApiKey" in unavailable.sidecarParams, false);

@@ -26,6 +26,11 @@ in `docs/project/pi-150-adoption.md` and updated for 1.5.2 in
   detailed versioned `User-Agent`, while `attribution: null` suppresses
   pi-agent-core's default Pi attribution headers for OpenRouter, NVIDIA, and
   OpenCode requests.
+- `@earendil-works/pi-codemode` (same release) supplies only the QuickJS-WASI
+  sandbox behind the opt-in `codemode` tool. Agent Runtime's own adapter
+  dispatches every nested call through the session's tool pipeline; the
+  coding-agent codemode extension and `AgentSession` are not used (ADR
+  codemode-sandbox-boundary).
 - Rust `host-core` remains the sole owner of SQLite and authoritative durable
   session state. The Node sidecar asks it to persist checkpoints and tool
   outcomes through the existing RPC contract.

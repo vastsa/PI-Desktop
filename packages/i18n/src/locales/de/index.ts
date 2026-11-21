@@ -1742,6 +1742,8 @@ sklm: {
     "enterToSendDesc": "Aus: Zum Senden ⌘/Strg+Eingabe drücken.",
     backgroundJobContinuation: "Nach Hintergrundaufgaben fortfahren",
     backgroundJobContinuationDesc: "Lokale Gespräche nach angeforderten Tests oder Builds mit den bestehenden Berechtigungen fortsetzen. Standardmäßig aus. Ausschalten verwirft wartende Fortsetzungen, beendet aber keine Prozesse.",
+    codemode: "Codemode-Skripte",
+    codemodeDesc: "Erlaubt dem Assistenten, kurzes JavaScript in einer isolierten Sandbox auszuführen, um Werkzeug- und Modellaufrufe zu bündeln, zu verketten oder zu filtern, sodass nur das Endergebnis ins Gespräch gelangt. Jeder verschachtelte Aufruf nutzt weiterhin Ihren Berechtigungsmodus und Ihre Freigaben. Standardmäßig aus.",
     "infiniteProviderRetry": "Bis zum Erfolg wiederholen",
     "infiniteProviderRetryDesc": "Netzwerk- und vorübergehende Anbieterfehler werden bis zum Erfolg wiederholt. Du kannst den Lauf weiterhin stoppen; der API-Verbrauch kann fortlaufen.",
     "smoothStreaming": "Sanftes Streaming",
