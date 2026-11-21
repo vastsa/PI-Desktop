@@ -105,20 +105,18 @@ export function registerPluginUiIpc({
     },
   );
   /**
-   * The shell's answer to one composer suggestion (`pi.composer.suggest`).
-   *
-   * Nothing is refused here: the offer it answers may already have been
-   * replaced, dropped, or timed out, and a late answer to a forgotten offer is
-   * simply not applied. `ok` therefore says the message was well formed, not
-   * that a suggestion is on screen.
+   * The main shell answers probes and offers. A well-formed late reply is
+   * acknowledged even if main has already forgotten the request.
    */
-  handle(
+  registrar.handleWithEvent(
     IPC.invoke.pluginComposerSuggestionResult,
     async (
+      event,
       payload:
-        | { requestId?: string | null; shown?: boolean | null; reason?: string | null }
+        | { requestId?: unknown; shown?: unknown; reason?: unknown; revision?: unknown }
         | null,
     ) => {
+      registrar.assertMainWindowSender(event);
       const requestId = typeof payload?.requestId === "string" ? payload.requestId.trim() : "";
       if (!requestId) throw new Error("INVALID_ARGUMENT: requestId is required");
       const reason =
@@ -126,10 +124,15 @@ export function registerPluginUiIpc({
         (PLUGIN_COMPOSER_SUGGESTION_REFUSALS as readonly string[]).includes(payload.reason)
           ? (payload.reason as PluginComposerSuggestionRefusal)
           : undefined;
+      const revision = typeof payload?.revision === "string" &&
+        /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(payload.revision)
+        ? payload.revision
+        : undefined;
       settleComposerSuggestion({
         requestId,
         shown: payload?.shown === true,
         ...(reason ? { reason } : {}),
+        ...(revision ? { revision } : {}),
       });
       return { ok: true };
     },

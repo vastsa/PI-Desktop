@@ -180,6 +180,7 @@ import {
   estimateTokens,
 } from "./pi-runtime-estimates.js";
 import { convertToLlm } from "./pi-runtime-messages.js";
+import { withPluginModelContext, type ReadPluginModelContext } from "./plugin-model-context.js";
 import type {
   CompactionEntry,
   CompactionPreparation,
@@ -286,6 +287,7 @@ import {
   openCodeEndpointFromProvider,
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
+import { withCodexCacheableInstructions } from "./codex-cacheable-instructions.js";
 import { withFastModeOptions } from "./fast-mode.js";
 import { withSessionAffinityOptions } from "./session-affinity.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
@@ -1043,6 +1045,7 @@ export type AgentRuntimeOptions = {
   modeDefinition?: ModeDefinition;
   /** Durable host turn ID for the current prompt, used by plan identity. */
   turnId?: string;
+  readPluginModelContext?: ReadPluginModelContext;
   provider: RuntimeProviderConfig;
   thinkingLevel: SessionThinkingLevel;
   /** Persisted opt-in for retrying transient provider failures until success. */
@@ -2291,7 +2294,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // one-shot requests build their own options and keep the default.
         const hookedOptions = withFastModeOptions(
           withSessionAffinityOptions(
-            this.withExtensionProviderHooks(requestOptions, m),
+            this.withExtensionProviderHooks(
+              withCodexCacheableInstructions(requestOptions, m),
+              m,
+            ),
             {
               provider: this.provider,
               api: m.api,
@@ -2315,31 +2321,48 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           maxTokens: clampOutputToContext(m, requestContext, hookedOptions.maxTokens),
         };
         const usageTurnId = this.turnId;
+        const openAttempt = (retryOptions: SimpleStreamOptions, input = requestContext) => {
+          // Each network attempt owns its idle clock and abort signal.
+          const stallAbort = new AbortController();
+          const timedOptions = {
+            ...retryOptions,
+            signal: AbortSignal.any([
+              ...(retryOptions.signal ? [retryOptions.signal] : []),
+              stallAbort.signal,
+            ]),
+            ...(input !== requestContext && retryOptions.maxTokens !== undefined
+              ? { maxTokens: clampOutputToContext(m, input, retryOptions.maxTokens) } : {}),
+          };
+          const stream = accountModelStream(m, () =>
+            this.thinkingLevel === "omit"
+              ? this.models.stream(omitThinkingModel(m), input, timedOptions)
+              : this.models.streamSimple(m, input, timedOptions), {
+              providerId: this.provider.id,
+              nativeCost: this.provider.modelConfig?.nativeCost,
+              onUsage: (usage) => this.emit({ type: "usage", usage }, usageTurnId),
+            });
+          return withStreamIdleTimeout(stream, m, streamIdleTimeoutMs(), () => stallAbort.abort());
+        };
+        const readPluginContext = opts.readPluginModelContext;
         const retryStream = createProviderRetryStream(
           m,
           requestContext,
           attemptOptions,
-          (retryOptions) => {
-            // Each network attempt owns its idle clock and abort signal.
-            // Deliberate backoff must not look like a stalled provider stream.
-            const stallAbort = new AbortController();
-            const timedOptions = {
-              ...retryOptions,
-              signal: AbortSignal.any([
-                ...(retryOptions.signal ? [retryOptions.signal] : []),
-                stallAbort.signal,
-              ]),
-            };
-            const stream = accountModelStream(m, () =>
-              this.thinkingLevel === "omit"
-                ? this.models.stream(omitThinkingModel(m), requestContext, timedOptions)
-                : this.models.streamSimple(m, requestContext, timedOptions), {
-                providerId: this.provider.id,
-                nativeCost: this.provider.modelConfig?.nativeCost,
-                onUsage: (usage) => this.emit({ type: "usage", usage }, usageTurnId),
-              });
-            return withStreamIdleTimeout(stream, m, streamIdleTimeoutMs(), () => stallAbort.abort());
-          },
+          readPluginContext && usageTurnId && this.activeTurnSettlements.has(usageTurnId)
+            ? async (retryOptions) => {
+                const signal = retryOptions.signal;
+                const contributions = await readPluginContext({
+                  sessionId: this.sessionId, turnId: usageTurnId,
+                  modelKey: `${this.provider.id}/${m.id}`,
+                }, signal).catch(() => undefined);
+                signal?.throwIfAborted();
+                const messages = this.turnId === usageTurnId && !this.runCancelled
+                  ? withPluginModelContext(requestContext.messages, contributions)
+                  : requestContext.messages;
+                return openAttempt(retryOptions, messages === requestContext.messages
+                  ? requestContext : { ...requestContext, messages });
+              }
+            : openAttempt,
           {
             claim: (error, phase) => this.claimProviderRetry(error, phase),
             headers: () => this.providerRetryHeaders,
@@ -6120,7 +6143,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           delegations.length === 0
             ? "No subagents have been started in this session."
             : delegations
-                .map((record) => `- ${formatDelegationHeartbeat(record)}; job=${JSON.stringify({ kind: "delegation", id: record.delegationId })}`)
+                .map((record) => `- ${formatDelegationHeartbeat(record)}; delegationIds=${JSON.stringify([record.delegationId])}`)
                 .join("\n"),
           this.delegationChains.resumableBlock({ runningDelegationIds }),
         ]

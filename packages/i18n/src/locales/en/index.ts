@@ -384,6 +384,9 @@ deleteRunningSessionBlocked: "Stop the running session before deleting it.",
     placeholderHomeHint: "Type / for commands · @ for files",
     placeholderShortcut: "Shift+Enter for newline · Use Send to submit",
     suggestionHint: "Tab to accept · Esc to ignore",
+    suggestionPosition: "{{current}} of {{total}}",
+    suggestionPrevious: "Previous suggestion",
+    suggestionNext: "Next suggestion",
     addFiles: "Add files",
     filesAttached: "Added {{count}} item(s) to the draft",
     filesPasted: "Saved {{count}} pasted file(s) to the session scratch folder",
@@ -2172,7 +2175,7 @@ sklm: {
     createFolderRequired: "Add at least one folder.",
     active: "Active",
     switchProject: "Switch project",
-    noProject: "No project",
+    noProject: "Temporary chat",
     noProjectHint: "Temporary chat outside any project",
     clone: "Clone git project",
     cloneUrlPlaceholder: "https://github.com/org/repo.git",
@@ -2799,6 +2802,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "fs.delete.workspace": "Delete project files (legacy)",
       "agent.tool.register": "Add tools for the agent",
       "agent.prompt.inject": "Adjust agent instructions",
+      "agent.modelContext": "Contribute text to model requests",
       "agent.complete": "Run a one-shot completion with your models",
       "composer.transform": "Transform text in the Composer",
       "composer.suggest": "Offer a suggestion in the Composer",
@@ -2827,6 +2831,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "browser.cdp": "Control the work-panel browser",
       "usage.read": "Read usage statistics",
       "session.autoTitle": "Read first-turn title context and update automatic titles",
+      "session.observe": "Observe session turn and message activity",
       "session.read.all": "Read any conversation, including yours",
       "session.update.all": "Rewrite any conversation, including its messages",
       "session.delete.all": "Delete any conversation, including yours",
@@ -2852,6 +2857,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
         "Declared before file scopes existed, so it can now only delete files it wrote itself.",
       "agent.tool.register": "Lets the AI call extra tools provided by this plugin.",
       "agent.prompt.inject": "Can change instructions sent to the AI agent.",
+      "agent.modelContext": "Can supply additional reference text to the model during a turn. Does not grant transcript access or control over tool approvals.",
       "agent.complete":
         "Can spend your model quota on a one-shot completion. The plugin never receives your API keys.",
       "composer.transform":
@@ -2890,6 +2896,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
         "Can navigate the work-panel browser, read the page, run JavaScript, and send allowlisted Chrome DevTools commands. Cookie and storage methods are blocked.",
       "usage.read":
         "Lists completed-turn usage facts (paginated token counters and session titles). No message content is included.",
+      "session.observe": "Receives identifiers when a session turn starts or a user submission is saved within the plugin's project scope. Does not receive message contents.",
       "session.autoTitle":
         "Can read only the first prompt and reply for eligible sessions, then replace an automatic title if it has not been manually changed. It cannot read the full transcript.",
       "session.read.all":

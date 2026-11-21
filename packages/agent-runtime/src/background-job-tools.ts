@@ -13,7 +13,7 @@ import type { RuntimeHost } from "./host-client.js";
 const jobSchema = Type.Object({
   kind: Type.Union([Type.Literal("bash"), Type.Literal("delegation")]),
   id: Type.String({ minLength: 1 }),
-}, { additionalProperties: false, description: "An explicit job returned by Bash, Task or TaskList. For delegation jobs, omit delegationIds or pass an empty array or only this job's id; mode and minCompleted are ignored. For Bash jobs, omit delegationIds or pass an empty array; mode may be omitted, all or any, and minCompleted may be omitted or 1." });
+}, { additionalProperties: false, description: "An explicit job returned by Bash or Task. For delegation jobs, a delegationIds array that selects other subagents takes precedence over job.id and uses the multi-target wait; an omitted/empty delegationIds or an array of only this job's id targets just this job and ignores mode and minCompleted. For Bash jobs, omit delegationIds or pass an empty array; mode may be omitted, all or any, and minCompleted may be omitted or 1." });
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -27,9 +27,16 @@ function target(params: unknown): JobReference | undefined {
     throw new Error("job must contain a kind (bash or delegation) and a nonempty id");
   }
   if (job.kind === "delegation") {
-    if (params.delegationIds !== undefined && (!Array.isArray(params.delegationIds) ||
-        params.delegationIds.some(id => id !== job.id))) {
-      throw new Error("A delegation job targets one subagent: omit delegationIds or pass only job.id. To select multiple subagents, omit job and use delegationIds.");
+    if (params.delegationIds !== undefined) {
+      if (!Array.isArray(params.delegationIds) ||
+          params.delegationIds.some(id => typeof id !== "string")) {
+        throw new Error("delegationIds must be an array of delegation ids. To select subagents, drop the job field and retry with delegationIds: [...]; to target this one job, omit delegationIds.");
+      }
+      // Strict Responses-style models send the job returned by Task next to
+      // every id they want to collect. The multi-target path already honors
+      // delegationIds, so treat that conflict as "no job" rather than
+      // rejecting an input the delegate can handle (#2188 residual, #2487).
+      if (params.delegationIds.some(id => id !== job.id)) return undefined;
     }
   } else if (
     (params.delegationIds !== undefined && (!Array.isArray(params.delegationIds) || params.delegationIds.length !== 0)) ||

@@ -835,7 +835,8 @@ window; opening a normal panel afterward must still work.
       the same tool in the existing session without searching again.
   11. Repeat with the restarted stub omitting that tool, and with the server
       disabled or scoped away before recovery. Also try concurrent calls after
-       a disconnect and a server that fails its recovery handshake.
+      a disconnect and a server that fails its recovery handshake. Restore that
+      server and call the same tool again without an edit or Test connection.
   12. Connect the HTTP server, stop it, and refresh the MCP settings page.
       Test connection again after restarting the server.
 - **Expected**:
@@ -843,8 +844,9 @@ window; opening a normal panel afterward must still work.
     concurrent calls share one handshake. The fresh server list must still
     advertise the tool. Removed tools and inactive servers are refused without
     executing a call; inactive servers are not reconnected. Recovery failure
-    returns `UNAVAILABLE` and does not trigger repeated handshake attempts until
-    an edit or Test connection. A failed tool execution is never replayed.
+    returns `UNAVAILABLE` and is not redialled by session assembly. A later
+    explicit tool call retries the failed handshake and succeeds after the
+    server recovers. A failed tool execution is never replayed.
   - Two servers import; the third is listed as skipped with "a stdio server
      requires command". The LAN HTTP entry lands as `http` with its url intact,
      and the editor shows the unencrypted-connection warning.
@@ -3789,6 +3791,21 @@ registry-only installation and credential isolation.
   `apps/desktop/test/plugin-session-access.test.mjs`, and the plugin-process
   path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
   Electron scenario remains a manual validation run.
+
+## E2E-PLUGIN-bundled-enhancements-defaults
+
+- **Preconditions**: A fresh Desktop profile with bundled Official Enhancements
+  and a ready model. Use a synthetic completion provider in automated tests.
+- **Steps**: Open the Enhancements settings, complete a turn in a new session,
+  then switch titles off and prompt enhancement on. Reload the plugin.
+- **Expected**: Only titles start enabled; the first completed turn can replace
+  the fallback title without reading the full transcript, offering a suggestion,
+  or recalling memory. A manual name wins. Explicit settings survive reload.
+- **Specs linked**: `04-ux/08-component-spec.md` §3.4; ADR 0323.
+- **Acceptance**: G (plugins), Quality.
+- **Milestone**: M6+.
+- **Status**: Plugin-process coverage in
+  `apps/desktop/test/bundled-official-enhancements.test.mjs`.
 
 ## E2E-1175: A plugin suggestion rides in the Composer placeholder and is taken with Tab
 

@@ -1256,6 +1256,8 @@ journeys cover successful reads, saves and directory browsing.
   at wide and narrow widths, scroll to the tenth task, and switch output previews
   while an earlier read is pending. 7) Fail a Stop request and retry it.
   8) Start two more tasks and quit the app during output capture.
+  9) Start a quiet task with a long, multiline command. Expand its row at
+  a narrow width and select the command through its final line.
 - **Expected**: The tool result carries `backgroundTaskId` and resolves without
   waiting for the command; the bar lists the task as running with a growing
   elapsed time and shows its streamed output; the process stays alive across the
@@ -1266,6 +1268,9 @@ journeys cover successful reads, saves and directory browsing.
   fetched and refreshed; old responses cannot erase it. Each stream remains
   bounded to 256KiB and retains its final marker after exit. A Stop failure is
   visible without an unhandled rejection and the control remains retryable.
+  The task header stays on one line. The expanded row shows the complete
+  command above the output, preserving whitespace and wrapping to fit even
+  before the task produces any output.
   An ended task keeps its row only for a short grace window and can be closed
   from the bar, so finished commands do not accumulate above the composer.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` (§5),

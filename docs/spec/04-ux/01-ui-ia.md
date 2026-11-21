@@ -506,7 +506,7 @@ shared capability contract:
   word ("temporarily" / 临时) is underlined like a project name and opens the
   same switcher; with no project and no session the generic welcome title
   stands. The switcher
-  lists "No project" first, so the next task can leave or join a project from
+  lists "Temporary chat" first, so the next task can leave or join a project from
   the empty home.
 - New task resolves the temporary group by its most recent session: if that
   session has `messageCount = 0`, it is selected and reused; otherwise a
@@ -514,7 +514,7 @@ shared capability contract:
   project row's `+` and the empty-home switcher resolve their target group the
   same way. Repeated clicks therefore keep one empty slot per target group; an
   empty slot remains persisted until the user deletes or archives it.
-- The conversation topbar's project crumb (or a "No project" crumb for a
+- The conversation topbar's project crumb (or a "Temporary chat" crumb for a
   temporary session) opens a menu that moves an idle local conversation into
   another open project or out of any project. Running, remote, native, and
   isolated-worktree sessions show the static crumb.
