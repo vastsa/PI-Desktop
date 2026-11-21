@@ -111,6 +111,22 @@ describe("pi-host workspace git", () => {
     expect(f.git.proxyUrlFor("connection-unknown", "session-1")).toBeUndefined();
   });
 
+  it("forwards rerunSetup to host-core when requested", async () => {
+    const f = fixture(() => ({ jobId: "job-rerun" }));
+    const input = {
+      installationId: INSTALLATION, sessionId: "session-1", repository, baseBranch: "main",
+      rerunSetup: true,
+      environment: { variables: [{ name: "MY_VAR", value: "2" }], setupScript: "echo ok" },
+    };
+    await f.git.prepare(input, owner);
+    expect(f.calls[0]?.method).toBe("workspaceGit.prepare");
+    expect(f.calls[0]?.params).toEqual({
+      workspacesRoot: ROOT,
+      gitProxy: { url: f.urlFor("session-1") },
+      ...input,
+    });
+  });
+
   it("push reuses the session's scope, or finds its repository in the registry", async () => {
     const f = fixture((method) => (method === "workspaceGit.list" ? { worktrees: [worktree("session-9")] } : { jobId: "job-2" }));
     await f.git.push({ installationId: INSTALLATION, sessionId: "session-9" }, owner);

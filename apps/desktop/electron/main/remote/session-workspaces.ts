@@ -42,6 +42,7 @@ export function createSessionWorkspaces(deps: {
   const jobs = new Map<string, { controller: AbortController; done: Promise<void> }>();
   const starting = new Set<string>();
   const recovering = new Set<string>();
+  const rerunSetups = new Set<string>();
   let disposed = false;
   const git = () => {
     const boot = hosts();
@@ -78,8 +79,11 @@ export function createSessionWorkspaces(deps: {
   }
   function publicBinding(b: WorkspaceBinding, job?: WorkspaceGitJob): SessionRemoteRepository {
     const { environmentId, hostKey, repository, baseBranch, state, workBranch, setup, pullRequest, error } = b;
+    const liveSetup = job?.phase === "runningSetup"
+      ? (job.setupLogTail ? { status: "running" as const, logTail: job.setupLogTail } : { status: "running" as const })
+      : setup;
     return { environmentId, hostKey, repository, baseBranch, state,
-      ...(workBranch ? { workBranch } : {}), ...(setup ? { setup } : {}),
+      ...(workBranch ? { workBranch } : {}), ...(liveSetup ? { setup: liveSetup } : {}),
       ...(pullRequest ? { pullRequest } : {}), ...(error ? { error } : {}),
       ...(job ? { phase: job.phase, progress: job.progress } : {}),
     };
@@ -89,14 +93,25 @@ export function createSessionWorkspaces(deps: {
     emit(IPC.event.remoteSessionWorkspaceChanged, { sessionId: b.sessionId, remoteRepository });
     return remoteRepository;
   }
-  async function prepare(b: WorkspaceBinding): Promise<string> {
+  async function prepare(b: WorkspaceBinding, rerunSetup = false): Promise<string> {
     // A bound checkout can be restored after its environment has been removed.
     // The Host owns the original variables and branch for this registration.
-    const environment = b.path ? null : await getEnvironment(b.environmentId);
+    let environment: RemoteEnvironment | null = null;
+    if (rerunSetup) {
+      environment = await getEnvironment(b.environmentId).catch((error) => {
+        if (remoteCode(error) === ErrorCodes.REMOTE_ENVIRONMENT_NOT_FOUND) return null;
+        throw error;
+      });
+    } else if (!b.path) {
+      environment = await getEnvironment(b.environmentId);
+    }
     try {
       const result = await git().prepare(b.hostKey, {
         sessionId: b.sessionId, repository: b.repository, baseBranch: b.baseBranch,
-        ...(environment ? {
+        ...(rerunSetup ? {
+          rerunSetup: true,
+          ...(environment ? { environment: { variables: environment.variables, setupScript: environment.setupScript } } : {}),
+        } : environment ? {
           ...(b.fromSessionId ? { fromSessionId: b.fromSessionId } : {}),
           environment: { variables: environment.variables, setupScript: environment.setupScript },
         } : { restoreOnly: true }),
@@ -126,10 +141,10 @@ export function createSessionWorkspaces(deps: {
     if (!initial) return;
     const started = Date.now();
     let previous = "";
+    const isRerunSetup = rerunSetups.has(sessionId);
     try {
       let restoredMissingCheckout = false;
-      let jobId = initial.jobId ?? await prepare(initial);
-      // Record the accepted job even during cancellation so deletion can stop it.
+      let jobId = initial.jobId ?? await prepare(initial, isRerunSetup);
       if ((await binding(sessionId))?.state === "preparing") {
         await update(sessionId, { jobId });
       }
@@ -147,7 +162,7 @@ export function createSessionWorkspaces(deps: {
             if (restoredMissingCheckout || !await active()) throw error;
             restoredMissingCheckout = true;
             const recovery = await update(sessionId, { path: worktree.path, workBranch: worktree.workBranch, jobId: null });
-            jobId = await prepare(recovery);
+            jobId = await prepare(recovery, isRerunSetup);
             if ((await binding(sessionId))?.state === "preparing") await update(sessionId, { jobId });
             continue;
           }
@@ -164,7 +179,7 @@ export function createSessionWorkspaces(deps: {
           await save({ state: "failed", error: failure, jobId: null });
           return;
         }
-        const progress = JSON.stringify([job.phase, job.progress]);
+        const progress = JSON.stringify([job.phase, job.progress, job.setupLogTail]);
         if (progress !== previous) {
           previous = progress;
           announce(current, job);
@@ -178,6 +193,8 @@ export function createSessionWorkspaces(deps: {
           message: error instanceof Error ? error.message : String(error),
         } });
       }
+    } finally {
+      rerunSetups.delete(sessionId);
     }
   }
   function watch(sessionId: string) {
@@ -266,11 +283,22 @@ export function createSessionWorkspaces(deps: {
     async retry(sessionId: string) {
       await jobs.get(sessionId)?.done;
       const current = await binding(sessionId);
-      if (current?.state !== "failed") throw remoteError(ErrorCodes.CONFLICT, "Only a failed workspace can be retried");
+      const isSetupFailure = current?.state === "ready" && current.setup?.status === "failed";
+      if (current?.state !== "failed" && !isSetupFailure) {
+        throw remoteError(ErrorCodes.CONFLICT, "Only a failed workspace can be retried");
+      }
       if (!current.path) await getEnvironment(current.environmentId);
-      return beginPreparation(sessionId);
+      const shouldRerunSetup = isSetupFailure || Boolean(current.path && current.setup?.status === "failed");
+      if (shouldRerunSetup) rerunSetups.add(sessionId);
+      try {
+        return await beginPreparation(sessionId);
+      } catch (error) {
+        if (shouldRerunSetup) rerunSetups.delete(sessionId);
+        throw error;
+      }
     },
     async cancel(sessionId: string) {
+      rerunSetups.delete(sessionId);
       const monitorTask = jobs.get(sessionId);
       monitorTask?.controller.abort();
       await monitorTask?.done;
@@ -335,6 +363,7 @@ export function createSessionWorkspaces(deps: {
     announceEnvironments,
     dispose() {
       disposed = true;
+      rerunSetups.clear();
       for (const task of jobs.values()) task.controller.abort();
     },
   };

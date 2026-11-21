@@ -157,8 +157,23 @@ impl GitRunner {
         self.spawn(command, args, Some(input)).await
     }
 
+    /// Like `run_network_with_progress`, discarding incremental stderr callbacks.
+    #[cfg(test)]
+    pub async fn run_network(
+        &self,
+        dir: &Path,
+        config: &[(&str, &str)],
+        args: &[&str],
+        timeout: Duration,
+    ) -> Result<GitOutput, GitError> {
+        self.run_network_with_progress(dir, config, args, timeout, |_| {})
+            .await
+    }
+
     /// Run a clone, fetch, or push in `dir` with a caller-chosen limit and
-    /// per-command configuration, and return its exit status and output.
+    /// per-command configuration, streaming each `\r`- or `\n`-delimited stderr
+    /// segment to `on_stderr_line` while preserving the full raw stderr in
+    /// `GitOutput`.
     ///
     /// `config` reaches git as `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_<n>` /
     /// `GIT_CONFIG_VALUE_<n>` on the child only, not as `-c`: a process
@@ -171,13 +186,17 @@ impl GitRunner {
     /// process group, and the whole group is killed when the limit passes or
     /// the returned future is dropped (a cancelled job): killing git alone
     /// would leave the helpers transferring.
-    pub async fn run_network(
+    pub async fn run_network_with_progress<F>(
         &self,
         dir: &Path,
         config: &[(&str, &str)],
         args: &[&str],
         timeout: Duration,
-    ) -> Result<GitOutput, GitError> {
+        mut on_stderr_line: F,
+    ) -> Result<GitOutput, GitError>
+    where
+        F: FnMut(&str) + Send,
+    {
         use tokio::io::AsyncReadExt;
         let mut command = self.network_command(dir, config, args);
         #[cfg(unix)]
@@ -207,8 +226,34 @@ impl GitRunner {
             };
             let read_stderr = async {
                 let mut bytes = Vec::new();
+                let mut pending = Vec::new();
                 if let Some(mut pipe) = stderr {
-                    let _ = pipe.read_to_end(&mut bytes).await;
+                    let mut buf = [0u8; 4096];
+                    loop {
+                        match pipe.read(&mut buf).await {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                let chunk = &buf[..n];
+                                bytes.extend_from_slice(chunk);
+                                for &byte in chunk {
+                                    if byte == b'\r' || byte == b'\n' {
+                                        if !pending.is_empty() {
+                                            let line = String::from_utf8_lossy(&pending);
+                                            on_stderr_line(&line);
+                                            pending.clear();
+                                        }
+                                    } else {
+                                        pending.push(byte);
+                                    }
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                }
+                if !pending.is_empty() {
+                    let line = String::from_utf8_lossy(&pending);
+                    on_stderr_line(&line);
                 }
                 bytes
             };

@@ -152,6 +152,8 @@ export const WorkspaceGitPrepareSchema = Type.Object({
   fromSessionId: Type.Optional(SessionId()),
   /** Restore an existing registration without creating a new checkout from the base. */
   restoreOnly: Type.Optional(Type.Boolean()),
+  /** Re-run the environment's setup script on an existing worktree without recreating it. */
+  rerunSetup: Type.Optional(Type.Boolean()),
   environment: Type.Optional(WorkspaceGitEnvironmentSchema),
 }, { additionalProperties: false });
 export type WorkspaceGitPrepare = Static<typeof WorkspaceGitPrepareSchema>;
@@ -221,6 +223,8 @@ export type WorkspaceGitJob = {
   state: WorkspaceGitJobState;
   phase: WorkspaceGitJobPhase;
   progress?: { percent?: number; detail?: string };
+  /** Bounded tail of live setup script output while `phase === "runningSetup"`. */
+  setupLogTail?: string;
   /** Prepare, on success. */
   worktree?: WorkspaceGitWorktree;
   /** Push, on success. */

@@ -92,6 +92,12 @@ describe("workspaceGit request schemas", () => {
     expect(Value.Check(WorkspaceGitPrepareSchema, { ...good, fromSessionId: 1 })).toBe(false);
   });
 
+  it("accepts an optional boolean rerunSetup", () => {
+    expect(Value.Check(WorkspaceGitPrepareSchema, { ...good, rerunSetup: true })).toBe(true);
+    expect(Value.Check(WorkspaceGitPrepareSchema, { ...good, rerunSetup: false })).toBe(true);
+    expect(Value.Check(WorkspaceGitPrepareSchema, { ...good, rerunSetup: "yes" })).toBe(false);
+  });
+
   it("bounds the optional environment", () => {
     const variable = { name: "MY_VAR", value: "v" };
     expect(Value.Check(WorkspaceGitPrepareSchema, { ...good, environment: { variables: [variable], setupScript: "pnpm i" } })).toBe(true);

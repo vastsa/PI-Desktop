@@ -64,6 +64,15 @@ pub struct JobError {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobProgress {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub percent: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
 /// The wire shape of `WorkspaceGitJob`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,6 +81,10 @@ pub struct Job {
     pub kind: JobKind,
     pub state: JobState,
     pub phase: JobPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<JobProgress>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup_log_tail: Option<String>,
     /// A prepare job's worktree, on success.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree: Option<Value>,
@@ -158,6 +171,8 @@ impl JobTable {
                     kind,
                     state: JobState::Running,
                     phase: JobPhase::Queued,
+                    progress: None,
+                    setup_log_tail: None,
                     worktree: None,
                     pushed: None,
                     error: None,
@@ -189,7 +204,26 @@ impl JobTable {
     pub fn set_phase(&mut self, job_id: &str, phase: JobPhase) {
         if let Some(entry) = self.entries.get_mut(job_id) {
             if entry.job.state == JobState::Running {
+                if entry.job.phase != phase {
+                    entry.job.progress = None;
+                }
                 entry.job.phase = phase;
+            }
+        }
+    }
+
+    pub fn set_progress(&mut self, job_id: &str, progress: Option<JobProgress>) {
+        if let Some(entry) = self.entries.get_mut(job_id) {
+            if entry.job.state == JobState::Running {
+                entry.job.progress = progress;
+            }
+        }
+    }
+
+    pub fn set_setup_log_tail(&mut self, job_id: &str, log_tail: Option<String>) {
+        if let Some(entry) = self.entries.get_mut(job_id) {
+            if entry.job.state == JobState::Running {
+                entry.job.setup_log_tail = log_tail;
             }
         }
     }
@@ -206,6 +240,7 @@ impl JobTable {
             return;
         }
         entry.finished_at = Some(now);
+        entry.job.progress = None;
         match outcome {
             Outcome::Prepared(worktree) => {
                 entry.job.state = JobState::Succeeded;
@@ -475,5 +510,61 @@ mod tests {
         table.prune(start + Duration::from_secs(24 * 3600));
         assert_eq!(table.len(), 1);
         assert!(table.peek(&running).is_some());
+    }
+
+    #[test]
+    fn progress_and_setup_log_tail_track_running_jobs_and_reset_on_phase_or_finish() {
+        let mut table = JobTable::default();
+        let (id, _cancel) = table.start(JobKind::Prepare, INSTALLATION, "s-1").unwrap();
+        table.set_phase(&id, JobPhase::Cloning);
+        table.set_progress(
+            &id,
+            Some(JobProgress {
+                percent: Some(42),
+                detail: Some("Receiving objects".into()),
+            }),
+        );
+        let job = serde_json::to_value(table.get(&id).unwrap()).unwrap();
+        assert_eq!(
+            job["progress"],
+            serde_json::json!({ "percent": 42, "detail": "Receiving objects" })
+        );
+        assert!(job.get("setupLogTail").is_none());
+
+        // Transitioning to a new phase clears stale progress from the previous phase.
+        table.set_phase(&id, JobPhase::CreatingWorktree);
+        let job = serde_json::to_value(table.get(&id).unwrap()).unwrap();
+        assert_eq!(job["phase"], "creatingWorktree");
+        assert!(job.get("progress").is_none());
+
+        // Live setup log tail is exposed while running setup.
+        table.set_phase(&id, JobPhase::RunningSetup);
+        table.set_setup_log_tail(&id, Some("installing dependencies...\n".into()));
+        let job = serde_json::to_value(table.get(&id).unwrap()).unwrap();
+        assert_eq!(job["setupLogTail"], "installing dependencies...\n");
+
+        // Finishing clears progress and ignores subsequent updates.
+        table.set_progress(
+            &id,
+            Some(JobProgress {
+                percent: Some(99),
+                detail: Some("Writing objects".into()),
+            }),
+        );
+        table.finish(
+            &id,
+            Outcome::Prepared(serde_json::json!({ "sessionId": "s-1" })),
+        );
+        table.set_progress(
+            &id,
+            Some(JobProgress {
+                percent: Some(50),
+                detail: Some("Receiving objects".into()),
+            }),
+        );
+        table.set_setup_log_tail(&id, Some("late update".into()));
+        let finished = serde_json::to_value(table.get(&id).unwrap()).unwrap();
+        assert!(finished.get("progress").is_none());
+        assert_eq!(finished["setupLogTail"], "installing dependencies...\n");
     }
 }

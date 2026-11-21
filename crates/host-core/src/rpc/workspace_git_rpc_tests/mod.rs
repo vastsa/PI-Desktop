@@ -957,5 +957,180 @@ async fn a_worktree_is_prepared_from_base_branches_with_unusual_names() {
     );
 }
 
+#[tokio::test]
+async fn rerun_setup_reruns_script_in_place_and_rejects_when_busy() {
+    let f = Fixture::new();
+    let mut params = f.prepare_params("session-rerun", "main");
+    params["environment"] = json!({
+        "variables": [{ "name": "SETUP_MODE", "value": "fail" }],
+        "setupScript": "echo first-attempt; exit 1",
+    });
+    let first_id = f.start_prepare(params).await;
+    let (first_job, _) = f.wait(&first_id).await;
+    assert_eq!(first_job["state"], "succeeded", "{first_job}");
+    assert_eq!(first_job["worktree"]["setup"]["status"], "failed");
+    let worktree_path = PathBuf::from(first_job["worktree"]["path"].as_str().unwrap());
+    let work_branch = first_job["worktree"]["workBranch"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Place an untracked marker in the worktree to prove rerunSetup does not delete/recreate it.
+    let marker = worktree_path.join("preserve-me.txt");
+    std::fs::write(&marker, "kept").unwrap();
+
+    // Rerun with a gated script so we can also observe WORKSPACE_GIT_BUSY and live setupLogTail.
+    let gate = f.dir.path().join("setup.gate");
+    let mut rerun_params = f.prepare_params("session-rerun", "main");
+    rerun_params["rerunSetup"] = json!(true);
+    rerun_params["environment"] = json!({
+        "variables": [{ "name": "SETUP_MODE", "value": "ok" }],
+        "setupScript": format!(
+            "echo rerun-started-$SETUP_MODE; while [ ! -f '{}' ]; do sleep 0.02; done; echo rerun-done",
+            gate.display()
+        ),
+    });
+    let rerun_id = f.start_prepare(rerun_params.clone()).await;
+
+    // Poll until live setupLogTail shows up in workspaceGit.job.
+    let mut saw_live_tail = false;
+    for _ in 0..500 {
+        let job = f
+            .call("workspaceGit.job", json!({ "jobId": rerun_id }))
+            .await
+            .unwrap();
+        if job["phase"] == "runningSetup"
+            && job["setupLogTail"]
+                .as_str()
+                .is_some_and(|tail| tail.contains("rerun-started-ok"))
+        {
+            saw_live_tail = true;
+            break;
+        }
+        assert_eq!(job["state"], "running", "job ended too early: {job}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        saw_live_tail,
+        "expected live setupLogTail while setup is running"
+    );
+
+    // A concurrent prepare while setup is running is rejected with WORKSPACE_GIT_BUSY.
+    let busy_err = f
+        .call("workspaceGit.prepare", rerun_params)
+        .await
+        .unwrap_err();
+    assert_eq!(code(&busy_err), "WORKSPACE_GIT_BUSY");
+
+    // Release the gate and confirm the rerun succeeds in place.
+    std::fs::write(&gate, "go").unwrap();
+    let (rerun_job, _) = f.wait(&rerun_id).await;
+    assert_eq!(rerun_job["state"], "succeeded", "{rerun_job}");
+    assert_eq!(
+        rerun_job["worktree"]["path"],
+        worktree_path.to_str().unwrap()
+    );
+    assert_eq!(rerun_job["worktree"]["workBranch"], work_branch);
+    assert_eq!(rerun_job["worktree"]["setup"]["status"], "ok");
+    assert!(
+        rerun_job["worktree"]["setup"]["logTail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("rerun-done"),
+        "{rerun_job}"
+    );
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "kept");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn prepare_and_push_report_git_progress_on_running_jobs() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::with_git(|base| {
+        let gate = base.join("progress.gate");
+        let script = base.join("progress-git");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\n\
+                 case \" $* \" in\n\
+                   *\" clone \"*)\n\
+                     printf 'Receiving objects:  42%% (10/24)\\r' >&2\n\
+                     while [ ! -f '{gate}' ]; do sleep 0.02; done\n\
+                     ;;\n\
+                   *\" push \"*)\n\
+                     printf 'Writing objects:  75%% (3/4)\\r' >&2\n\
+                     while [ ! -f '{gate}' ]; do sleep 0.02; done\n\
+                     ;;\n\
+                 esac\n\
+                 exec git \"$@\"\n",
+                gate = gate.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        GitRunner::with_program(script)
+    });
+    let gate = f.root.parent().unwrap().join("progress.gate");
+
+    // 1. Clone progress during prepare.
+    let prepare_id = f
+        .start_prepare(f.prepare_params("session-progress", "main"))
+        .await;
+    let mut saw_clone_progress = false;
+    for _ in 0..500 {
+        let job = f
+            .call("workspaceGit.job", json!({ "jobId": prepare_id }))
+            .await
+            .unwrap();
+        if job["progress"]["percent"] == 42 && job["progress"]["detail"] == "Receiving objects" {
+            saw_clone_progress = true;
+            break;
+        }
+        assert_eq!(job["state"], "running", "prepare ended early: {job}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(saw_clone_progress, "expected clone progress on prepare job");
+    std::fs::write(&gate, "go").unwrap();
+    let (prepared, _) = f.wait(&prepare_id).await;
+    assert_eq!(prepared["state"], "succeeded", "{prepared}");
+    assert!(prepared.get("progress").is_none());
+
+    // 2. Push progress after making a commit in the worktree.
+    std::fs::remove_file(&gate).unwrap();
+    let worktree_path = PathBuf::from(prepared["worktree"]["path"].as_str().unwrap());
+    commit_file(&worktree_path, "progress.txt", "hello");
+    let push_started = f
+        .call(
+            "workspaceGit.push",
+            json!({
+                "gitProxy": f.proxy(),
+                "installationId": INSTALLATION,
+                "sessionId": "session-progress",
+            }),
+        )
+        .await
+        .unwrap();
+    let push_id = push_started["jobId"].as_str().unwrap().to_string();
+    let mut saw_push_progress = false;
+    for _ in 0..500 {
+        let job = f
+            .call("workspaceGit.job", json!({ "jobId": push_id }))
+            .await
+            .unwrap();
+        if job["progress"]["percent"] == 75 && job["progress"]["detail"] == "Writing objects" {
+            saw_push_progress = true;
+            break;
+        }
+        assert_eq!(job["state"], "running", "push ended early: {job}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(saw_push_progress, "expected push progress on push job");
+    std::fs::write(&gate, "go").unwrap();
+    let (pushed, _) = f.wait(&push_id).await;
+    assert_eq!(pushed["state"], "succeeded", "{pushed}");
+    assert!(pushed.get("progress").is_none());
+}
+
 /// Tests that spawn real git processes and inspect the process table.
 mod process;

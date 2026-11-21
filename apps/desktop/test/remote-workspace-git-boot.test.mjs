@@ -434,3 +434,35 @@ test("removing a credential provider or losing its store clears the prior remote
   ]);
   assert.ok(f.logs.every((line) => !line.includes(token)));
 });
+
+test("prepare forwards rerunSetup and works without requiring credential transport", async () => {
+  const f = setup({
+    record: { hostKey: "h", label: "H", url: "ws://10.0.0.5:8765", deviceToken: "device" },
+    respond: (method) => (method === "workspace/gitPrepare" ? { jobId: "job-rerun" } : {}),
+  });
+  f.boot.setCredentialProvider(async () => TOKEN);
+  await f.boot.hostConnected("h");
+  const environment = { variables: [{ name: "FOO", value: "bar" }], setupScript: "echo retry" };
+  assert.deepEqual(
+    await f.boot.prepare("h", {
+      sessionId: "session-1",
+      repository,
+      baseBranch: "main",
+      rerunSetup: true,
+      environment,
+    }),
+    { jobId: "job-rerun" },
+  );
+  assert.deepEqual(f.requests.at(-1), {
+    method: "workspace/gitPrepare",
+    params: {
+      installationId: INSTALLATION,
+      sessionId: "session-1",
+      repository,
+      baseBranch: "main",
+      rerunSetup: true,
+      environment,
+    },
+    timeoutMs: 30_000,
+  });
+});

@@ -10,6 +10,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use super::jobs::JobProgress;
 use super::WorkspaceGitError;
 use crate::session_worktrees::git::{parse_version, GitError, GitOutput, GitRunner};
 use crate::session_worktrees::repo_lock;
@@ -32,8 +33,62 @@ const STDERR_TAIL_BYTES: usize = 2 * 1024;
 pub struct NetworkContext<'a> {
     pub git: &'a GitRunner,
     pub config: &'a [(&'a str, &'a str)],
+    pub on_progress: Option<&'a (dyn Fn(JobProgress) + Send + Sync)>,
 }
 
+const KNOWN_PROGRESS_PHASES: &[&str] = &[
+    "Counting objects",
+    "Compressing objects",
+    "Receiving objects",
+    "Resolving deltas",
+    "Writing objects",
+    "Updating files",
+    "Enumerating objects",
+    "Filtering content",
+    "Checking out files",
+];
+
+/// Parse one stderr line emitted by `git --progress` into a safe `JobProgress`.
+/// Only known git phase names are emitted so proxy URLs or paths never leak into `detail`.
+pub(crate) fn parse_git_progress(line: &str) -> Option<JobProgress> {
+    let trimmed = line.trim();
+    let body = trimmed
+        .strip_prefix("remote:")
+        .map(str::trim_start)
+        .unwrap_or(trimmed);
+    let (phase, rest) = KNOWN_PROGRESS_PHASES.iter().find_map(|&phase| {
+        let rest = body.strip_prefix(phase)?.strip_prefix(':')?;
+        Some((phase, rest.trim_start()))
+    })?;
+    let digit_len = rest
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if digit_len == 0 {
+        return None;
+    }
+    let digits = &rest[..digit_len];
+    let after = &rest[digit_len..];
+    let percent = if after.starts_with('%') {
+        let value: u32 = digits.parse().ok()?;
+        if value > 100 {
+            return None;
+        }
+        Some(value as u8)
+    } else if after.is_empty()
+        || after.starts_with(',')
+        || after.starts_with(' ')
+        || after.starts_with('(')
+    {
+        None
+    } else {
+        return None;
+    };
+    Some(JobProgress {
+        percent,
+        detail: Some(phase.to_string()),
+    })
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     Cloning,
@@ -82,7 +137,7 @@ pub async fn ensure(
     match fs::symlink_metadata(main_path) {
         Ok(metadata) if metadata.is_dir() => {
             on_phase(Phase::Fetching);
-            let args = ["fetch", "-q", "--prune", "--", "origin"];
+            let args = ["fetch", "--progress", "--prune", "--", "origin"];
             run(ctx, main_path, "fetch", &args, FETCH_TIMEOUT).await
         }
         // A link or a file where the checkout belongs is never followed.
@@ -109,7 +164,13 @@ async fn clone(
         return Err(WorkspaceGitError::invalid("invalid main checkout path"));
     };
     let args = [
-        "clone", "-q", "--origin", "origin", "--", remote_url, target,
+        "clone",
+        "--progress",
+        "--origin",
+        "origin",
+        "--",
+        remote_url,
+        target,
     ];
     run(ctx, parent, "clone", &args, CLONE_TIMEOUT).await?;
     fs::rename(&temporary.path, main_path)?;
@@ -127,10 +188,15 @@ pub(super) async fn run(
 ) -> Result<(), WorkspaceGitError> {
     let output = ctx
         .git
-        .run_network(dir, ctx.config, args, timeout)
+        .run_network_with_progress(dir, ctx.config, args, timeout, |line| {
+            if let (Some(on_progress), Some(progress)) = (ctx.on_progress, parse_git_progress(line))
+            {
+                on_progress(progress);
+            }
+        })
         .await
         .map_err(|error| from_git_error(step, error))?;
-    if output.success() {
+    if output.status == 0 {
         Ok(())
     } else {
         Err(classify(ctx.config, step, &output))
@@ -327,7 +393,11 @@ mod tests {
     use crate::workspace_git::test_support::{rev_parse, Remote};
 
     fn context(git: &GitRunner) -> NetworkContext<'_> {
-        NetworkContext { git, config: &[] }
+        NetworkContext {
+            git,
+            config: &[],
+            on_progress: None,
+        }
     }
 
     #[tokio::test]
@@ -542,6 +612,71 @@ mod tests {
             error.message.len() <= 2 * 1024 + 256,
             "{}",
             error.message.len()
+        );
+    }
+
+    #[test]
+    fn parse_git_progress_extracts_known_phases_and_ignores_arbitrary_stderr() {
+        assert_eq!(
+            parse_git_progress("Receiving objects:  42% (10/24)"),
+            Some(JobProgress {
+                percent: Some(42),
+                detail: Some("Receiving objects".into()),
+            })
+        );
+        assert_eq!(
+            parse_git_progress("remote: Compressing objects: 100% (5/5), done."),
+            Some(JobProgress {
+                percent: Some(100),
+                detail: Some("Compressing objects".into()),
+            })
+        );
+        assert_eq!(
+            parse_git_progress("Writing objects:  75%"),
+            Some(JobProgress {
+                percent: Some(75),
+                detail: Some("Writing objects".into()),
+            })
+        );
+        assert_eq!(
+            parse_git_progress("remote: Enumerating objects: 18, done."),
+            Some(JobProgress {
+                percent: None,
+                detail: Some("Enumerating objects".into()),
+            })
+        );
+        assert_eq!(parse_git_progress("Receiving objects: 101% (10/10)"), None);
+        assert_eq!(
+            parse_git_progress("Cloning into 'http://127.0.0.1:4321/secret-handle/o/r.git'..."),
+            None
+        );
+        assert_eq!(
+            parse_git_progress("remote: Receiving objects: http://127.0.0.1:4321/secret"),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn clone_emits_parsed_progress_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let remote = Remote::new(dir.path());
+        let main_path = dir.path().join("root/repos/github.com/octo/repo");
+        let git = GitRunner::default();
+        let progress = Mutex::new(Vec::new());
+        let on_progress = |item: JobProgress| progress.lock().unwrap().push(item);
+        let ctx = NetworkContext {
+            git: &git,
+            config: &[],
+            on_progress: Some(&on_progress),
+        };
+        ensure(&ctx, &remote.url(), &main_path, &|_| {})
+            .await
+            .unwrap();
+        let events = progress.lock().unwrap();
+        assert!(!events.is_empty(), "expected clone --progress output");
+        assert!(
+            events.iter().any(|item| item.percent.is_some()),
+            "expected at least one percentage progress event: {events:?}"
         );
     }
 }

@@ -2557,6 +2557,9 @@
       "restoreOnly": {
         "type": "boolean"
       },
+      "rerunSetup": {
+        "type": "boolean"
+      },
       "environment": {
         "type": "object",
         "required": [

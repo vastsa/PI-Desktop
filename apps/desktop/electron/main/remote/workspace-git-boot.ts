@@ -37,7 +37,7 @@ export type WorkspaceGitBoot = {
   repository(hostKey: string, repository: WorkspaceGitRepository): Promise<{ path: string; cloned: boolean }>;
   prepare(hostKey: string, input: {
     sessionId: string; repository: WorkspaceGitRepository; baseBranch: string;
-    fromSessionId?: string; environment?: WorkspaceGitEnvironment; restoreOnly?: boolean;
+    fromSessionId?: string; environment?: WorkspaceGitEnvironment; restoreOnly?: boolean; rerunSetup?: boolean;
   }): Promise<{ jobId: string }>;
   push(hostKey: string, sessionId: string): Promise<{ jobId: string }>;
   job(hostKey: string, jobId: string): Promise<WorkspaceGitJob>;
@@ -225,8 +225,9 @@ export function createWorkspaceGitBoot(deps: WorkspaceGitBootDeps): WorkspaceGit
         baseBranch: input.baseBranch,
         ...(input.fromSessionId !== undefined ? { fromSessionId: input.fromSessionId } : {}),
         ...(input.restoreOnly === true ? { restoreOnly: true } : {}),
+        ...(input.rerunSetup === true ? { rerunSetup: true } : {}),
         ...(input.environment !== undefined ? { environment: input.environment } : {}),
-      }), { needsCredential: !input.restoreOnly });
+      }), { needsCredential: !input.restoreOnly && !input.rerunSetup });
     },
     push(hostKey, sessionId) {
       return call(hostKey, "workspace/gitPush", (installationId) => ({ installationId, sessionId }), { needsCredential: true });

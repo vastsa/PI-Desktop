@@ -24,7 +24,9 @@ use crate::session_worktrees::git::GitRunner;
 use crate::session_worktrees::remove::is_real_dir;
 use crate::state::AppState;
 use crate::workspace_git::environment::{self, parse_proxy_url};
-use crate::workspace_git::jobs::{self, JobKind, JobPhase, JobState, Outcome, Pushed, SharedJobs};
+use crate::workspace_git::jobs::{
+    self, JobKind, JobPhase, JobProgress, JobState, Outcome, Pushed, SharedJobs,
+};
 use crate::workspace_git::layout::{
     short_id, validate_branch, validate_installation_id, validate_session_id,
     validate_variable_name, work_branch, Layout, Repository,
@@ -162,6 +164,8 @@ struct PrepareParams {
     #[serde(default)]
     restore_only: bool,
     #[serde(default)]
+    rerun_setup: bool,
+    #[serde(default)]
     environment: Option<EnvironmentInput>,
 }
 
@@ -235,6 +239,8 @@ struct PrepareRequest {
     base_branch: String,
     from_session_id: Option<String>,
     restore_only: bool,
+    rerun_setup: bool,
+    environment_provided: bool,
     variables: Vec<Variable>,
     setup_script: Option<String>,
 }
@@ -249,6 +255,7 @@ impl PrepareRequest {
         if let Some(from) = &params.from_session_id {
             validate_session_id(from)?;
         }
+        let environment_provided = params.environment.is_some();
         let environment = params.environment.unwrap_or(EnvironmentInput {
             variables: Vec::new(),
             setup_script: None,
@@ -289,6 +296,8 @@ impl PrepareRequest {
             base_branch: params.base_branch,
             from_session_id: params.from_session_id,
             restore_only: params.restore_only,
+            rerun_setup: params.rerun_setup,
+            environment_provided,
             variables,
             // A blank script is no script.
             setup_script: environment
@@ -478,7 +487,8 @@ async fn start_prepare(
         }
         // A retry after a lost reply, or a double click: the worktree exists,
         // so the answer is that worktree, not a second one.
-        if let Some(record) = registry::get(&st.db, &request.installation_id, &request.session_id)?
+        if let Some(mut record) =
+            registry::get(&st.db, &request.installation_id, &request.session_id)?
         {
             if record.repository != request.repository {
                 return Err(WorkspaceGitError::invalid(
@@ -486,13 +496,34 @@ async fn start_prepare(
                 ));
             }
             if is_real_dir(Path::new(&record.path)) {
-                let job_id = table.completed(
-                    JobKind::Prepare,
-                    &request.installation_id,
-                    &request.session_id,
-                    Outcome::Prepared(record.wire()),
-                );
-                return Ok(json!({ "jobId": job_id }));
+                if !request.rerun_setup {
+                    let job_id = table.completed(
+                        JobKind::Prepare,
+                        &request.installation_id,
+                        &request.session_id,
+                        Outcome::Prepared(record.wire()),
+                    );
+                    return Ok(json!({ "jobId": job_id }));
+                }
+                if request.environment_provided {
+                    record.variables = request.variables.clone();
+                    record.setup_script = request.setup_script.clone();
+                }
+                if record.setup_script.is_none() {
+                    record.setup_status = SetupStatus::None;
+                    record.setup_log_tail = None;
+                    registry::insert(&st.db, &record)?;
+                    let job_id = table.completed(
+                        JobKind::Prepare,
+                        &request.installation_id,
+                        &request.session_id,
+                        Outcome::Prepared(record.wire()),
+                    );
+                    return Ok(json!({ "jobId": job_id }));
+                }
+                record.setup_status = SetupStatus::Running;
+                record.setup_log_tail = None;
+                registry::insert(&st.db, &record)?;
             }
         } else if request.restore_only {
             return Err(not_found());
@@ -541,7 +572,18 @@ async fn run_prepare(
     let outcome = match created {
         None => Outcome::Cancelled,
         Some(Err(error)) => Outcome::Failed(error),
-        Some(Ok(record)) => run_setup(&state, &jobs, &job_id, &request, record, cancel).await,
+        Some(Ok(record)) => {
+            run_setup(
+                &state,
+                &jobs,
+                &job_id,
+                &request,
+                record,
+                may_discard,
+                cancel,
+            )
+            .await
+        }
     };
     if outcome == Outcome::Cancelled
         && may_discard
@@ -553,6 +595,31 @@ async fn run_prepare(
         // A cancelled prepare leaves no worktree, record, or branch behind;
         // the main checkout stays.
         discard(&state, &context, &request).await;
+    } else if !may_discard
+        && (outcome == Outcome::Cancelled || matches!(outcome, Outcome::Failed(_)))
+    {
+        // Never leave an existing worktree stuck in `setup_status = Running`.
+        if let Ok(Some(record)) =
+            record_of(&state, &request.installation_id, &request.session_id).await
+        {
+            if record.setup_status == SetupStatus::Running {
+                let note = match &outcome {
+                    Outcome::Cancelled => "Setup was cancelled.".to_string(),
+                    Outcome::Failed(error) => error.message.clone(),
+                    _ => "Setup did not complete.".to_string(),
+                };
+                let st = state.lock().await;
+                if let Err(error) = registry::set_setup(
+                    &st.db,
+                    &request.installation_id,
+                    &request.session_id,
+                    SetupStatus::Failed,
+                    Some(note),
+                ) {
+                    tracing::warn!(%error, "could not recover setup status after failed rerun");
+                }
+            }
+        }
     }
     lock(&jobs).finish(&job_id, outcome);
 }
@@ -569,7 +636,12 @@ async fn create_worktree(
     let worktree_path = request.worktree_path();
     let work_branch = request.work_branch();
     request.layout.ensure_private_directories()?;
-    if let Some(record) = record_of(state, &request.installation_id, &request.session_id).await? {
+    if let Some(mut record) =
+        record_of(state, &request.installation_id, &request.session_id).await?
+    {
+        if request.rerun_setup && is_real_dir(Path::new(&record.path)) {
+            return Ok(record);
+        }
         lock(jobs).set_phase(job_id, JobPhase::CreatingWorktree);
         worktree::restore(
             &context.git,
@@ -578,6 +650,20 @@ async fn create_worktree(
             &record.work_branch,
         )
         .await?;
+        if request.rerun_setup {
+            if request.environment_provided {
+                record.variables = request.variables.clone();
+                record.setup_script = request.setup_script.clone();
+            }
+            record.setup_status = if record.setup_script.is_some() {
+                SetupStatus::Running
+            } else {
+                SetupStatus::None
+            };
+            record.setup_log_tail = None;
+            let st = state.lock().await;
+            registry::insert(&st.db, &record)?;
+        }
         return Ok(record);
     }
     if request.restore_only {
@@ -589,9 +675,13 @@ async fn create_worktree(
         .iter()
         .map(|(key, value)| (key.as_str(), value.as_str()))
         .collect();
+    let on_progress = |progress: JobProgress| {
+        lock(jobs).set_progress(job_id, Some(progress));
+    };
     let network = NetworkContext {
         git: &context.git,
         config: &config,
+        on_progress: Some(&on_progress),
     };
     let on_phase = |phase: Phase| {
         lock(jobs).set_phase(
@@ -681,6 +771,7 @@ async fn run_setup(
     job_id: &str,
     request: &PrepareRequest,
     record: WorktreeRecord,
+    may_discard: bool,
     cancel: watch::Receiver<bool>,
 ) -> Outcome {
     let Some(script) = record
@@ -701,6 +792,11 @@ async fn run_setup(
         let env = environment::for_tool(&st.db, &root, Some(&request.proxy_url));
         (shell_id, env)
     };
+    let jobs_for_output = jobs.clone();
+    let job_id_for_output = job_id.to_string();
+    let on_output: Arc<dyn Fn(String) + Send + Sync> = Arc::new(move |tail: String| {
+        lock(&jobs_for_output).set_setup_log_tail(&job_id_for_output, Some(tail));
+    });
     let (status, log) = match shell_id {
         Some(shell_id) => {
             setup::run(SetupRun {
@@ -711,6 +807,7 @@ async fn run_setup(
                 session_id: &request.session_id,
                 short_id: &short_id(&request.installation_id, &request.session_id),
                 cancellation: cancel.clone(),
+                on_output: Some(on_output),
             })
             .await
         }
@@ -720,6 +817,23 @@ async fn run_setup(
         ),
     };
     if *cancel.borrow() {
+        if !may_discard {
+            let cancel_log = if log.trim().is_empty() {
+                "Setup was cancelled.".to_string()
+            } else {
+                format!("{log}\n[setup cancelled]")
+            };
+            let st = state.lock().await;
+            if let Err(error) = registry::set_setup(
+                &st.db,
+                &request.installation_id,
+                &request.session_id,
+                SetupStatus::Failed,
+                Some(cancel_log),
+            ) {
+                tracing::warn!(%error, "could not record cancelled setup status");
+            }
+        }
         return Outcome::Cancelled;
     }
     let st = state.lock().await;
@@ -813,9 +927,13 @@ async fn run_push(
                 .iter()
                 .map(|(key, value)| (key.as_str(), value.as_str()))
                 .collect();
+            let on_progress = |progress: JobProgress| {
+                lock(&jobs).set_progress(&job_id, Some(progress));
+            };
             let network = NetworkContext {
                 git: &context.git,
                 config: &config,
+                on_progress: Some(&on_progress),
             };
             let pushed = tokio::select! {
                 biased;

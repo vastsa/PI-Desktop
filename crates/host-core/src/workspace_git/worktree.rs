@@ -472,7 +472,7 @@ pub async fn push(
     .await;
     let local = format!("refs/heads/{work_branch}");
     let refspec = format!("{local}:{local}");
-    let args = ["push", "-q", "--", "origin", &refspec];
+    let args = ["push", "--progress", "--", "origin", &refspec];
     repository::run(ctx, worktree_path, "push", &args, PUSH_TIMEOUT).await?;
     let head = ctx
         .git
@@ -513,6 +513,7 @@ mod tests {
             let context = NetworkContext {
                 git: &git,
                 config: &[],
+                on_progress: None,
             };
             ensure(&context, &remote.url(), &main, &|_| {})
                 .await
@@ -530,6 +531,7 @@ mod tests {
             NetworkContext {
                 git: &self.git,
                 config: &[],
+                on_progress: None,
             }
         }
 

@@ -151,7 +151,12 @@ export function createWorkspaceGit(deps: {
         }
       }
       const url = registerScope(input.installationId, input.sessionId, input.repository);
-      const result = await call<Awaited<ReturnType<WorkspaceGitOperations["prepare"]>>>("workspaceGit.prepare", { ...input, gitProxy: { url } });
+      const { rerunSetup, ...prepareInput } = input;
+      const result = await call<Awaited<ReturnType<WorkspaceGitOperations["prepare"]>>>("workspaceGit.prepare", {
+        ...prepareInput,
+        ...(rerunSetup === true ? { rerunSetup: true } : {}),
+        gitProxy: { url },
+      });
       preparations.set(key, { jobId: result.jobId, sessionId: input.sessionId, installationId: input.installationId });
       return result;
     },
