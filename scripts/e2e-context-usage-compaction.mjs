@@ -1,4 +1,4 @@
-/** Production sidecar + localhost Responses gateway with inconsistent usage totals. */
+/** Production sidecar + localhost Responses gateway with controlled usage and context limits. */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -28,6 +28,17 @@ class CompactionSidecar extends OfflineSidecar {
 async function scenario(mode) {
   const dir = join(temporary, mode);
   await mkdir(dir, { recursive: true });
+  const contextWindow = mode === "discovered-window" ? 500_000
+    : mode === "catalog-window" ? 1_050_000 : 100_000;
+  const maxTokens = contextWindow === 100_000 ? 8_192 : 128_000;
+  const firstUsage = {
+    "cached-input": { input_tokens: 80_000, output_tokens: 100, total_tokens: 20_100,
+      input_tokens_details: { cached_tokens: 60_000 } },
+    "partial-buckets": { input_tokens: 0, output_tokens: 10, total_tokens: 80_000 },
+    "normal-usage": { input_tokens: 4_000, output_tokens: 10, total_tokens: 4_010,
+      input_tokens_details: { cached_tokens: 2_000 } },
+  }[mode] ?? { input_tokens: 399_900, output_tokens: 100, total_tokens: 400_000,
+    input_tokens_details: { cached_tokens: 390_000 } };
   const requests = [], timeline = [], checkpoints = [];
   const server = createServer(async (request, response) => {
     let raw = "";
@@ -42,13 +53,6 @@ async function scenario(mode) {
       id: `message-${serial}`, type: "message", role: "assistant", status: "completed",
       content: [{ type: "output_text", text, annotations: [] }],
     };
-    const firstUsage = mode === "cached-input"
-      ? { input_tokens: 80_000, output_tokens: 100, total_tokens: 20_100,
-          input_tokens_details: { cached_tokens: 60_000 } }
-      : mode === "partial-buckets"
-        ? { input_tokens: 0, output_tokens: 10, total_tokens: 80_000 }
-        : { input_tokens: 4_000, output_tokens: 10, total_tokens: 4_010,
-            input_tokens_details: { cached_tokens: 2_000 } };
     const usage = serial === 1 ? firstUsage : { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
     const events = [
       { type: "response.created", response: { id: `response-${serial}` } },
@@ -87,17 +91,16 @@ async function scenario(mode) {
         modelConfig: {
           source: "generic", name: "Fixture model", baseUrl, reasoning: false, input: ["text"],
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          contextWindow: 100_000, maxTokens: 8_192,
+          contextWindow, maxTokens,
         },
       },
     };
     await sidecar.prompt(params, "Start the task.");
     const first = [...sidecar.messages.values()].find((message) => message.role === "assistant");
-    const expectedTotal = mode === "cached-input" ? 20_100 : mode === "partial-buckets" ? 80_000 : 4_010;
-    assert.equal(first?.usage?.totalTokens, expectedTotal);
+    assert.equal(first?.usage?.totalTokens, firstUsage.total_tokens);
     if (mode === "cached-input") assert.equal(first?.usage?.cacheReadTokens, 60_000);
     await sidecar.prompt(params, "Continue the task.");
-    if (mode !== "normal-usage") {
+    if (mode !== "normal-usage" && mode !== "catalog-window") {
       assert.deepEqual(timeline, ["turn", "summary", "checkpoint", "turn"]);
       assert.equal(checkpoints.length, 1);
       assert.equal(checkpoints[0].summary, "Fixture checkpoint summary.");
@@ -118,7 +121,9 @@ async function scenario(mode) {
 }
 
 try {
-  for (const mode of ["cached-input", "partial-buckets", "normal-usage"]) await scenario(mode);
+  for (const mode of ["cached-input", "partial-buckets", "normal-usage", "discovered-window", "catalog-window"]) {
+    await scenario(mode);
+  }
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

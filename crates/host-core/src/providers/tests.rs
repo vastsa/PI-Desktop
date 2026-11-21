@@ -947,12 +947,14 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
                 display_name: "Beta".into(),
                 capabilities: vec!["text".into()],
                 context_window: None,
+                reported_context_window: None,
             },
             DiscoveredModelInput {
                 model_id: "model-a".into(),
                 display_name: "Alpha".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(128_000),
+                reported_context_window: None,
             },
         ],
         true,
@@ -969,12 +971,14 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
                 display_name: "Alpha updated".into(),
                 capabilities: vec!["text".into(), "reasoning".into()],
                 context_window: Some(256_000),
+                reported_context_window: None,
             },
             DiscoveredModelInput {
                 model_id: "user-model".into(),
                 display_name: "Remote label".into(),
                 capabilities: vec!["text".into()],
                 context_window: None,
+                reported_context_window: None,
             },
         ],
         true,
@@ -1045,6 +1049,7 @@ fn deleting_a_binding_and_saving_forgets_its_cached_parameters() {
                 display_name: "Alpha".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(128_000),
+                reported_context_window: None,
             },
             // The service spells it differently from the binding that drops it.
             DiscoveredModelInput {
@@ -1052,12 +1057,14 @@ fn deleting_a_binding_and_saving_forgets_its_cached_parameters() {
                 display_name: "Beta".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(32_000),
+                reported_context_window: None,
             },
             DiscoveredModelInput {
                 model_id: "model-c".into(),
                 display_name: "Gamma".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(64_000),
+                reported_context_window: None,
             },
         ],
         true,
@@ -1152,6 +1159,7 @@ fn a_probe_answer_forgets_models_it_no_longer_publishes() {
                 display_name: (*id).to_string(),
                 capabilities: vec!["text".into()],
                 context_window: Some(64_000),
+                reported_context_window: None,
             })
             .collect()
     };
@@ -1292,12 +1300,14 @@ fn changing_the_endpoint_forgets_the_discovered_answer() {
                 display_name: "Alpha".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(128_000),
+                reported_context_window: Some(128_000),
             },
             DiscoveredModelInput {
                 model_id: "model-b".into(),
                 display_name: "Beta".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(32_000),
+                reported_context_window: Some(32_000),
             },
         ],
         true,
@@ -1343,6 +1353,9 @@ fn changing_the_endpoint_forgets_the_discovered_answer() {
     assert_eq!(cached, vec!["model-a"]);
     let reset = list_models(&db, Some(&provider.id)).unwrap();
     assert!(reset.iter().all(|model| model.discovery_state.is_none()));
+    assert!(reset
+        .iter()
+        .all(|model| model.reported_context_window.is_none()));
     cache_discovered_models(
         &db,
         &provider.id,
@@ -1351,6 +1364,7 @@ fn changing_the_endpoint_forgets_the_discovered_answer() {
             display_name: "New".into(),
             capabilities: vec![],
             context_window: None,
+            reported_context_window: None,
         }],
         true,
     )

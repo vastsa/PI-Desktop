@@ -182,10 +182,10 @@ test("a configured model keeps its published record when discovery omits it", ()
   assert.ok(unions.length >= 3, `expected 3+ union sites, saw ${unions.length}`);
   // Discovery stays the authority on what the service offers: only the rows it
   // returned are cached as discovered.
-  const liveReturn = mainSource.slice(
-    mainSource.indexOf("await cacheForCurrentProvider(models, outcome.complete);"),
+  assert.match(
+    mainSource,
+    /await cacheForCurrentProvider\([\s\S]*?outcome\.complete\);\s*return \{\s*models: withConfiguredBindings\(models\)/,
   );
-  assert.match(liveReturn.slice(0, 260), /models: withConfiguredBindings\(models\)/);
 });
 
 test("the published record is not shaped by the stored override", () => {
