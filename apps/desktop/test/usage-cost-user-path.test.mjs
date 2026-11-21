@@ -73,8 +73,8 @@ async function until(predicate, message) {
   }
   check(false, message);
 }
-const inspector = (turnUsage) => <ContextUsageInspector usage={turnUsage} turnUsage={turnUsage}
-  contextWindow={128000} tools={[]} />;
+const inspector = (turnUsage, estimated = false) => <ContextUsageInspector usage={turnUsage} turnUsage={turnUsage}
+  contextWindow={128000} contextWindowEstimated={estimated} tools={[]} />;
 
 window.usageCostProbe = async () => {
   // Opening the inspector shows the turn at once and the session once the host answers.
@@ -102,6 +102,9 @@ window.usageCostProbe = async () => {
   await until(() => calls.length === 3, "third read");
   flushSync(() => useAppStore.setState({ activeSessionId: "s2" }));
   flushSync(() => rootNode.render(inspector(usage("max", "estimated", 0.3, 40))));
+  await until(() => !document.querySelector(".context-inspector-popover"), "session switch must dismiss the inspector");
+  check(!document.querySelector(".context-inspector-cost"), "dismissed inspector must not expose s1 spend");
+  document.querySelector(".context-inspector-trigger").click();
   await until(() => calls.at(-1).sessionId === "s2", "s2 was not read");
   check(cells()["Session total"] === "…", "s2 must not show s1's total");
   calls[2].resolve({ sessionId: "s1", turnCount: 9, requestCount: 9, providers: [bucket("api", 99, 9, 9, 0)] });
@@ -128,6 +131,52 @@ window.usageCostProbe = async () => {
   const note = document.querySelector(".turn-usage-cost-help")?.textContent;
   check(note === "Estimated from the model's list prices.", "popover explanation: " + note);
 
+  // Compare requests through the real inspector without changing newest capacity.
+  const row = (id, role, content, extra = {}) => ({ id, role, content, createdAt: now, ...extra });
+  const requestUsage = (inputTokens, outputTokens) => ({ inputTokens, outputTokens, totalTokens: inputTokens + outputTokens });
+  const latestUsage = requestUsage(50, 10);
+  flushSync(() => useAppStore.setState({
+    messages: [row("u1", "user", "Needle 用户"),
+      row("a1", "assistant", "First response", { usage: requestUsage(80, 20) }),
+      row("a2", "assistant", "Second response", { usage: requestUsage(200, 50) }),
+      row("u2", "user", "Continue"),
+      row("a3", "assistant", "Newest response", { usage: latestUsage })],
+    sessionHistory: { s2: { hasMoreBefore: true } },
+  }));
+  flushSync(() => rootNode.render(inspector(latestUsage, true)));
+  const trigger = document.querySelector(".context-inspector-trigger");
+  trigger.click();
+  await until(() => document.querySelectorAll(".context-trend-column").length === 3, "three model requests");
+  const capacity = document.querySelector(".context-capacity-heading").textContent;
+  check(capacity.includes("≈"), "estimated context window must remain marked");
+  check(document.querySelector(".context-dashboard .context-badge").textContent === "Loaded history", "partial transcript must remain labelled");
+  const bars = () => [...document.querySelectorAll(".context-trend-column")];
+  check(bars().at(-1).getAttribute("aria-pressed") === "true", "newest request selected initially");
+  bars()[0].click();
+  await until(() => document.querySelector(".context-step-response")?.textContent === "First response", "trend selects historical response");
+  check(document.querySelector(".context-capacity-heading").textContent === capacity, "historical selection changed live capacity");
+  const control = text => [...document.querySelectorAll(".context-segmented button")].find(button => button.textContent === text);
+  control("Turn").click();
+  await until(() => bars().length === 2, "turn granularity");
+  check(document.querySelector(".context-step-response").textContent === "Second response", "turn must select its final request");
+  control("Delta").click();
+  await until(() => document.querySelector(".context-trend-bar.is-negative"), "negative deltas stay visible");
+  const select = document.querySelector(".context-browser select");
+  select.value = ""; select.dispatchEvent(new Event("change", { bubbles: true }));
+  await until(() => bars().length === 3 && document.querySelector(".context-step-response")?.textContent === "Newest response", "latest request resets to step granularity");
+  check(document.querySelectorAll(".context-browser-group").length === 6, "six history categories");
+  const input = document.querySelector(".context-browser-search");
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "Needle");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await settle();
+  for (const group of document.querySelectorAll(".context-browser-group")) group.open = true;
+  await settle();
+  check(document.querySelectorAll(".context-browser-item").length === 1, "history search must filter recorded content");
+  document.querySelector(".context-browser-item").open = true;
+  await until(() => document.querySelector(".context-browser-item pre")?.textContent === "Needle 用户", "history expands recorded text");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await until(() => !document.querySelector(".context-inspector-popover"), "Escape dismisses dashboard");
+  check(document.activeElement === trigger, "Escape restores the Composer trigger");
   flushSync(() => rootNode.unmount());
   return { passed: true };
 };
