@@ -457,6 +457,16 @@ authored, so a prompt-injected transcript cannot relabel `session/delete` as
 something benign. Escape and dismissal are refusals. A headless host with no
 dialog service refuses every dangerous operation outright.
 
+The four operations that only answer a prompt the host already shows the user
+(`agent/askTool/resolve`, `tool/resolvePermission`, `plans/resolve`,
+`extensions/ui/respond`) add a third button, Allow until quit. It is remembered
+in memory per plugin and operation id, and dropped when the plugin is stopped
+or the app quits, so a panel that relays the user's own answers (an agent
+overview, for example) does not raise a dialog per answer. Every other
+dangerous operation, including `session/delete`, `session/configure`, and
+`agent/instructions/save`, only ever offers Deny and Allow once, and a
+remembered answer is still audited with `data.consent: "session"`.
+
 `ui.microphone` allows only the `media` permission, for audio, inside the
 plugin's isolated panel session. Camera and every other device permission stay
 denied, and the plugin receives no native handle: capture stays page-owned.

@@ -136,6 +136,7 @@ export const en = {
     detail:
       "This is a dangerous desktop operation. The plugin acknowledged the risk; whether it runs is up to you. Deny if you did not expect it.",
     allowOnce: "Allow once",
+    allowSession: "Allow until quit",
     deny: "Deny",
   },
   pluginFsConsent: {

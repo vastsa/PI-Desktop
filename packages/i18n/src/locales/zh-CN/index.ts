@@ -132,6 +132,7 @@ export const zhCN = {
     detail:
       "这是一个危险的桌面操作。插件已确认风险；是否执行由你决定。如果你没有预期到这个操作，请拒绝。",
     allowOnce: "允许一次",
+    allowSession: "本次运行内允许",
     deny: "拒绝",
   },
   pluginFsConsent: {

@@ -138,6 +138,7 @@ export const ko = {
     detail:
       "위험한 데스크톱 작업입니다. 플러그인은 위험을 확인했지만 실행 여부는 사용자가 결정합니다. 예상하지 못한 작업이라면 거부하세요.",
     allowOnce: "한 번 허용",
+    allowSession: "종료할 때까지 허용",
     deny: "거부",
   },
   pluginFsConsent: {

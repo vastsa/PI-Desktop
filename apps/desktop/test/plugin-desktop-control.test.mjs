@@ -180,6 +180,87 @@ test("dangerous desktop operations need the user's native consent, not just conf
   );
 });
 
+test("only prompt answers can be allowed until quit, per plugin and operation", async (t) => {
+  const calls = [];
+  const prompts = [];
+  let answer = "session";
+  const runtime = createRuntime(t, calls, {
+    desktopControl: {
+      operations: [
+        {
+          id: "agent/askTool/resolve",
+          channel: "askToolResolve",
+          description: "Answer an Agent question",
+          risk: "dangerous",
+        },
+        {
+          id: "session/delete",
+          channel: "sessionDelete",
+          description: "Delete a session",
+          risk: "dangerous",
+        },
+      ],
+      invoke: async (input) => {
+        calls.push(input.operation);
+        return { ok: true };
+      },
+    },
+    confirmDesktopControl: async (request) => {
+      prompts.push(request);
+      return answer;
+    },
+  });
+  const dir = writePlugin(
+    "demo.remember",
+    ["desktop.control"],
+    `
+    module.exports = {
+      onPanelInvoke: async (channel, payload) => {
+        try {
+          return { ok: true, result: await pi.desktop.invoke({ operation: payload.operation, args: [{}], confirm: true }) };
+        } catch (error) {
+          return { ok: false, code: error.code };
+        }
+      },
+    };
+  `,
+  );
+  await runtime.loadFromPath(dir, ["desktop.control"]);
+  const run = (operation) =>
+    runtime.invokePanelBridge("demo.remember", "desktop.test", { operation });
+
+  // A prompt answer offers the session button; picking it is remembered.
+  assert.equal((await run("agent/askTool/resolve")).ok, true);
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0].offerSession, true);
+  assert.equal((await run("agent/askTool/resolve")).ok, true);
+  assert.equal(prompts.length, 1, "a remembered answer raises no second dialog");
+
+  // A destructive operation never offers it, and a stray "session" is a refusal.
+  const deleted = await run("session/delete");
+  assert.equal(deleted.ok, false);
+  assert.equal(deleted.code, "PERMISSION_DENIED");
+  assert.equal(prompts.length, 2);
+  assert.equal(prompts[1].offerSession, false);
+  answer = "once";
+  assert.equal((await run("session/delete")).ok, true);
+  assert.equal((await run("session/delete")).ok, true);
+  assert.equal(prompts.length, 4, "Allow once is never remembered");
+  assert.deepEqual(calls, [
+    "agent/askTool/resolve",
+    "agent/askTool/resolve",
+    "session/delete",
+    "session/delete",
+  ]);
+
+  // Stopping the plugin drops the grant.
+  await runtime.unload("demo.remember");
+  await runtime.loadFromPath(dir, ["desktop.control"]);
+  answer = "deny";
+  assert.equal((await run("agent/askTool/resolve")).code, "PERMISSION_DENIED");
+  assert.equal(prompts.length, 5);
+});
+
 test("desktop control is permission-gated and uses the shared controller", async (t) => {
   const calls = [];
   const runtime = createRuntime(t, calls);

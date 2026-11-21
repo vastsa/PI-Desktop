@@ -132,6 +132,7 @@ export const zhTW = {
     detail:
       "這是一個危險的桌面操作。外掛已確認風險；是否執行由你決定。如果你沒有預期到這個操作，請拒絕。",
     allowOnce: "允許一次",
+    allowSession: "本次執行內允許",
     deny: "拒絕",
   },
   pluginFsConsent: {
