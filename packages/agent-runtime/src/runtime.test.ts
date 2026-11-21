@@ -196,6 +196,7 @@ function createRuntime(
     pluginSkills: import("./plugin-skills-prompt.js").PluginSkillDef[];
     commandShell: CommandShellOption;
     jevApiKey: string;
+    codemodeEnabled: boolean;
     turnId: string;
     host: { call: ReturnType<typeof vi.fn>; onNotification?: ReturnType<typeof vi.fn> };
     onEvent: (envelope: unknown) => void;
@@ -206,6 +207,7 @@ function createRuntime(
     sessionId: "session-1",
     mode: overrides.mode === "chat" ? "plan" : overrides.mode ?? "agent",
     jevApiKey: overrides.jevApiKey,
+    codemodeEnabled: overrides.codemodeEnabled,
     turnId: overrides.turnId,
     provider: overrides.provider ?? provider,
     commandShell: overrides.commandShell ?? commandShell,
@@ -988,6 +990,7 @@ describe("Task/read mixed-batch safety", () => {
    */
   function setupMixedBatch(
     calls: unknown[] = [taskCall("task"), readCall("read")],
+    options: { codemodeEnabled?: boolean } = {},
   ) {
     const entered: string[] = [];
     const events: any[] = [];
@@ -1002,6 +1005,7 @@ describe("Task/read mixed-batch safety", () => {
     };
     const runtime = createRuntime({
       host,
+      ...options,
       onEvent: (envelope) => { events.push((envelope as any).event); },
       subagents: [{
         name: "explorer",
@@ -1137,6 +1141,29 @@ describe("Task/read mixed-batch safety", () => {
       }
     },
   );
+
+  it("holds a same-batch codemode script behind a writable delegate", async () => {
+    const batch = setupMixedBatch([
+      taskCall("task"),
+      { type: "toolCall", id: "code", name: "codemode", arguments: { code: 'return await tools.Read({ path: "target.txt" });' } },
+    ], { codemodeEnabled: true });
+    try {
+      const pending = batch.runtime.prompt("Delegate, then script.");
+      await vi.waitFor(() => expect(subagentRuns.instances).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(batch.events.some((event) => event.type === "tool_start" && event.toolCallId === "code")).toBe(true));
+      // While the writable delegate runs, the script's nested Read never reaches Host.
+      await expect(vi.waitFor(() => expect(batch.entered).not.toEqual([]), { timeout: 300 })).rejects.toThrow();
+      subagentRuns.resolveRun!(settled());
+      await vi.waitFor(() => expect(batch.entered).toEqual(["code/1"]));
+      batch.release("code/1")!({ ok: true, content: "updated" });
+      await pending;
+      const end = batch.events.find((event) => event.type === "tool_end" && event.toolCallId === "code");
+      expect(JSON.stringify(end?.result)).toContain("updated");
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
 
   it("serializes a parent Read against an in-flight shared-workspace delegate Edit on the same path", async () => {
     const batch = setupMixedBatch([taskCall("task")]);
@@ -1561,6 +1588,8 @@ describe("DesktopAgentRuntime configuration matching", () => {
       runtimeFirstMismatch(runtime, { projectMemory: "Use the production database." }),
     ).toBe("projectMemory");
     expect(runtimeFirstMismatch(runtime, { mode: "plan" })).toBe("mode");
+    // Turning codemode on changes the tool list, so the runtime is retired.
+    expect(runtimeFirstMismatch(runtime, { codemodeEnabled: true })).toBe("codemodeEnabled");
     await runtime.dispose();
   });
 

@@ -103,7 +103,7 @@ See [ordered preparation](../../adr/parallel-read-batches.md) and
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |
-| Agent tools | Read / Glob / Grep / Write / Edit / Bash + Computer under an active scope grant + registered plugin tools + optional Jev classifier |
+| Agent tools | Read / Glob / Grep / Write / Edit / Bash + Computer under an active scope grant + registered plugin tools + optional Jev classifier + optional `codemode` |
 | Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
 | Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
 | Plan and Goal hard deny | Write / Edit / Computer / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
@@ -196,6 +196,39 @@ never bypasses execution permissions. Missing selection fields retain normal
 on-demand discovery. Main rejects a selected MCP command without task text or
 an attachment before opening or persisting a turn. See
 `docs/adr/composer-mcp-invocations.md`.
+
+### 2.2 Codemode (ADR codemode-sandbox-boundary)
+
+`codemode` is offered only in Agent mode and only when Settings → Agent
+behavior → Execution enables it (`AppSettings.codemodeEnabled`, off when
+absent). When enabled it is declared with the first request. Its `code` runs
+as the body of an async function in a QuickJS-WASI worker with no Node,
+filesystem, network, timer, or module access.
+
+- `tools.<name>(args)` reaches only the session's currently active tools: core
+  tools plus tools activated through `ToolSearch`, allowed in the current mode.
+  `ToolSearch`, `asktool`, mode/stage control, `new_context`, `Task`,
+  `TaskWait`, `TaskList`, `TaskStop`, and `codemode` are never callable.
+- Every nested call runs through the same preparation, hooks and Host
+  `tools.execute` path as a direct call. Permission modes, approval cards,
+  denials, path rules, file admission, audit and mutation recovery are
+  unchanged. Read, Glob and Grep may overlap; other tools, including Write and
+  Edit, run one at a time. A script that follows a writable `Task` in the same
+  assistant message waits for that delegate before any nested call, as a direct
+  read does. A failed nested call always rejects inside the script.
+- Stop aborts the script and sends `tools.abort` for an in-flight nested Host
+  call. A failed script lists the nested calls that already ran; their side
+  effects are not undone.
+- Limits: 256 MiB VM heap, 64 KiB source, 120 s default and 600 s maximum
+  deadline, 256 nested calls, 10 000 output tokens by default and 50 000 at
+  most (`// @options:` first line), two sandbox workers per sidecar.
+- `models.list()` returns allowlisted metadata only. `models.complete()` uses
+  the session's own model binding, `models.classify()` uses Jev when enabled,
+  and `models.generateImages()` is a nested `GenerateImages` call when that tool
+  is callable. Each physical model request records its own identified usage.
+- Nested calls are recorded as `<callId>/<n>` with `nestedParentToolCallId`;
+  they never set `parentToolCallId` and never re-enter the model context.
+  Delegates never inherit `codemode`.
 
 ## 3. Common Tool Constraints
 
