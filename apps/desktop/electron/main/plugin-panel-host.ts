@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, Menu, screen, session, systemPreferences } from "electron";
+import { BrowserWindow, ipcMain, Menu, session, systemPreferences } from "electron";
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
@@ -8,7 +8,6 @@ import {
 } from "@pi-desktop/plugin-sdk";
 import { builtinWindowBackground } from "@pi-desktop/shared";
 import { suppressLinuxFramelessSystemMenu } from "./frameless-system-menu";
-import { planMaximizeToggle, windowedRestoreBounds } from "./window-maximize";
 import { getModuleDirectory } from "./module-path";
 import { PanelSenders, panelReadyWithin, pageGoneWithin, resolvePanelInvocation } from "./plugin-panel-senders";
 import { PanelOperationSerializer } from "./plugin-panel-senders";
@@ -178,16 +177,6 @@ async function ensureOsMicrophone(allowMicrophone?: boolean): Promise<void> {
 /** Persisted session partition shared by a plugin's panel window and views. */
 export function pluginSessionPartition(pluginId: string): string {
   return `persist:pi-plugin-${pluginId.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-}
-
-/** Work area of the display a window is on, or null when it is gone. */
-function workAreaForWindow(window: BrowserWindow) {
-  try {
-    if (window.isDestroyed()) return null;
-    return screen.getDisplayMatching(window.getBounds()).workArea;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -396,43 +385,10 @@ export class PluginPanelHost {
       case "minimize":
         window.minimize();
         break;
-      case "toggleMaximize": {
-        // `isMaximized()` alone cannot drive the toggle: on Windows the
-        // native maximized flag can be lost while the window still fills
-        // the work area, and then every click maximizes a maximized-looking
-        // window and changes nothing (issue #1993). The plan's geometric
-        // fallback catches that pseudo-maximized state. Panel windows have
-        // no persisted normal bounds, so the restore target is computed.
-        const workArea = workAreaForWindow(window);
-        const plan = planMaximizeToggle({
-          isMaximized: window.isMaximized(),
-          isFullScreen: window.isFullScreen(),
-          platform: process.platform,
-          bounds: window.getBounds(),
-          workArea,
-        });
-        if (plan === "unmaximize") {
-          window.unmaximize();
-        } else if (plan === "restoreWindowed") {
-          // `restoreWindowed` implies a work area, but the types cannot carry
-          // that narrowing across the plan value.
-          if (!workArea) {
-            window.unmaximize();
-          } else {
-            window.setBounds(
-              windowedRestoreBounds({
-                workArea,
-                lastNormal: null,
-                minWidth: 0,
-                minHeight: 0,
-              }),
-            );
-          }
-        } else {
-          window.maximize();
-        }
+      case "toggleMaximize":
+        if (window.isMaximized()) window.unmaximize();
+        else window.maximize();
         break;
-      }
       case "contextMenu":
         this.showWidgetMenu(window);
         break;
