@@ -15,6 +15,7 @@ const catalogLoaders: Record<ChangelogLocale, CatalogLoader> = {
   fr: () => import("./changelog-fr.js").then((module) => module.frEntries),
   ko: () => import("./changelog-ko.js").then((module) => module.koEntries),
   "pt-BR": () => import("./changelog-pt-BR.js").then((module) => module.ptBREntries),
+  ru: () => import("./changelog-ru.js").then((module) => module.ruEntries),
 };
 
 const catalogRequests = new Map<ChangelogLocale, Promise<readonly ChangelogEntry[]>>();

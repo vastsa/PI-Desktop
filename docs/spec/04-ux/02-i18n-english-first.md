@@ -18,8 +18,12 @@ Rules:
 1. No hard-coded user-facing English sentences scattered without IDs long-term
 2. Every visible string has a stable key
 3. Locale switch must not require code edits
-4. Every shipped locale has the same flattened key set as English
-5. Interpolation variable names and sets match across every locale
+4. Every shipped locale has the same flattened key set as English, plus the
+   plural forms its CLDR rules require for an English plural family (ru ships
+   `_few` and `_many`, which English does not)
+5. Interpolation variable names and sets match across every locale; a plural
+   form may add `{{count}}` where English hardcodes the numeral, because the
+   ru `_one` category also fires for 21, 31, …
 6. Dates and times use the active application locale rather than the host default
 7. Electron application-menu custom labels and renderer window controls
    consume catalog keys; native role labels may use Electron/OS localization
@@ -42,7 +46,8 @@ packages/i18n/src/locales/
 ├── es/index.ts
 ├── fr/index.ts
 ├── ko/index.ts
-└── pt-BR/index.ts
+├── pt-BR/index.ts
+└── ru/index.ts
 ```
 
 The English catalog is the source type for translated catalogs. A registry in

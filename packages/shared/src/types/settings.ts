@@ -121,7 +121,7 @@ export type AppSettings = {
    */
   startupAnimation?: StartupAnimationSettings;
   /** UI language; `auto` (and absent) follows the OS locale. */
-  language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR";
+  language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR" | "ru";
   /**
    * Global UI font stack (CSS `font-family` value). Absent means the built-in
    * token stack; bundled open-source families and installed system families

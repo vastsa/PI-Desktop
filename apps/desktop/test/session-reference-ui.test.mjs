@@ -339,7 +339,7 @@ test("the session Copy submenu exposes the link to every reader", () => {
 });
 test("the reference keys exist in every shipped locale", () => {
   const locales = Object.keys(catalogs);
-  assert.equal(locales.length, 9, "nine locales ship");
+  assert.equal(locales.length, 10, "ten locales ship");
   for (const code of locales) {
     const catalog = catalogs[code];
     for (const [group, key] of [
