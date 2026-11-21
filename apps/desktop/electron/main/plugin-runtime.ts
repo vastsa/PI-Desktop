@@ -105,6 +105,8 @@ import {
   type PluginComposerTransformMeta,
   type PluginWorkspaceInfo,
   BUILTIN_SPEECH_PROTOCOL_IDS,
+  isBrowserAction,
+  type BrowserAction,
 } from "@pi-desktop/shared";
 import {
   previewFile,
@@ -495,7 +497,7 @@ export type PluginHostServices = {
       sessionId?: string,
       tabId?: string,
     ) => Promise<unknown>;
-    action: (action: "back" | "forward" | "reload" | "stop", sessionId?: string, tabId?: string) => void;
+    action: (action: BrowserAction, sessionId?: string, tabId?: string) => void;
     setBounds: (pluginId: string, hole: unknown) => unknown;
     setVisible: (pluginId: string, visible: boolean) => void;
     getState: (sessionId?: string, tabId?: string) => unknown;
@@ -5018,15 +5020,8 @@ export class PluginRuntime {
           path: payload?.path != null ? String(payload.path) : undefined,
         });
       case "action": {
-        const action = String(payload?.action ?? "");
-        if (
-          action === "back" ||
-          action === "forward" ||
-          action === "reload" ||
-          action === "stop"
-        ) {
-          api.action(action);
-        }
+        const action = payload?.action;
+        if (isBrowserAction(action)) api.action(action);
         return { ok: true };
       }
       case "setBounds":
@@ -6716,18 +6711,13 @@ export class PluginRuntime {
           });
           return result;
         },
-        action: (input: "back" | "forward" | "reload" | "stop" | { action?: string }) => {
+        action: (input: BrowserAction | { action?: string }) => {
           this.assertPermission(loaded, "browser.cdp");
           if (!this.services.browser) {
             throw apiError("UNAVAILABLE", "browser host missing");
           }
-          const action = typeof input === "string" ? input : String(input?.action ?? "");
-          if (
-            action === "back" ||
-            action === "forward" ||
-            action === "reload" ||
-            action === "stop"
-          ) {
+          const action = typeof input === "string" ? input : input?.action;
+          if (isBrowserAction(action)) {
             this.services.browser.action(action, this.browserSessionId(pluginId) ?? browserContext?.sessionId, browserContext?.tabId);
           }
         },
