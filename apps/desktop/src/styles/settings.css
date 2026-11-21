@@ -2036,7 +2036,17 @@
 .settings-menu-select-menu {
   width: max-content;
   min-width: 8rem;
-  max-width: min(280px, calc(100vw - 48px));
+  /* Wide enough for "Provider · vendor/model-id" labels; AnchoredMenu keeps
+     the surface inside the viewport. */
+  max-width: min(440px, calc(100vw - 48px));
+}
+
+/* Model pickers carry "Provider · model-id" labels that overflow the 240px
+   control cap. They get a wider column that still yields to the row title. */
+.settings-row-control:has(> .settings-model-select),
+.settings-row > .settings-model-select {
+  flex: 0 1 auto;
+  max-width: min(400px, 60%);
 }
 
 .settings-language-menu.is-open,

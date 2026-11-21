@@ -719,10 +719,15 @@ export function createSessionSlice({
       if (!(options && "projectPath" in options) && isRemoteSession(activeSession ?? (
         get().activeSessionId?.startsWith("remote:") ? { id: get().activeSessionId! } : undefined
       ))) throw new Error(i18n.t("remote:REMOTE_PROJECT_REQUIRED"));
+      // A global New Task (sidebar, titlebar, Cmd/Ctrl+N, palette, search)
+      // starts a temporary conversation; only an explicit `projectPath` (a
+      // project row's +, the home project picker, the project index, or a
+      // worktree) attaches it to a project (issue #2455). An active remote
+      // project is the exception above: it has no temporary group.
       const requestedProjectPath =
         options && "projectPath" in options
           ? options.projectPath ?? null
-          : get().workspace?.path ?? null;
+          : null;
       const isolated = options?.isolated === true;
       const scopeKey = `${runtime.newSessionScopeKey(requestedProjectPath)}${isolated ? "\u0000isolated" : ""}`;
       const pending = runtime.pendingNewSessionRequests.get(scopeKey);

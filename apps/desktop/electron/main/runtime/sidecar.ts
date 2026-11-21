@@ -40,6 +40,7 @@ export type SidecarRuntimeDependencies = {
   sendToRenderer: (channel: string, payload: unknown) => void;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
   activeTurns: Map<string, string>;
+  readPluginModelContext?: (params: Record<string, unknown>) => Promise<unknown>;
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
   inflightCheckpointer: InflightCheckpointer;
@@ -84,6 +85,7 @@ export function createSidecarRuntime({
   sendToRenderer,
   persistAgentEvent,
   activeTurns,
+  readPluginModelContext,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
   inflightCheckpointer,
@@ -377,6 +379,10 @@ export function createSidecarRuntime({
 
   const s = new AgentSidecar((text) => logger.child("agent", text));
   wireSidecar(s);
+  if (readPluginModelContext) {
+    s.setPluginModelContextReader((params) => runtimeState.sidecar === s && !isQuitting()
+      ? readPluginModelContext(params) : Promise.resolve([]));
+  }
   // The directory a session's file tools work in: its isolated worktree
   // (ADR 0329), project, or host-owned scratch directory (ADR 0124).
   const sessionFileRoot = async (sessionId: string): Promise<string | null> => {

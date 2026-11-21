@@ -623,7 +623,10 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     return result("TURN_ABORTED", false);
   }
   if (/CONTEXT_COMPACTION_FAILED/i.test(rawMessage)) {
-    return result("CONTEXT_COMPACTION_FAILED", false);
+    // The checkpoint guard fails before any provider request is sent, so the
+    // stream timings and last HTTP status of the previous request say nothing
+    // about it (#2494).
+    return result("CONTEXT_COMPACTION_FAILED", false, { origin: "local" });
   }
   // Network failures never carry an HTTP status; probe before status logic so
   // "fetch failed" causes don't fall through to the generic bucket. The cause

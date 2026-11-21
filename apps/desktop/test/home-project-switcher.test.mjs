@@ -74,3 +74,14 @@ test("home project switcher trigger is the underlined name without a chevron", (
     /\.empty-hero \.project-underline\[aria-expanded="true"\] \.project-underline-name \{[\s\S]*?text-decoration-style:\s*solid;/,
   );
 });
+
+test("home project switcher lists No project first; a temporary home underlines its scope (#2455)", () => {
+  assert.match(switcher, /key: TEMPORARY_KEY, name: temporaryLabel/);
+  assert.match(switcher, /if \(project\.temporary\) return selectTemporary\(\);/);
+  assert.match(switcher, /await newSession\(\{ projectPath: null \}\)/);
+  // No extra control under the title: the scope word in the title is the trigger.
+  assert.doesNotMatch(switcher, /home-project-chip/);
+  assert.doesNotMatch(styles, /home-project-chip/);
+  assert.match(chatSurface, /<HomeProjectSwitcher temporary name=\{t\("chat\.temporaryScope"\)\} \/>/);
+  assert.match(chatSurface, /t\("chat\.emptyTitleTemporaryScoped", \{ scope: marker \}\)/);
+});

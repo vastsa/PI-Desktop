@@ -17,12 +17,13 @@ async function until(predicate: () => boolean, message: string) {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
 }
+const command = `# ${"long-argument-".repeat(30)}\n  sleep 60 # end of command`;
 let stops = 0;
 Object.defineProperty(window, "piDesktop", { value: {
   invoke: async (channel: string) => {
     let data: unknown;
     if (channel === IPC.invoke.backgroundTasksList) {
-      data = { tasks: [{ id: "task-1", sessionId: "fixture", command: "fixture-dev-server",
+      data = { tasks: [{ id: "task-1", sessionId: "fixture", command,
         commandShellId: "bash", state: "running", elapsedMs: 1000 }], version: 1 };
     } else if (channel === IPC.invoke.backgroundTasksOutput) {
       data = { id: "task-1", state: "running", stdout: "fixture log output", stderr: "", truncated: false };
@@ -68,10 +69,15 @@ async function probe() {
       const row = document.querySelector<HTMLElement>(".task-main");
       assert(row, "Task row missing");
       if (row.getAttribute("aria-expanded") !== "true") flushSync(() => row.click());
+      const detail = document.querySelector<HTMLElement>(".task-command-detail");
+      assert(detail?.textContent === command, "Expanded task must show its complete command");
+      assert(detail.scrollWidth <= detail.clientWidth, "Long command must wrap within the panel");
+      assert(getComputedStyle(detail).userSelect === "text", "Complete command must be selectable");
       await until(() => !!document.querySelector("pre")?.textContent?.includes("fixture log output"), "Log must load");
       select("Todo");
       assertPanel(true);
       assert(!document.querySelector("pre"), "Task log must not leak into Todo");
+      assert(!document.querySelector(".task-command-detail"), "Command details must not leak into Todo");
       select("Background tasks");
       assertPanel(false);
       assert(document.querySelector("pre")?.textContent?.includes("fixture log output"), "Open log must survive switching");

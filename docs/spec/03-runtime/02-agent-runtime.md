@@ -492,6 +492,10 @@ The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
 
+Responses text explicitly marked `commentary` is progress, not a subagent
+report, one-shot result, or final answer. Signed transcript rows retain the
+provider's original text for replay. Unmarked text is treated as before.
+
 When restoring a checkpoint, tool-call reconstruction respects its
 `throughMessageId` boundary. A surviving tool row must not attach its call to
 an assistant that the checkpoint removes. Legacy checkpoints can cut through
@@ -623,12 +627,17 @@ and testable.
 
 **Model-facing surface.** `new_context` takes no parameters and starts a new
 context window at the next turn boundary; it never clears or resets environment
-state. Two budget reminders are appended to the current turn's system prompt,
-each at most once per checkpoint window and reset when a checkpoint is
+state. Two budget reminders are appended to the tail of the current turn's
+request, each at most once per checkpoint window and reset when a checkpoint is
 installed: one when the remaining budget falls to
 `clamp(hardLimit * 0.15, 8k, 32k)`, asking the model to start closing out, and
 one at 2,000 tokens remaining, telling it to write down whatever must survive.
-Neither reminder is persisted or shown in the transcript.
+A reminder never rewrites the request prefix (issue #2458): where the model
+keeps mid-conversation system messages in place it is a `context_budget` system
+section that expires at the next checkpoint; elsewhere, because pi-ai folds
+every system update into the leading system message, it is a request-only user
+message that is neither persisted nor carried into the next run. Neither
+reminder is shown in the transcript.
 
 The hard boundary is the model context window minus request headroom. Automatic
 compaction starts at 90% of `hardLimit`; this deterministic margin is not
@@ -726,9 +735,16 @@ The complete transcript remains durable and visible, while the next model
 request receives only that recovery checkpoint and applicable tail. The
 lifecycle event marks this as `fallback: "retained_tail"`, and the checkpoint's
 mark carries the same `fallback`, so the renderer shows a warning and labels
-the transcript row as a failed summary rather than a false success. If the
-fallback cannot be prepared, persisted, or kept below the safe budget, the user
-row and an assistant error remain durable and no provider request starts.
+the transcript row as a failed summary rather than a false success. The window
+is sized from the local estimate while installation re-estimates with the
+calibrated one, so a window the calibrated estimate still puts at or above the
+safe budget is halved and retried, down to 1/128 of its first size, before the
+recovery gives up (issue #2494). If the fallback cannot be prepared, persisted,
+or kept below the safe budget, the user row and an assistant error remain
+durable and no provider request starts. That `CONTEXT_COMPACTION_FAILED` error
+is classified as local (`details.origin: "local"`), so it carries no stream
+timings or HTTP status from an earlier request, and its message names the
+checkpoint failure that caused it.
 Provider-reported context overflow is the last recovery layer: omit the failed
 assistant from model context, compact once, and retry once. A second overflow
 remains terminal and is reported as `CONTEXT_TOO_LARGE`: the error classifier

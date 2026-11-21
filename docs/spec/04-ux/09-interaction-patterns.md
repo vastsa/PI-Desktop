@@ -362,8 +362,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   falls back to latest, and read failures use the existing error notification.
 - New Task is not a cold switch. Creating a session reveals the empty home on
   the first frame (the previous conversation and retained panes clear before
-  `session.create`). Reusing the group's latest empty session commits that empty
-  transcript on the same frame rather than waiting for `session.get`. The
+  `session.create`). Reusing the target group's latest empty session commits
+  that empty transcript on the same frame rather than waiting for
+  `session.get`. The
   durable row is inserted from the `session.create` summary; send and paste wait
   for that in-flight create instead of opening a second slot (ADR 0154).
   Concurrent first-input materializations share the same project-scoped
@@ -384,6 +385,8 @@ may be retained while exactly one workspace supplies the visible shell context.
   the visible workspace. Project-scoped new-session actions pass their target
   path to that same store transaction; sidebar and project-index handlers do
   not perform a second project navigation before session creation or selection.
+  Global New Task actions pass no path, so they clear the visible workspace and
+  resolve only the temporary group.
 - Run state, permission grants, and streamed events are keyed by session id.
   A project/tab switch does not abort a background turn or copy its events into
   the visible transcript. Background message and tool events update that
@@ -558,9 +561,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   body offers Browser or an in-scope plugin view.
 - An artifact trigger atomically creates or reuses its resource, activates it,
   and opens the panel. Background artifacts never open the visible panel.
-- File resources use normalized paths as identity. Browser and plugin views
-  are singletons; repeated triggers preserve resource order and activate the
-  existing resource.
+- File resources use normalized paths as identity. Plugin views are
+  singletons; repeated triggers preserve resource order and activate the
+  existing resource. Browser is the exception: each page has its own tab, so
+  a clicked link opens another Browser tab and selecting Browser in the
+  launcher while one is open adds a blank Browser tab instead of activating
+  the existing page.
 - Once open, the panel header is a `tablist` that scrolls horizontally while a
   tight `+` trigger stays fixed beside it. Each tab owns its active state and
   close button; the active tab is scrolled into view. Clicking `+` creates a
@@ -656,6 +662,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   Info continues to show the available version and the Releases action.
 - `downloaded` remains actionable until Restart to update or normal app quit;
   later scheduled/manual checks do not replace it with `checking`.
+- On Windows, Restart to update reuses the registered NSIS install scope when
+  exactly one exists. An all-users update requests elevation when needed.
+  The installer asks for the scope when it finds no registered install or finds both.
 - A compact update notice appears in the main pane's top-right safe area for
   the one-time manual reminder, in-app `downloading`, or `downloaded`. It stays
   clear of the bottom composer at every supported window size and draft height.
@@ -1441,8 +1450,11 @@ Sidebar drag/drop is implemented:
 - The dragged row paints at opacity 0.5 and the eligible project group
   highlights with an accent outline. A session's own project group is not a
   drop target, so a same-project drag never issues a request.
-- Project reassignment is available through the drag/drop interaction only;
-  the session context menu does not contain a project list.
+- Project reassignment is also available from the conversation topbar's
+  project crumb, which can move an idle conversation into another open
+  project or out of any project (`session.moveProject` with `projectPath:
+  null`); the sidebar session context menu does not contain a project list.
+  When the moved conversation is active, the visible workspace follows it.
 - Dropping a folder on the projects list adds it as a project, or switches to
   it when it is already known; duplicate paths resolve to one project row. A
   drop that carries no folder reports why nothing happened.
@@ -2025,6 +2037,13 @@ This does not prevent state changes — it makes them instant.
 - A settled cross-display move refreshes the native minimum without enlarging a
   window already placed in a narrower tile. Normal bounds persistence and the
   internal work-panel/chat-width IPC contracts are unchanged.
+
+## Background task details
+
+The task header keeps the command on a single line with an ellipsis when it
+overflows. Expanding the row shows the full, selectable command above the
+output, preserving whitespace and wrapping long lines within the dock. The
+command is visible as soon as the row expands, even when output is empty.
 
 ## Background completion continuation
 

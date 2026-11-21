@@ -20,7 +20,7 @@ try {
       "react-dom": join(root, "apps/desktop/node_modules/react-dom") },
     nodePaths: [join(root, "apps/desktop/node_modules")],
   });
-  const styles = await Promise.all(["tokens.css", "composer.css"].map((name) =>
+  const styles = await Promise.all(["tokens.css", "base.css", "composer.css"].map((name) =>
     readFile(join(root, "apps/desktop/src/styles", name), "utf8")));
   await writeFile(join(temp, "styles.css"), styles.join("\n"));
   await writeFile(join(temp, "index.html"), `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'"><link rel="stylesheet" href="styles.css"></head><body><div id="root"></div><script src="renderer.js"></script></body></html>`);
@@ -30,7 +30,7 @@ const { join } = require("node:path");
 app.setPath("userData", join(__dirname, "profile"));
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ show: false, webPreferences: {
+  const win = new BrowserWindow({ show: false, width: 440, webPreferences: {
     sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   try {
     await win.loadFile(join(__dirname, "index.html"));

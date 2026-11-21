@@ -502,14 +502,22 @@ shared capability contract:
   switcher of the sidebar's open projects instead of the folder picker. An
   open project with no session yet names the hero the same way, because that
   empty home already belongs to it and a task started there lands in the
-  project. A temporary session shows dedicated temporary-chat copy with no
-  project underline or switcher; and with no project open the generic welcome
-  title stands.
-- New task resolves the current project or temporary group by its most recent
-  session: if that session has `messageCount = 0`, it is selected and reused;
-  otherwise a durable empty session is created immediately and appears in the
-  sidebar. Repeated clicks therefore keep one empty slot per visible group;
-  an empty slot remains persisted until the user deletes or archives it.
+  project. A temporary session shows dedicated temporary-chat copy whose scope
+  word ("temporarily" / 临时) is underlined like a project name and opens the
+  same switcher; with no project and no session the generic welcome title
+  stands. The switcher
+  lists "Temporary chat" first, so the next task can leave or join a project from
+  the empty home.
+- New task resolves the temporary group by its most recent session: if that
+  session has `messageCount = 0`, it is selected and reused; otherwise a
+  durable empty session is created immediately and appears in the sidebar. A
+  project row's `+` and the empty-home switcher resolve their target group the
+  same way. Repeated clicks therefore keep one empty slot per target group; an
+  empty slot remains persisted until the user deletes or archives it.
+- The conversation topbar's project crumb (or a "Temporary chat" crumb for a
+  temporary session) opens a menu that moves an idle local conversation into
+  another open project or out of any project. Running, remote, native, and
+  isolated-worktree sessions show the static crumb.
 
 ## 6. Keyboard map (IA level)
 

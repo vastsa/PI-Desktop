@@ -616,7 +616,11 @@
   (and supervision/capture equivalents) and confirm `app.quit()` exits without a
   dialog. 6) On packaged Windows NSIS or Linux AppImage, restart to install an
   update; confirm no quit warning appears and the installer completes upgrade
-  and relaunch.
+  and relaunch. On Windows, repeat with only a current-user install and only
+  an all-users install. Verify each update skips the scope page and updates
+  the same directory, accepting UAC if prompted for the all-users install.
+  With both scopes registered, verify the installer asks which copy to update.
+  Also verify a fresh interactive install offers both scopes.
 - **Expected**: Accidental explicit quit is cancellable. Repeated quit requests
   cannot duplicate or bypass an outstanding confirmation; Cancel clears the
   pending decision so a later quit asks again. Tray Quit presents the dialog
@@ -635,9 +639,11 @@
   shutdown lifecycle covered (`lifecycle-dialog-broker.test.mjs`,
   `lifecycle-confirmation-dialog-user-path.test.mjs`,
   `lifecycle-close-behavior-runtime.test.mjs`, `close-behavior-tray.test.mjs`,
-  `shutdown-regenerate-persistence.test.mjs`). Full application shutdown and
-  packaged update journey remains Draft; run in a capable release environment
-  when lifecycle wiring changes.
+  `shutdown-regenerate-persistence.test.mjs`). For the Windows scope cases,
+  compile `apps/desktop/test/nsis-update-scope.nsi` with `makensis` and run
+  the resulting executable. Exit code 0 means all scope cases passed.
+  The full shutdown and packaged update journey remains Draft. Run it in a
+  capable release environment when lifecycle wiring changes.
 
 ## E2E-067A: Prerelease install discovers newer stable release (D120)
 

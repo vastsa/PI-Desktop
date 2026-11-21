@@ -552,7 +552,7 @@ visually distinct from list content.
 | Empty group | Muted one-line empty state; group create action remains available |
 | Default session title | New task/New chat (localized where applicable) until the first prompt, the user, or an installed title plugin sets one |
 | First prompt title | A normalized 48-character prompt fallback appears immediately and is stored as a still-replaceable automatic title |
-| Plugin-generated session title | A title plugin may replace that automatic title after the first completed turn when its permission is granted |
+| Plugin-generated session title | Bundled Official Enhancements can replace that automatic title after the first completed turn. Titles are on by default; next-message suggestions, prompt enhancement, and AI memory are opt-in. The plugin settings panel preserves explicit choices. |
 | Manual session title | User-defined title remains stable across refresh and renderer restart; automatic titles (local fallback or plugin) never overwrite it |
 | Footer idle | Transparent 58px band; build and action controls remain visually quiet |
 | Footer hover/focus | Only the targeted control receives the semantic hover/focus treatment |
@@ -658,8 +658,17 @@ visually distinct from list content.
   removal of a folder that still owns chats. Every other folder row carries a
   Set as Primary action that promotes it: the row moves to the top, the Primary
   tag moves with it, and the host stores the promoted folder as the group's
-  primary root on save. A remote project keeps its host-owned binding and shows
-  no promotion action. Background session or run-status updates
+  primary root on save. When a single-root project's folder was moved
+  externally and the old folder no longer exists, adding its replacement,
+  promoting it, and removing the stale row in one save relocates the existing
+  project instead of creating a replacement with orphaned chats. Saving the
+  replacement next to the stale row first and removing the stale row in a
+  later save relocates the same way. If the old folder still exists, the save
+  is an ordinary swap and the old project keeps its chats. A non-empty
+  independent project at the replacement path rejects the one-save repair
+  unchanged and leaves the two-step repair on the ordinary detach. A remote
+  project keeps its host-owned binding and shows no promotion action.
+  Background session or run-status updates
   must preserve unsaved name, folder, and primary edits in the open editor.
   Git repository as equal filled tiles without strokes (D297); the active source
   uses a deeper tile, not a selected border. A repository URL reuses the clone
@@ -965,6 +974,11 @@ that disclosure. The trailing answer streams outside the process; later activity
 can reclassify provisional answer text into the process without changing the
 stored message. Assistant errors and stopped trailing partial answers also stay
 outside it. User/system messages and compaction boundaries are unchanged.
+
+An explicitly signed Responses `commentary` text is progress from its first
+identified chunk. The answer and its Copy action exclude it; unmarked text
+keeps its normal behavior. Reopened rows use matching provider replay lengths
+and signatures, never a guess based on wording.
 
 The disclosure owns every row the turn produced before its answer: ordinary
 activity groups and `Bash` run rows alike. A turn therefore renders exactly one

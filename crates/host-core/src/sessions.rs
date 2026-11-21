@@ -2294,7 +2294,8 @@ pub enum MoveSessionProjectResult {
     Busy,
 }
 
-/// Move an idle session to another project.
+/// Move an idle session to another project, or out of any project when
+/// `project_path` is `None` (it then joins the temporary group).
 ///
 /// Only the session's project association and `updated_at` change: transcript,
 /// revisions, artifacts, notifications, scratch data, and runtime state belong
@@ -2304,7 +2305,7 @@ pub enum MoveSessionProjectResult {
 pub fn move_session_project(
     db: &Database,
     id: &str,
-    project_path: &str,
+    project_path: Option<&str>,
 ) -> Result<MoveSessionProjectResult> {
     if get_session(db, id)?.is_none() {
         return Ok(MoveSessionProjectResult::NotFound);
@@ -2312,7 +2313,10 @@ pub fn move_session_project(
     if session_has_running_turn(db, id)? {
         return Ok(MoveSessionProjectResult::Busy);
     }
-    let project_id = db.ensure_project(project_path, false)?;
+    let project_id = match project_path {
+        Some(path) => Some(db.ensure_project(path, false)?),
+        None => None,
+    };
     db.conn()
         .prepare_cached("UPDATE sessions SET project_id = ?1, updated_at = ?2 WHERE id = ?3")?
         .execute(params![project_id, now_ms(), id])?;
@@ -2340,6 +2344,17 @@ pub fn append_message(
     message: &UiMessage,
     turn_id: Option<&str>,
 ) -> Result<()> {
+    append_message_with_receipt(db, session_id, message, turn_id).map(|_| ())
+}
+
+/// The canonical ID of a row first inserted with a valid turn association.
+/// Updates, retries, and index repair of an existing transcript line are not inserts.
+pub fn append_message_with_receipt(
+    db: &Database,
+    session_id: &str,
+    message: &UiMessage,
+    turn_id: Option<&str>,
+) -> Result<Option<String>> {
     model_system::validate(message)?;
     let message = crate::session_collaboration::prepare_append(db, session_id, message, turn_id)?;
     let session_created = ensure_session_for_append(db, session_id)?;
@@ -2353,6 +2368,7 @@ pub fn append_message(
     // with another session is remapped before any transcript write (D444).
     // A steering input reserves its preceding streaming assistant's position;
     // only a terminal assistant snapshot may replace that provisional row.
+    let mut inserted_id = None;
     if message_indexed(db, session_id, &record.id)? {
         if message.role == "assistant"
             && message.status.as_deref() != Some("streaming")
@@ -2379,7 +2395,7 @@ pub fn append_message(
             }
         } else {
             update_delegation_snapshot(db, session_id, &record)?;
-            return Ok(());
+            return Ok(None);
         }
     } else {
         if let Some(owner) = message_owner(db, &record.id)? {
@@ -2388,15 +2404,15 @@ pub fn append_message(
                 record.id = namespaced_message_id(session_id, &record.id);
                 if message_indexed(db, session_id, &record.id)? {
                     update_delegation_snapshot(db, session_id, &record)?;
-                    return Ok(());
+                    return Ok(None);
                 }
                 // Old hosts wrote JSONL then failed UNIQUE. Replaying that
                 // leftover must not append a second remapped line (D444).
                 if transcript_contains_id(db, session_id, &original_id)? {
-                    return Ok(());
+                    return Ok(None);
                 }
             } else {
-                return Ok(());
+                return Ok(None);
             }
         }
         let transcript_repaired =
@@ -2410,6 +2426,9 @@ pub fn append_message(
                 text.as_deref(),
                 turn_id.as_deref(),
             )?;
+            if turn_id.is_some() && record.role == "user" {
+                inserted_id = Some(record.id.clone());
+            }
         }
     }
     if message.role == "assistant" && message.status.as_deref() == Some("streaming") {
@@ -2431,7 +2450,7 @@ pub fn append_message(
                 },
             )?;
         }
-        return Ok(());
+        return Ok(None);
     }
     // The final assistant row supersedes any checkpoint of the same message
     // (D299). A checkpoint for a different id belongs to a newer fragment and
@@ -2443,7 +2462,7 @@ pub fn append_message(
             }
         }
     }
-    Ok(())
+    Ok(inserted_id)
 }
 
 /// Whether the session's index already carries `message_id`.
@@ -4776,6 +4795,27 @@ mod tests {
             model_id: Some("model-1".into()),
             created_at: "2026-07-28T00:00:03Z".into(),
         }
+    }
+
+    #[test]
+    fn user_insert_receipt_only_reports_first_valid_turn_append() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        let message = user_msg("submitted", "durable input", "2026-07-28T00:00:00Z");
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &message, Some(&turn)).unwrap(),
+            Some(message.id.clone())
+        );
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &message, Some(&turn)).unwrap(),
+            None
+        );
+        let orphan = user_msg("orphan", "historical input", "2026-07-28T00:00:01Z");
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &orphan, Some("missing-turn")).unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -7540,7 +7580,8 @@ mod tests {
         // with forward slashes.
         let target_path = crate::db::canonical_project_path(&target.to_string_lossy())
             .expect("canonical project path");
-        let moved = move_session_project(&db, &session.id, &target.to_string_lossy()).unwrap();
+        let moved =
+            move_session_project(&db, &session.id, Some(&target.to_string_lossy())).unwrap();
         let MoveSessionProjectResult::Moved(summary) = moved else {
             panic!("an idle session must move to the requested project");
         };
@@ -7555,20 +7596,39 @@ mod tests {
         // instruction roots mid-turn.
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
         assert!(matches!(
-            move_session_project(&db, &session.id, &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, &session.id, Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::Busy
         ));
         end_turn(&db, &turn, "aborted", None, None, false).unwrap();
         assert!(matches!(
-            move_session_project(&db, &session.id, &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, &session.id, Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::Moved(_)
         ));
 
         assert!(matches!(
-            move_session_project(&db, "missing-session", &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, "missing-session", Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::NotFound
         ));
-        assert!(move_session_project(&db, &session.id, "   ").is_err());
+        assert!(move_session_project(&db, &session.id, Some("   ")).is_err());
+
+        // `None` detaches the session into the temporary group and keeps it
+        // otherwise intact; it can then move back into a project.
+        let MoveSessionProjectResult::Moved(detached) =
+            move_session_project(&db, &session.id, None).unwrap()
+        else {
+            panic!("an idle session must leave its project");
+        };
+        assert_eq!(detached.project_path, None);
+        assert_eq!(detached.title, "Move me");
+        let MoveSessionProjectResult::Moved(reattached) =
+            move_session_project(&db, &session.id, Some(&target.to_string_lossy())).unwrap()
+        else {
+            panic!("a temporary session must move into a project");
+        };
+        assert_eq!(
+            reattached.project_path.as_deref(),
+            Some(target_path.as_str())
+        );
     }
 
     #[test]

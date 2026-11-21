@@ -2,6 +2,22 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "Em uma instalação nova, o plugin incluído Melhorias oficiais gera automaticamente os títulos das sessões; sugestões, aprimoramento de rascunho e memória de IA continuam desligados até você ativá-los.",
+      "Nova tarefa agora inicia um chat temporário fora de qualquer projeto, e as conversas podem ser movidas entre projetos ou de volta para Chat temporário.",
+      "Na tela inicial vazia, clique no nome do projeto ou em \"temporariamente\" no título para trocar de projeto; o destino sem projeto agora se chama Chat temporário em todo lugar.",
+      "Opcionalmente, comandos em segundo plano concluídos relatam seus resultados e retomam uma conversa ociosa depois que o turno termina; desativado por padrão.",
+      "Plugins podem adicionar itens ao menu de contexto da conversa para enviar o texto selecionado a uma visualização acoplada, além de oferecer sugestões e contexto limitado.",
+      "As notas de progresso dos modelos OpenAI Responses ficam no processo do turno, na ordem original, em vez de se misturar à resposta, também ao reabrir uma sessão; Copiar última resposta copia apenas a resposta.",
+      "Endpoints personalizados compatíveis com OpenAI mantêm o cache de prompt entre turnos, evitando longas esperas pelo primeiro token em conversas longas.",
+      "Parágrafos em persa, árabe e outros idiomas da direita para a esquerda que começam com uma palavra em inglês agora aparecem na direção correta.",
+      "O plugin Gerenciador de arquivos 0.9.1 exibe com segurança imagens Markdown embutidas e mostra prévias de planilhas somente leitura.",
+      "Corrigido: bifurcar respostas antigas carregadas do histórico, sincronização de configuração falhando repetidamente após excluir um registro de um lado, nomes de modelos cortados em Configurações, o botão do painel de trabalho cobrindo a Pesquisa e definições de ferramentas rejeitadas por alguns endpoints Responses.",
+    ],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [

@@ -5,12 +5,14 @@
  * plugin subscribers follow it, the draft's generation advances, and a
  * suggestion about an empty draft ends the moment the draft stops being empty.
  */
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { api } from "../../../../lib/api";
+import { readComposerDraftRevision } from "../../../../lib/composer-draft-cache";
+import { useAppStore } from "../../../../stores/app-store";
 import { editorSelectionRange, readEditorValue } from "../editor";
 import type { ComposerFileReference } from "../model";
-import { composerDraftBridge, type ComposerDraftHandle } from "../plugins/draft-bridge";
-import { composerSuggestion } from "../plugins/suggestion-bridge";
+import { composerDraftBridge } from "../plugins/draft-bridge";
+import { composerSuggestion, type ComposerSuggestionHandle } from "../plugins/suggestion-bridge";
 
 type BridgeSource = {
   ref: RefObject<HTMLDivElement | null>;
@@ -20,6 +22,7 @@ type BridgeSource = {
   valueRef: { current: string };
   fileReferences: ComposerFileReference[];
   fileReferencesRef: { current: ComposerFileReference[] };
+  composing: boolean;
   inputBlocked: boolean;
   enabled?: boolean;
   applyEditorDraft: (
@@ -33,7 +36,7 @@ type BridgeSource = {
 export function usePluginComposerBridge(source: BridgeSource): void {
   const latest = useRef(source);
   latest.current = source;
-  const handleRef = useRef<ComposerDraftHandle | null>(null);
+  const handleRef = useRef<ComposerSuggestionHandle | null>(null);
 
   useEffect(() => {
     if (source.enabled === false) return;
@@ -41,7 +44,9 @@ export function usePluginComposerBridge(source: BridgeSource): void {
       const { ref, valueRef } = latest.current;
       return ref.current ? readEditorValue(ref.current) : valueRef.current;
     };
-    const handle: ComposerDraftHandle = {
+    const handle: ComposerSuggestionHandle = {
+      draftRevision: () => readComposerDraftRevision(latest.current.draftKey),
+      canSuggest: () => latest.current.ref.current !== null && !latest.current.composing,
       read() {
         const { inputBlocked, draftKey, referenceSessionId, fileReferencesRef } = latest.current;
         if (inputBlocked || latest.current.enabled === false) return null;
@@ -78,20 +83,28 @@ export function usePluginComposerBridge(source: BridgeSource): void {
     };
     handleRef.current = handle;
     const unregister = composerDraftBridge.register(handle);
+    composerSuggestion.selectSession(useAppStore.getState().activeSessionId ?? null);
+    const unsubscribeSelection = useAppStore.subscribe((state, previous) => {
+      if (state.activeSessionId !== previous.activeSessionId) {
+        composerSuggestion.selectSession(state.activeSessionId ?? null);
+      }
+    });
     // The suggestion slot needs the same handle: it reads the draft to decide
     // whether an offer fits and writes it when the user takes one.
     const unregisterSuggestion = composerSuggestion.register(handle);
     return () => {
       handleRef.current = null;
+      unsubscribeSelection();
       unregisterSuggestion();
       unregister();
     };
   }, [source.enabled]);
 
-  const { value, fileReferences, draftKey, referenceSessionId, inputBlocked } = source;
+  const { value, fileReferences, draftKey, referenceSessionId, inputBlocked, composing } = source;
+  useLayoutEffect(() => {
+    if (handleRef.current) composerSuggestion.publish(handleRef.current);
+  }, [value, fileReferences, draftKey, referenceSessionId, inputBlocked, composing]);
   useEffect(() => {
-    if (!handleRef.current) return;
-    composerDraftBridge.publish(handleRef.current);
-    composerSuggestion.publish(handleRef.current);
+    if (handleRef.current) composerDraftBridge.publish(handleRef.current);
   }, [value, fileReferences, draftKey, referenceSessionId, inputBlocked]);
 }

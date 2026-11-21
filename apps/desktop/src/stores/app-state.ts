@@ -330,7 +330,8 @@ export type AppState = {
   restoreSession: (id: string) => void;
   renameSession: (id: string, title: string) => Promise<void>;
   /** Move an idle session into an already-known project, preserving history. */
-  moveSessionProject: (id: string, projectPath: string) => Promise<boolean>;
+  /** `projectPath: null` moves the session into the temporary group. */
+  moveSessionProject: (id: string, projectPath: string | null) => Promise<boolean>;
   deleteSession: (id: string) => Promise<void>;
   setSessionSort: (sort: SessionSort) => void;
   setSessionArchiveVisibility: (show: boolean) => void;

@@ -1,4 +1,4 @@
-import type { AgentEvent, SessionSource } from "@pi-desktop/shared";
+import { responsesAnswerText, type AgentEvent, type SessionSource } from "@pi-desktop/shared";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { RemoteHostsBoot } from "../bootstrap/remote-hosts";
 
@@ -28,7 +28,10 @@ export function subscribeLiveSessionEvents(input: {
     }
     if (event.type === "message_end" && event.message.role === "assistant" && !parentToolCallId && !agentName) {
       results.set(turnId, {
-        text: typeof event.message.content === "string" ? event.message.content : "",
+        // Commentary is progress, not the turn's result (#2461).
+        text: typeof event.message.content === "string"
+          ? responsesAnswerText(event.message.content, event.message.providerReplay)
+          : "",
         messageId: event.message.id,
       });
       return;
