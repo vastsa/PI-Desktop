@@ -16,12 +16,39 @@ function serializeReviewPayload(review: unknown): string {
   return serialized;
 }
 
-/** Review facts refresh independently of streamed text, including late delegates. */
-export function reviewHistoryRevision(messages: readonly UiMessage[]): string {
-  return messages.filter(message => message.role === "tool").map(message => {
-    const review = (message.toolResult as { details?: { review?: unknown } } | undefined)?.details?.review ?? null;
-    return `${message.id}:${message.toolStatus}:${serializeReviewPayload(review)}`;
-  }).join("|");
+type ReviewRevisionFact = {
+  id: UiMessage["id"];
+  status: UiMessage["toolStatus"];
+  payload: string;
+};
+
+/** One reader per Review panel. Rebuild its revision only when tool facts change. */
+export function createReviewHistoryRevision() {
+  let previous: ReviewRevisionFact[] = [];
+  let revision = "";
+
+  return (messages: readonly UiMessage[]): string => {
+    const next: ReviewRevisionFact[] = [];
+    let changed = false;
+    for (const message of messages) {
+      if (message.role !== "tool") continue;
+      const review = (message.toolResult as { details?: { review?: unknown } } | undefined)?.details?.review ?? null;
+      const payload = serializeReviewPayload(review);
+      const old = previous[next.length];
+      if (old && old.id === message.id && old.status === message.toolStatus && old.payload === payload) {
+        next.push(old);
+      } else {
+        next.push({ id: message.id, status: message.toolStatus, payload });
+        changed = true;
+      }
+    }
+
+    if (changed || next.length !== previous.length) {
+      previous = next;
+      revision = next.map(({ id, status, payload }) => `${id}:${status}:${payload}`).join("|");
+    }
+    return revision;
+  };
 }
 
 export type NumberedReviewLine = DiffLine & { oldLine: number | null; newLine: number | null };

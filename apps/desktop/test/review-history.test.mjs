@@ -1,13 +1,58 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reviewLineNumber, numberedReviewHunks, groupReviewFiles, readReviewPages, reviewFilePathLabel, reviewHistoryRevision } from "../src/lib/review-history.ts";
+import { createReviewHistoryRevision, reviewLineNumber, numberedReviewHunks, groupReviewFiles, readReviewPages, reviewFilePathLabel } from "../src/lib/review-history.ts";
 import { withReviewChangeState } from "../src/lib/workspace-review.ts";
 
 function entry(id, path = "a.ts", root) {
   return { root, message: { id, role: "tool", content: "", createdAt: "2026-10-30", toolName: "Edit", toolStatus: "success", toolResult: { details: { root: "workspace", review: { version: 1, snapshotId: id, messageId: id, path, operation: "edit", status: "modified", state: "active", additions: 1, deletions: 1, hunks: [], reversible: true } } } } };
 }
 
+test("streamed assistant text does not rebuild the revision of unchanged tool facts", () => {
+  const reviewHistoryRevision = createReviewHistoryRevision();
+  const { message } = entry("edited");
+  const assistant = { id: "reply", role: "assistant", content: "Working" };
+  const join = Array.prototype.join;
+  let builds = 0;
+  let before, after, reloaded;
+  try {
+    Array.prototype.join = function (separator) {
+      if (separator === "|" && typeof this[0] === "string" && this[0].startsWith("edited:success:")) builds++;
+      return join.call(this, separator);
+    };
+    before = reviewHistoryRevision([message, assistant]);
+    after = reviewHistoryRevision([{ ...message }, { ...assistant, content: "Working on it" }]);
+    reloaded = reviewHistoryRevision([structuredClone(message)]);
+  } finally {
+    Array.prototype.join = join;
+  }
+  assert.equal(after, before);
+  assert.equal(reloaded, before);
+  assert.equal(builds, 1);
+});
+
+test("late delegated tool evidence changes the revision even when the parent is unchanged", () => {
+  const reviewHistoryRevision = createReviewHistoryRevision();
+  const parent = entry("parent-edit").message;
+  const delegate = { ...entry("delegated-edit", "late.txt").message, parentToolCallId: "task" };
+  const before = reviewHistoryRevision([parent]);
+  const after = reviewHistoryRevision([parent, delegate]);
+  assert.notEqual(after, before);
+  assert.equal(reviewHistoryRevision([parent, structuredClone(delegate)]), after);
+  assert.equal(reviewHistoryRevision([parent]), before);
+});
+
+test("a new session's revision reader does not carry over old tool facts", () => {
+  const previousSession = createReviewHistoryRevision();
+  const nextSession = createReviewHistoryRevision();
+  const old = previousSession([entry("edit", "old.txt").message]);
+  assert.equal(nextSession([]), "");
+  const next = nextSession([entry("edit", "new.txt").message]);
+  assert.notEqual(next, old);
+  assert.equal(previousSession([entry("edit", "old.txt").message]), old);
+});
+
 test("streamed assistant text does not cause the same review payload to be serialized again", () => {
+  const reviewHistoryRevision = createReviewHistoryRevision();
   const { message } = entry("edited");
   let hunkReads = 0;
   Object.defineProperty(message.toolResult.details.review, "hunks", {
@@ -25,6 +70,7 @@ test("streamed assistant text does not cause the same review payload to be seria
 });
 
 test("review revision compares content, including new changes and tool status", () => {
+  const reviewHistoryRevision = createReviewHistoryRevision();
   const { message } = entry("edited");
   const before = reviewHistoryRevision([message]);
   const reloaded = structuredClone(message);
@@ -41,6 +87,7 @@ test("review revision compares content, including new changes and tool status", 
 });
 
 test("a rollback invalidates the cached revision for the same message and snapshot", () => {
+  const reviewHistoryRevision = createReviewHistoryRevision();
   const { message } = entry("edited");
   const before = reviewHistoryRevision([message]);
   const rolledBack = withReviewChangeState(message, "rolledBack");
