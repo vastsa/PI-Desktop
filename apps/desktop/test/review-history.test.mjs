@@ -1,10 +1,53 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reviewLineNumber, numberedReviewHunks, groupReviewFiles, readReviewPages, reviewFilePathLabel } from "../src/lib/review-history.ts";
+import { reviewLineNumber, numberedReviewHunks, groupReviewFiles, readReviewPages, reviewFilePathLabel, reviewHistoryRevision } from "../src/lib/review-history.ts";
+import { withReviewChangeState } from "../src/lib/workspace-review.ts";
 
 function entry(id, path = "a.ts", root) {
   return { root, message: { id, role: "tool", content: "", createdAt: "2026-10-30", toolName: "Edit", toolStatus: "success", toolResult: { details: { root: "workspace", review: { version: 1, snapshotId: id, messageId: id, path, operation: "edit", status: "modified", state: "active", additions: 1, deletions: 1, hunks: [], reversible: true } } } } };
 }
+
+test("streamed assistant text does not cause the same review payload to be serialized again", () => {
+  const { message } = entry("edited");
+  let hunkReads = 0;
+  Object.defineProperty(message.toolResult.details.review, "hunks", {
+    enumerable: true,
+    get() {
+      hunkReads++;
+      return [{ header: "@@ -1 +1 @@", lines: [{ type: "add", text: "updated" }] }];
+    },
+  });
+  const assistant = { id: "reply", role: "assistant", content: "Working" };
+  const before = reviewHistoryRevision([message, assistant]);
+  const after = reviewHistoryRevision([{ ...message }, { ...assistant, content: "Working on it" }]);
+  assert.equal(after, before);
+  assert.equal(hunkReads, 1);
+});
+
+test("review revision compares content, including new changes and tool status", () => {
+  const { message } = entry("edited");
+  const before = reviewHistoryRevision([message]);
+  const reloaded = structuredClone(message);
+  assert.equal(reviewHistoryRevision([reloaded]), before);
+
+  const updated = structuredClone(message);
+  updated.toolResult.details.review.hunks = [{
+    header: "@@ -1 +1 @@",
+    lines: [{ type: "add", text: "replacement" }],
+  }];
+  assert.notEqual(reviewHistoryRevision([updated]), before);
+  assert.notEqual(reviewHistoryRevision([message, entry("another-edit").message]), before);
+  assert.notEqual(reviewHistoryRevision([{ ...message, toolStatus: "running" }]), before);
+});
+
+test("a rollback invalidates the cached revision for the same message and snapshot", () => {
+  const { message } = entry("edited");
+  const before = reviewHistoryRevision([message]);
+  const rolledBack = withReviewChangeState(message, "rolledBack");
+  assert.notEqual(reviewHistoryRevision([rolledBack]), before);
+  assert.equal(reviewHistoryRevision([message]), before);
+});
+
 test("groups only the same execution root and path, deduplicating snapshots", () => {
   const a = entry("one", "src/a.ts", "D:/main"), b = entry("two", "src/a.ts", "D:/main");
   b.message.parentToolCallId = "task";

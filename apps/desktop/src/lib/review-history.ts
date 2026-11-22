@@ -1,5 +1,28 @@
-import type { DiffHunk, DiffLine, ReviewChangesPage, ReviewHistoryChange } from "@pi-desktop/shared";
+import type { DiffHunk, DiffLine, ReviewChangesPage, ReviewHistoryChange, UiMessage } from "@pi-desktop/shared";
 import { reviewChangeFromMessage, type ReviewChangeEntry } from "./workspace-review.ts";
+
+const serializedReviewByPayload = new WeakMap<object, string>();
+
+function serializeReviewPayload(review: unknown): string {
+  if (review === null || typeof review !== "object") return String(JSON.stringify(review));
+
+  const cached = serializedReviewByPayload.get(review);
+  if (cached !== undefined) return cached;
+
+  // Renderer updates replace review payloads, including rollback. Cache by
+  // payload identity, not message ID, without keeping old diffs alive.
+  const serialized = String(JSON.stringify(review));
+  serializedReviewByPayload.set(review, serialized);
+  return serialized;
+}
+
+/** Review facts refresh independently of streamed text, including late delegates. */
+export function reviewHistoryRevision(messages: readonly UiMessage[]): string {
+  return messages.filter(message => message.role === "tool").map(message => {
+    const review = (message.toolResult as { details?: { review?: unknown } } | undefined)?.details?.review ?? null;
+    return `${message.id}:${message.toolStatus}:${serializeReviewPayload(review)}`;
+  }).join("|");
+}
 
 export type NumberedReviewLine = DiffLine & { oldLine: number | null; newLine: number | null };
 export function numberedReviewHunks(hunks: readonly DiffHunk[]): { header: string; lines: NumberedReviewLine[] }[] {
