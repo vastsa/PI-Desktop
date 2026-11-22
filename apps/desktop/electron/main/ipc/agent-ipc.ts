@@ -194,9 +194,10 @@ export function registerAgentIpc({
       sessionId: req.sessionId, expectedTurnId: req.expectedTurnId, message,
       content: appendPromptFallbackPaths(steerContent, prepared),
       ...(mcpExpansion ? { mcpServerIds: mcpExpansion.mcpServerIds, mcpToolNames: mcpExpansion.mcpToolNames } : {}),
-      attachments: prepared.filter((attachment) => attachment.inlineData).map((attachment) => ({
+      attachments: prepared.filter((attachment) => attachment.inlineData || attachment.message.lineRange).map((attachment) => ({
         path: attachment.message.ref, name: attachment.message.name, kind: attachment.message.kind,
         mimeType: attachment.message.mimeType, size: attachment.message.size, data: attachment.inlineData,
+        ...(attachment.message.lineRange ? { lineRange: attachment.message.lineRange } : {}),
         ...(attachment.message.inlinePath ? { inlinePath: attachment.message.inlinePath } : {}),
       })),
     });
@@ -667,7 +668,7 @@ export function registerAgentIpc({
           ...(sessionMessage ? { sessionMessage: sessionMessage.origin } : {}),
           attachments: [
             ...preparedAttachments
-              .filter((attachment) => attachment.inlineData)
+              .filter((attachment) => attachment.inlineData || attachment.message.lineRange)
               .map((attachment) => ({
                 path: attachment.message.ref,
                 name: attachment.message.name,
@@ -675,6 +676,7 @@ export function registerAgentIpc({
                 mimeType: attachment.message.mimeType,
                 size: attachment.message.size,
                 data: attachment.inlineData,
+                ...(attachment.message.lineRange ? { lineRange: attachment.message.lineRange } : {}),
                 ...(attachment.message.inlinePath
                   ? { inlinePath: attachment.message.inlinePath }
                   : {}),

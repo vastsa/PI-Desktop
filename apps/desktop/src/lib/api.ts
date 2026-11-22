@@ -1970,6 +1970,16 @@ export const api = {
       });
     });
   },
+  /**
+   * A plugin offered one line for the composer, or the main process ordered
+   * whatever is on screen dropped (`pi.composer.suggest`, ADR 0333).
+   *
+   * The shell answers every offer over `pluginComposerSuggestionResult`, because
+   * only the renderer knows whether the draft can take it. A malformed message
+   * is ignored — nothing here decides whether a plugin's suggestion is valid.
+   */
+  onComposerFileLines: (listener: (payload: { sessionId: string; reference: import("@pi-desktop/shared").FileLineReference }) => void) =>
+    window.piDesktop?.on?.(IPC.event.composerFileLines, (payload) => listener(payload as Parameters<typeof listener>[0])) ?? (() => {}),
   /** Shell-only composer target, offer and clear messages. */
   onPluginComposerSuggestion: (listener: (event: ComposerSuggestionMessage) => void) => {
     if (!window.piDesktop?.on) return () => undefined;

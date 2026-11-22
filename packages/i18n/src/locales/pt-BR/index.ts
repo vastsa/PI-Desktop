@@ -382,6 +382,7 @@ export const ptBR = {
     suggestionNext: "Próxima sugestão",
     addFiles: "Adicionar arquivos",
     filesAttached: "{{count}} item(ns) adicionado(s) ao rascunho",
+    fileLineReferenceLimit: "Adicione até {{count}} referências a linhas de arquivo por mensagem.",
     filesPasted: "{{count}} arquivo(s) colado(s) salvo(s) na pasta temporária da sessão",
     largeTextPasted: "Texto longo colado salvo como @{{name}}",
     slashMenu: "Comandos",
