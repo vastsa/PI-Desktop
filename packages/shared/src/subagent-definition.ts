@@ -303,7 +303,10 @@ function unquote(value: string): string {
 function splitFrontmatter(
   raw: string,
 ): { frontmatter: Frontmatter; body: string } {
-  const normalized = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const frontmatter: Frontmatter = new Map();
   if (!normalized.startsWith("---\n")) {
     return { frontmatter, body: normalized.trim() };

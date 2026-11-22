@@ -78,7 +78,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parsePrompt(raw: string): ParsedPrompt {
-  const normalized = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   if (!normalized.startsWith("---")) {
     return { frontmatter: {}, body: normalized };
   }
