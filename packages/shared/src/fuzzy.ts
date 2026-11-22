@@ -19,6 +19,22 @@ const SCORE_PATH_SUBSTRING = 30;
 const SCORE_SUBSEQUENCE = 10;
 const DIR_BONUS = 10;
 
+/**
+ * Lowercase without changing length, so offsets index the original string.
+ * `toLowerCase()` can expand ("İ" -> 2 units) but never shrinks, so equal
+ * length means every offset is aligned; otherwise keep expanding chars as-is.
+ */
+function lower(s: string): string {
+  const l = s.toLowerCase();
+  if (l.length === s.length) return l;
+  let out = "";
+  for (const ch of s) {
+    const c = ch.toLowerCase();
+    out += c.length === ch.length ? c : ch;
+  }
+  return out;
+}
+
 /** Merge adjacent per-character hits into contiguous ranges. */
 function mergeIndices(indices: number[]): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
@@ -52,8 +68,8 @@ export function fuzzyMatchPath(
   const bonus = kind === "dir" ? DIR_BONUS : 0;
   if (!query) return { score: bonus, ranges: [] };
 
-  const q = query.toLowerCase();
-  const p = path.toLowerCase();
+  const q = lower(query);
+  const p = lower(path);
   const nameStart = p.lastIndexOf("/") + 1;
   const name = p.slice(nameStart);
 
@@ -97,8 +113,8 @@ export function fuzzyMatchPath(
 /** Match a slash-command name (or title) against a "/" query. */
 export function fuzzyMatchCommand(query: string, text: string): FuzzyMatch | null {
   if (!query) return { score: 0, ranges: [] };
-  const q = query.toLowerCase();
-  const t = text.toLowerCase();
+  const q = lower(query);
+  const t = lower(text);
   if (t.startsWith(q)) {
     return { score: SCORE_EXACT_NAME, ranges: [[0, q.length]] };
   }
