@@ -23,9 +23,14 @@ const { isWindowFullScreen, setWindowFullScreen } = await import(
 const { maximizedBoundsExceedWorkArea, maximizedBoundsForWorkArea } = await import(
   "../electron/main/work-panel-window.ts"
 );
-const { readMainSource } = await import("./helpers/source-contracts.mjs");
+const { readMainSource, readMainModule } = await import("./helpers/source-contracts.mjs");
 
 const lifecycleSource = await readMainSource();
+const windowBootstrapSource = await readMainModule("bootstrap/window.ts");
+
+test("Windows main window leaves native maximized sizing enabled", () => {
+  assert.doesNotMatch(windowBootstrapSource, /thickFrame:\\s*false/);
+});
 
 function makeWindow() {
   const window = new EventEmitter();
