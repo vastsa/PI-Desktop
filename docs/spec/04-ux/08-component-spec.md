@@ -365,14 +365,15 @@ titles are host-owned. The editor closes if the active session changes.
 - Background: bg-primary for the conversation bar and every route-owned
   frameless drag band
 - Border: border-subtle bottom on every route-owned titlebar surface
-- Position: absolute 46px frameless band; `-webkit-app-region: drag` with
-  `no-drag` on interactive controls; macOS reserves the left 88px for traffic
-  lights (only when the sidebar is collapsed), Windows/Linux reserve the right
-  120px for native window controls (112px hit targets plus an 8px visual
-  buffer). The conversation titlebar also reserves the 28px work-panel toggle
-  while the panel is closed. While the panel is open, that 120px band plus the
-  toggle overlay the panel header instead, and the header ends its box before
-  the band so the panel tab strip and `+` stay clear of the native control band.
+- The 46px frameless band uses `-webkit-app-region: drag` with `no-drag` on
+  interactive controls. macOS reserves the left 88px for traffic lights when
+  the sidebar is collapsed. Windows/Linux reserve the right 120px for native
+  window controls (112px of hit targets plus an 8px visual buffer). The
+  conversation titlebar follows the pane edges and keeps at least 8px
+  between its action group and the viewport-fixed work-panel
+  toggle, including during dock animations and on narrow windows. The open
+  panel header ends its box before the native control band so its tab strip and
+  `+` stay clear of the window controls.
   In preview mode the header's left border box starts after the shell actions
   plus an 8px gap, including expanded-sidebar New Task, on every platform.
   The left inset is 8px except collapsed-sidebar windowed macOS (88px through
@@ -396,10 +397,8 @@ titles are host-owned. The editor closes if the active session changes.
 - Shell consistency: the chat topbar, non-chat drag band, Settings drag band,
   sidebar header, work-panel header, and native window-control band all use
   `--ds-toolbar-height`. Windows/Linux keep the same `--ds-window-controls-width`
-  for the viewport-fixed control band; when the work panel opens, that
-  reservation moves from the conversation titlebar onto the panel header so the
-  controls do not travel with MainPane (D357). The panel header carries it by
-  ending its own box before the band — a margin, not padding — because the
+  for the viewport-fixed control band, independent of work-panel width (D357).
+  The panel header uses a margin to end its box before the band because the
   native drag rectangle is the border box. The control band continues the
   titlebar's `border-subtle` bottom rule and uses the same token for its
   leading divider.
@@ -545,15 +544,15 @@ visually distinct from list content.
 | Hover row | Project headers and all conversation rows share one full-row `--ds-bg-hover` surface, radius and transition; selected conversation fill takes precedence |
 | Project session metadata | When Session time is enabled, the trailing slot shows the last-reply date at rest and replaces it with session actions on hover or keyboard focus, without a divider. Dates within seven calendar days are relative; older dates show localized month and day without a year |
 | Current workspace | Project header shows the workspace dot, never a persistent selection fill; topbar follows that workspace; composer exposes no workspace identity |
-| Navigation selection | Only the selected conversation on the chat page uses `--ds-bg-active`, including pinned and standalone rows; folding its group never transfers selection to the header. No conversation or a non-chat page means no selected conversation row |
+| Navigation selection | Only the selected conversation on the chat page uses `--ds-bg-active`, including pinned and Recent rows (a project conversation shown in both Recent and its project marks both copies); folding its group never transfers selection to the header. No conversation or a non-chat page means no selected conversation row |
 | Keyboard focus | The focused control keeps its visible outline; the project title stays transparent and independent action buttons retain their own hover feedback |
 | Collapsed project | Header remains visible; unpinned child conversations are hidden; global pins remain visible |
 | Archived row | Hidden by default; visible in the explicit archived view |
-| No retained project | Compact Open project entry; standalone Sessions rows remain available |
+| No retained project | Compact Open project entry; Recent rows remain available |
 | Empty group | Muted one-line empty state; group create action remains available |
 | Default session title | New task/New chat (localized where applicable) until the first prompt, the user, or an installed title plugin sets one |
 | First prompt title | A normalized 48-character prompt fallback appears immediately and is stored as a still-replaceable automatic title |
-| Plugin-generated session title | A title plugin may replace that automatic title after the first completed turn when its permission is granted |
+| Plugin-generated session title | Bundled Official Enhancements can replace that automatic title after the first completed turn. Titles are on by default; next-message suggestions, prompt enhancement, and AI memory are opt-in. The plugin settings panel preserves explicit choices. |
 | Manual session title | User-defined title remains stable across refresh and renderer restart; automatic titles (local fallback or plugin) never overwrite it |
 | Footer idle | Transparent 58px band; build and action controls remain visually quiet |
 | Footer hover/focus | Only the targeted control receives the semantic hover/focus treatment |
@@ -659,8 +658,17 @@ visually distinct from list content.
   removal of a folder that still owns chats. Every other folder row carries a
   Set as Primary action that promotes it: the row moves to the top, the Primary
   tag moves with it, and the host stores the promoted folder as the group's
-  primary root on save. A remote project keeps its host-owned binding and shows
-  no promotion action. Background session or run-status updates
+  primary root on save. When a single-root project's folder was moved
+  externally and the old folder no longer exists, adding its replacement,
+  promoting it, and removing the stale row in one save relocates the existing
+  project instead of creating a replacement with orphaned chats. Saving the
+  replacement next to the stale row first and removing the stale row in a
+  later save relocates the same way. If the old folder still exists, the save
+  is an ordinary swap and the old project keeps its chats. A non-empty
+  independent project at the replacement path rejects the one-save repair
+  unchanged and leaves the two-step repair on the ordinary detach. A remote
+  project keeps its host-owned binding and shows no promotion action.
+  Background session or run-status updates
   must preserve unsaved name, folder, and primary edits in the open editor.
   Git repository as equal filled tiles without strokes (D297); the active source
   uses a deeper tile, not a selected border. A repository URL reuses the clone
@@ -966,6 +974,11 @@ that disclosure. The trailing answer streams outside the process; later activity
 can reclassify provisional answer text into the process without changing the
 stored message. Assistant errors and stopped trailing partial answers also stay
 outside it. User/system messages and compaction boundaries are unchanged.
+
+An explicitly signed Responses `commentary` text is progress from its first
+identified chunk. The answer and its Copy action exclude it; unmarked text
+keeps its normal behavior. Reopened rows use matching provider replay lengths
+and signatures, never a guess based on wording.
 
 The disclosure owns every row the turn produced before its answer: ordinary
 activity groups and `Bash` run rows alike. A turn therefore renders exactly one
@@ -1698,9 +1711,14 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   local view controls rather than host queries.
 - Temporary means **not bound to a project**, not ephemeral storage; these
   sessions survive restart.
-- The standalone Sessions body is a 146px window over five compact 28px rows,
-  their 1px row gaps, and the 2px label inset; it
-  scrolls internally when more rows exist. The Projects list uses the remaining
+- The Recent sessions section lists every unpinned conversation from the
+  temporary scope and from retained, non-archived projects, newest
+  `updatedAt` first. A project conversation therefore appears both in Recent
+  and in its project group, so it stays visible while that project is folded;
+  a temporary conversation appears only in Recent. Recent opens with seven
+  rows; a trailing Load more button appends ten more per click. Its body is a
+  291px window over ten compact 28px rows, their 1px row gaps, and the 2px
+  label inset; it scrolls internally when more rows are loaded. The Projects list uses the remaining
   sidebar height and scrolls independently; neither region scrolls the footer
   or primary navigation. Both list scrollbars use the same global 6px,
   trackless, transparent-at-rest rule as the conversation and work-panel
@@ -2080,7 +2098,11 @@ Single message render — either user (plaintext) or assistant (markdown streami
   streaming or empty assistant turn that would produce no items opens
   nothing. Copy on a speaking-turn menu writes the live selection in that
   turn captured when the menu opened; a collapsed caret, or a selection
-  outside the row, falls back to the whole turn.
+  outside the row, falls back to the whole turn. In the active local session,
+  a non-empty selection inside a message bubble can also show items from
+  opted-in plugin views. Items use the view's localized title and host-drawn
+  icon. Choosing an item opens its work-panel view and gives it only the
+  selected text and session ID.
   Copy conversation reads the complete session on demand, including unloaded
   history and untruncated message text, and preserves the visible in-flight
   tail. It does not change the reading window or scroll position. A failed
@@ -2368,8 +2390,18 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   DOMPurify SVG-profile pass precede insertion. Unsafe external/media elements,
   `foreignObject`, event-capable links, and URL attributes are removed. Invalid
   or oversized input falls back to a readable source view. The toolbar toggles
-  diagram/source and copies the original source; light/dark theme changes
-  re-render the SVG. Thinking prose deliberately keeps `mermaid` fences as
+  diagram/source and copies the original source. Once rendering succeeds,
+  **Copy diagram as SVG** writes a standalone SVG document as clipboard text,
+  and **Export diagram as SVG** downloads `diagram.svg` with the same bytes.
+  Both actions are disabled while rendering or when no valid SVG is available;
+  failures show localized feedback. Export preserves the sanitized SVG,
+  viewBox dimensions, and the preview's resolved fonts and colors. Variable-
+  dependent CSS rules, inline styles, and presentation attributes are frozen
+  from each rendered element's computed style, including nested fallbacks and
+  subtree overrides. Only the detached export is modified. Source view hides
+  but retains the SVG so copying there uses the same style context, without
+  rerunning Mermaid or requiring new host permissions. These actions also appear in host Markdown
+  file previews, including README files. Light/dark theme changes re-render the SVG. Thinking prose deliberately keeps `mermaid` fences as
   source code so a collapsed reasoning trace cannot start diagram layout.
 - **Syntax highlighting**: Shiki singleton with the JavaScript regex engine
   (no wasm), themes `one-light`/`one-dark-pro` following `data-theme`.
@@ -4055,7 +4087,7 @@ Guidance surfaces when key data is absent. Must always provide an **action link*
 ### 15.5 MVP constraints
 
 - No animated empty-state illustrations
-- No product tour overlays (per [05-onboarding.md](05-onboarding.md) §6)
+- No product tour overlays (per [05-onboarding.md](05-onboarding.md) §2)
 
 ---
 
@@ -4756,6 +4788,14 @@ their normal behavior. Native undo of chip deletion restores its file-reference 
 as well as its DOM, so submission and draft caching retain the path. Deleted
 reference history is local to the current draft/workspace and is cleared on send;
 pasting a private-use character alone must not restore an attachment. The input owns and disposes the native event listeners.
+
+An empty last line keeps its own caret. Chromium has no box for a line that holds
+nothing, so a caret left after the final line break types the next keystroke onto
+the line above. The editor paints a placeholder break on that line, places an
+end-of-draft caret before it when the draft ends in a newline, and restores it
+after every commit; the draft string, its indices and the caret's position in it
+are unchanged, and the placeholder disappears as soon as the line holds text. A
+middle empty line needs none: the break that ends it already gives it a box.
 
 ### Dialog long-text containment
 

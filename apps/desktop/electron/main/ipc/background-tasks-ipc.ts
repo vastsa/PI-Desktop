@@ -42,6 +42,9 @@ export function registerBackgroundTasksIpc({
   registrar.handle(IPC.invoke.backgroundTasksOutput, (payload: unknown) =>
     callHost("backgroundTasks.output", backgroundTaskId(payload)),
   );
+  registrar.handle(IPC.invoke.backgroundTasksCancelContinuation, (payload: unknown) =>
+    callHost("backgroundContinuations.cancel", backgroundTaskId(payload)),
+  );
   registrar.handle(IPC.invoke.backgroundTasksStop, (payload: unknown) =>
     callHost("backgroundTasks.stop", backgroundTaskId(payload)),
   );

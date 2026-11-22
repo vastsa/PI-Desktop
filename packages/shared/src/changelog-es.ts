@@ -2,7 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "En una instalación nueva, el complemento incluido Mejoras oficiales genera automáticamente los títulos de las sesiones; las sugerencias, la mejora de borradores y la memoria de IA siguen desactivadas hasta que las actives.",
+      "Nueva tarea ahora inicia un chat temporal fuera de cualquier proyecto, y las conversaciones pueden moverse entre proyectos o volver a Chat temporal.",
+      "En la página de inicio vacía, haz clic en el nombre del proyecto o en «temporal» del título para cambiar de proyecto; el destino sin proyecto ahora se llama Chat temporal en todas partes.",
+      "De forma opcional, los comandos en segundo plano terminados informan sus resultados y reanudan una conversación inactiva después del turno; está desactivado por defecto.",
+      "Los complementos pueden añadir opciones al menú contextual de la conversación para enviar el texto seleccionado a una vista acoplada, y ofrecer sugerencias y contexto limitado.",
+      "Las notas de progreso de los modelos OpenAI Responses permanecen en el proceso del turno, en su orden original, en lugar de mezclarse con la respuesta, también al reabrir una sesión; Copiar última respuesta copia solo la respuesta.",
+      "Los endpoints personalizados compatibles con OpenAI conservan la caché de prompts entre turnos y evitan largas esperas hasta el primer token en conversaciones largas.",
+      "Los párrafos en persa, árabe y otros idiomas de derecha a izquierda que empiezan con una palabra en inglés ahora se muestran en la dirección correcta.",
+      "El complemento Administrador de archivos 0.9.1 muestra de forma segura las imágenes Markdown en línea y ofrece vistas previas de hojas de cálculo de solo lectura.",
+      "Corregido: bifurcar respuestas antiguas cargadas del historial, la sincronización de configuración que fallaba repetidamente tras borrar un registro en un lado, nombres de modelo recortados en Ajustes, el botón del panel de trabajo sobre la búsqueda y definiciones de herramientas rechazadas por algunos endpoints Responses.",
+    ],
+  },
+  {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Activa OpenAI Fast para cada modelo y usa /fast en una conversación para solicitar prioridad; puede consumir antes los límites de tu suscripción o aumentar el coste por token.",
       "Las visualizaciones integradas cargan más rápido con asistentes de gráficos reutilizables; los scripts fallidos ahora muestran errores útiles en lugar de tarjetas en blanco.",
@@ -11,6 +28,13 @@ export const esEntries: ChangelogEntry[] = [
       "El indicador de contexto muestra la estimación compactada en cuanto termina una compactación manual o automática.",
       "Con un IME chino, los comandos con barra esperan a que termine la composición y conservan el borrador para evitar insertar una barra duplicada.",
       "Los prompts regenerados mantienen su posición después de la respuesta más reciente cuando su archivo se completa fuera del historial cargado.",
+      "Explora el marketplace de complementos en una lista que carga más al desplazarte, ordena por recomendados, populares, recientes o nombre y consulta cuántos coinciden en cada categoría; si el centro de complementos no responde, se usa el último catálogo guardado.",
+      "Cada complemento está ahora en un estante bilingüe, así que el marketplace se lee en español o chino y filtra por la misma categoría.",
+      "Los detalles del complemento muestran ahora el editor, el readme y las notas de seguridad del catálogo, que se perdían al leerlo.",
+      "Elige GPT-6.2 Sol y GPT-6.2 Astra con OpenAI, ChatGPT, GitHub Copilot, OpenCode y las pasarelas que los publican, con sus límites y precios publicados.",
+      "Los ajustes ahora se abren como un diálogo sobre la página actual, la barra lateral muestra Nueva tarea, Programadas y Mercado de plugins arriba, y una breve guía de inicio te ayuda a añadir un modelo y conocer el atajo del lanzador de plugins.",
+      "Elige qué módulos de la barra lateral se muestran en Configuración → Apariencia → Módulos de la barra lateral: Nueva tarea, Programadas, Mercado de plugins, sesiones fijadas, Sesiones, Proyectos, sus botones y la versión.",
+      "La sección Sesiones de la barra lateral ahora es Recientes: todas las conversaciones no fijadas, de la más nueva a la más antigua, con Cargar más; el título de la página de inicio vacía también muestra una flecha desplegable para cambiar de proyecto.",
     ],
   },
   {
@@ -32,6 +56,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copia diagramas Mermaid como texto SVG o expórtalos como archivos SVG independientes, también desde las vistas previas de README.",
       "Consulta cuánto cuesta cada turno y la conversación completa en el inspector de contexto y la cápsula de uso del turno, con el uso de suscripción separado del gasto por uso.",
       "Usa tu propio vídeo como animación de inicio: coloca uno en la carpeta «startup» y la interfaz aparece con un fundido al terminar.",
       "Los plugins pueden listar los proyectos guardados y sus carpetas sin cambiar la sesión activa.",

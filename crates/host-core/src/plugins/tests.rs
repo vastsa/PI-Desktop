@@ -2275,6 +2275,41 @@ fn composer_transforms_require_permission_and_localized_titles() {
 }
 
 #[test]
+fn model_context_contribution_requires_true_and_permission() {
+    let dir = tempdir().unwrap();
+    let valid = dir.path().join("valid");
+    write_plugin(
+        &valid,
+        capability_manifest(
+            json!({ "modelContext": true }),
+            json!(["agent.modelContext"]),
+        ),
+        &[],
+    );
+    assert!(PluginManager::read_manifest(&valid).is_ok());
+
+    let denied = dir.path().join("denied");
+    write_plugin(
+        &denied,
+        capability_manifest(json!({ "modelContext": true }), json!(["session.observe"])),
+        &[],
+    );
+    assert!(read_manifest_err(&denied)
+        .contains("model context require the agent.modelContext permission"));
+
+    let invalid = dir.path().join("invalid");
+    write_plugin(
+        &invalid,
+        capability_manifest(
+            json!({ "modelContext": false }),
+            json!(["agent.modelContext"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&invalid).contains("contributes.modelContext must be true"));
+}
+
+#[test]
 fn plugin_rows_read_the_i18n_block_for_the_active_locale() {
     let _env = lock_market_env();
     let dir = tempdir().unwrap();
@@ -2705,4 +2740,59 @@ fn a_valid_id_cannot_take_over_a_legacy_plugin_stored_under_its_sanitized_name()
     assert_eq!(fs::read_to_string(owner_file).unwrap(), "legacy data");
     assert_eq!(fs::read_to_string(&registry_path).unwrap(), registry);
     assert_eq!(ids(&mgr), ["e2e.foo!bar"]);
+}
+
+/// What the detail sheet reads comes from the catalog document, and the
+/// document is camelCase. The parser used to accept snake_case only, so a
+/// published readme, safety notes and publisher were recorded as null and the
+/// sheet showed none of them.
+#[test]
+fn detail_carries_readme_safety_notes_and_publisher() {
+    let _guard = lock_market_env();
+    let dir = tempdir().unwrap();
+    let catalog_path = dir.path().join("catalog.json");
+    let catalog = r##"{
+        "schemaVersion": 2,
+        "providerId": "official",
+        "catalogId": "pi-plugin-center",
+        "plugins": [{
+            "id": "pi.rich", "name": "Rich", "description": "has metadata", "author": "Rich Author",
+            "publisherId": "tioit-wang",
+            "readmeMarkdown": "# Rich\n\nA readme the sheet should render.",
+            "safetyNotes": "Reads nothing outside its own folder.",
+            "categories": ["themes"],
+            "versions": [{
+                "version": "1.0.0", "publishedAt": "2026-01-01T00:00:00Z",
+                "shasum": "abababababababababababababababababababababababababababababababab",
+                "url": "packages/pi.rich-1.0.0.piplug", "sizeBytes": 12,
+                "permissions": [], "minPiDesktop": ">=0.2.0"
+            }]
+        }]
+    }"##;
+    fs::write(&catalog_path, catalog).unwrap();
+    // Safety: test-only process env mutation, serialized by the market lock.
+    unsafe {
+        std::env::set_var(
+            "PI_DESKTOP_PLUGIN_MARKET_URL",
+            format!("file://{}", catalog_path.to_string_lossy()),
+        );
+        std::env::set_var("PI_DESKTOP_DATA_DIR", dir.path());
+    }
+
+    let mgr = PluginManager::new(dir.path(), MarketChannel::Official, None);
+    let detail = mgr.market_get("pi.rich").unwrap();
+    unsafe {
+        std::env::remove_var("PI_DESKTOP_PLUGIN_MARKET_URL");
+        std::env::remove_var("PI_DESKTOP_DATA_DIR");
+    }
+
+    assert_eq!(
+        detail.readme_markdown.as_deref(),
+        Some("# Rich\n\nA readme the sheet should render.")
+    );
+    assert_eq!(
+        detail.safety_notes.as_deref(),
+        Some("Reads nothing outside its own folder.")
+    );
+    assert_eq!(detail.summary.publisher_id.as_deref(), Some("tioit-wang"));
 }

@@ -90,7 +90,7 @@ export function ImageGenerationModelRow({
       </div>
       {onChange && (options.filter((option) => !option.disabled).length > 1 || !checkedId) ? (
         <SettingsMenuSelect
-          className="model-image-selector"
+          className="model-image-selector settings-model-select"
           label={t("settings.imageModel")}
           value={checkedId}
           options={options}

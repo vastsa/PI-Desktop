@@ -20,6 +20,7 @@ import {
 } from "../../lib/work-panel-tab-reorder";
 import {
   isKnownWorkPanelTab,
+  launcherWorkPanelTab,
   parsePluginViewRef,
   pluginWorkPanelTab,
   subagentTabDisplayLabels,
@@ -636,13 +637,14 @@ function LocalWorkPanel({
 
   const selectTool = useCallback(
     (item: WorkPanelTool, sourceTabId?: string) => {
+      const tab = launcherWorkPanelTab(tabs, item.tab);
       if (sourceTabId) {
-        replaceWorkPanelTab(sourceTabId, item.tab);
+        replaceWorkPanelTab(sourceTabId, tab);
         return;
       }
-      const existing = tabs.find((tab) => tab.id === item.tab.id);
+      const existing = tabs.find((candidate) => candidate.id === tab.id);
       if (existing) activateTab(existing.id);
-      else openWorkPanelTab(item.tab);
+      else openWorkPanelTab(tab);
     },
     [activateTab, openWorkPanelTab, replaceWorkPanelTab, tabs],
   );

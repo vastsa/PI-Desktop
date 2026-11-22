@@ -50,7 +50,9 @@ Prefer a future narrow sandbox adapter to adopting the coding-agent extension
 runtime. Adoption requires an ADR for the execution boundary, tests proving Host
 permission enforcement and cancellation, and a standalone production bundle test
 covering worker/WASM assets from outside node_modules. QuickJS isolation does not
-itself grant permission to tools. No Codemode execution is enabled by this review.
+itself grant permission to tools. No Codemode execution is enabled by this review; the
+opt-in adapter that followed is recorded in
+[ADR codemode-sandbox-boundary](../adr/codemode-sandbox-boundary.md).
 
 ## Virtual routing
 

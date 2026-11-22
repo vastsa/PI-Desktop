@@ -2,7 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "Yeni kurulumda, birlikte gelen Resmi geliştirmeler eklentisi oturum başlıklarını otomatik oluşturur; öneriler, taslak iyileştirme ve yapay zekâ belleği siz açana kadar kapalı kalır.",
+      "Yeni görev artık herhangi bir projenin dışında geçici bir sohbet başlatır ve sohbetler projeler arasında ya da Geçici sohbete geri taşınabilir.",
+      "Boş ana sayfada projeyi değiştirmek için başlıktaki proje adına veya \"geçici\" sözcüğüne tıklayın; projesiz hedefin adı artık her yerde Geçici sohbet.",
+      "İsteğe bağlı olarak, tamamlanan arka plan komutları sonuçlarını bildirir ve tur bittikten sonra boştaki sohbeti sürdürür; varsayılan olarak kapalıdır.",
+      "Eklentiler, seçili metni yerleşik bir görünüme göndermek için sohbet geçmişinin sağ tık menüsüne öğe ekleyebilir; sohbet için öneriler ve sınırlı bağlam sunabilir.",
+      "OpenAI Responses modellerinin ilerleme notları yanıta karışmak yerine özgün sırasıyla turun sürecinde kalır, oturum yeniden açıldığında da; Son yanıtı kopyala yalnızca yanıtı kopyalar.",
+      "Özel OpenAI uyumlu uç noktalar istem önbelleğini turlar arasında korur; uzun sohbetlerde ilk token için uzun beklemeler ortadan kalkar.",
+      "İngilizce bir sözcükle başlayan Farsça, Arapça ve diğer sağdan sola paragraflar artık doğru yönde görüntülenir.",
+      "Dosya Yöneticisi eklentisi 0.9.1, satır içi Markdown görsellerini güvenle gösterir ve tabloları salt okunur önizler.",
+      "Düzeltildi: geçmişten yüklenen eski yanıtlardan dallanma, bir tarafta kayıt silindikten sonra sürekli başarısız olan yapılandırma eşitleme, Ayarlar'da kırpılan model adları, sohbet Aramasını örten çalışma paneli düğmesi ve bazı Responses uç noktalarının reddettiği araç tanımları.",
+    ],
+  },
+  {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "OpenAI Fast modunu model başına açın ve öncelikli hizmet istemek için konuşmada /fast kullanın; bu, abonelik limitlerini daha hızlı tüketebilir veya token başına maliyeti artırabilir.",
       "Satır içi görselleştirmeler yeniden kullanılabilir grafik yardımcılarıyla daha hızlı yüklenir; başarısız betikler artık boş kartlar yerine düzeltmeye yardımcı olacak hatalar gösterir.",
@@ -11,6 +28,13 @@ export const trEntries: ChangelogEntry[] = [
       "Elle veya otomatik bağlam sıkıştırması tamamlanır tamamlanmaz bağlam halkası sıkıştırılmış tahmini gösterir.",
       "Çince IME kullanırken eğik çizgi komutları, taslağı koruyarak metin girişinin tamamlanmasını bekler ve yinelenen eğik çizgiyi önler.",
       "Yeniden oluşturulan istemler, arşivleri yüklenen geçmişin dışında tamamlandığında en son yanıttan sonraki doğru konumlarında kalır.",
+      "Eklenti pazarına kaydırdıkça yüklenen tek bir listede göz atın, önerilen, popüler, en yeni veya ada göre sıralayın ve her kategoride kaç eklentinin eşleştiğini görün; eklenti merkezine ulaşılamazsa son kaydedilen katalog kullanılır.",
+      "Her eklenti artık iki dilli bir rafa yerleşiyor; pazar yeri Türkçe veya Çince okunuyor ve aynı kategoriyle filtreleniyor.",
+      "Eklenti ayrıntıları artık yayıncıyı, README'yi ve güvenlik notlarını gösteriyor; katalog okunurken kayboluyorlardı.",
+      "GPT-6.2 Sol ve GPT-6.2 Astra modellerini OpenAI, ChatGPT, GitHub Copilot, OpenCode ve bunları yayımlayan ağ geçitlerinde, yayımlanan sınır ve fiyatlarıyla seçin.",
+      "Ayarlar artık geçerli sayfanın üzerinde bir iletişim kutusu olarak açılıyor, kenar çubuğu Yeni görev, Zamanlanmış ve Eklenti pazarını en üste taşıyor ve kısa bir başlangıç rehberi model eklemenize ve eklenti başlatıcı kısayolunu öğrenmenize yardımcı oluyor.",
+      "Ayarlar → Görünüm → Kenar çubuğu modülleri bölümünden hangi kenar çubuğu modüllerinin görüneceğini seçin: Yeni görev, Zamanlanmış, Eklenti pazarı, sabitlenmiş oturumlar, Oturumlar, Projeler, araç çubuğu düğmeleri ve sürüm.",
+      "Kenar çubuğundaki Oturumlar bölümü artık Son: sabitlenmemiş tüm konuşmalar en yeniden başlayarak listelenir ve Daha fazla yükle ile genişler; boş ana sayfa başlığı da proje değiştirmek için bir açılır ok gösterir.",
     ],
   },
   {
@@ -32,6 +56,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "README önizlemeleri dahil Mermaid diyagramlarını SVG metni olarak kopyalayın veya bağımsız SVG dosyaları olarak dışa aktarın.",
       "Her turun ve tüm konuşmanın maliyetini bağlam denetçisinde ve tur kullanım kapsülünde görün; abonelik kullanımı kullandıkça öde harcamasından ayrı gösterilir.",
       "Kendi videonuzu başlangıç animasyonu olarak kullanın: \"startup\" klasörüne bir video bırakın, oynatma bitince arayüz yavaşça belirir.",
       "Eklentiler, etkin oturumu değiştirmeden kayıtlı projeleri ve klasörlerini listeleyebilir.",

@@ -1,7 +1,9 @@
-import { Button, cx } from "../../components/ui";
+import { Button, Tooltip, cx } from "../../components/ui";
 import { IconCheck, IconSearch, IconShield } from "../../components/icons";
 import { PermissionChips, RatingChip } from "./presentation";
 import { ReviewTicker } from "./ReviewTicker";
+import { MarketLoadMore } from "./MarketLoadMore";
+import { MARKET_SORTS, MARKET_SORT_LABEL_KEYS } from "./market-paging";
 import {
   formatDate,
   monogram,
@@ -18,7 +20,15 @@ export function MarketplacePanel({
   categories,
   category,
   setCategory,
+  sort,
+  setSort,
   marketLoading,
+  marketLoadingMore,
+  marketLoadMoreFailed,
+  marketTotal,
+  marketHasMore,
+  loadMoreMarket,
+  browseOrigin,
   market,
   visibleMarket,
   installedById,
@@ -29,38 +39,81 @@ export function MarketplacePanel({
   reviewSummaries,
   reviewTickers,
 }: PluginsPageModel) {
+  const selected = category.toLowerCase();
   return (
           <div
             id="plugins-panel-market"
             role="tabpanel"
             aria-labelledby="plugins-tab-market"
+            aria-busy={marketLoading || undefined}
             className="plugins-panel"
           >
-            {categories.length > 1 ? (
-              <div
-                className="plugins-filters"
-                role="group"
-                aria-label={t("plugins.categories")}
-              >
-                <button
-                  type="button"
-                  className={cx("plugins-filter", !category && "active")}
-                  aria-pressed={!category}
-                  onClick={() => setCategory("")}
+            <div className="plugins-browse-bar">
+              {categories.length > 0 ? (
+                <div
+                  className="plugins-filters"
+                  role="group"
+                  aria-label={t("plugins.categories")}
                 >
-                  {t("plugins.categoryAll")}
-                </button>
-                {categories.map((value) => (
+                  <button
+                    type="button"
+                    className={cx("plugins-filter", !category && "active")}
+                    aria-pressed={!category}
+                    onClick={() => setCategory("")}
+                  >
+                    {t("plugins.categoryAll")}
+                  </button>
+                  {categories.map((facet) => {
+                    const active = facet.id.toLowerCase() === selected;
+                    return (
+                      <button
+                        key={facet.id}
+                        type="button"
+                        className={cx("plugins-filter", active && "active")}
+                        aria-pressed={active}
+                        onClick={() => setCategory(active ? "" : facet.id)}
+                      >
+                        {facet.name ?? facet.id}
+                        {facet.count > 0 ? (
+                          <span className="plugins-filter-count">{facet.count}</span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span />
+              )}
+              <div
+                className="plugins-sort"
+                role="radiogroup"
+                aria-label={t("plugins.sortLabel")}
+              >
+                {MARKET_SORTS.map((value) => (
                   <button
                     key={value}
                     type="button"
-                    className={cx("plugins-filter", category === value && "active")}
-                    aria-pressed={category === value}
-                    onClick={() => setCategory(category === value ? "" : value)}
+                    role="radio"
+                    aria-checked={sort === value}
+                    className={cx("plugins-sort-btn", sort === value && "active")}
+                    onClick={() => setSort(value)}
                   >
-                    {value}
+                    {t(MARKET_SORT_LABEL_KEYS[value])}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {browseOrigin || marketTotal > 0 ? (
+              <div className="plugins-browse-meta" aria-live="polite">
+                <span className="plugins-result-count">
+                  {t("plugins.browseTotal", { count: marketTotal })}
+                </span>
+                {browseOrigin === "local" ? (
+                  <Tooltip label={t("plugins.sourceLocalHint")}>
+                    <span className="plugins-source-chip">{t("plugins.sourceLocal")}</span>
+                  </Tooltip>
+                ) : null}
               </div>
             ) : null}
 
@@ -94,14 +147,17 @@ export function MarketplacePanel({
                   ) : null}
                   <Button
                     variant="secondary"
-                    onClick={() => void refreshMarket(query, { refreshRemote: true })}
+                    onClick={() => void refreshMarket({ refreshRemote: true })}
                   >
                     {t("plugins.refreshMarket")}
                   </Button>
                 </div>
               </div>
             ) : (
-              <div className="plugins-card-grid" role="list">
+              <div
+                className={cx("plugins-card-grid", marketLoading && "is-refreshing")}
+                role="list"
+              >
                 {visibleMarket.map((item) => {
                   const installed = installedById.get(item.id);
                   const upgradable = !!installed && !!item.updateAvailable;
@@ -217,6 +273,18 @@ export function MarketplacePanel({
                 })}
               </div>
             )}
+
+            {!marketLoading || market.length > 0 ? (
+              <MarketLoadMore
+                t={t}
+                loaded={market.length}
+                total={marketTotal}
+                hasMore={marketHasMore}
+                loading={marketLoadingMore}
+                failed={marketLoadMoreFailed}
+                onLoadMore={() => void loadMoreMarket()}
+              />
+            ) : null}
           </div>
 );
 }

@@ -48,7 +48,6 @@ async function withTopbar(work) {
           { i18n },
           createElement(ConversationTopbar, {
             sidebarCollapsed,
-            workPanelOpen: false,
             onToggleSidebar() {},
             onNewTask() {},
             onOpenSearch() {},
@@ -89,10 +88,12 @@ test("topbar renders the session's project crumb and preserves complete titles",
           "the rename affordance carries the visible title",
         );
         assert.ok(
-          html.includes('class="ct-project"') &&
+          /class="ct-project[ "]/.test(html) &&
             html.includes('class="ct-project-name">Project</span>'),
           "the crumb names the session's project",
         );
+        // An idle local conversation can move between projects from its crumb.
+        assert.ok(html.includes('data-action="conversation-project"'));
         assert.ok(
           html.includes('<span class="ct-sep" aria-hidden="true">/</span>'),
           "the project and the task are separated by a slash",
@@ -108,18 +109,34 @@ test("topbar renders the session's project crumb and preserves complete titles",
   });
 });
 
-test("a session without a project keeps only the title", async () => {
+test("a session without a project offers a No project crumb to choose one", async () => {
   await withTopbar(async ({ render }) => {
     const html = render({
       activeSessionId: "temp-test",
       sessions: [{ id: "temp-test", title: "Scratch pad" }],
       projectMeta: { "/project": { name: "Project" } },
+      runningSessions: {},
     });
 
-    assert.ok(!html.includes('class="ct-project"'), "no folder crumb without a project");
-    assert.ok(!html.includes('class="ct-sep"'), "no separator without a project");
+    // Issue #2455: a temporary conversation can join a project from the crumb.
+    assert.match(html, /class="ct-project ct-project-trigger is-temporary"[^>]*data-action="conversation-project"/);
+    assert.ok(html.includes(`class="ct-project-name">${catalogs.en.project.noProject}</span>`));
+    assert.ok(!html.includes('class="ct-project-name">Project</span>'), "no project is named");
     assert.match(html, /class="ct-title">[\s\S]*?Scratch pad/);
     assert.ok(html.includes('title="Scratch pad"'));
+  });
+});
+
+test("a running temporary session keeps only the title", async () => {
+  await withTopbar(async ({ render }) => {
+    const html = render({
+      activeSessionId: "temp-test",
+      sessions: [{ id: "temp-test", title: "Scratch pad" }],
+      runningSessions: { "temp-test": true },
+    });
+
+    assert.ok(!html.includes("ct-project"), "a running session cannot move");
+    assert.ok(!html.includes('class="ct-sep"'), "no separator without a project");
   });
 });
 

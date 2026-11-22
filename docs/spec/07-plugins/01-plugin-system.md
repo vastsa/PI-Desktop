@@ -534,10 +534,11 @@ Rules the control encodes:
 - Enablement and project scope are checked before and after recovery. Removing
   a server or disposing the runtime discards its remembered names; an obsolete
   in-flight handshake cannot restore them. Concurrent calls share a handshake.
-- A failed recovery reports `UNAVAILABLE` and retains the existing failed-server
-  policy (edit or Test connection to retry), rather than repeatedly connecting
-  on each call. Removed tools return `TOOL_NOT_FOUND`. Recovery never replays a
-  failed `tools/call`, which may already have performed a mutation.
+- A failed recovery reports `UNAVAILABLE`. Session assembly does not repeatedly
+  dial the failed server, but a later explicit tool call retries the handshake
+  and can recover without an edit or Test connection. Removed tools return
+  `TOOL_NOT_FOUND`. Recovery never replays a failed `tools/call`, which may
+  already have performed a mutation.
 - Test connection uses the requested settings project, or the currently open
   project when no project is supplied. It retries that workspace and clears the
   same server's other idle failed workspace connections, so a successful test

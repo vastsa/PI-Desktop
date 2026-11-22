@@ -22,6 +22,8 @@ import {
   type McpServerRecord,
   type Mode,
   type ModelBinding,
+  type ModelInfo,
+  modelWireIdsEqual,
   normalizeMode,
   type Risk,
   type SessionThinkingLevel,
@@ -322,6 +324,28 @@ export function createSessionLaunchRuntime({
     return root;
   }
 
+  async function discoveredContextWindow(provider: RuntimeProvider, modelId: string): Promise<number | undefined> {
+    try {
+      const { models } = await runtimeState.host!.call<{
+        models: (Pick<ModelInfo, "modelId" | "discoveryState"> & { reportedContextWindow?: number })[];
+      }>("providers.listModels", {
+        providerId: provider.id,
+        endpoint: { baseUrl: provider.baseUrl ?? "", apiStyle: provider.apiStyle ?? "" },
+      });
+      const window = models.find((model) =>
+        model.discoveryState === "published" && modelWireIdsEqual(model.modelId, modelId),
+      )?.reportedContextWindow;
+      return typeof window === "number" && Number.isSafeInteger(window) && window > 0
+        ? window
+        : undefined;
+    } catch (error) {
+      if (!isHostUnavailable(error)) {
+        logger.app("provider", "warn", "model discovery cache read failed", { data: String(error) });
+      }
+      return undefined;
+    }
+  }
+
   async function resolveAgentRuntimeLaunch(
     sessionId: string,
     session: any,
@@ -434,9 +458,20 @@ export function createSessionLaunchRuntime({
     // row that would undo it (#2120). The subagent path and enrichProvider
     // already apply the binding; the main session was the one path that
     // dropped it. Without a stored binding the catalog answer stands.
-    const modelConfig = storedModel
+    const boundModelConfig = storedModel
       ? modelConfigWithBinding(catalogModelConfig, storedModel)
       : catalogModelConfig;
+    // The saved endpoint can serve a different window from the published model.
+    // Follow its discovered value for catalog-owned bindings, like the inspector.
+    const discoveredWindow = !isVendorAccount && storedModel?.contextWindowSource === "catalog"
+      ? await discoveredContextWindow(provider, modelId)
+      : undefined;
+    const modelConfig = discoveredWindow === undefined ? boundModelConfig : {
+      ...boundModelConfig,
+      contextWindow: discoveredWindow,
+      catalogContextWindow: discoveredWindow,
+      limit: { ...boundModelConfig.limit, context: discoveredWindow },
+    };
     // Only a pure image-generation endpoint is rejected: a model the user
     // marked for image generation that also supports conversation keeps its
     // chat eligibility (#2253). The catalog row (or a catalog miss on a custom
@@ -754,10 +789,12 @@ export function createSessionLaunchRuntime({
       workspaceRoot,
       sidecarParams: {
         sessionId,
+        pluginModelContextEnabled: true,
         mode,
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        backgroundJobContinuationEnabled: settings.backgroundJobContinuationEnabled === true && mode === "agent",
         // The session `/fast` switch only reaches a model the user allowed it
         // for in model settings (ADR 0334).
         fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,
@@ -766,6 +803,10 @@ export function createSessionLaunchRuntime({
         // and refused on every call (ADR 0342 §13).
         ...(mode === "agent" && settings.computerUse?.enabled === true
           ? { computerUseEnabled: true }
+          : {}),
+        // Codemode is opt-in and Agent-only (ADR codemode-sandbox-boundary).
+        ...(mode === "agent" && settings.codemodeEnabled === true
+          ? { codemodeEnabled: true }
           : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),

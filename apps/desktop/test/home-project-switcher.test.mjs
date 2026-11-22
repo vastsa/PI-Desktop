@@ -58,3 +58,30 @@ test("home project switcher is a fixed portaled menu that stays inline in the he
     /\.home-project-switcher-menu\.is-open \{[\s\S]*?visibility:\s*visible;/,
   );
 });
+
+test("home project switcher trigger is the underlined name without a chevron", () => {
+  assert.match(
+    switcher,
+    /<span className="project-underline-name">\{name\}<\/span>\s*<\/button>/,
+  );
+  assert.doesNotMatch(switcher, /project-underline-chevron/);
+  assert.match(
+    styles,
+    /\.empty-hero \.project-underline-name \{[\s\S]*?text-decoration:\s*underline dotted;/,
+  );
+  assert.match(
+    styles,
+    /\.empty-hero \.project-underline\[aria-expanded="true"\] \.project-underline-name \{[\s\S]*?text-decoration-style:\s*solid;/,
+  );
+});
+
+test("home project switcher lists No project first; a temporary home underlines its scope (#2455)", () => {
+  assert.match(switcher, /key: TEMPORARY_KEY, name: temporaryLabel/);
+  assert.match(switcher, /if \(project\.temporary\) return selectTemporary\(\);/);
+  assert.match(switcher, /await newSession\(\{ projectPath: null \}\)/);
+  // No extra control under the title: the scope word in the title is the trigger.
+  assert.doesNotMatch(switcher, /home-project-chip/);
+  assert.doesNotMatch(styles, /home-project-chip/);
+  assert.match(chatSurface, /<HomeProjectSwitcher temporary name=\{t\("chat\.temporaryScope"\)\} \/>/);
+  assert.match(chatSurface, /t\("chat\.emptyTitleTemporaryScoped", \{ scope: marker \}\)/);
+});

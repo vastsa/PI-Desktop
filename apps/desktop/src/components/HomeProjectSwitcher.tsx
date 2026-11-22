@@ -17,6 +17,7 @@ import {
 import { useAppStore } from "../stores/app-store";
 import {
   IconBranch,
+  IconChat,
   IconCheck,
   IconChevronLeft,
   IconFolder,
@@ -29,14 +30,33 @@ import { useRemoteProjects } from "../hooks/use-remote-projects";
 import { remoteProjectKey, type RemoteProjectEntry } from "../lib/remote-project-catalog";
 import { isRemoteSession } from "../lib/remote-session-safety";
 
-type ProjectMenuEntry = { key: string; name: string; title: string; localPath?: string; remoteProject?: RemoteProjectEntry };
+type ProjectMenuEntry = {
+  key: string;
+  name: string;
+  title: string;
+  localPath?: string;
+  remoteProject?: RemoteProjectEntry;
+  /** The temporary group: a conversation that belongs to no project. */
+  temporary?: true;
+};
 
+const TEMPORARY_KEY = "temporary";
+
+/**
+ * The empty home's project picker: the underlined word in the title. In a
+ * project it is the project name; in a temporary conversation it is the scope
+ * word ("temporarily"). Both menus list "Temporary chat" first so the next task
+ * can leave or join a project from the same place (#2455).
+ */
 export function HomeProjectSwitcher({
   name,
   path,
+  temporary = false,
 }: {
   name: string;
   path?: string | null;
+  /** The trigger is the temporary home's scope word rather than a project. */
+  temporary?: boolean;
 }) {
   const { t } = useTranslation();
   const openProjectPaths = useAppStore((state) => state.openProjectPaths);
@@ -72,8 +92,12 @@ export function HomeProjectSwitcher({
       }),
     [openProjectPaths, openProjects, workspace, projectMeta, projectSort],
   );
+  const temporaryLabel = t("project.noProject");
   const visible = useMemo(
     (): ProjectMenuEntry[] => [
+      ...(temporaryLabel.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+        ? [{ key: TEMPORARY_KEY, name: temporaryLabel, title: t("project.noProjectHint"), temporary: true as const }]
+        : []),
       ...filterSwitcherProjects(projects, query).map((project) => ({ key: project.key, name: project.name,
         title: openProjects.find((item) => item.path === project.path)?.remote?.path
           ?? (workspace?.path === project.path ? workspace.remote?.path : undefined)
@@ -82,11 +106,11 @@ export function HomeProjectSwitcher({
         .map((project) => ({ key: `remote:${project.key}`, name: `${project.label} · ${project.hostLabel}`,
           title: `${project.label} · ${project.hostLabel}`, remoteProject: project })),
     ],
-    [projects, query, remoteCatalog.projects, openProjects, workspace],
+    [projects, query, remoteCatalog.projects, openProjects, workspace, temporaryLabel, t],
   );
   const activeKey = isRemoteSession(activeSession) && activeSession?.remoteHostKey && activeSession.remoteProjectId
     ? `remote:${remoteProjectKey(activeSession.remoteHostKey, activeSession.remoteProjectId)}`
-    : normalizeProjectPath(activeProjectPath ?? path);
+    : normalizeProjectPath(activeProjectPath ?? path) || (temporary ? TEMPORARY_KEY : "");
   const cloneTarget = parseGitCloneUrl(cloneUrl, {
     allowInsecureHttp: allowInsecureUserEndpoints(settings),
   });
@@ -127,7 +151,24 @@ export function HomeProjectSwitcher({
     [activeKey, busy, close, newSession, reportError],
   );
 
+  const selectTemporary = async () => {
+    if (busy || busyRef.current) return;
+    close();
+    if (activeKey === TEMPORARY_KEY && activeSession) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      await newSession({ projectPath: null });
+    } catch (error) {
+      reportError(error);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
   const selectMenuProject = async (project: ProjectMenuEntry) => {
+    if (project.temporary) return selectTemporary();
     if (project.localPath) return selectProject(project.localPath);
     if (busy || busyRef.current || !project.remoteProject?.connected) return;
     busyRef.current = true; setBusy(true);
@@ -230,31 +271,34 @@ export function HomeProjectSwitcher({
       side="bottom"
       initialFocus="input"
       onMenuKeyDown={onMenuKeyDown}
-      trigger={(ref) => (
-        <button
-          ref={ref}
-          type="button"
-          className="project-underline"
-          data-testid="home-project-switcher"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          aria-label={`${t("project.switchProject")}: ${name}`}
-          title={(workspace?.path === path ? workspace?.remote?.path : undefined) || path || t("project.switchProject")}
-          disabled={busy}
-          onClick={() => {
-            if (open) {
-              close();
-              return;
-            }
-            setQuery("");
-            setView("list");
-            setCloneUrl("");
-            setOpen(true);
-          }}
-        >
-          {name}
-        </button>
-      )}
+      trigger={(ref) => {
+        const toggle = () => {
+          if (open) {
+            close();
+            return;
+          }
+          setQuery("");
+          setView("list");
+          setCloneUrl("");
+          setOpen(true);
+        };
+        return (
+          <button
+            ref={ref}
+            type="button"
+            className="project-underline"
+            data-testid="home-project-switcher"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-label={`${t("project.switchProject")}: ${temporary ? t("project.noProject") : name}`}
+            title={temporary ? t("project.noProjectHint") : (workspace?.path === path ? workspace?.remote?.path : undefined) || path || t("project.switchProject")}
+            disabled={busy}
+            onClick={toggle}
+          >
+            <span className="project-underline-name">{name}</span>
+          </button>
+        );
+      }}
     >
       {view === "clone" ? (
         <div className="home-project-switcher-clone">
@@ -359,7 +403,7 @@ export function HomeProjectSwitcher({
                     onMouseEnter={() => setHighlight(index)}
                     onClick={() => void selectMenuProject(project)}
                   >
-                    <IconFolder size={14} aria-hidden />
+                    {project.temporary ? <IconChat size={14} aria-hidden /> : <IconFolder size={14} aria-hidden />}
                     <span className="home-project-switcher-item-name">
                       {project.name}
                     </span>

@@ -98,6 +98,7 @@ acknowledgement for renderer handling; trusted-extension commands use
 ### market domain (implemented)
 - `market/refresh`
 - `market/search`
+- `market/browse`
 - `market/getDetail`
 - `market/install`
 - `market/checkUpdates`

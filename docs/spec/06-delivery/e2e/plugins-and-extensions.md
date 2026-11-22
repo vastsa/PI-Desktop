@@ -844,7 +844,8 @@ window; opening a normal panel afterward must still work.
       the same tool in the existing session without searching again.
   11. Repeat with the restarted stub omitting that tool, and with the server
       disabled or scoped away before recovery. Also try concurrent calls after
-       a disconnect and a server that fails its recovery handshake.
+      a disconnect and a server that fails its recovery handshake. Restore that
+      server and call the same tool again without an edit or Test connection.
   12. Connect the HTTP server, stop it, and refresh the MCP settings page.
       Test connection again after restarting the server.
 - **Expected**:
@@ -852,8 +853,9 @@ window; opening a normal panel afterward must still work.
     concurrent calls share one handshake. The fresh server list must still
     advertise the tool. Removed tools and inactive servers are refused without
     executing a call; inactive servers are not reconnected. Recovery failure
-    returns `UNAVAILABLE` and does not trigger repeated handshake attempts until
-    an edit or Test connection. A failed tool execution is never replayed.
+    returns `UNAVAILABLE` and is not redialled by session assembly. A later
+    explicit tool call retries the failed handshake and succeeds after the
+    server recovers. A failed tool execution is never replayed.
   - Two servers import; the third is listed as skipped with "a stdio server
      requires command". The LAN HTTP entry lands as `http` with its url intact,
      and the editor shows the unencrypted-connection warning.
@@ -1271,6 +1273,20 @@ window; opening a normal panel afterward must still work.
 - **Status**: The bundle's manifest, entry page, and upstream checksum are
   unit-covered (`apps/desktop/test/bundled-plugins.test.mjs`); the plugin-side
   journey is Draft (run only in a capable environment when this surface changes)
+
+## E2E-PLUGIN-file-manager-markdown-and-workbook-previews
+
+- **Steps**: In the bundled File Manager, open a project Markdown file with a
+  relative image reference and switch to Preview. Switch files, then open an
+  `.xlsx` workbook.
+- **Expected**: A valid project-local image renders inline. Missing, denied,
+  oversized and network images do not render. The workbook shows bounded table
+  data, offers no edit action, and the plugin refuses writes to workbook paths.
+- **Coverage**: Upstream `tests/electron/verify-markdown.cjs` against the bundled
+  production view and `views-src/verify-viewers.mjs` against the pinned source.
+- **Compatibility**: Copying saved source lines retains plain text in the
+  clipboard. Adding a structured reference to chat is only offered when the
+  Desktop bridge advertises support.
 
 ## E2E-PLUGIN-file-view-switches-folder-per-project
 
@@ -3785,6 +3801,21 @@ registry-only installation and credential isolation.
   path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
   Electron scenario remains a manual validation run.
 
+## E2E-PLUGIN-bundled-enhancements-defaults
+
+- **Preconditions**: A fresh Desktop profile with bundled Official Enhancements
+  and a ready model. Use a synthetic completion provider in automated tests.
+- **Steps**: Open the Enhancements settings, complete a turn in a new session,
+  then switch titles off and prompt enhancement on. Reload the plugin.
+- **Expected**: Only titles start enabled; the first completed turn can replace
+  the fallback title without reading the full transcript, offering a suggestion,
+  or recalling memory. A manual name wins. Explicit settings survive reload.
+- **Specs linked**: `04-ux/08-component-spec.md` §3.4; ADR 0323.
+- **Acceptance**: G (plugins), Quality.
+- **Milestone**: M6+.
+- **Status**: Plugin-process coverage in
+  `apps/desktop/test/bundled-official-enhancements.test.mjs`.
+
 ## E2E-1175: A plugin suggestion rides in the Composer placeholder and is taken with Tab
 
 - **Preconditions**: A plugin that declares `composer.suggest` is installed,
@@ -3954,6 +3985,22 @@ Open an editor in project A, switch the page to B and wait for B's list. A/B
 same-name definitions with different IDs do not prevent saving to A. A real
 duplicate name or ID in A still blocks creation; a real duplicate name blocks
 editing. Cover both creating and editing before changing the page selection.
+
+## E2E-ISSUE-2399
+
+In an unbound Agent conversation, call `PluginScaffold` with `panel-basic` and
+`word-to-pdf`, then `PluginCheck` and `PluginPack` on that directory. Files and the
+package must stay under that session's host-owned scratch root, and development
+registration/loading must receive that same plugin path. A second temporary
+session must not share the first session's directory. Project/worktree sessions
+must retain their own root; missing sessions and escaping paths must fail closed.
+Host lookup failures must remain observable. Scratch sources retain the existing
+temporary cleanup lifecycle, not a persistent project guarantee.
+
+Offline coverage: `node --test apps/desktop/test/plugin-dev-workspace.test.mjs`
+executes the production resolver, DI wiring, tool handlers and devkit filesystem
+operations. Host RPC and Electron plugin loading are boundary fixtures; rendered
+Electron and real-host lifecycle verification remain manual/CI coverage.
 
 ## E2E-ISSUE-2184
 
