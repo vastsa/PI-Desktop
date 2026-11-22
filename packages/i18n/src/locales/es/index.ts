@@ -130,6 +130,7 @@ export const es = {
     "detail":
       "Esta es una operación de escritorio peligrosa. El plugin reconoció el riesgo; que se ejecute depende de ti. Deniégala si no la esperabas.",
     "allowOnce": "Permitir una vez",
+    "allowSession": "Permitir hasta salir",
     "deny": "Denegar",
   },
   "pluginFsConsent": {

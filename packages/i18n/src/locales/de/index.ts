@@ -130,6 +130,7 @@ export const de = {
     "detail":
       "Dies ist ein gefährlicher Desktop-Vorgang. Das Plugin hat das Risiko bestätigt; ob er ausgeführt wird, entscheiden Sie. Lehnen Sie ab, wenn Sie ihn nicht erwartet haben.",
     "allowOnce": "Einmal erlauben",
+    "allowSession": "Erlauben bis zum Beenden",
     "deny": "Ablehnen",
   },
   "pluginFsConsent": {
