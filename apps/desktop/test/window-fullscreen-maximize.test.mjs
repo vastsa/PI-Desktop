@@ -29,7 +29,7 @@ const lifecycleSource = await readMainSource();
 const windowBootstrapSource = await readMainModule("bootstrap/window.ts");
 
 test("Windows main window leaves native maximized sizing enabled", () => {
-  assert.doesNotMatch(windowBootstrapSource, /thickFrame:\\s*false/);
+  assert.doesNotMatch(windowBootstrapSource, /thickFrame:\s*false/);
 });
 
 function makeWindow() {
