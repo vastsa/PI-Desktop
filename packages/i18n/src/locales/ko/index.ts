@@ -457,7 +457,6 @@ export const ko = {
     entryExtraCollapse: "콘텐츠 접기",
     actionSlotMore: "더 많은 작업",
     conversationMenu: "대화 작업",
-    selectionActions: "선택한 텍스트 작업",
     excerptCount_one: "{{count}}개 주석",
     excerptCount: "{{count}}개 주석",
     excerptCount_other: "{{count}}개 주석",

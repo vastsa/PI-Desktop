@@ -457,7 +457,6 @@ export const tr = {
     actionSlotMore: "Diğer işlemler",
     messageMenu: "Mesaj işlemleri",
     conversationMenu: "Konuşma işlemleri",
-    selectionActions: "Seçili metin işlemleri",
     excerptCount_one: "{{count}} not",
     excerptCount: "{{count}} not",
     excerptCount_other: "{{count}} not",

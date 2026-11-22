@@ -445,7 +445,6 @@ export const fr = {
     "copyFailed": "Impossible de copier dans le presse-papiers",
     "messageMenu": "Actions du message",
     "conversationMenu": "Actions de la conversation",
-    selectionActions: "Actions sur le texte sélectionné",
     excerptCount_one: "{{count}} annotation",
     excerptCount: "{{count}} annotations",
     excerptCount_other: "{{count}} annotations",

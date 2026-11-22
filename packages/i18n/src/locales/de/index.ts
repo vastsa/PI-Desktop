@@ -445,7 +445,6 @@ export const de = {
     "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
     "messageMenu": "Nachrichtenaktionen",
     "conversationMenu": "Gesprächsaktionen",
-    selectionActions: "Aktionen für ausgewählten Text",
     excerptCount_one: "{{count}} Anmerkung",
     excerptCount: "{{count}} Anmerkungen",
     excerptCount_other: "{{count}} Anmerkungen",

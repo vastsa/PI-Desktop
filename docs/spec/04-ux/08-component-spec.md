@@ -2098,12 +2098,9 @@ Single message render — either user (plaintext) or assistant (markdown streami
   badge previews each excerpt and allows individual removal. It preserves the
   existing draft and file references, focuses the composer, and never sends
   automatically. On send, the excerpts follow the editable prompt as quoted
-  context; failed sends restore them. Selecting text inside one speaking turn
-  also shows a one-action floating control beside the selection, so this path
-  needs no right-click. The control does not appear for tool output, thinking,
-  the composer, or a selection crossing turns. It closes when the selection
-  clears, the transcript scrolls, the window resizes, or the pane changes
-  (ADR selection-add-to-conversation). Right-clicking empty transcript
+  context; failed sends restore them. The action is reachable only from this
+  menu: selecting text shows no floating control or toolbar
+  (ADR selection-add-to-conversation, ADR 0268). Right-clicking empty transcript
   space, a system row, or a permission/outcome card opens a conversation
   menu: Copy conversation, Select conversation text, Scroll to top, Jump to
   latest. The old Quote, Annotate, and Open side chat actions stay retired

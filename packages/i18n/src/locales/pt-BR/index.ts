@@ -444,7 +444,6 @@ export const ptBR = {
     copyFailed: "Não foi possível copiar para a área de transferência",
     messageMenu: "Ações da mensagem",
     conversationMenu: "Ações da conversa",
-    selectionActions: "Ações do texto selecionado",
     excerptCount_one: "{{count}} anotação",
     excerptCount: "{{count}} anotações",
     excerptCount_other: "{{count}} anotações",

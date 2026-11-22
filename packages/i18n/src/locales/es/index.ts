@@ -445,7 +445,6 @@ export const es = {
     "copyFailed": "No se pudo copiar al portapapeles",
     "messageMenu": "Acciones del mensaje",
     "conversationMenu": "Acciones de la conversación",
-    selectionActions: "Acciones del texto seleccionado",
     excerptCount_one: "{{count}} anotación",
     excerptCount: "{{count}} anotaciones",
     excerptCount_other: "{{count}} anotaciones",

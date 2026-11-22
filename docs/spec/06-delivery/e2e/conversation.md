@@ -2153,11 +2153,11 @@ this does not claim an installed full-app settings journey.
 - **Expected**: The user menu lists Copy, Add to conversation, Select message
   text, Edit, and a separated Delete; the assistant menu lists Copy, Add to
   conversation, Select message text, Regenerate, and Branch. Add to conversation
-  appends the live selection as a line-by-line Markdown quote after a blank
-  line in the current draft, preserves its file-reference chips, focuses the
+  attaches the live selection as an excerpt in the counted badge above the
+  current draft, preserves its text and file-reference chips, focuses the
   caret at the end, and does not send. A collapsed caret or selection outside
-  the row quotes the whole turn, and switching sessions cannot apply the quote
-  to another draft. Copy writes the live selection in the
+  the row attaches the whole turn, and switching sessions cannot apply the
+  excerpt to another draft. Copy writes the live selection in the
   right-clicked turn when the menu opened over one; a collapsed caret
   or a selection outside that row falls back to the whole turn. Copy
   conversation writes the labelled thread. Both show a toast. Select
@@ -2257,28 +2257,26 @@ this does not claim an installed full-app settings journey.
   Copy must not load history until selected or change the reading position.
   Run `node scripts/e2e-copy-conversation.mjs`.
 
-## E2E-CHAT-selection-action-921: Add a selected excerpt without opening a menu
+## E2E-CHAT-selection-action-921: Add a selected excerpt from the context menu
 
 - **Preconditions**: A visible session has a user message, an assistant answer,
-  a tool row, and an unsent composer draft with a file reference.
-- **Steps**: 1) Select a phrase inside one user message with the pointer, then
-  activate the floating Add to conversation control. 2) Repeat with multiline
-  text in an assistant answer. 3) Select across two turns, select tool output,
-  clear a selection, and scroll the transcript with the control open. 4) Switch
+  and an unsent composer draft with a file reference.
+- **Steps**: 1) Select a phrase inside one user message with the pointer and
+  wait; then right-click the message and choose Add to conversation.
+  2) Repeat with multiline text in an assistant answer. 3) Collapse the
+  selection, right-click a turn, and choose Add to conversation. 4) Switch
   sessions with attached excerpts. 5) Open the counted badge, remove one
   excerpt, send with another, and simulate a rejected send.
-- **Expected**: A single localized action appears next to a selection within
-  one speaking turn without opening the right-click menu. It remains in the
-  viewport and adds only the selected excerpt to a counted badge above the
-  editable composer. The badge previews and removes individual excerpts.
-  Existing text and file references remain; nothing is sent until the user
-  submits. The submitted prompt contains the selected text as quoted context,
-  and a rejected send restores the badge. Other selections show no
-  control; clearing, scrolling, resizing, or leaving the pane closes it. A
-  attachment never reaches another session. The right-click action remains
-  available for whole-turn fallback.
+- **Expected**: Selecting text alone shows no floating control or toolbar
+  (ADR 0268). The menu action adds only the selected excerpt to a counted badge
+  above the editable composer; a collapsed selection adds the whole turn. The
+  badge previews and removes individual excerpts. Existing text and file
+  references remain; nothing is sent until the user submits. The submitted
+  prompt contains the selected text as quoted context, and a rejected send
+  restores the badge. An attachment never reaches another session.
 - **Specs linked**: `04-ux/08-component-spec.md` §8.3 / §8.5,
-  `04-ux/09-interaction-patterns.md` §1.5, ADR selection-add-to-conversation
+  `04-ux/09-interaction-patterns.md` §1.5, ADR selection-add-to-conversation,
+  ADR 0268
 - **Acceptance**: C (chat stream), Quality
 - **Milestone**: M5
 - **Status**: Chromium component covered (`node scripts/e2e-message-edit-copy.mjs`)
