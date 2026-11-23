@@ -219,10 +219,19 @@ destination, chat as the home surface, tools and permissions inline.
   scrolling internally, so standalone work stays visible without displacing
   project navigation. The following `Projects` heading exposes the
   folder-picker action; retained project groups use the remaining height and
-  scroll independently.
+  scroll independently. Connected-host groups follow the local ones under their
+  own `Remote` heading, emitted only while at least one host group is visible,
+  so a host project never reads as a retained local one.
 - **Identity**: each project group is keyed by a host-owned logical group id;
   each root path remains canonical and is never inferred from an ambiguous
   folder basename. Legacy single-folder projects are compatibility groups.
+  Host-owned remote project groups use the same header and disclosure as local
+  groups, and their catalog key is presentation state only: it never becomes a
+  retained local project path. Their order follows the sidebar project sort
+  (`recent`, `created`, `oldest`, `name`) instead of the arrival order of host
+  session rows, so opening a conversation in one host project never moves that
+  group above another. Because the section heading already names the host
+  class, a row inside it does not repeat a per-row `Remote` chip.
 - **Header**: project name, current-workspace dot, disclosure, new-task action,
   and an overflow menu. Workspace context is not navigation selection: project
   headers have no persistent selected background, including when no conversation

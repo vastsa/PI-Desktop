@@ -1,5 +1,6 @@
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
 import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
+import { compareProjectGroups } from "../lib/project-order";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import {
   useCallback,
@@ -183,11 +184,6 @@ function projectName(path: string, fallback?: string) {
   return parts[parts.length - 1] || path;
 }
 
-function timestamp(value?: string) {
-  const parsed = value ? Date.parse(value) : 0;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function optionalTimestamp(value?: string): number | null {
   const parsed = value ? Date.parse(value) : NaN;
   return Number.isFinite(parsed) ? parsed : null;
@@ -207,26 +203,6 @@ function projectDomId(path: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return `sidebar-project-${(hash >>> 0).toString(36)}`;
-}
-
-function firstSessionDate(
-  sessions: SessionSummary[],
-  field: "createdAt" | "updatedAt",
-): number | null {
-  const values = sessions
-    .map((session) => timestamp(session[field]))
-    .filter((value) => value > 0);
-  return values.length ? Math.min(...values) : null;
-}
-
-function lastSessionDate(
-  sessions: SessionSummary[],
-  field: "createdAt" | "updatedAt",
-): number | null {
-  const values = sessions
-    .map((session) => timestamp(session[field]))
-    .filter((value) => value > 0);
-  return values.length ? Math.max(...values) : null;
 }
 
 function compareOptionalDate(
@@ -791,41 +767,27 @@ export function Sidebar({
       (entry) => showArchived || !entry.meta.archived,
     );
     for (const entry of result) entry.sessions.sort(compareSessions);
-    result.sort((a, b) => {
-      const archiveOrder = Number(!!a.meta.archived) - Number(!!b.meta.archived);
-      if (archiveOrder !== 0) return archiveOrder;
-      const pinOrder = Number(!!b.meta.pinned) - Number(!!a.meta.pinned);
-      if (pinOrder !== 0) return pinOrder;
-      if (displayProjectSort === "manual") {
-        const byOrder =
-          (a.meta.order ?? Number.MAX_SAFE_INTEGER) -
-          (b.meta.order ?? Number.MAX_SAFE_INTEGER);
-        if (byOrder !== 0) return byOrder;
-      } else if (displayProjectSort === "name") {
-        const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-        if (byName !== 0) return byName;
-      } else if (
-        displayProjectSort === "oldest" ||
-        displayProjectSort === "created"
-      ) {
-        const dateForProject =
-          displayProjectSort === "oldest" ? firstSessionDate : lastSessionDate;
-        const aCreated = dateForProject(a.sessions, "createdAt");
-        const bCreated = dateForProject(b.sessions, "createdAt");
-        const byCreated = compareOptionalDate(
-          aCreated,
-          bCreated,
-          displayProjectSort === "created",
-        );
-        if (byCreated !== 0) return byCreated;
-      } else {
-        const aRecent = lastSessionDate(a.sessions, "updatedAt");
-        const bRecent = lastSessionDate(b.sessions, "updatedAt");
-        const byRecent = compareOptionalDate(aRecent, bRecent, true);
-        if (byRecent !== 0) return byRecent;
-      }
-      return a.key.localeCompare(b.key);
-    });
+    result.sort((a, b) =>
+      compareProjectGroups(
+        {
+          key: a.key,
+          name: a.name,
+          sessions: a.sessions,
+          archived: a.meta.archived,
+          pinned: a.meta.pinned,
+          manualOrder: a.meta.order,
+        },
+        {
+          key: b.key,
+          name: b.name,
+          sessions: b.sessions,
+          archived: b.meta.archived,
+          pinned: b.meta.pinned,
+          manualOrder: b.meta.order,
+        },
+        displayProjectSort,
+      ),
+    );
     return result;
   }, [
     filtered,
@@ -1057,7 +1019,8 @@ export function Sidebar({
   );
   const remoteProjectGroups = useMemo(() => groupRemoteProjectSessions(
     filtered.filter((session) => isRemoteSession(session) && !pinnedSessionIds.has(session.id)), compareSessions,
-  ), [filtered, pinnedSessionIds, compareSessions]);
+    displayProjectSort,
+  ), [filtered, pinnedSessionIds, compareSessions, displayProjectSort]);
   // Flat ordered list of every visible session id — used for Shift+click range
   // selection. Follows render order; a project session also listed under
   // Recent keeps its first (Recent) position.
@@ -2138,6 +2101,8 @@ export function Sidebar({
       projectPath?: string;
       global?: boolean;
       showLastReplyDate?: boolean;
+      /** The `Remote` section heading already says these rows live on a host. */
+      insideRemoteSection?: boolean;
     },
   ) => items.map((session) => {
     const meta = sessionMeta[session.id] ?? {};
@@ -2237,7 +2202,9 @@ export function Sidebar({
           {session.source === "pi-native" ? (
             <span className="thread-item-source" title="Native Pi session">Pi</span>
           ) : null}
-          {isRemoteSession(session) && <span className="thread-item-source" title={session.remoteHostLabel}>{t("remote:remote")}</span>}
+          {isRemoteSession(session) && !options?.insideRemoteSection ? (
+            <span className="thread-item-source" title={session.remoteHostLabel}>{t("remote:remote")}</span>
+          ) : null}
           <WorktreeBadge worktree={session.worktree} sessionId={session.id} />
           <span className="thread-item-title">{taskTitle(session.title)}</span>
           {options?.global ? (
@@ -2790,11 +2757,24 @@ export function Sidebar({
                   </div>
                 </section>
               )}
-              <RemoteProjectGroups groups={remoteProjectGroups}
-                renderSessions={(sessions) => renderSessionRows(sessions, {
-                  temporary: false,
-                  showLastReplyDate: settings?.sidebarSessionTime === true,
-                })} />
+              {remoteProjectGroups.length > 0 ? (
+                <>
+                  {/* Host-owned groups read as their own section, the same way
+                      the retained project list does, instead of trailing it
+                      unlabelled. */}
+                  <div className="sidebar-list-subheader" data-sidebar-section="remote">
+                    <span className="sidebar-list-label">
+                      {t("nav.remoteProjects", { defaultValue: "Remote" })}
+                    </span>
+                  </div>
+                  <RemoteProjectGroups groups={remoteProjectGroups}
+                    renderSessions={(sessions) => renderSessionRows(sessions, {
+                      temporary: false,
+                      showLastReplyDate: settings?.sidebarSessionTime === true,
+                      insideRemoteSection: true,
+                    })} />
+                </>
+              ) : null}
             </div>
           </>
         ) : null}
