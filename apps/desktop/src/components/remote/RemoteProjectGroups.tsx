@@ -18,7 +18,7 @@ import {
   ProjectRunRail,
 } from "../ProjectRunIndicator";
 import { IconChevronDown, IconFolder, IconNewProject } from "../icons";
-import { Button, TooltipButton } from "../ui";
+import { TooltipButton } from "../ui";
 
 /** The same project/chat hierarchy, keyed by Host identity rather than local paths. */
 export function RemoteProjectGroups({
@@ -86,13 +86,20 @@ export function RemoteProjectGroups({
                 setProjectCollapsed(collapseKey, !collapsed);
               }}
             >
-              <Button
-                variant="ghost"
+              {/* The same title primitive a local project group uses. The
+                  generic Button variant adds `btn`/`btn-ghost`, whose centered
+                  content and 12px padding pushed this header off the rail that
+                  every local group shares. */}
+              <TooltipButton
+                type="button"
                 className="sidebar-session-group-title project-toggle"
-                disabled={busy !== null}
-                title={`${project.hostLabel} · ${project.label}`}
+                tooltip={`${project.label} · ${project.hostLabel}`}
+                tooltipDelayMs={500}
+                tooltipClassName="ui-tooltip-path"
+                ariaLabel={`${project.label} · ${project.hostLabel}`}
                 aria-expanded={!collapsed}
                 aria-controls={`${project.key}-sessions`}
+                disabled={busy !== null}
                 data-action="toggle-project-collapse"
                 onClick={() => setProjectCollapsed(collapseKey, !collapsed)}
               >
@@ -107,8 +114,10 @@ export function RemoteProjectGroups({
                 </span>
                 {showRunBadge ? <ProjectRunBadge summary={runSummary} /> : null}
                 {showRunCount ? <ProjectRunCount summary={runSummary} /> : null}
-              </Button>
+              </TooltipButton>
               <TooltipButton
+                type="button"
+                className="sidebar-session-group-add"
                 tooltip={t("nav.newTask")}
                 ariaLabel={`${t("nav.newTask")}: ${project.label} · ${project.hostLabel}`}
                 disabled={busy !== null}
