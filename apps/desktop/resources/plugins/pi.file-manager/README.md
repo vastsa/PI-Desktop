@@ -25,12 +25,13 @@ companion Desktop branch. It does not connect to user SSH servers or profiles.
 
 ### Paired release for #1711
 
-Version 0.9.1 keeps this repair distinct from the existing v0.9.0 tag.
-Delivery through the companion
-[Desktop PR #1824](https://github.com/vastsa/PI-Desktop/pull/1824) requires a
-plugin release and a bundled update. Tag the accepted plugin commit and
-publish the same runtime bytes to the marketplace; preserve the existing
-v0.9.0 tag.
+Version 0.9.1 keeps this repair distinct from the existing v0.9.0 tag. The
+companion [Desktop PR #1824](https://github.com/vastsa/PI-Desktop/pull/1824)
+merged on 2026-10-27 as `467bc517` and adopted this source as the bundled
+hotfix `0.9.1-pi.1`, so the Desktop repair no longer depends on this repository
+being released. Merging and publishing this branch is a source-synchronisation
+step for the maintainer: tag the accepted commit and publish the same runtime
+bytes to the marketplace, preserving the existing v0.9.0 tag.
 
 Prepare the runtime with `node scripts/prepare-package.mjs`, then run the
 official `pi-plugin check dist/runtime` and `pi-plugin pack dist/runtime`.
@@ -39,7 +40,7 @@ The runtime includes `remote-workspace.js` and
 built view, README and changelog; omitting either new runtime file makes the
 vendored update incomplete.
 
-After publication, Desktop must copy the released runtime, preserve its local
+If this repository publishes a release later, Desktop must copy that runtime, preserve its local
 MIT license and CommonJS marker, and update `UPSTREAM.md` and the bundled
 provenance tests using the real tag, commit, marketplace artifact checksum
 and per-file checksums. Run the cross-repository Electron journey against
@@ -58,14 +59,14 @@ the shipped bundle.
 - **通过…打开（二级子菜单）**：鼠标停在菜单项上即展开，列出**这台机器上真的装了的**程序：系统默认应用，以及 VS Code、Zed、Chrome、Edge 等（装了哪几个就列哪几个），选中就用那个程序打开当前条目。**按文件类型过滤**——编辑器什么都能打开（文件与文件夹都行），浏览器只出现在它真能渲染的网页类文件上（`.html` / `.htm` / `.shtml` / `.xhtml` / `.mhtml` / `.svg` / `.pdf` / `.xml`）：拿 Chrome 打开 `App.tsx` 只会看到一个纯文本加载页，那是噪音，所以干脆不列。探测只在启动时做一次、**按天缓存**（同一台机器同一天里，第二个窗口、第二次启动都直接读那份缓存），并且**不遍历目录**：只读注册表 `App Paths` 与 `StartMenuInternet`、在 `PATH` 上按候选命令名找可执行文件、再对少数固定安装位置各做一次 `stat`，每条都是 O(候选数)。一个程序都没探到时只留「系统默认应用」这一项，不放点了没反应的条目。
 - **左右分栏，左侧列表可收起**：左侧文件列表，右侧内容。中间分隔条可拖拽，宽度会记住；工具栏最左边的按钮可以把左侧整块收起（收起时编辑器占满整个面板，重新展开按原宽度恢复，收起状态会被记住）。宿主请求打开文件时会自动收起，之后你手动展开就一直保持到下一次宿主请求。
 - **项目组里的多文件夹切换**：宿主把一个项目注册成多个本地文件夹（`workspace.get` / 首次握手的 `roots`、`projectId`）时，面板左上角的文件夹名就是切换器——点开是这组 folder 的菜单，标出主文件夹、当前在看的那个打勾；键盘可达（`aria-haspopup` / `aria-expanded`，Escape 与点到外面都能关），树收起时也照常能用。**只有一个文件夹（或老宿主不送组信息）时，头部与以前完全一样**，不留一个点了没反应的入口。切换会把树、展开、选中、搜索与已打开的文件整体重来，并照旧先过「未保存改动」确认——取消就什么都不换。看的是哪个 folder **按项目记住**（宿主给了 `projectId` 就按项目 id，否则按主文件夹路径；记忆里的路径必须命中当前的 `roots` 才被信任，否则退回主文件夹；最多记 20 个项目、按最近写入淘汰），新项目从主文件夹开始。
-- **代码高亮编辑**：CodeMirror 6，行号、查找替换、多光标、括号匹配、代码折叠。按文件名加载对应语言的语法高亮，覆盖 TypeScript/TSX、JavaScript/JSX、JSON、Markdown、CSS/SCSS/Sass/Less、HTML、Vue、XML、YAML、TOML、Properties、Python、Go、Rust、Java、C/C++、C#、Kotlin、Scala、Dart、Objective-C、PHP、Ruby、Lua、Shell、PowerShell、SQL、Dockerfile、Diff。全部随包内置、离线可用，不请求网络。`Ctrl/Cmd+S` 或工具栏按钮保存；**没有改动时不写盘**，保存后光标与滚动位置留在原处（不会跳回开头），界面显示的始终是磁盘上那份内容。焦点不在编辑器里（刚点过工具栏、或停在预览 / 表格 / 树视图）时 `Ctrl/Cmd+S` 同样有效。
+- **代码高亮编辑**：CodeMirror 6，行号、查找替换、多光标、括号匹配、代码折叠；查找 / 替换面板与「跳转到行」对话框的输入框、占位文本与按钮显式跟随插件的亮 / 暗调色板，不会退回 CodeMirror 的白底默认样式。按文件名加载对应语言的语法高亮，覆盖 TypeScript/TSX、JavaScript/JSX、JSON、Markdown、CSS/SCSS/Sass/Less、HTML、Vue、XML、YAML、TOML、Properties、Python、Go、Rust、Java、C/C++、C#、Kotlin、Scala、Dart、Objective-C、PHP、Ruby、Lua、Shell、PowerShell、SQL、Dockerfile、Diff。全部随包内置、离线可用，不请求网络。`Ctrl/Cmd+S` 或工具栏按钮保存；**没有改动时不写盘**，保存后光标与滚动位置留在原处（不会跳回开头），界面显示的始终是磁盘上那份内容。焦点不在编辑器里（刚点过工具栏、或停在预览 / 表格 / 树视图）时 `Ctrl/Cmd+S` 同样有效。
 - **Markdown 预览 / 编辑切换**：打开 `.md` / `.markdown` / `.mdx` 时，工具栏出现「编辑 / 预览」切换。预览支持标题、围栏代码块（带同样的语法高亮）、引用、分隔线、有序/无序/任务列表（按缩进嵌套）、表格（含对齐）、行内 code / 粗体 / 斜体 / 删除线 / 链接 / 图片。切换会记住。
 - **PDF 预览（只读）**：打开 `.pdf` 即可连续上下滚动阅读，支持「单页 / 双页 / 双页（封面单独）」布局、上一页 / 下一页、输入页码跳转、缩放（10%–400%）、适应宽度与 100% 实际大小；适应宽度会跟随面板和分栏尺寸，按当前布局中已知最宽页面组的实际尺寸计算。滚动切页保持比例，封面和末尾落单页不会自动放大；惰性加载发现更宽页面时扩展宽度依据。点击「导航」展开侧栏：**缩略图**定位页面并标记当前页，**目录**展示 PDF 内置的嵌套书签并跳转，**文档信息**展示文件名、体积、页数、标题、作者与日期等元数据；没有内置书签时明确提示。有文字层的 PDF 可以选择并复制文字，并可全文查找（中英文命中高亮与计数、上一个 / 下一个匹配，支持区分大小写、全字匹配和正则表达式三种开关组合；无效正则会提示并清除命中，修正后恢复；Enter / Shift+Enter 跳转、Escape 关闭）；清空查询或关闭后清除高亮。焦点位于 PDF 阅读区时 Ctrl/Cmd+F 打开查找。扫描件显示原始图像，不提供 OCR。PDF.js、Worker、字体映射与图像 / 色彩解码资源全部随包内置，离线可用。主视图缓存邻近页面，缩略图按可见范围渲染并释放不再使用的页资源；窄面板的导航侧栏覆盖显示，跳转后自动收起，也可按 Escape 关闭。切换文件后释放文档与 Worker；单文件上限 **24 MiB**。
 
   正则查找按页在独立 Worker 中执行，不重复解析 PDF；单页运算超过 1 秒或命中超过 10 万个时停止、清除本次命中并显示提示，可简化表达式后继续查找。清空、关闭、切换查找模式或文档会取消旧任务。Worker 无回应时，文档销毁也有 1 秒等待上限，并清理该文档的字体、滤镜和监听。
 - **图片查看**：png / jpg / jpeg / gif / webp / avif / bmp / ico / svg。默认适应窗口，可切「实际大小」；底部显示像素尺寸与文件体积，舞台铺棋盘格，透明区域一眼可见。
 - **音视频播放**：mp4 / m4v / mov / webm / ogv / mkv 用播放器，mp3 / m4a / aac / wav / flac / ogg / opus / weba 用音频条。**不自动播放**；编码或封装不被支持时给明确提示，而不是留一块黑框。
-- **CSV / TSV 表格（分页）**：打开 `.csv` / `.tsv` 就是表格，默认**每页 1000 行**；底部工具条可以翻页（首页/上一页/下一页/末页）、看「当前范围 / 总行数」，也能改每页行数（100–5000，选择会记住）。首行当表头且吸顶，最左一列是行号且吸左，整行悬停高亮，整列都是数字时自动右对齐，被省略号截断的值悬停可看全。**点表头排序**：升序 → 降序 → 取消（回到文件原序）；整列都是数字按数值比，否则按自然序文本比，空值永远沉底。解析支持引号包裹、`""` 转义、字段内换行、CRLF 与参差的行；列数上限 60、解析上限 20 万行，超出会在底部说明。工具栏可切回源码编辑。
+- **CSV / TSV / xlsx 表格（分页）**：打开 `.csv` / `.tsv` 就是表格；`.xlsx` 先在主进程里按只读方式解包，转成同样的表格文本（多张表用表名隔开；不执行宏、不读 `vbaProject.bin`、绝不写回原文件。上限 8 MiB 压缩包、单个部件解压 32 MiB、8 张表、5000 行、60 列、单格 2000 字，超出会在表格上方按界面语言说明，不再往数据里塞一行提示）。工作簿只有**表格**这一种看法：它显示的是派生文本、不是文件字节，所以既没有编辑页签，主进程也拒绝对 `xlsx` / `xlsm` 写入——保存不可能覆盖原文件。日期单元格显示的是 Excel 的序列号，公式单元格显示缓存值（没有缓存值的显示为空）。默认**每页 1000 行**；底部工具条可以翻页（首页/上一页/下一页/末页）、看「当前范围 / 总行数」，也能改每页行数（100–5000，选择会记住）。首行当表头且吸顶，最左一列是行号且吸左，整行悬停高亮，整列都是数字时自动右对齐，被省略号截断的值悬停可看全。**点表头排序**：升序 → 降序 → 取消（回到文件原序）；整列都是数字按数值比，否则按自然序文本比，空值永远沉底。解析支持引号包裹、`""` 转义、字段内换行、CRLF 与参差的行；列数上限 60、解析上限 20 万行，超出会在底部说明。工具栏可切回源码编辑（`.xlsx` 除外，它只有表格）。
 - **JSON 折叠树**：`.json` / `.jsonc` / `.json5` 可切树视图，默认展开两层、单节点最多直接铺 100 个键，长字符串截断（完整值在悬停提示里）。`//` 注释、尾逗号这类非严格 JSON 不会炸面板，只显示「解析失败 + 原因」，源码视图照常可编辑。
 - **SQLite 数据库（只读）**：`.db` / `.sqlite` / `.sqlite3` / `.db3` 打开即用——顶部概览（体积、页大小 × 页数、编码、SQLite 库版本、WAL 提示），「浏览」页签里选表或视图看数据（分页、点表头排序、最左 `rowid`、`NULL` 灰显、BLOB 只显示体积）、「结构」按钮看列与类型/索引/触发器/`CREATE` 原文，以及「SQL」页签里的**只读查询框**（`Ctrl/Cmd+Enter` 运行，可选行数上限，显示耗时与截断提示）。
   这是插件里**唯一能打开大文件**的预览类型：数据库的字节根本不进视图，主进程每次只取一页。
@@ -84,6 +85,22 @@ the shipped bundle.
 - **忽略规则**：项目里有 `.gitignore` / `.ignore` 就按规则隐藏条目（可用工具栏的眼睛按钮切回显示）；**一个规则文件都没有时，目录树展示全部条目**。
 - **跟随宿主外观**：亮/暗配色与界面语言（中文 / English）跟随 PI-Desktop 主体，编辑器与预览的高亮配色一并跟随。
 
+## 源码选区加入对话
+
+在当前项目的源码编辑器中选中一段文字。复制时会保留原始纯文本，并附带项目路径、文件路径和行号，供支持行引用的宿主识别。宿主支持时，选区右键菜单也会提供「加入对话」。行号从 1 开始，包含起止行。选区刚好结束在下一行开头时，该行不计入。
+
+行引用要求编辑器内容与已保存的文件一致。保存或重新加载后可引用行范围。改动未保存时，复制仍保留普通文本。
+
+宿主通过 `window.pluginBridge.capabilities.composerFileLines` 声明支持右键入口。插件将 `{ workspace, path, start, end }` 传给 `composer.addFileLines`，也将同样的 JSON 写入剪贴板格式 `application/x-pi-desktop-file-lines`。`workspace` 是当前项目路径，`path` 是文件绝对路径。宿主负责验证来源、渲染标签，以及发送后按行读取已保存的文件。
+
+Line references require the host bridge in [PI-Desktop #2129](https://github.com/vastsa/PI-Desktop/pull/2129).
+An eligible view advertises support; each action still checks the active session,
+project, permissions and installed plugin registration. Host rejection reasons
+are shown in the failure toast. `path` may belong to another registered folder
+in the project group and does not have to start with `workspace`.
+Unsaved or externally changed documents show a save/reload hint. If clipboard
+metadata cannot be attached, a toast explains the plain-text fallback.
+
 ## 安装
 
 在 PI-Desktop 的 Plugins 页面：
@@ -94,6 +111,23 @@ the shipped bundle.
 装好后打开一个项目，在**右侧工作面板头部的切换菜单 → “Plugin views / 插件视图”** 分组里点击「文件管理器」。
 
 > 这个插件没有命令面板入口，也不注册面板窗口——它只提供一个停靠在右侧栏的视图（`contributes.views`）。宿主没有提供「用命令打开视图」的通道，所以这里也不声明误导性的命令。
+
+### Markdown image previews
+
+Project-relative Markdown images render inline through the existing bounded
+`fm.read` bridge, relative to the Markdown document's directory. Parent segments
+may reach another directory inside the selected root. Root escapes, credential
+paths, symlink escapes and oversized files remain denied by the file reader.
+Missing, unreadable, invalid and unsupported images retain their alt-text
+placeholder. Remote URLs, absolute paths and images beside external documents
+remain placeholders; previewing a document grants no new filesystem or network
+access. Reload the document to refresh its images.
+
+Run `pnpm verify:markdown` in `tests/electron` for the isolated production-view
+journey: decoded relative/encoded images, placeholder fallbacks, document switching,
+reload and external-document isolation. See `tests/electron/README.md` for dependency
+reuse and temporary-profile setup. This is a plugin capability proposal for #11;
+Desktop adoption follows an accepted plugin release.
 
 ## 开发
 
@@ -128,7 +162,7 @@ pnpm typecheck
 pnpm verify        # 项目组 / 路径限制 + 高亮 + Markdown + 查看器 + git + 监听 + PDF
 ```
 
-`pnpm verify` 跑九个不需要 DOM 的校验脚本，用于覆盖「静默失败」的九条链路：
+`pnpm verify` 跑十三个不需要 DOM 的校验脚本，用于覆盖「静默失败」的十三条链路：
 
 - **`verify-roots.mjs`**：断言 `lib/roots.ts` 里那套纯规则——组形状（老宿主退化成单根、名字按
   路径末段补、`primary` 标记与顺序）、记忆键（`p:` / `r:`）、选中的 root（记忆命中才信，指向已被移出
@@ -157,6 +191,8 @@ pnpm verify        # 项目组 / 路径限制 + 高亮 + Markdown + 查看器 + 
 - **`verify-editors.mjs`**：三层。① 解析夹具钉住编辑器探测的几种文本形态——注册表 `App Paths` 的 `(Default)` 取值、`StartMenuInternet` 的 `shell\open\command`（`"C:\…\chrome.exe" -- "%1"` 这种带引号带参数的写法要剥得干净）、`PATH` 上候选文件名的顺序（Windows 只认 `.exe`，排在第一位且只出现一次），以及注册表键名的精确优先 / 前缀兜底（Firefox 的子键带客户端哈希后缀，`FIREFOX.EXE-308046b0af4a39cb` 得能命中）。② 端到端：桩宿主驱动**真实的 `main.js`**，断言 `fm.editors` 的形状、落盘缓存的路径与内容、以及**视图拿不到可执行文件路径**（只给 id 与显示名）这条边界；再起**第二个真进程**读同一份缓存，断言结果一致且缓存文件没有被重写——这就是「一天只探一次、多开共享」要保证的东西。③ 路径守卫：未知编辑器 id、越出根的相对路径、凭据文件、`external` 形态、缺参数全部被拒。最后还有一条**真的启动一次**的用例：把「编辑器」设成 `node` 自己、被打开的是一段小脚本，断语由那个真实子进程写出来——它收到的参数正是被点开那个文件的绝对路径。
 - **`verify-watch.mjs`**：三层。① 噪声与抑制的纯判定：`.git/`、任意层级的 `node_modules/`、凭据路径、本插件原子写的临时文件（`.README.md.<ts>.<rand>.tmp`）都不上报，而同名的真实文件照报；「这是我自己写的吗」这条抑制的记一笔 / 判定。② 端到端：临时目录 + 桩宿主驱动**真实的 `main.js`**，断言**操作系统真的把事件送到了**——外部改 / 外部建 / 外部删都出现在游标增量里、同一游标重复问幂等、`.git/` 与 `node_modules/` 的变化不进增量、**插件自己的保存不进增量**、抑制窗口过后同名改动照旧上报（监听不会慢慢失灵）、换文件夹后监听跟着换、没有项目时报告不可用而不抛错、`onUnload` 之后监听真的停了。③ 视图的判定（`lib/watch.ts` 纯函数）：变化在别处只刷目录、打开的文件被改且无未保存改动才自动重读、有未保存改动只提示不覆盖、刷新目录数有上限、游标落到历史之外时保守处理。
 - **`verify-pdf.mjs`**：桩宿主驱动真实 `main.js`，验证 `.PDF` 大小写识别、base64 字节无损传递、24 MiB 边界与超限处理、空 / 损坏文件进入 PDF 查看器的路径，以及根外路径、符号链接、凭据限制与多文件夹切换；同时校验双页封面 / 末页的稳定宽度、混合尺寸分组、惰性 / 乱序加载及文档间隔离。PDF 的内容路由与只读行为还由 `verify-viewers.mjs` 覆盖；渲染和交互需使用真实浏览器验证。
+- **`verify-context-menu.mjs`**：断言右键菜单的分组、顺序、适用文件类型与内置浏览器入口，不让新增操作静默挤乱已有动作。
+- **`verify-theme.mjs`**：断言 CodeMirror 查找 / 替换面板与「跳转到行」对话框的输入框、占位文本与按钮显式使用插件主题变量，并且**连构建产物 `views/assets/index.js` 一起校验**——防止暗色外观退回白底白字的默认样式，也防止改了 CSS 忘了 `pnpm build`。
 
 PDF 浏览器验收应使用生产构建和离线 `file://` 页面：长文档连续滚动与页面底部可达、页码同步、三种布局与混合横竖页适应宽度、在封面 / 末页的单与双页交界处往返滚动和拖动后缩放不变且渲染事件停止、惰性加载新尺寸后比例稳定、缩略图与嵌套 / 命名书签跳转、无目录提示、页码标签与 Info / XMP 元数据、真实鼠标文字选择、旋转页与特殊页面单位、中文字体映射与扫描件 / CMYK 解码、360px 窄面板、主题与语言、快速切页后缩放、快速切换文件，以及加载 / Worker 失败后的恢复。关闭 PDF 后确认 Worker 和 Blob URL 均释放；浏览器模拟宿主桥通过后，仍需在 PI-Desktop 安装包中检查实际面板交互。
 

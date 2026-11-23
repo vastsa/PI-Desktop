@@ -661,3 +661,39 @@ This workflow spec itself is accepted when:
       the temporary type restriction in R6.1 is in force.
 
 - [ ] All indexes updated (NAV, delivery README, spec README, docs README, BOARD).
+
+## 9. Issue Automation (`@pi`)
+
+Two workflows in `.github/workflows` drive issue triage and answer mentions.
+Both call the public [pi-agent-action](https://github.com/Tioit-Wang/pi-agent-action)
+at the `v1` tag, so an action release reaches this repository without a commit
+here.
+
+- `pi.yml` — someone with write access comments `@pi <request>` and the agent
+  answers in the tracking comment. Analysis only: the tool set is
+  `read,grep,find,ls` and there is no turn budget, so `timeout-minutes` is the
+  only bound. A greeting returns a sentence; a task returns an investigation.
+- `pi-triage.yml` — a newly opened issue gets a type label and a priority, and
+  when it duplicates an earlier issue the two are linked in both directions.
+  This one is silent: it posts no comment unless it finds a duplicate.
+
+```text
+.github/pi-triage.yml             label vocabulary and comment templates
+.github/workflows/pi.yml          mention-triggered answers
+.github/workflows/pi-triage.yml   opened-issue triage
+```
+
+The label vocabulary lives in `.github/pi-triage.yml` rather than in the action,
+so this repository decides its own words. The action enforces three rules at
+startup: `bug` must be one of the type labels, a duplicate label must be named,
+and every label mentioned must exist in the repository.
+
+Requirements before these workflows can run:
+
+- the `AIMOM_API_KEY` repository secret, holding the provider credential;
+- the labels listed in `.github/pi-triage.yml`;
+- `issues: write` and `pull-requests: write`, already declared in both files.
+
+Validate the configuration without publishing a test issue by dispatching the
+triage workflow with `issue_number` set to an existing issue. The run then
+reports the labels it would apply.

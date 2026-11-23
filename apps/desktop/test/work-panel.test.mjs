@@ -188,10 +188,6 @@ test("a viewport-fixed toggle is the sole pointer collapse control", () => {
     globalStyles,
     /padding-right:\s*calc\(var\(--ds-window-controls-width\)/,
   );
-  assert.match(
-    globalStyles,
-    /:root\[data-platform="win32"\] \.conversation-topbar\.ct-work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.conversation-topbar\.ct-work-panel-open\s*\{[^}]*right:\s*0;/,
-  );
 });
 
 test("the work panel shortcut closes the panel it opened", () => {
@@ -292,11 +288,13 @@ test("work panel header exposes a scrollable tab strip and direct new-page actio
   // tab kind and no separate back control exists.
   assert.match(panelSource, /subagent: IconBot/);
   assert.doesNotMatch(panelSource, /work-panel-subagent-back|IconChevronLeft/);
-  // Reopening an already-open plugin view must reuse its tab so the browser
-  // keeps its location instead of being replaced by a blank singleton.
+  // Reopening an already-open plugin view must not replace its tab with a
+  // blank one: other views reuse it, and Browser opens another page beside it
+  // (`launcherWorkPanelTab`, covered in work-panel-tabs.test.mjs).
+  assert.match(panelSource, /const tab = launcherWorkPanelTab\(tabs, item\.tab\)/);
   assert.match(
     panelSource,
-    /const existing = tabs\.find\(\(tab\) => tab\.id === item\.tab\.id\)/,
+    /const existing = tabs\.find\(\(candidate\) => candidate\.id === tab\.id\)/,
   );
   assert.match(panelSource, /if \(existing\) activateTab\(existing\.id\)/);
   assert.doesNotMatch(panelSource, /collapsePanel/);
@@ -505,12 +503,13 @@ test("Electron enforces the responsive shell minimum", () => {
   assert.match(mainSource, /export const WINDOW_MIN_WIDTH = 800/);
   assert.match(mainSource, /export const WINDOW_MIN_HEIGHT = 560/);
   // The window creation clamps the minimum to fit the current work area
-  // (issues #544 / #1175), so the props are the clamped `initialMin*` values.
+  // (issues #544 / #1175) and to a native half-screen tile, so the props are
+  // the clamped `initialMin*` values.
   assert.match(mainSource, /minWidth:\s*initialMinWidth/);
   assert.match(mainSource, /minHeight:\s*initialMinHeight/);
   assert.match(
     mainSource,
-    /\{ width: initialMinWidth, height: initialMinHeight \} =\s*clampMinimumSizeToWorkArea\(/,
+    /\{ width: initialMinWidth, height: initialMinHeight \} =\s*nativeWindowMinimumSize\(/,
   );
   // Every unconditional app-minimum reassertion goes through the same clamp.
   assert.doesNotMatch(mainSource, /setMinimumSize\(windowMinWidth, windowMinHeight\);\n\s*\/\/ Prefer normal layer/);

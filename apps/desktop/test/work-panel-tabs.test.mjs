@@ -15,6 +15,7 @@ const {
   hasPluginView,
   isKnownWorkPanelTab,
   isToolWorkPanelTab,
+  launcherWorkPanelTab,
   normalizeWorkPanelFilePath,
   newWorkPanelTab,
   openWorkPanelTabState,
@@ -84,6 +85,33 @@ test("Browser reveal reuses the originating session's browser tab", () => {
   assert.equal(browserPluginTabForReveal(tabs, "review", first.id), first);
   assert.equal(browserPluginTabForReveal(tabs, latest.id), latest);
   assert.equal(browserPluginTabForReveal([], null).id, browserPluginTab().id);
+});
+
+test("picking Browser from the launcher again opens another browser tab (#2480)", () => {
+  // The launcher picks a tool from a blank tab and replaces it.
+  const pick = (state, tool) => {
+    const blank = newWorkPanelTab();
+    const opened = openWorkPanelTabState(state, blank);
+    return replaceWorkPanelTabState(opened, blank.id, launcherWorkPanelTab(opened.tabs, tool));
+  };
+  const browserTool = pluginWorkPanelTab("pi.browser", "browser");
+  const review = toolWorkPanelTab("review");
+
+  let state = { tabs: [], activeTabId: null };
+  state = pick(state, browserTool);
+  state = pick(state, browserTool);
+  const browsers = state.tabs.filter((tab) => tab.resource === "pi.browser/browser");
+  assert.equal(browsers.length, 2, "a second browser tab sits beside the first");
+  assert.equal(browsers[0].id, browserPluginTab().id, "the first keeps the default browser tab id");
+  assert.notEqual(browsers[1].id, browsers[0].id);
+  assert.equal(state.activeTabId, browsers[1].id, "the new browser tab is focused");
+  assert.equal(state.tabs.some((tab) => tab.kind === "new"), false, "no blank launcher tab is left behind");
+
+  // Other tools still focus their single open tab.
+  state = pick(state, review);
+  state = pick(state, review);
+  assert.equal(state.tabs.filter((tab) => tab.id === review.id).length, 1);
+  assert.equal(launcherWorkPanelTab(state.tabs, review), review);
 });
 
 test("file tabs normalize lexical paths and remain distinct by resource", () => {

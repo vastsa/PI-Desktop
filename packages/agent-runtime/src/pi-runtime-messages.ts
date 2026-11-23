@@ -6,6 +6,7 @@ import { omitOversizedImages } from "./image-admission.js";
 export type CompactionSummaryMessage = {
   role: "compactionSummary";
   summary: string;
+  resumeActiveTurn?: true;
   tokensBefore: number;
   timestamp: number;
 };
@@ -44,6 +45,10 @@ type RuntimeMessage =
 
 export const COMPACTION_SUMMARY_PREFIX =
   "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
+const ACTIVE_TURN_SUMMARY_PREFIX =
+  "This harness-generated checkpoint is newer than the original request above. " +
+  "That request defines the goal, not the current state. Continue from the first unchecked step below; " +
+  "do not restart completed work. Follow any newer user message that comes after this checkpoint.\n\n<summary>\n";
 export const COMPACTION_SUMMARY_SUFFIX = "\n</summary>";
 export const BRANCH_SUMMARY_PREFIX =
   "The following is a summary of a branch that this conversation came back from:\n\n<summary>\n";
@@ -57,10 +62,12 @@ export function createCompactionSummaryMessage(
   summary: string,
   tokensBefore: number,
   timestamp: string | number,
+  resumeActiveTurn = false,
 ): CompactionSummaryMessage {
   return {
     role: "compactionSummary",
     summary,
+    ...(resumeActiveTurn ? { resumeActiveTurn: true } : {}),
     tokensBefore,
     timestamp: normalizeTimestamp(timestamp),
   };
@@ -126,16 +133,19 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
           timestamp: runtimeMessage.timestamp,
         }));
         break;
-      case "compactionSummary":
+      case "compactionSummary": {
+        const prefix = "resumeActiveTurn" in runtimeMessage && runtimeMessage.resumeActiveTurn
+          ? ACTIVE_TURN_SUMMARY_PREFIX : COMPACTION_SUMMARY_PREFIX;
         converted.push(asProviderMessage({
           role: "user",
           content: [{
             type: "text",
-            text: `${COMPACTION_SUMMARY_PREFIX}${runtimeMessage.summary}${COMPACTION_SUMMARY_SUFFIX}`,
+            text: `${prefix}${runtimeMessage.summary}${COMPACTION_SUMMARY_SUFFIX}`,
           }],
           timestamp: runtimeMessage.timestamp,
         }));
         break;
+      }
       case "system":
       case "user":
       case "assistant":

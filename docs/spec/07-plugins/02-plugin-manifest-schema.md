@@ -196,6 +196,7 @@ providers?: PluginProviderContrib[]; // Host-owned provider rows; needs `provide
  scenicThemes?: PluginScenicThemesContrib;
  windowAppearance?: PluginWindowAppearanceContrib; // native window background and Windows corner request; needs `ui.window.appearance`
  composerTransforms?: PluginComposerTransformContrib[]; // explicit Composer text actions; needs `composer.transform`
+ modelContext?: true; // process-only onModelContext hook; needs `agent.modelContext`
  mcpServers?: PluginMcpServerContrib[];
   services?: PluginServiceContrib[];
   bus?: PluginBusContrib;
@@ -246,6 +247,7 @@ type PluginViewContrib = {
  icon?: string; // token from the host icon set; unknown tokens draw a letter tile
  entry: string; // relative path to the view's HTML entry
   order?: number; // ascending sort key in the plugin-views menu group, default 0
+  acceptsTranscriptSelection?: boolean; // add a selected-text action to the transcript menu
 };
 
 type PluginSessionSourceContrib = {
@@ -415,6 +417,7 @@ type PluginPermission =
  | "agent.tool.register"
  | "agent.prompt.inject"
  | "agent.complete"
+ | "agent.modelContext"
  | "agent.extension"
  | "composer.transform"
  | "composer.suggest"
@@ -435,6 +438,7 @@ type PluginPermission =
  | "ui.microphone"
  | "project.create"
  | "session.read"
+ | "session.observe"
  | "session.import"
  | "session.read.own"
  | "session.update.own"
@@ -674,6 +678,7 @@ the oldest host you claim. Export `onLoad` / `onUnload` from `main`; there is no
    is missing: `themes` → `ui.theme`, `views` → `ui.view`, `providers` →
    `provider.register`, OAuth providers → `provider.oauth`, `composerTransforms` →
    `composer.transform`, `agentExtensions` → `agent.extension`,
+   `modelContext: true` → `agent.modelContext`,
    `windowAppearance` → `ui.window.appearance`, stdio servers →
    `mcp.server.local`, remote servers → `mcp.server.remote`, `services` →
    `background.service`, `bus.publish` → `bus.publish`, `bus.subscribe` →

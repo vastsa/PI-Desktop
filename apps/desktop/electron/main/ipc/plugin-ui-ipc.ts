@@ -18,6 +18,7 @@ import {
   type PluginComposerSuggestionRefusal,
 } from "@pi-desktop/plugin-sdk";
 import type { ComposerSuggestionAnswer } from "../services/composer-suggestion";
+import { canUseFileLineView, FILE_LINES_VIEW_KEY } from "../file-line-reference";
 
 export type PluginUiIpcDependencies = {
   registrar: IpcRegistrar;
@@ -63,6 +64,7 @@ export function registerPluginUiIpc({
    * after a newer one cannot restore a session the user already left.
    */
   const sessionPushGate = createSessionPushGate();
+  let selectedSession: { id: string; projectPath: string | null } | null = null;
   /**
    * The session on screen, as the shell sees it.
    *
@@ -87,6 +89,7 @@ export function registerPluginUiIpc({
       }
       const sessionId = typeof payload?.sessionId === "string" ? payload.sessionId.trim() : "";
       if (!sessionId) {
+        selectedSession = null;
         setActivePluginSession(null);
         return { ok: true };
       }
@@ -95,25 +98,26 @@ export function registerPluginUiIpc({
       }
       const projectPath =
         typeof payload?.projectPath === "string" ? payload.projectPath.trim() : "";
+      if (selectedSession?.id !== sessionId || selectedSession.projectPath !== (projectPath || null)) {
+        selectedSession = { id: sessionId, projectPath: projectPath || null };
+      }
       setActivePluginSession({ sessionId, projectPath: projectPath || null });
       return { ok: true };
     },
   );
   /**
-   * The shell's answer to one composer suggestion (`pi.composer.suggest`).
-   *
-   * Nothing is refused here: the offer it answers may already have been
-   * replaced, dropped, or timed out, and a late answer to a forgotten offer is
-   * simply not applied. `ok` therefore says the message was well formed, not
-   * that a suggestion is on screen.
+   * The main shell answers probes and offers. A well-formed late reply is
+   * acknowledged even if main has already forgotten the request.
    */
-  handle(
+  registrar.handleWithEvent(
     IPC.invoke.pluginComposerSuggestionResult,
     async (
+      event,
       payload:
-        | { requestId?: string | null; shown?: boolean | null; reason?: string | null }
+        | { requestId?: unknown; shown?: unknown; reason?: unknown; revision?: unknown }
         | null,
     ) => {
+      registrar.assertMainWindowSender(event);
       const requestId = typeof payload?.requestId === "string" ? payload.requestId.trim() : "";
       if (!requestId) throw new Error("INVALID_ARGUMENT: requestId is required");
       const reason =
@@ -121,10 +125,15 @@ export function registerPluginUiIpc({
         (PLUGIN_COMPOSER_SUGGESTION_REFUSALS as readonly string[]).includes(payload.reason)
           ? (payload.reason as PluginComposerSuggestionRefusal)
           : undefined;
+      const revision = typeof payload?.revision === "string" &&
+        /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(payload.revision)
+        ? payload.revision
+        : undefined;
       settleComposerSuggestion({
         requestId,
         shown: payload?.shown === true,
         ...(reason ? { reason } : {}),
+        ...(revision ? { revision } : {}),
       });
       return { ok: true };
     },
@@ -204,6 +213,7 @@ export function registerPluginUiIpc({
           title: resolvePluginLocalizedString(view.title, getUpdaterLocale(), view.id),
           pluginName: loaded.manifest.name,
           icon: view.icon,
+          ...(view.acceptsTranscriptSelection === true ? { acceptsTranscriptSelection: true } : {}),
           order: Number.isFinite(view.order) ? Number(view.order) : index,
         });
       });
@@ -295,6 +305,7 @@ export function registerPluginUiIpc({
       sessionId?: string;
       location?: string;
       tabId?: string;
+      selection?: string;
     }) => {
       const pluginId = String(payload?.pluginId ?? "");
       const viewId = String(payload?.viewId ?? "");
@@ -313,6 +324,17 @@ export function registerPluginUiIpc({
         (candidate) => candidate?.id === viewId,
       );
       if (!view) throw new Error("plugin has no such view");
+      const selection = payload?.selection;
+      const session = selectedSession;
+      const isCurrentSession = () => session?.id === sessionId && session === selectedSession &&
+        pluginActiveInProject(pluginId, currentWorkspacePath());
+      if (selection !== undefined && (
+        view.acceptsTranscriptSelection !== true || !isCurrentSession() ||
+        !sessionId || sessionId.startsWith("remote:") || typeof selection !== "string" ||
+        !selection.trim() || Buffer.byteLength(selection) >= 64 * 1024
+      )) {
+        throw new Error("INVALID_ARGUMENT: transcript selection is unavailable for this view");
+      }
       const htmlPath = join(loaded.path, view.entry);
       if (!existsSync(htmlPath)) throw new Error("view entry missing");
       if (isBrowserView && sessionId) {
@@ -324,12 +346,16 @@ export function registerPluginUiIpc({
         locale: getUpdaterLocale(),
         theme: getPluginPanelTheme(),
         htmlPath,
+        composerFileLines: pluginViewKey(pluginId, viewId) === FILE_LINES_VIEW_KEY && canUseFileLineView(loaded),
         netDomains: loaded.manifest.net?.domains?.map((domain) => String(domain)),
         netAnyHost: loaded.permissions.has("net.anyHost"),
         // The browser view owns an address bar and its own history, so its
         // location keeps going through `browserHost`; every other contributed
         // view receives the opener's subject untouched (D320 follow-up).
         ...(isBrowserView || !location ? {} : { location }),
+        ...(selection === undefined ? {} : {
+          selection: { sessionId, text: selection, isCurrentSession },
+        }),
       });
       return { ok: true };
     },

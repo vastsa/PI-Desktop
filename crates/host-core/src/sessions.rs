@@ -191,6 +191,13 @@ pub struct MessageUsage {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FileLineRange {
+    pub start: u64,
+    pub end: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageAttachment {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_reference: Option<String>,
@@ -212,6 +219,8 @@ pub struct MessageAttachment {
     /// at that position instead of appending it after the body.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inline_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_range: Option<FileLineRange>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -583,6 +592,9 @@ pub(crate) fn ui_to_record(message: &UiMessage) -> (MessageRecord, Option<String
                 if let Some(inline_path) = &attachment.inline_path {
                     block.insert("inlinePath".into(), json!(inline_path));
                 }
+                if let Some(range) = &attachment.line_range {
+                    block.insert("lineRange".into(), json!(range));
+                }
                 blocks.push(Value::Object(block));
             }
         }
@@ -741,6 +753,9 @@ pub(crate) fn record_to_ui(record: MessageRecord) -> UiMessage {
                     .get("inlinePath")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
+                line_range: block
+                    .get("lineRange")
+                    .and_then(|value| serde_json::from_value(value.clone()).ok()),
             })
         })
         .collect::<Vec<_>>();
@@ -2294,7 +2309,8 @@ pub enum MoveSessionProjectResult {
     Busy,
 }
 
-/// Move an idle session to another project.
+/// Move an idle session to another project, or out of any project when
+/// `project_path` is `None` (it then joins the temporary group).
 ///
 /// Only the session's project association and `updated_at` change: transcript,
 /// revisions, artifacts, notifications, scratch data, and runtime state belong
@@ -2304,7 +2320,7 @@ pub enum MoveSessionProjectResult {
 pub fn move_session_project(
     db: &Database,
     id: &str,
-    project_path: &str,
+    project_path: Option<&str>,
 ) -> Result<MoveSessionProjectResult> {
     if get_session(db, id)?.is_none() {
         return Ok(MoveSessionProjectResult::NotFound);
@@ -2312,7 +2328,10 @@ pub fn move_session_project(
     if session_has_running_turn(db, id)? {
         return Ok(MoveSessionProjectResult::Busy);
     }
-    let project_id = db.ensure_project(project_path, false)?;
+    let project_id = match project_path {
+        Some(path) => Some(db.ensure_project(path, false)?),
+        None => None,
+    };
     db.conn()
         .prepare_cached("UPDATE sessions SET project_id = ?1, updated_at = ?2 WHERE id = ?3")?
         .execute(params![project_id, now_ms(), id])?;
@@ -2340,6 +2359,17 @@ pub fn append_message(
     message: &UiMessage,
     turn_id: Option<&str>,
 ) -> Result<()> {
+    append_message_with_receipt(db, session_id, message, turn_id).map(|_| ())
+}
+
+/// The canonical ID of a row first inserted with a valid turn association.
+/// Updates, retries, and index repair of an existing transcript line are not inserts.
+pub fn append_message_with_receipt(
+    db: &Database,
+    session_id: &str,
+    message: &UiMessage,
+    turn_id: Option<&str>,
+) -> Result<Option<String>> {
     model_system::validate(message)?;
     let message = crate::session_collaboration::prepare_append(db, session_id, message, turn_id)?;
     let session_created = ensure_session_for_append(db, session_id)?;
@@ -2353,6 +2383,7 @@ pub fn append_message(
     // with another session is remapped before any transcript write (D444).
     // A steering input reserves its preceding streaming assistant's position;
     // only a terminal assistant snapshot may replace that provisional row.
+    let mut inserted_id = None;
     if message_indexed(db, session_id, &record.id)? {
         if message.role == "assistant"
             && message.status.as_deref() != Some("streaming")
@@ -2379,7 +2410,7 @@ pub fn append_message(
             }
         } else {
             update_delegation_snapshot(db, session_id, &record)?;
-            return Ok(());
+            return Ok(None);
         }
     } else {
         if let Some(owner) = message_owner(db, &record.id)? {
@@ -2388,15 +2419,15 @@ pub fn append_message(
                 record.id = namespaced_message_id(session_id, &record.id);
                 if message_indexed(db, session_id, &record.id)? {
                     update_delegation_snapshot(db, session_id, &record)?;
-                    return Ok(());
+                    return Ok(None);
                 }
                 // Old hosts wrote JSONL then failed UNIQUE. Replaying that
                 // leftover must not append a second remapped line (D444).
                 if transcript_contains_id(db, session_id, &original_id)? {
-                    return Ok(());
+                    return Ok(None);
                 }
             } else {
-                return Ok(());
+                return Ok(None);
             }
         }
         let transcript_repaired =
@@ -2410,6 +2441,9 @@ pub fn append_message(
                 text.as_deref(),
                 turn_id.as_deref(),
             )?;
+            if turn_id.is_some() && record.role == "user" {
+                inserted_id = Some(record.id.clone());
+            }
         }
     }
     if message.role == "assistant" && message.status.as_deref() == Some("streaming") {
@@ -2431,7 +2465,7 @@ pub fn append_message(
                 },
             )?;
         }
-        return Ok(());
+        return Ok(None);
     }
     // The final assistant row supersedes any checkpoint of the same message
     // (D299). A checkpoint for a different id belongs to a newer fragment and
@@ -2443,7 +2477,7 @@ pub fn append_message(
             }
         }
     }
-    Ok(())
+    Ok(inserted_id)
 }
 
 /// Whether the session's index already carries `message_id`.
@@ -4779,6 +4813,27 @@ mod tests {
     }
 
     #[test]
+    fn user_insert_receipt_only_reports_first_valid_turn_append() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        let turn = begin_turn(&db, &session.id, None, None).unwrap();
+        let message = user_msg("submitted", "durable input", "2026-07-28T00:00:00Z");
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &message, Some(&turn)).unwrap(),
+            Some(message.id.clone())
+        );
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &message, Some(&turn)).unwrap(),
+            None
+        );
+        let orphan = user_msg("orphan", "historical input", "2026-07-28T00:00:01Z");
+        assert_eq!(
+            append_message_with_receipt(&db, &session.id, &orphan, Some("missing-turn")).unwrap(),
+            None
+        );
+    }
+
+    #[test]
     fn append_message_without_a_live_same_session_turn_keeps_the_message() {
         let db = test_db();
         let source = create_session(&db, None, None, None, None, None).unwrap();
@@ -6051,6 +6106,7 @@ mod tests {
         );
         user.attachments = Some(vec![MessageAttachment {
             local_reference: Some("11111111-2222-4333-8444-555555555555".into()),
+            line_range: None,
             kind: "file".into(),
             name: "large.bin".into(),
             reference: "/synthetic/large.bin".into(),
@@ -6069,16 +6125,30 @@ mod tests {
         let db = test_db();
         let session = create_session(&db, None, None, None, None, None).unwrap();
         let mut user = user_msg("image-1", "这是什么", "2025-05-01T00:00:00Z");
-        user.attachments = Some(vec![MessageAttachment {
-            local_reference: None,
-            kind: "image".into(),
-            name: "image.png".into(),
-            reference: "attachments/abc123".into(),
-            mime_type: Some("image/png".into()),
-            size: Some(42),
-            text: None,
-            inline_path: Some("@/scratch/pasted/image.png".into()),
-        }]);
+        user.attachments = Some(vec![
+            MessageAttachment {
+                local_reference: None,
+                kind: "image".into(),
+                name: "image.png".into(),
+                reference: "attachments/abc123".into(),
+                mime_type: Some("image/png".into()),
+                size: Some(42),
+                text: None,
+                inline_path: Some("@/scratch/pasted/image.png".into()),
+                line_range: None,
+            },
+            MessageAttachment {
+                local_reference: None,
+                kind: "file".into(),
+                name: "gpt.py".into(),
+                reference: "/project/src/gpt.py".into(),
+                mime_type: None,
+                size: None,
+                text: None,
+                inline_path: Some("/project/src/gpt.py (85:86)".into()),
+                line_range: Some(FileLineRange { start: 85, end: 86 }),
+            },
+        ]);
 
         append_message(&db, &session.id, &user, None).unwrap();
 
@@ -6096,6 +6166,7 @@ mod tests {
         assert_eq!(blocks[1]["ref"], "attachments/abc123");
         assert_eq!(blocks[1]["inlinePath"], "@/scratch/pasted/image.png");
         assert!(blocks[1].get("data").is_none());
+        assert_eq!(blocks[2]["lineRange"], json!({ "start": 85, "end": 86 }));
     }
 
     #[test]
@@ -7540,7 +7611,8 @@ mod tests {
         // with forward slashes.
         let target_path = crate::db::canonical_project_path(&target.to_string_lossy())
             .expect("canonical project path");
-        let moved = move_session_project(&db, &session.id, &target.to_string_lossy()).unwrap();
+        let moved =
+            move_session_project(&db, &session.id, Some(&target.to_string_lossy())).unwrap();
         let MoveSessionProjectResult::Moved(summary) = moved else {
             panic!("an idle session must move to the requested project");
         };
@@ -7555,20 +7627,39 @@ mod tests {
         // instruction roots mid-turn.
         let turn = begin_turn(&db, &session.id, None, None).unwrap();
         assert!(matches!(
-            move_session_project(&db, &session.id, &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, &session.id, Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::Busy
         ));
         end_turn(&db, &turn, "aborted", None, None, false).unwrap();
         assert!(matches!(
-            move_session_project(&db, &session.id, &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, &session.id, Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::Moved(_)
         ));
 
         assert!(matches!(
-            move_session_project(&db, "missing-session", &source.to_string_lossy()).unwrap(),
+            move_session_project(&db, "missing-session", Some(&source.to_string_lossy())).unwrap(),
             MoveSessionProjectResult::NotFound
         ));
-        assert!(move_session_project(&db, &session.id, "   ").is_err());
+        assert!(move_session_project(&db, &session.id, Some("   ")).is_err());
+
+        // `None` detaches the session into the temporary group and keeps it
+        // otherwise intact; it can then move back into a project.
+        let MoveSessionProjectResult::Moved(detached) =
+            move_session_project(&db, &session.id, None).unwrap()
+        else {
+            panic!("an idle session must leave its project");
+        };
+        assert_eq!(detached.project_path, None);
+        assert_eq!(detached.title, "Move me");
+        let MoveSessionProjectResult::Moved(reattached) =
+            move_session_project(&db, &session.id, Some(&target.to_string_lossy())).unwrap()
+        else {
+            panic!("a temporary session must move into a project");
+        };
+        assert_eq!(
+            reattached.project_path.as_deref(),
+            Some(target_path.as_str())
+        );
     }
 
     #[test]

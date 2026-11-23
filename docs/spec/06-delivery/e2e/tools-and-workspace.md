@@ -560,6 +560,50 @@ journeys cover successful reads, saves and directory browsing.
   `sidebar-preferences.test.mjs`); rendered scenario Draft, with primary
   promotion covered by `node scripts/e2e-project-edit.mjs`
 
+## E2E-PROJECT-relocate-single-root-with-existing-sessions
+
+- **Preconditions**: A legacy or stored single-root local project has an idle
+  saved chat, a scheduled task, and project memory. Its directory can be
+  renamed outside the app. A second independent project can occupy the
+  replacement path for the conflict variant.
+- **Steps**: 1) Rename the only project directory outside the app. 2) Open Edit
+  project, add the replacement, promote it to Primary, remove the stale row,
+  and save once. 3) Reopen the original chat and run a workspace-dependent
+  Read or Bash call. 4) Inspect project memory, the scheduled task, the project
+  list, and the binding after restart. 5) Repeat with an empty shadow project
+  previously opened at the replacement path. 6) Repeat with a non-empty
+  independent target project and verify that saving is rejected. 7) Repeat the
+  two-step repair: save the replacement next to the stale row first, then save
+  again with only the replacement. 8) Repeat step 2 while the old folder still
+  exists (an ordinary swap to an unrelated folder).
+- **Expected**: The original project id and stored group id survive, its path
+  becomes the canonical replacement, and the existing chat, scheduled task, and
+  path-scoped memory remain available without recreating the session. The old
+  workspace call succeeds at the replacement path. An empty shadow row is
+  absorbed, leaving one project. A target with its own chats, tasks, or memory
+  blocks the operation with both projects and the original group unchanged.
+  The two-step repair ends in the same relocated state; if the replacement
+  already owns chats, tasks, or memory, the stale root detaches unchanged
+  instead. Relocation applies only when the old folder no longer exists: when
+  it still exists, its project keeps its chats, tasks, and memory and remains
+  a standalone project. Multi-root detachment still preserves a removed
+  existing root's chats as a standalone project; no automatic directory-move
+  detection or implicit merge of non-empty projects is introduced.
+- **Specs linked**: `03-runtime/04-data-storage.md`,
+  `03-runtime/06-host-rpc-protocol.md` (Projects),
+  `04-ux/08-component-spec.md` (project editor).
+- **Acceptance**: C (project and chat interaction), D (workspace identity),
+  F (persistence), Quality.
+- **Milestone**: M5
+- **Status**: Host integration-covered by the `single_root_replacement_*`,
+  `legacy_single_root_replacement_keeps_sessions_when_the_old_folder_still_exists`,
+  `two_step_stale_root_repair_*`, and
+  `removing_an_existing_root_with_chats_still_detaches_it` regressions and the
+  `project_group_update_rpc_relocates_the_active_single_root_workspace`,
+  `project_group_update_rpc_follows_a_two_step_relocation`, and
+  `project_group_update_rpc_keeps_workspace_when_the_old_folder_exists` RPC
+  regressions; full UI scenario Draft
+
 ## E2E-048c: Detach a project folder with chats and delete it
 
 - **Preconditions**: One retained logical project has a primary folder and an
@@ -1212,6 +1256,8 @@ journeys cover successful reads, saves and directory browsing.
   at wide and narrow widths, scroll to the tenth task, and switch output previews
   while an earlier read is pending. 7) Fail a Stop request and retry it.
   8) Start two more tasks and quit the app during output capture.
+  9) Start a quiet task with a long, multiline command. Expand its row at
+  a narrow width and select the command through its final line.
 - **Expected**: The tool result carries `backgroundTaskId` and resolves without
   waiting for the command; the bar lists the task as running with a growing
   elapsed time and shows its streamed output; the process stays alive across the
@@ -1222,6 +1268,9 @@ journeys cover successful reads, saves and directory browsing.
   fetched and refreshed; old responses cannot erase it. Each stream remains
   bounded to 256KiB and retains its final marker after exit. A Stop failure is
   visible without an unhandled rejection and the control remains retryable.
+  The task header stays on one line. The expanded row shows the complete
+  command above the output, preserving whitespace and wrapping to fit even
+  before the task produces any output.
   An ended task keeps its row only for a short grace window and can be closed
   from the bar, so finished commands do not accumulate above the composer.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` (§5),
@@ -2428,6 +2477,21 @@ are withdrawn with ADR 0165.
 - Automated coverage: `read_powershell_utf16le_log`,
   `read_and_edit_utf16be_chinese_text`, and the existing binary/CRLF tool tests.
 
+## Edit parse diagnostics name corrective operations
+
+- Submit an empty `PUT`, a unified-diff hunk, a Markdown heading, a colon-
+  terminated `CUT`, an orphan body row, and an invalid `PUT` locator against a
+  read file. Follow them with a valid range `PUT` as a control.
+- Expected: every malformed payload fails before writing with
+  `EDIT_PARSE_FAILED`; the result names a concrete replacement `PUT`, `CUT`, or
+  gap-insert form. A unified-diff hunk is identified explicitly, and foreign
+  patch/Markdown wrappers are never silently stripped. The valid control edit
+  succeeds. The tool description says to delete with `CUT`, not an empty `PUT`,
+  and not to paste unified-diff or Markdown wrappers into `ops`.
+- Automated coverage: `cargo test -p host-core
+  tools::hashline::parse::tests` and `cargo test -p host-core
+  tool_defs_advertise_the_scoping_parameters`; no real provider is used.
+
 ## Delegate mutation recovery isolation
 
 - Start two Task delegates editing the same file. Delegate A produces text and
@@ -2780,3 +2844,28 @@ file, then reject a missing native session. The test asserts no native session
 or scratch RPC reaches Desktop storage. `native-workspace-files.test.mjs`
 additionally rejects replaced sidecars. No provider execution or native user
 session data is used.
+
+## E2E-CODEMODE-sandboxed-nested-calls
+
+- Entry: `pnpm --filter @pi-desktop/agent-runtime test -- src/codemode scripts/codemode-bundle.test.mjs`
+  and `node --test apps/desktop/test/codemode-settings-user-path.test.mjs
+  apps/desktop/test/jev-session-launch.test.mjs`.
+- Preconditions: deterministic localhost Responses fixture and a fake Host; no
+  external model account. The packaged probe runs from a temporary directory
+  with no reachable node_modules.
+- Steps: with the setting off, confirm `codemode` is not declared. Turn it on;
+  run a script that reads a file, calls a never-activated on-demand tool, lists
+  models and requests a sub-model completion. Activate a plugin tool with
+  ToolSearch and call it from a script while Host denies Bash. Stop a script
+  whose nested Bash call is held by Host. Replay a transcript that contains a
+  nested row. Toggle the Settings switch.
+- Expected: nested Host calls carry `<callId>/<n>` and `nestedParentToolCallId`
+  only; the inactive tool is absent from the sandbox; Host denial rejects inside
+  the script; Stop sends `tools.abort` for the nested call; only the script
+  result reaches the next request; model metadata carries no credential or
+  header; each physical request emits distinct identified usage; nested rows
+  are not replayed; the packaged worker and WASM run outside node_modules and a
+  missing asset fails the script; the switch is off by default and persists
+  `codemodeEnabled`, and Electron main forwards it only in Agent mode.
+- Specs: `03-runtime/03-tools-and-permissions.md` §2.2, `04-ux/06-settings-ia.md`.
+- Acceptance: C / E / Security / Quality. Milestone: M6+. Status: automated.

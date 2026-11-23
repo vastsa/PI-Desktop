@@ -289,7 +289,7 @@ pub fn list_models(db: &Database, provider_id: Option<&str>) -> Result<Vec<Model
     let (sql, bind_provider) = match provider_id {
         Some(id) => (
             "SELECT provider_id, model_id, display_name, source,
-                capabilities_json, context_window, discovery_state
+                capabilities_json, context_window, discovery_state, reported_context_window
          FROM models
          WHERE provider_id = ?1
          ORDER BY display_name COLLATE NOCASE, model_id",
@@ -297,7 +297,7 @@ pub fn list_models(db: &Database, provider_id: Option<&str>) -> Result<Vec<Model
         ),
         None => (
             "SELECT provider_id, model_id, display_name, source,
-                capabilities_json, context_window, discovery_state
+                capabilities_json, context_window, discovery_state, reported_context_window
          FROM models
          ORDER BY provider_id, display_name COLLATE NOCASE, model_id",
             None,
@@ -316,6 +316,9 @@ pub fn list_models(db: &Database, provider_id: Option<&str>) -> Result<Vec<Model
             capabilities,
             context_window: row
                 .get::<_, Option<i64>>(5)?
+                .and_then(|value| u32::try_from(value).ok()),
+            reported_context_window: row
+                .get::<_, Option<i64>>(7)?
                 .and_then(|value| u32::try_from(value).ok()),
         })
     };
@@ -355,12 +358,13 @@ pub fn cache_discovered_models(
         let mut stmt = tx.prepare_cached(
             "INSERT INTO models (
             provider_id, model_id, display_name, source,
-            capabilities_json, context_window, updated_at, discovery_state
-         ) VALUES (?1, ?2, ?3, 'discovered', ?4, ?5, ?6, 'published')
+            capabilities_json, context_window, updated_at, discovery_state, reported_context_window
+         ) VALUES (?1, ?2, ?3, 'discovered', ?4, ?5, ?6, 'published', ?7)
          ON CONFLICT(provider_id, model_id) DO UPDATE SET
             display_name = excluded.display_name,
             capabilities_json = excluded.capabilities_json,
             context_window = excluded.context_window,
+            reported_context_window = excluded.reported_context_window,
             updated_at = excluded.updated_at,
             discovery_state = 'published'
          WHERE models.source != 'user'",
@@ -379,10 +383,10 @@ pub fn cache_discovered_models(
             // Bindings compare complete wire ids case-insensitively. A casing
             // change must not leave an older spelling marked as unlisted.
             tx.execute(
-                "UPDATE models SET discovery_state = 'published'
+                "UPDATE models SET discovery_state = 'published', reported_context_window = ?3
                 WHERE provider_id = ?1 AND lower(model_id) = lower(?2)
                 AND source = 'discovered'",
-                params![provider_id, model_id],
+                params![provider_id, model_id, model.reported_context_window],
             )?;
             changed += stmt.execute(params![
                 provider_id,
@@ -391,6 +395,7 @@ pub fn cache_discovered_models(
                 serde_json::to_string(&model.capabilities)?,
                 model.context_window,
                 now,
+                model.reported_context_window,
             ])?;
         }
     }

@@ -58,8 +58,11 @@ controls.
 
 ### Deliberate deviations from Codex
 
-- **Summary position.** pi-agent-core emits the summary before the retained tail,
-  and that order is not ours to choose.
+- **Summary position.** The pi-agent-core context builder emitted the summary
+  before the retained tail. PI-Desktop now owns the projection and keeps that
+  order for reasoning replay and fallback recovery. A successful active-turn
+  checkpoint with one retained user message and no reasoning to replay places
+  that request before the nonempty summary (issue #2512).
 - **Task boundary.** ADR 0136 narrows the retained tail, so an active turn keeps
   only its latest user message and a completed-turn checkpoint has an empty tail.
 - **`hardLimit` derivation.** We keep ADR 0030's window-minus-reserve number,

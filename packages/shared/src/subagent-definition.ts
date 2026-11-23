@@ -105,6 +105,8 @@ export const SUBAGENT_INHERIT_TOKEN = "inherit";
  * reach because a delegate has no user. `ToolSearch` and `new_context` mutate
  * the parent runtime's deferred-tool set and compaction flag, so they stay
  * denied even though the child receives the full catalog without searching.
+ * `codemode` is bound to the parent session's tool pipeline and lineage, so a
+ * delegate never inherits it (ADR codemode-sandbox-boundary).
  */
 export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
   "Task",
@@ -117,6 +119,7 @@ export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
   "asktool",
   "new_context",
   "ToolSearch",
+  "codemode",
 ];
 
 /**
@@ -300,7 +303,10 @@ function unquote(value: string): string {
 function splitFrontmatter(
   raw: string,
 ): { frontmatter: Frontmatter; body: string } {
-  const normalized = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const frontmatter: Frontmatter = new Map();
   if (!normalized.startsWith("---\n")) {
     return { frontmatter, body: normalized.trim() };

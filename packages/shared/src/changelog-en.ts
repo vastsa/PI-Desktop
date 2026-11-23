@@ -2,7 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const enEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "On a fresh install, session titles are generated automatically by the bundled Official enhancements plugin; suggestions, draft enhancement and AI memory stay off until you turn them on.",
+      "New task now starts a temporary chat outside any project, and conversations can move between projects or back to Temporary chat.",
+      "On the empty home, click the project name or \"temporarily\" in the title to switch projects; the project-free destination is now called Temporary chat everywhere.",
+      "Optionally let finished background commands report their results and resume an idle conversation after the turn has ended; this is off by default.",
+      "Plugins can add entries to the transcript's right-click menu to send selected text to a docked view, and can offer suggestions and limited context for the conversation.",
+      "Progress notes from OpenAI Responses models stay in the turn's process, in their original order, instead of mixing into the reply, also after reopening a session; Copy latest answer copies only the answer.",
+      "Custom OpenAI-compatible endpoints keep their prompt cache across turns, avoiding long waits before the first token in long conversations.",
+      "Persian, Arabic and other right-to-left paragraphs that begin with an English word now display in the correct direction.",
+      "The File Manager plugin 0.9.1 shows inline Markdown images safely and previews spreadsheets read-only.",
+      "Fixed forking from older replies loaded from history, config sync failing repeatedly after a record was deleted on one side, clipped model names in Settings, the work-panel toggle covering conversation Search, and tool definitions rejected by some Responses endpoints.",
+    ],
+  },
+  {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Turn on OpenAI Fast mode per model and use /fast in a conversation to request priority service; it may use subscription limits faster or cost more per token.",
       "Inline visualizations load faster with reusable chart helpers, and failed scripts now show actionable errors instead of blank cards.",
@@ -11,6 +28,13 @@ export const enEntries: ChangelogEntry[] = [
       "The context ring updates to the compacted estimate as soon as manual or automatic compaction finishes.",
       "With a Chinese IME, slash commands wait for composition to commit and preserve the draft instead of inserting a duplicate slash.",
       "Regenerated prompts keep their position after the latest reply when their archive finishes outside the loaded history.",
+      "Browse the plugin marketplace as one list that loads more as you scroll, sort by recommended, popular, newest, or name, and see how many plugins match each category; the last saved catalog answers when the plugin center is unreachable.",
+      "Every plugin now sits on a bilingual shelf, so the marketplace reads in English or Chinese and filters by one shared category.",
+      "Plugin details now show the publisher, the readme and the safety notes the catalog publishes; they were being dropped when the catalog was read.",
+      "Choose GPT-6.2 Sol and GPT-6.2 Astra with OpenAI, ChatGPT, GitHub Copilot, OpenCode and gateways that publish them, with their published limits and prices.",
+      "Settings now opens as a dialog over the current page, the sidebar puts New task, Scheduled and Plugin market at the top, and a short startup guide helps you add a model and learn the plugin launcher shortcut.",
+      "Choose which sidebar modules to show in Settings → Appearance → Sidebar modules: New task, Scheduled, Plugin market, pinned sessions, Sessions, Projects, their toolbar buttons and the version chip.",
+      "The sidebar's Sessions section is now Recent: every unpinned conversation, newest first, with Load more; the empty home title also shows a dropdown arrow for switching projects.",
     ],
   },
   {
@@ -32,6 +56,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copy rendered Mermaid diagrams as SVG text or export them as standalone SVG files, including from README previews.",
       "See what each turn and the whole conversation cost in the context inspector and turn usage capsule, with subscription usage kept apart from pay-as-you-go spend.",
       "Use your own video as the startup animation by dropping one into the startup folder; the interface fades in after it plays.",
       "Let plugins list saved projects and their folders without switching the active session.",

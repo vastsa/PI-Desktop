@@ -43,6 +43,16 @@
   white-space: nowrap;
 }
 
+/* Source tags (Pi, Remote) are badges: they never shrink or wrap into stacked
+   words in a narrow sidebar — the title next to them truncates instead. */
+.thread-item-source {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-row);
+  white-space: nowrap;
+}
+
 .thread-item-meta {
   /* The action and date overlap in one slot; opacity keeps its width stable. */
   display: grid;
@@ -290,9 +300,9 @@
 }
 
 .sidebar-session-group-body.standalone {
-  /* Five compact 28px rows plus the four 1px gaps between them, and the 2px
-     label inset, before the list starts scrolling internally. */
-  max-height: 146px;
+  /* Ten compact 28px rows plus the nine 1px gaps between them, and the 2px
+     label inset, before the Recent list starts scrolling internally. */
+  max-height: 291px;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -304,6 +314,19 @@
 .sidebar-standalone-sessions {
   min-width: 0;
   flex: 0 0 auto;
+}
+
+/* Projects hidden in Settings: the session list takes the freed height. */
+.sidebar-standalone-sessions.is-fill {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.sidebar-standalone-sessions.is-fill .sidebar-session-group-body.standalone {
+  max-height: none;
+  flex: 1 1 auto;
 }
 
 .sidebar-session-empty {

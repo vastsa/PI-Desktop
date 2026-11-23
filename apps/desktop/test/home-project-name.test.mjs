@@ -93,7 +93,7 @@ test("the empty home names the project even before its first session exists", as
   // Without a project name the hero still names the folder it opened.
   const unnamed = render({ workspace: { path: "/work/demo-app" } });
   assert.equal(unnamed.kind, "project");
-  assert.match(unnamed.title, />demo-app<\/button>/);
+  assert.match(unnamed.title, /class="project-underline-name">demo-app<\/span>/);
 
   // A session on screen decides: a temporary session stays temporary even when
   // a workspace is still open.
@@ -104,11 +104,15 @@ test("the empty home names the project even before its first session exists", as
     activeProjectPath: "/work/demo-app",
   });
   assert.equal(temporary.kind, "temporary");
+  // The title reads as the plain temporary copy, with its scope word as the
+  // project switcher, and never names the open project.
   assert.equal(
-    temporary.title,
+    temporary.title.replace(/<[^>]+>/g, ""),
     catalogs.en.chat.emptyTitleTemporary,
     "a temporary session must not inherit the open project's name",
   );
+  assert.match(temporary.title, /class="project-underline-name">temporarily<\/span>/);
+  assert.doesNotMatch(temporary.title, /Demo App/);
 
   // With no project and no session the generic home title is still correct.
   const bare = render({});

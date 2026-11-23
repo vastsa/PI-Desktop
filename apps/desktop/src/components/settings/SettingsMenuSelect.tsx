@@ -125,7 +125,10 @@ export function SettingsMenuSelect({
                 {leading}
               </span>
             ) : null}
-            <span className="settings-menu-select-trigger-label">
+            <span
+              className="settings-menu-select-trigger-label"
+              title={current?.label ?? value}
+            >
               {current?.label ?? value}
             </span>
             <IconChevronDown size={14} aria-hidden />
@@ -157,7 +160,10 @@ export function SettingsMenuSelect({
                     onFocus={() => setActiveId(option.id)}
                     onClick={() => choose(option)}
                   >
-                    <span className="settings-menu-select-option-label">
+                    <span
+                      className="settings-menu-select-option-label"
+                      title={option.label}
+                    >
                       {option.label}
                     </span>
                     {isCurrent ? (

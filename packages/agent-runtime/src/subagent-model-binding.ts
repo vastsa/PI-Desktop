@@ -79,6 +79,10 @@ export function subagentModelBinding(opts: {
             maxTokens: clampOutputToContext(m, requestContext, options?.maxTokens),
             maxRetries: 0,
             sessionId: opts.sessionId,
+            // The delegate shares the parent's session id for gateway
+            // affinity, so it must not continue or replace the parent's
+            // server-side message thread, which pi-ai keys by session id.
+            disableContinuation: true,
             fetch: providerRequestFetch(
               m.api,
               captureProviderResponse(options?.fetch, (response, _bytes, failure) => {

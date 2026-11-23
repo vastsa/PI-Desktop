@@ -7,15 +7,17 @@ const { createSessionSlice } = await import("../src/stores/slices/session-slice.
 const { createSessionCoordination } = await import("../src/stores/runtime/session-coordination.ts");
 const { api } = await import("../src/lib/api.ts");
 
-function harness(t) {
+function harness(t, options = {}) {
   const old = { id: "old", role: "assistant", content: "first reply", status: "complete" };
   const live = { id: "live", role: "assistant", content: "second reply", status: "streaming" };
+  const messages = options.messages ?? [old, live];
   let state = {
     activeSessionId: "parent", isRunning: true, runningSessions: { parent: true },
-    messages: [old, live], sessions: [{ id: "parent", title: "Source", mode: "agent" }],
+    messages, sessions: [{ id: "parent", title: "Source", mode: "agent" }],
     sessionHistory: { parent: { hasMoreBefore: true, contentLimited: true } },
     sessionMeta: {}, sessionCompactions: {}, planningStates: {},
-    retainedSessionIds: ["parent"], retainedTranscripts: { parent: [old, live] },
+    retainedSessionIds: ["parent"], retainedTranscripts: options.retainedTranscripts ?? { parent: messages },
+    transcriptViews: options.transcriptViews ?? {},
     workPanelContexts: {}, workPanelTabs: [], workPanelOpen: false,
     navStack: [{ page: "chat", sessionId: "parent" }], navIndex: 0,
     restorePendingPlan: async () => {},
@@ -40,14 +42,31 @@ function harness(t) {
   const slice = createSessionSlice({ ...access, ...coordination });
   let resolve, reject;
   const pending = new Promise((yes, no) => { resolve = yes; reject = no; });
+  const forks = [];
   t.mock.method(api, "forkSession", (id, _title, anchor) => {
-    assert.equal(id, "parent"); assert.equal(anchor, "old");
+    assert.equal(id, "parent");
+    assert.equal(anchor, options.expectedAnchor ?? "old");
+    forks.push({ id, anchor });
     return pending;
   });
   return {
-    slice, runtime, cache, get: access.get, set: access.set,
+    slice, runtime, cache, forks, get: access.get, set: access.set,
     complete: () => resolve({ session: { id: "child", title: "Branch", mode: "agent", messages: [{ ...old, id: "child-old" }] } }),
     reject,
+  };
+}
+
+function historicalPageView(messages) {
+  return {
+    parent: {
+      messages,
+      messageStart: 0,
+      hasMoreBefore: false,
+      hasMoreAfter: true,
+      focus: null,
+      restored: true,
+      loading: null,
+    },
   };
 }
 
@@ -111,4 +130,92 @@ test("a rejected fork reports the error and keeps the original turn and transcri
   assert.equal(h.get().activeSessionId, "parent");
   assert.equal(h.get().messages, parent);
   assert.equal(h.get().isRunning, true);
+});
+
+test("a paginated historical assistant reply forks without hydrating the live window", async (t) => {
+  const historical = { id: "hist", role: "assistant", content: "page 1 reply", status: "complete" };
+  const latest = Array.from({ length: 100 }, (_, i) => ({
+    id: `live-${i}`,
+    role: i % 2 === 0 ? "user" : "assistant",
+    content: "latest window",
+    status: "complete",
+  }));
+  const streaming = { id: "tail", role: "assistant", content: "still streaming", status: "streaming" };
+  const liveWindow = [...latest, streaming];
+  const h = harness(t, {
+    expectedAnchor: "hist",
+    messages: liveWindow,
+    transcriptViews: historicalPageView([historical]),
+  });
+  const liveBefore = h.get().messages;
+  const action = h.slice.forkAssistantMessage("hist");
+  assert.equal(h.forks.length, 1);
+  assert.equal(h.forks[0].anchor, "hist");
+  assert.equal(h.get().messages, liveBefore);
+  assert.deepEqual(h.get().messages.map((message) => message.id), liveWindow.map((message) => message.id));
+  assert.equal(h.get().messages.at(-1).status, "streaming");
+  assert.equal(h.get().error, undefined);
+  h.complete();
+  await action;
+  assert.equal(h.get().activeSessionId, "child");
+  assert.equal(h.get().runningSessions.parent, true);
+  assert.equal(h.get().retainedTranscripts.parent.at(-1).status, "streaming");
+  assert.deepEqual(h.get().retainedTranscripts.parent.map((message) => message.id), liveWindow.map((message) => message.id));
+});
+
+test("a paginated historical reply still forks when the view is merged with the live tail", async (t) => {
+  const historical = { id: "hist", role: "assistant", content: "scrolled reply", status: "complete" };
+  const liveWindow = [
+    { id: "live-user", role: "user", content: "latest", status: "complete" },
+    { id: "tail", role: "assistant", content: "still streaming", status: "streaming" },
+  ];
+  const h = harness(t, {
+    expectedAnchor: "hist",
+    messages: liveWindow,
+    transcriptViews: {
+      parent: {
+        messages: [historical],
+        messageStart: 0,
+        hasMoreBefore: false,
+        hasMoreAfter: true,
+        focus: null,
+        loading: null,
+      },
+    },
+  });
+  const liveBefore = h.get().messages;
+  const action = h.slice.forkAssistantMessage("hist");
+  assert.equal(h.forks.length, 1);
+  assert.equal(h.get().messages, liveBefore);
+  assert.equal(h.get().messages.at(-1).status, "streaming");
+  h.complete();
+  await action;
+  assert.equal(h.get().activeSessionId, "child");
+});
+
+test("a current-page assistant reply still forks when a historical view is present", async (t) => {
+  const historical = { id: "hist", role: "assistant", content: "page 1 reply", status: "complete" };
+  const h = harness(t, {
+    expectedAnchor: "old",
+    transcriptViews: historicalPageView([historical]),
+  });
+  const action = h.slice.forkAssistantMessage("old");
+  assert.equal(h.forks.length, 1);
+  h.complete();
+  await action;
+  assert.equal(h.get().activeSessionId, "child");
+});
+
+test("a historical user message is not used as a reply fork anchor", async (t) => {
+  const historical = { id: "hist-user", role: "user", content: "old prompt", status: "complete" };
+  const h = harness(t, {
+    expectedAnchor: "hist-user",
+    messages: [{ id: "tail", role: "assistant", content: "still streaming", status: "streaming" }],
+    transcriptViews: historicalPageView([historical]),
+  });
+  await h.slice.forkAssistantMessage("hist-user");
+  assert.equal(h.forks.length, 0);
+  assert.equal(h.get().activeSessionId, "parent");
+  assert.equal(h.get().messages[0].status, "streaming");
+  assert.equal(h.get().error, undefined);
 });

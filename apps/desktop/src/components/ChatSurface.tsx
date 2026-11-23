@@ -9,7 +9,6 @@ import { HomeMascotLogo } from "./HomeMascotLogo";
 import { HomeProjectSwitcher } from "./HomeProjectSwitcher";
 import { IconX } from "./icons";
 import { TooltipButton } from "./ui";
-import { OnboardingChecklist } from "./OnboardingChecklist";
 import { SessionPane } from "./SessionPane";
 import { ConversationWidthHandles } from "./ConversationWidthHandles";
 import { useAppStore } from "../stores/app-store";
@@ -109,6 +108,14 @@ export const ChatSurface = memo(function ChatSurface({
     const [before = "", after = ""] = template.split(marker);
     return { before, after };
   }, [t]);
+  // A temporary home names its scope the same way: the scope word ("temporarily")
+  // is the switcher, so joining a project needs no extra control (#2455).
+  const temporaryTitleParts = useMemo(() => {
+    const marker = "__SCOPE__";
+    const template = t("chat.emptyTitleTemporaryScoped", { scope: marker });
+    const [before = "", after = ""] = template.split(marker);
+    return { before, after };
+  }, [t]);
 
   // The head of the retained order is the session on screen. It equals
   // `activeSessionId` except during a cold switch, where the destination has no
@@ -185,13 +192,16 @@ export const ChatSurface = memo(function ChatSurface({
                       {emptyTitleParts.after}
                     </>
                   ) : isTemporarySession ? (
-                    t("chat.emptyTitleTemporary")
+                    <>
+                      {temporaryTitleParts.before}
+                      <HomeProjectSwitcher temporary name={t("chat.temporaryScope")} />
+                      {temporaryTitleParts.after}
+                    </>
                   ) : (
                     t("chat.emptyTitle")
                   )}
                 </h1>
               </div>
-              {!isRemoteSession(activeSession) ? <OnboardingChecklist /> : null}
             </div>
           </div>
           <div className="home-composer-wrap">
@@ -236,7 +246,6 @@ export const ChatSurface = memo(function ChatSurface({
                 onClick={() => {
                   const store = useAppStore.getState();
                   store.setSettingsTab("agent");
-                  store.setPage("settings");
                 }}
               >
                 {t("errors.action.openSettings")}

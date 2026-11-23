@@ -35,6 +35,7 @@ export const ErrorCodes = {
   INTERNAL: "INTERNAL",
   INVALID_ARGUMENT: "INVALID_ARGUMENT",
   UNAUTHORIZED: "UNAUTHORIZED",
+  PERMISSION_DENIED: "PERMISSION_DENIED",
   NOT_FOUND: "NOT_FOUND",
   /** The operation has no implementation on this surface (spec 16 §9). */
   UNSUPPORTED: "UNSUPPORTED",
