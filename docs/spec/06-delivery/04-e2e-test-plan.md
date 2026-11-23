@@ -215,6 +215,7 @@ identify the platform validation still needed.
 | A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |
+| C / Quality — Sidebar project access at increased app zoom | [E2E-LAYOUT-sidebar-responsive-height](e2e/ui-shell.md#e2e-layout-sidebar-responsive-height) |
 | E / Quality — Browser screenshot timeout recovery | E2E-BROWSER-capture-resize |
 | A / C / Quality — Sidebar material and settings return | E2E-LAYOUT-sidebar-settings |
 | C / Quality — Destination loading and focus | E2E-087b |

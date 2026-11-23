@@ -66,19 +66,9 @@ export async function checkSidebarProjectMenuPlacement({ cdp, check, waitFor }) 
   const projectKey = await cdp.evaluate(`(() => {
     const scroller = document.querySelector(".sidebar-session-groups");
     if (!scroller) return null;
-    scroller.scrollTop = scroller.scrollHeight;
-    const bounds = scroller.getBoundingClientRect();
-    const headers = [...scroller.querySelectorAll(".project-group > .sidebar-session-group-header")]
-      .filter((header) => {
-        const rect = header.getBoundingClientRect();
-        return rect.bottom > bounds.top && rect.top < bounds.bottom;
-      });
-    if (!headers.length) return null;
-    const header = headers.reduce((lowest, candidate) =>
-      candidate.getBoundingClientRect().bottom > lowest.getBoundingClientRect().bottom
-        ? candidate
-        : lowest,
-    );
+    // A long expanded history can fill the viewport with sessions at the
+    // scroll limit. Align the last header itself to the bottom instead.
+    const header = [...scroller.querySelectorAll(".project-group > .sidebar-session-group-header")].at(-1);
     if (!header) return null;
     header.scrollIntoView({ block: "end" });
     return header.closest(".project-group")?.getAttribute("data-sidebar-project-group") ?? null;

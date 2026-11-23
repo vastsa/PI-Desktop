@@ -3458,7 +3458,7 @@ PowerShell-launched fixture; activation must not restore the native outline.
 - **Steps**:
   1. Inspect the groups: body layering, row and per-row date counts, no time
      headings, the empty state, the tail each expanded group contributes to
-     the next one, and the non-project lists' budgets.
+     the next one.
   2. Collapse the multi-row group with a real pointer click on its directory row —
      scrolled into view and confirmed to hit that button — and read the group
      body's height, opacity, resolved `grid-template-rows`, and the distance to
@@ -3467,7 +3467,6 @@ PowerShell-launched fixture; activation must not restore the native outline.
   3. Expand it again and confirm the open geometry returns.
   4. Collapse and re-expand it within the same motion.
   5. Repeat the collapse with `prefers-reduced-motion: reduce` emulated.
-  6. Scroll the pinned list to its last row.
 - **Expected**: A project group is one grid row (`grid-template-rows: 1fr`) that
   animates to `0fr` over the 200ms normal duration — no `max-height` clamp, no
   opacity transition — so the fold is a single continuous height ramp with no
@@ -3483,9 +3482,7 @@ PowerShell-launched fixture; activation must not restore the native outline.
   edge while the group is `aria-hidden` and `inert`. A reversal mid-flight turns
   on the frame it reached and settles back on the open height without
   overshooting, and the empty group folds its empty state the same way. Under
-  reduced motion both endpoints are kept and the travel is dropped. The pinned
-  list holds eight rows inside `min(233px, 30vh)` and scrolls to its remaining
-  rows, and the standalone list keeps its flex column and 146px budget. The group
+  reduced motion both endpoints are kept and the travel is dropped. The group
   indent, ordering, and workspace state are unchanged. The five seeded project
   sessions remain in one flat list with no time headings and each has its own
   date label.
@@ -3502,6 +3499,27 @@ PowerShell-launched fixture; activation must not restore the native outline.
   `apps/desktop/test/sidebar-collapse-animation.test.mjs` and
   `apps/desktop/test/sidebar-pinned-rendering.test.mjs`. The sampled values are
   renderer geometry, not an eyes-on visual pass.
+
+## E2E-LAYOUT-sidebar-responsive-height
+
+- **Preconditions**: Enable Pinned, Recent sessions, and Projects. Seed enough
+  conversations for both upper lists to overflow and keep a project expanded.
+- **Steps**: Load another page of Recent in a tall viewport. Reduce the CSS
+  viewport height, scroll the upper lists, and load the remaining Recent
+  rows. Test a height too short to fit the sidebar's minimums, then restore
+  height and try native Zoom In. Return to the compact viewport and click
+  an existing project session.
+- **Expected**: Pinned and Recent shrink and scroll without moving Projects
+  or the sidebar chrome while the minimum heights fit. A project session
+  stays fully visible and opens after loading more. At the shortest height
+  the outer sidebar can scroll to the project session. Restoring height
+  restores the list space without resetting pagination.
+- **Specs linked**: `04-ux/08-component-spec.md` §6.6,
+  `04-ux/09-interaction-patterns.md` §9.2.
+- **Acceptance**: Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Automated (`scripts/e2e/sidebar-responsive-height.mjs`, run by
+  `pnpm test:e2e:sidebar-menu`).
 
 ## E2E-LAYOUT-sidebar-row-states
 

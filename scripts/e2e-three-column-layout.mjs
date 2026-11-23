@@ -28,7 +28,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { STARTUP_GUIDE_VERSION } from "../apps/desktop/src/features/startup/app-overlay-model.ts";
+import { STARTUP_GUIDE_STORAGE_KEY } from "../apps/desktop/src/features/startup/app-overlay-preferences.ts";
 import { Host } from "./e2e/host.mjs";
+import { checkSidebarResponsiveHeight } from "./e2e/sidebar-responsive-height.mjs";
 import { checkSidebarProjectMenuPlacement, checkSidebarRowStates } from "./e2e/sidebar-row-states.mjs";
 import { checkSidebarSettings } from "./e2e/sidebar-settings.mjs";
 
@@ -163,11 +166,11 @@ async function seedSidebarProjects(hostBinary, dataDir, tempDirs) {
     const listed = await host.call("session.list");
     const rows = listed?.sessions ?? [];
     const canonical = (sessionId) =>
-      rows.find((session) => session.id === sessionId)?.projectPath ?? null;
+      rows.find((session) => session.id === sessionId)?.projectPath?.replaceAll("\\", "/") ?? null;
     const paths = {
       alpha: canonical("e2e-fold-alpha-0"),
       beta: canonical("e2e-fold-beta-0"),
-      gamma,
+      gamma: gamma.replaceAll("\\", "/"),
       delta: canonical("e2e-fold-delta-0"),
       history: canonical("e2e-history-project-0"),
     };
@@ -184,6 +187,18 @@ async function seedSidebarProjects(hostBinary, dataDir, tempDirs) {
   } finally {
     await host.stop();
   }
+}
+
+async function seedSidebarPreferences(cdp, seed) {
+  const preferences = {
+    sessionMeta: Object.fromEntries(seed.pinnedSessionIds.map((id) => [id, { pinned: true }])),
+    projectMeta: Object.fromEntries(seed.keys.map((path, order) => [path, { order }])),
+    projectSort: "manual",
+    sessionView: { sort: "recent", archived: false },
+    openProjectPaths: seed.keys,
+  };
+  // The Main backup takes precedence over the renderer's localStorage on reload.
+  await cdp.evaluate(`window.piDesktop.invoke(window.piDesktop.channels.invoke.sidebarPreferencesSet, ${JSON.stringify(preferences)})`);
 }
 
 class CdpClient {
@@ -347,6 +362,7 @@ async function main() {
       env: {
         ...process.env,
         PI_DESKTOP_DATA_DIR: dataDir,
+        PI_DESKTOP_AGENTS_DIR: join(profileDir, "agents"),
         PI_DESKTOP_HOST_BIN: hostBinary,
         PI_DESKTOP_START_MAXIMIZED: "0",
         ELECTRON_RENDERER_URL: "",
@@ -515,24 +531,11 @@ async function main() {
 
     if (process.argv.includes("--sidebar-only")) {
       await cdp.send("Page.enable");
-      const sidebarPreferences = {
-        sessionMeta: Object.fromEntries(
-          sidebarSeed.pinnedSessionIds.map((id) => [id, { pinned: true }]),
-        ),
-        projectMeta: {
-          [sidebarSeed.paths.alpha]: { order: 0 },
-          [sidebarSeed.paths.beta]: { order: 1 },
-          [sidebarSeed.paths.gamma]: { order: 2 },
-          [sidebarSeed.paths.delta]: { order: 3 },
-          [sidebarSeed.paths.history]: { order: 4 },
-        },
-        projectSort: "manual",
-        sessionView: { sort: "recent", archived: false },
-        openProjectPaths: sidebarSeed.keys,
-      };
-      await cdp.evaluate(
-        `window.localStorage.setItem("pi.desktop.sidebarPreferences", ${JSON.stringify(JSON.stringify(sidebarPreferences))})`,
-      );
+      await seedSidebarPreferences(cdp, sidebarSeed);
+      // This scenario starts after onboarding; the delayed guide otherwise
+      // covers the sidebar during the zoom and hit-target checks.
+      const completedGuide = JSON.stringify({ completedVersion: STARTUP_GUIDE_VERSION });
+      await cdp.evaluate(`localStorage.setItem(${JSON.stringify(STARTUP_GUIDE_STORAGE_KEY)}, ${JSON.stringify(completedGuide)})`);
       await cdp.send("Page.reload", {});
       const projectKeys = JSON.stringify(sidebarSeed.keys);
       await waitFor(
@@ -542,12 +545,13 @@ async function main() {
           return !document.querySelector(".startup-splash") &&
             ${projectKeys}.every((key) => keys.includes(key));
         })()`),
-        "all seeded project groups load for menu placement",
+        "all seeded project groups load for sidebar checks",
       );
       await checkSidebarProjectMenuPlacement({ cdp, check, waitFor });
+      await checkSidebarResponsiveHeight({ cdp, check, waitFor, seed: sidebarSeed });
       const failed = results.filter((entry) => !entry.ok);
       console.log(
-        `E2E-SIDEBAR-menu-placement: ${results.length - failed.length}/${results.length} checks passed`,
+        `E2E-SIDEBAR: ${results.length - failed.length}/${results.length} checks passed`,
       );
       cleanup();
       clearTimeout(timeout);
@@ -1598,24 +1602,7 @@ async function main() {
     };
 
     await cdp.send("Page.enable");
-    const sidebarPreferences = {
-      sessionMeta: Object.fromEntries(
-        sidebarSeed.pinnedSessionIds.map((id) => [id, { pinned: true }]),
-      ),
-      projectMeta: {
-        [sidebarSeed.paths.alpha]: { order: 0 },
-        [sidebarSeed.paths.beta]: { order: 1 },
-        [sidebarSeed.paths.gamma]: { order: 2 },
-        [sidebarSeed.paths.delta]: { order: 3 },
-        [sidebarSeed.paths.history]: { order: 4 },
-      },
-      projectSort: "manual",
-      sessionView: { sort: "recent", archived: false },
-      openProjectPaths: sidebarSeed.keys,
-    };
-    await cdp.evaluate(
-      `window.localStorage.setItem("pi.desktop.sidebarPreferences", ${JSON.stringify(JSON.stringify(sidebarPreferences))})`,
-    );
+    await seedSidebarPreferences(cdp, sidebarSeed);
     await cdp.send("Page.reload", {});
     // The retained-tab list is renderer-local and only read at startup, so the
     // reload is what puts beta and gamma in the sidebar. Poll for the reloaded
@@ -1717,67 +1704,6 @@ async function main() {
         tails: [alpha.contentTail, beta.contentTail, gamma.contentTail],
         tailsOk: seededTails,
       }),
-    );
-
-    const listBudgets = await cdp.evaluate(`(() => {
-      const measure = (body) => {
-        if (!body) return null;
-        const rows = [...body.querySelectorAll("[data-sidebar-session-row]")];
-        const box = body.getBoundingClientRect();
-        return {
-          display: getComputedStyle(body).display,
-          maxHeight: parseFloat(getComputedStyle(body).maxHeight),
-          clientHeight: body.clientHeight,
-          scrollHeight: body.scrollHeight,
-          rows: rows.length,
-          rowsInside:
-            rows.filter((row) => row.getBoundingClientRect().bottom <= box.bottom + 0.5)
-              .length,
-        };
-      };
-      const pinned = measure(document.querySelector(".sidebar-session-group-body.pinned"));
-      return {
-        standalone: measure(document.querySelector(".sidebar-session-group-body.standalone")),
-        pinned,
-        // The renderer's budgets are min(233px, 30vh) and a flat 146px.
-        pinnedBudget: Math.min(233, window.innerHeight * 0.3),
-      };
-    })()`);
-    check(
-      listBudgets.standalone?.display === "flex" &&
-        listBudgets.standalone?.maxHeight === 146,
-      "the standalone list keeps its flex column and 146px budget",
-      JSON.stringify(listBudgets.standalone),
-    );
-    check(
-      listBudgets.pinned?.display === "flex" &&
-        listBudgets.pinned.rows === sidebarSeed.pinnedSessionIds.length &&
-        Math.abs(listBudgets.pinned.clientHeight - listBudgets.pinnedBudget) <= 1 &&
-        listBudgets.pinned.scrollHeight > listBudgets.pinned.clientHeight &&
-        listBudgets.pinned.rowsInside === 8,
-      "the seeded pinned list holds eight rows inside its 233px budget and scrolls the rest",
-      JSON.stringify({ pinned: listBudgets.pinned, budget: listBudgets.pinnedBudget }),
-    );
-    const pinnedScrolled = await cdp.evaluate(`(() => {
-      const body = document.querySelector(".sidebar-session-group-body.pinned");
-      if (!body) return null;
-      body.scrollTop = body.scrollHeight;
-      const rows = [...body.querySelectorAll("[data-sidebar-session-row]")];
-      const box = body.getBoundingClientRect();
-      const last = rows[rows.length - 1];
-      return {
-        scrollTop: body.scrollTop,
-        lastRowFullyInside:
-          last.getBoundingClientRect().bottom <= box.bottom + 0.5 &&
-          last.getBoundingClientRect().top >= box.top - 0.5,
-      };
-    })()`);
-    check(
-      pinnedScrolled !== null &&
-        pinnedScrolled.scrollTop > 0 &&
-        pinnedScrolled.lastRowFullyInside === true,
-      "the pinned list scrolls to its last row inside the budget",
-      JSON.stringify(pinnedScrolled),
     );
 
     const { frames: collapsedFrames, trace: collapseTrace } = await sampleFold(

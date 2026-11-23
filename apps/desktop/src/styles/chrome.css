@@ -1445,7 +1445,9 @@
   flex: 1 1 auto;
   flex-direction: column;
   padding: 0 8px 6px;
-  overflow: hidden;
+  /* The inner lists scroll independently unless even their minimums do not fit. */
+  overflow: hidden auto;
+  overscroll-behavior-y: contain;
 }
 
 .brand {

@@ -2610,7 +2610,12 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="sidebar-body no-drag">
+      <div
+        className="sidebar-body no-drag"
+        onScrollCapture={() => {
+          if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
+        }}
+      >
         <SidebarPrimaryNav onNewTask={onNewTask} onBeforeNavigate={() => closeMenus(false)} />
 
         {pinnedSessions.length > 0 ? (
@@ -2624,7 +2629,7 @@ export function Sidebar({
                 {t("nav.pinnedSessions")}
               </span>
             </div>
-            <div className="sidebar-session-group-body pinned" onScroll={() => closeMenus(false)}>
+            <div className="sidebar-session-group-body pinned">
               {renderSessionRows(pinnedSessions, { global: true })}
             </div>
           </section>
@@ -2696,9 +2701,6 @@ export function Sidebar({
             </div>
             <div
               className="sidebar-session-group-body standalone"
-              onScroll={() => {
-                if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
-              }}
               onContextMenu={(event) => {
                 if ((event.target as Element).closest?.("[data-sidebar-session-row]")) return;
                 event.preventDefault();
@@ -2757,10 +2759,7 @@ export function Sidebar({
             </div>
 
             <div
-              className={`sidebar-session-groups min-h-0 flex-1 overflow-auto px-0.5 ${projectsDropActive ? "is-drop-target" : ""}`}
-              onScroll={() => {
-                if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
-              }}
+              className={cx("sidebar-session-groups px-0.5", projectsDropActive && "is-drop-target")}
               onContextMenu={(event) => {
                 if (
                   (event.target as Element).closest?.(

@@ -1881,16 +1881,20 @@ Project drag/drop follows these patterns:
 
 ### 9.2 Sidebar scrolling
 
-- The Recent sessions body is capped at ten compact rows and scrolls
-  internally once Load more has added rows beyond that height.
-- Retained project groups occupy the remaining sidebar height and scroll in a
-  separate region. Both regions stay independent from the footer and primary
-  navigation.
-- No horizontal scroll in sidebar
-- Scroll indicators use the platform's subtle overlay treatment without
-  changing either region's width. The 6px thumb is transparent at rest and
-  appears when the owning list is hovered or focused; dragging keeps it
-  visible until the interaction ends.
+- Pinned and Recent sessions use the height available after navigation and
+  the footer. When resizing the window or increasing app zoom leaves less
+  room, both lists shrink and scroll independently, keeping their headings
+  and room for at least one compact row each.
+- The Projects list takes the remaining height and scrolls independently.
+  The layout reserves room for a project header and two compact session rows
+  before letting Pinned or Recent grow. When Projects is hidden, Recent can
+  use the space freed by it.
+- Navigation and the footer stay in place while the lists scroll. If the
+  sidebar cannot fit the minimum heights, its body also scrolls so all
+  sections and the footer remain reachable. There is no horizontal scroll.
+- Scroll indicators use the global 6px overlay thumb without changing list
+  widths. It is transparent at rest, appears when the owning list is hovered,
+  focused, or scrolling, and stays visible while dragging.
 
 ### 9.3 Settings scrolling
 

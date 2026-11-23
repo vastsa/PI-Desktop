@@ -709,8 +709,9 @@ visually distinct from list content.
   Projects, independent of project session dates, project collapse, retained
   tabs, and each project's ten-row history limit. Each pin shows its project
   display name (full path on hover), or Temporary space for a path-less conversation.
-  The section is omitted when empty and scrolls within `min(233px, 30vh)` when
-  needed. Its rows reuse normal selection, status, hover, and overflow actions.
+  The section is omitted when empty. Its list can grow to `min(233px, 30vh)`
+  when there is room, and scrolls in a smaller space when the sidebar height
+  is constrained. Its rows reuse normal selection, status, hover, and overflow actions.
 - Pinning moves the existing row into that section; unpinning returns it to
   normal project or temporary history, subject to existing folding and closed
   tab visibility. Keyboard focus follows the relocated row's overflow control,
@@ -1716,15 +1717,11 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   `updatedAt` first. A project conversation therefore appears both in Recent
   and in its project group, so it stays visible while that project is folded;
   a temporary conversation appears only in Recent. Recent opens with seven
-  rows; a trailing Load more button appends ten more per click. Its body is a
-  291px window over ten compact 28px rows, their 1px row gaps, and the 2px
-  label inset; it scrolls internally when more rows are loaded. The Projects list uses the remaining
-  sidebar height and scrolls independently; neither region scrolls the footer
-  or primary navigation. Both list scrollbars use the same global 6px,
-  trackless, transparent-at-rest rule as the conversation and work-panel
-  scrollbars; the semantic-ink thumb appears when its list is hovered, focused,
-  or scrolling and remains visible while dragging, so the independent regions
-  stay available without becoming persistent visual rails.
+  rows; a trailing Load more button appends ten more per click. When Projects
+  is shown, the Recent list can grow to 291px (ten compact rows); it scrolls
+  in less space when needed to keep the project list usable. With Projects
+  hidden, Recent fills the space freed by it. See Interaction Patterns §9.2
+  for how the lists share height and scroll.
 
 ---
 
