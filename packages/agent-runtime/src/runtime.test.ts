@@ -11,11 +11,14 @@ import {
   normalizeContext,
   toToolDeclaration,
   type AssistantMessage,
+  type Message,
+  type Models,
 } from "@earendil-works/pi-ai";
 import { applyMessageUpdate, deltaStreamPayloadFits, formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
 import { restoreAssistantProviderReplay } from "./assistant-provider-replay.js";
 import { estimateContextTokens as estimateTranscriptTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { buildSessionContext } from "./session-context.js";
+import { textFromContent } from "./pi-runtime-messages.js";
 import { estimateContextTokens as estimateAgentContextTokens, estimateTokens } from "./pi-runtime-estimates.js";
 import {
   COMPACTION_FALLBACK_MARKER,
@@ -8414,6 +8417,103 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("continues after active-turn compaction with the checkpoint ahead of newer steering", async () => {
+    const goal = "Set up the empty project, then verify it.";
+    const summary = "Setup is complete. Verify the homepage.";
+    const correction = "Verify the checkout page first.";
+    const turnId = "active-compaction";
+    const requests: Message[][] = [];
+    const timeline: string[] = [];
+    const host = {
+      call: vi.fn(async (method: string) => {
+        if (method === "tools.fileBatchCapabilities") return { version: 1, supported: false };
+        if (method === "tools.execute") {
+          timeline.push("tool result");
+          return { ok: true, content: "Fixture result." };
+        }
+        if (method === "session.appendCompaction") timeline.push("checkpoint");
+        return undefined;
+      }),
+    };
+    const runtime = createRuntime({
+      compactionStrategy: "summary",
+      thinkingLevel: "off",
+      provider: {
+        id: "compaction-fixture",
+        name: "Compaction fixture",
+        baseUrl: "https://compaction-fixture.invalid/v1",
+        modelId: "compaction-fixture-model",
+        apiKey: "fixture-only",
+        apiStyle: "responses",
+        supportsReasoning: false,
+        supportedThinkingLevels: ["off"],
+        modelConfig: {
+          source: "generic", name: "Compaction fixture", baseUrl: "https://compaction-fixture.invalid/v1",
+          contextWindow: 100_000, maxTokens: 8_192, reasoning: false, input: ["text"],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      },
+      host,
+    });
+    const models: Pick<Models, "completeSimple" | "streamSimple"> = {
+      async completeSimple() {
+        timeline.push("summary");
+        const steering = runtime.steer({ text: correction }, turnId, {
+          id: "compaction-steering", role: "user", content: correction,
+          createdAt: new Date().toISOString(), steering: true,
+        });
+        expect(steering.accepted).toBe(true);
+        return { ...assistant, content: [{ type: "text", text: summary }], stopReason: "stop" };
+      },
+      streamSimple(model, context) {
+        const firstRequest = requests.length === 0;
+        requests.push([...context.messages]);
+        timeline.push("provider request");
+        const reason = firstRequest ? "toolUse" : "stop";
+        const input = firstRequest ? 80_000 : 1_000;
+        const reply: AssistantMessage = {
+          ...assistant,
+          api: model.api,
+          provider: model.provider,
+          model: model.id,
+          timestamp: Date.now(),
+          content: firstRequest
+            ? [{ type: "toolCall", id: "compaction-read", name: "Read", arguments: { path: "index.html" } }]
+            : [{ type: "text", text: "Verified." }],
+          stopReason: reason,
+          usage: { ...assistant.usage, input, output: 10, totalTokens: input + 10 },
+        };
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: "start", partial: reply });
+          stream.push({ type: "done", reason, message: reply });
+          stream.end(reply);
+        });
+        return stream;
+      },
+    };
+    const providerBoundary = runtime as unknown as { models: typeof models };
+    providerBoundary.models = models;
+
+    try {
+      await runtime.prompt(goal, "compaction-goal", turnId);
+
+      expect(timeline).toEqual([
+        "provider request", "tool result", "summary", "checkpoint", "provider request",
+      ]);
+      const resumedConversation = requests[1]
+        ?.filter((message) => message.role !== "system")
+        .map((message) => ({ role: message.role, text: textFromContent(message.content) }));
+      expect(resumedConversation).toEqual([
+        { role: "user", text: goal },
+        { role: "user", text: expect.stringContaining(summary) },
+        { role: "user", text: correction },
+      ]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("keeps only user messages in the model context past a boundary", async () => {
     const runtime = createRuntime();
     const toolAssistant = {
@@ -8504,8 +8604,8 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
       (runtime as any).entriesWithCompaction(checkpoint),
     ).messages;
     expect(compacted.map((message: any) => message.role)).toEqual([
-      "compactionSummary",
       "user",
+      "compactionSummary",
     ]);
     // No assistant message means no toolCall block, so no orphaned tool call can
     // reach a provider.

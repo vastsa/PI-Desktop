@@ -7,13 +7,15 @@ import { recoverMalformedToolCalls } from "./tool-call-recovery.js";
  * desktop-only entries and persisted host checkpoints. It keeps the
  * `{ messages }` shape consumed by the agent loop.
  *
- * The slice-from-latest-compaction and compactionSummary-before-retainedTail
- * order preserve the behavior D203 depends on. Retained
- * reasoning turns (#296) sit between the summary and the user tail so strict
- * DeepSeek relays still see real thinking without replaying tool-call pairs.
+ * Context starts at the latest compaction (D203). Summary-first order keeps
+ * recovery notices ahead of the messages they describe and retained reasoning
+ * between the summary and the user tail (#296). A successful active-turn
+ * checkpoint without reasoning to replay can follow its retained request so
+ * the model resumes from the checkpoint.
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { checkpointFallback } from "@pi-desktop/shared";
 import {
   createBranchSummaryMessage,
   createCompactionSummaryMessage,
@@ -58,25 +60,29 @@ export function sessionEntryToContextMessages(
   switch (entry.type) {
     case "message":
       return isContextMessage(entry.message) ? [entry.message] : [];
-    case "compaction":
-      return [
-        ...(entry.details && typeof entry.details === "object" && "systemMessageJson" in entry.details
-          ? [readSystemMessage(entry.details.systemMessageJson)] : []),
-        createCompactionSummaryMessage(
-          entry.summary,
-          entry.tokensBefore,
-          entry.timestamp,
-        ),
-        ...(identity?.requiresCompletionsReasoningReplay === false
-          ? []
-          : retainedReasoningToMessages(
-              retainedReasoningFromDetails(entry.details),
-              entry.timestamp,
-              identity,
-            )),
-        ...entry.retainedTail.filter((message) => isContextMessage(message) &&
-          !(message.role === "system" && entry.details && typeof entry.details === "object" && "systemMessageJson" in entry.details)),
-      ];
+    case "compaction": {
+      const details = entry.details;
+      const system = details && typeof details === "object" && "systemMessageJson" in details
+        ? [readSystemMessage(details.systemMessageJson)] : [];
+      const reasoning = identity?.requiresCompletionsReasoningReplay === false
+        ? []
+        : retainedReasoningToMessages(
+            retainedReasoningFromDetails(details), entry.timestamp, identity,
+          );
+      const tail = entry.retainedTail.filter((message) => isContextMessage(message) &&
+        !(message.role === "system" && system.length > 0));
+      const resume = details && typeof details === "object" &&
+        "retainedTailMode" in details && details.retainedTailMode === "active_turn" &&
+        checkpointFallback(details) === undefined &&
+        entry.summary.trim().length > 0 && reasoning.length === 0 &&
+        tail.length === 1 && tail[0]?.role === "user";
+      const summary = createCompactionSummaryMessage(
+        entry.summary, entry.tokensBefore, entry.timestamp, Boolean(resume),
+      );
+      return resume
+        ? [...system, ...tail, summary]
+        : [...system, summary, ...reasoning, ...tail];
+    }
     case "branch_summary":
       return entry.summary
         ? [
