@@ -285,6 +285,35 @@ export function IconDot({ size = 16, style, ...props }: IconProps) {
   );
 }
 
+/**
+ * Ultrafast service tier (#2507): a filled bolt with an outline trail, the
+ * same idea Codex uses, drawn on Lucide's Zap so it matches IconZap (Fast).
+ */
+export function IconUltrafast({ size = 16, style, ...props }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      {...props}
+      style={withScaledIconStyle(size, style)}
+    >
+      <path
+        transform="translate(-2 0.6) scale(0.92)"
+        fill="currentColor"
+        d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
+      />
+      <path d="M17.2 9.8h3.3a.9.9 0 0 1 .68 1.5L13.4 19.6" />
+    </svg>
+  );
+}
+
 /** VS Code brand mark (settings open-target pill) — logos stay custom, no Lucide equivalent. */
 export function IconVSCode(props: SVGProps<SVGSVGElement> & { size?: number }) {
   const { size = 14, style, ...rest } = props;

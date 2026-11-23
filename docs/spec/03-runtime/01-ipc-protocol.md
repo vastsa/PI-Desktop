@@ -216,6 +216,8 @@ type SessionConfigureRequest = {
   thinkingLevel: SessionThinkingLevel;
   /** Session `/fast` switch (ADR 0334); omitted keeps the stored value. */
   fastMode?: boolean;
+  /** Tier for that switch, `fast` or `ultrafast` (#2507); omitted keeps the stored value. */
+  fastModeTier?: "fast" | "ultrafast";
 };
 ```
 

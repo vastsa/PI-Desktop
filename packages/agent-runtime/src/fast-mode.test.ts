@@ -45,6 +45,17 @@ describe("withFastModeOptions", () => {
     expect(bodies[0].service_tier).toBe("priority");
   });
 
+  it("sends the ultrafast tier verbatim when the session asks for it", async () => {
+    const { bodies, options } = capture();
+    await responsesStreamSimple(
+      responsesModel,
+      context,
+      withFastModeOptions(options, "openai-responses", true, "ultrafast"),
+    ).result();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0].service_tier).toBe("ultrafast");
+  });
+
   it("keeps the default tier when Fast mode is off", async () => {
     const { bodies, options } = capture();
     const hooked = withFastModeOptions(options, "openai-responses", false);

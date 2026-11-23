@@ -1,8 +1,9 @@
 import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
+import type { FastModeTier } from "@pi-desktop/shared";
 import { ComposerModelList } from "./ComposerModelList";
 import { AnchoredMenu } from "../../../components/settings/AnchoredMenu";
-import { IconBot, IconChevronDown, IconZap } from "../../../components/icons";
+import { IconBot, IconChevronDown, IconUltrafast, IconZap } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 import type { useComposerModelMenu } from "./hooks/useComposerModelMenu";
 import { ThinkingLevelSlider } from "./ThinkingLevelSlider";
@@ -17,6 +18,8 @@ export type ComposerModelPickerProps = {
   thinkingLevel: string;
   /** The selected model asks for OpenAI's priority tier (ADR 0334). */
   fastMode?: boolean;
+  /** Which tier the switch asks for; `ultrafast` comes from `/ultrafast` (#2507). */
+  fastModeTier?: FastModeTier;
   selectedProviderId?: string;
   selectedModelId?: string;
   controlsBlocked: boolean;
@@ -34,6 +37,7 @@ export function ComposerModelPicker({
   thinkingLabel,
   thinkingLevel,
   fastMode = false,
+  fastModeTier = "fast",
   selectedProviderId,
   selectedModelId,
   controlsBlocked,
@@ -64,7 +68,10 @@ export function ComposerModelPicker({
     commitThinkingLevel,
     onMenuKeyDown,
   } = controller;
-  const fastSuffix = fastMode ? ` · ${t("chat.fastModeBadge")}` : "";
+  const ultrafast = fastMode && fastModeTier === "ultrafast";
+  const fastSuffix = fastMode
+    ? ` · ${t(ultrafast ? "chat.ultrafastModeBadge" : "chat.fastModeBadge")}`
+    : "";
 
   return (
     <AnchoredMenu
@@ -106,7 +113,7 @@ export function ComposerModelPicker({
           ) : null}
           {fastMode ? (
             <span className="composer-model-thinking-fast" aria-hidden="true">
-              <IconZap size={12} />
+              {ultrafast ? <IconUltrafast size={12} /> : <IconZap size={12} />}
             </span>
           ) : null}
           <IconChevronDown size={12} aria-hidden="true" className="composer-model-thinking-chevron" />

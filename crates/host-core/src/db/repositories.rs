@@ -226,6 +226,7 @@ impl Database {
             31 => {}
             32 => {}
             33 => {}
+            34 => {}
             legacy @ 1..=6 => {
                 let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
                 drop(conn);
@@ -316,6 +317,10 @@ impl Database {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version == 33 {
             super::model_discovery_migration::migrate_reported_context_window(&conn, path)?;
+        }
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version == 34 {
+            super::migrate_v34_to_v35(&conn, path)?;
         }
         let db = Self { conn, data_dir };
         db.boot_maintenance()?;

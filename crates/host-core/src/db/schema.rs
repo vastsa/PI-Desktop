@@ -101,6 +101,10 @@ CREATE TABLE sessions (
   permission_mode TEXT NOT NULL DEFAULT 'inherit'
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   fast_mode   INTEGER NOT NULL DEFAULT 0 CHECK (fast_mode IN (0, 1)),
+  -- Tier the speed switch asks for (schema v35): `fast` sends the priority
+  -- service tier, `ultrafast` the ultrafast one.
+  fast_mode_tier TEXT NOT NULL DEFAULT 'fast'
+                CHECK (fast_mode_tier IN ('fast', 'ultrafast')),
   -- Definition snapshot of a custom or staged mode (schema v29); NULL for
   -- builtin modes configured without one.
   mode_snapshot_hash TEXT,

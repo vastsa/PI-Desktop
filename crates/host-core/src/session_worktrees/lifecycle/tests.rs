@@ -42,6 +42,7 @@ async fn new_session(env: &Env, project: &Path) -> String {
             thinking_level: None,
             permission_mode: None,
             fast_mode: false,
+            fast_mode_tier: None,
         },
     )
     .unwrap()
@@ -261,6 +262,7 @@ fn new_session_blocking(db: &Database, project: &Path) -> String {
             thinking_level: None,
             permission_mode: None,
             fast_mode: false,
+            fast_mode_tier: None,
         },
     )
     .unwrap()

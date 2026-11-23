@@ -75,19 +75,33 @@ test("session launch sends Fast mode only for a model the user allowed it on (AD
       effectiveSubagentModelConfig: () => ({ modelConfig: undefined, capabilities: {} }),
       normalizeThinkingLevel: () => "off",
     });
-    const launch = async (modelId, fastMode) => {
+    const resolve = async (modelId, fastMode, fastModeTier) => {
       const { sidecarParams } = await launchRuntime.resolveAgentRuntimeLaunch(
         "session-fixture",
-        { providerId: provider.id, modelId, ...(fastMode === undefined ? {} : { fastMode }) },
+        {
+          providerId: provider.id,
+          modelId,
+          ...(fastMode === undefined ? {} : { fastMode }),
+          ...(fastModeTier === undefined ? {} : { fastModeTier }),
+        },
         { defaultProviderId: provider.id, defaultModelId: modelId, defaultMode: "agent" },
       );
-      return sidecarParams.fastMode;
+      return sidecarParams;
     };
+    const launch = async (modelId, fastMode) => (await resolve(modelId, fastMode)).fastMode;
 
     assert.equal(await launch("allowed-model", true), true);
     assert.equal(await launch("allowed-model", false), false);
     assert.equal(await launch("allowed-model", undefined), false);
     assert.equal(await launch("other-model", true), false);
+
+    // `/ultrafast` rides the same switch and opt-in; only the tier changes (#2507).
+    const ultra = await resolve("allowed-model", true, "ultrafast");
+    assert.equal(ultra.fastMode, true);
+    assert.equal(ultra.fastModeTier, "ultrafast");
+    assert.equal((await resolve("other-model", true, "ultrafast")).fastMode, false);
+    assert.equal((await resolve("allowed-model", true, undefined)).fastModeTier, "fast");
+    assert.equal((await resolve("allowed-model", true, "turbo")).fastModeTier, "fast");
   } finally {
     process.env.HOME = priorHome;
     await rm(temp, { recursive: true, force: true });

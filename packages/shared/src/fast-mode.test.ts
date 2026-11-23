@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fastModeBillingOn, fastModeSupportedOn } from "./fast-mode.js";
+import { FAST_MODE_TIER_SERVICE_TIER, fastModeBillingOn, fastModeSupportedOn, normalizeFastModeTier } from "./fast-mode.js";
 
 describe("fast mode wire rule", () => {
   it("prices the Codex backend on plan limits and Responses per token", () => {
@@ -14,6 +14,20 @@ describe("fast mode wire rule", () => {
     for (const api of ["chat_completions", "openai-completions", "anthropic_messages",
       "azure-openai-responses", "opencode_go", "", undefined, null]) {
       expect(fastModeSupportedOn(api)).toBe(false);
+    }
+  });
+});
+
+describe("fast mode tiers", () => {
+  it("maps each session tier to its Responses service_tier", () => {
+    expect(FAST_MODE_TIER_SERVICE_TIER.fast).toBe("priority");
+    expect(FAST_MODE_TIER_SERVICE_TIER.ultrafast).toBe("ultrafast");
+  });
+
+  it("reads missing or unknown stored tiers as fast", () => {
+    expect(normalizeFastModeTier("ultrafast")).toBe("ultrafast");
+    for (const value of ["fast", undefined, null, "", "turbo", true]) {
+      expect(normalizeFastModeTier(value)).toBe("fast");
     }
   });
 });

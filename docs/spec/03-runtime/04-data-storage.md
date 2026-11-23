@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v34)
+# 04. Data Storage (Schema v35)
 
 ### Project path aliases (#2148)
 
@@ -711,6 +711,12 @@ Refresh (spec 13 §6/§9) upserts `discovered` rows and **never overwrites
 `source='user'`** rows. Recent-model MRU stays in `kv(cache)` — it is a
 bounded display list, not relational data.
 
+Schema v35 adds `sessions.fast_mode_tier` (#2507), the tier the session's
+speed switch asks for: `fast` (`/fast`, `service_tier: "priority"`) or
+`ultrafast` (`/ultrafast`). Every existing session gets `fast`, the only tier
+earlier versions could request, so a session that had `/fast` on keeps
+behaving the same. Forks copy it; the migration keeps a v34 backup.
+
 Schema v34 adds nullable `models.reported_context_window` for a limit explicitly
 reported by the endpoint. The backed-up migration preserves the display cache
 and leaves the new field unknown until the next successful discovery refresh.
@@ -742,6 +748,8 @@ CREATE TABLE sessions (
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   fast_mode   INTEGER NOT NULL DEFAULT 0       -- ADR 0334: session /fast switch
                CHECK (fast_mode IN (0, 1)),
+  fast_mode_tier TEXT NOT NULL DEFAULT 'fast'  -- #2507: tier for /fast or /ultrafast
+               CHECK (fast_mode_tier IN ('fast', 'ultrafast')),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
   deleted_at  INTEGER,                         -- plugin trash marker; null means active
   pinned      INTEGER NOT NULL DEFAULT 0,

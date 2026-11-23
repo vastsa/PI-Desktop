@@ -11,6 +11,7 @@ import {
   providerCreateInputFromDraft,
   isModelConfigImportSource,
   isModeId,
+  type FastModeTier,
   type ModelConfigImportDraft,
   type Mode,
   type SessionThinkingLevel,
@@ -700,6 +701,7 @@ export function registerSessionIpc({
         thinkingLevel?: SessionThinkingLevel;
         permissionMode?: "inherit" | "ask" | "accept-edits" | "auto";
         fastMode?: boolean;
+        fastModeTier?: FastModeTier;
       },
     ) => {
       rejectNativeMutation(id, "configuration");

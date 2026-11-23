@@ -2,7 +2,7 @@
 
 ## 1. Goal
 
-Define the six first-party command palette entries available without plugins.
+Define the seven first-party command palette entries available without plugins.
 The same entries are available in the composer `/` menu.
 
 Shortcut: **Cmd/Ctrl + Shift + P** (D014)
@@ -15,7 +15,7 @@ builtin.<domain>.<action>
 
 ## 3. Core builtin catalog
 
-The builtin registry intentionally contains exactly these six commands. Plugin
+The builtin registry intentionally contains exactly these seven commands. Plugin
 commands extend the searchable command list dynamically; app navigation,
 project management, settings, plugin management, and diagnostics are not
 builtin command contracts.
@@ -28,10 +28,11 @@ builtin command contracts.
 | `builtin.mode.plan` | Switch to Plan | mode, plan, planning | Session | low | set the idle session mode to Plan |
 | `builtin.mode.goal` | Switch to Goal | mode, goal, objective, autonomous | Session | low | set the idle session mode to Goal |
 | `builtin.session.fast` | Toggle Fast mode | fast, speed, priority, service tier | Session | medium | toggle the session's OpenAI priority service tier (ADR 0334) |
+| `builtin.session.ultrafast` | Toggle Ultrafast mode | ultrafast, fast, speed, service tier | Session | medium | toggle the session's OpenAI `ultrafast` service tier on the same switch (#2507) |
 
 ## 4. Visibility and execution rules
 
-- The six IDs are the complete first-party registry. Removed IDs are not
+- The seven IDs are the complete first-party registry. Removed IDs are not
   palette results and are not renderer dispatch cases; plugin commands remain
   independently discoverable.
 - `New Task` starts in the temporary group, never the project the user happens
@@ -58,6 +59,13 @@ builtin command contracts.
   stored switch on an unconfigured model has no effect at launch. Remote
   sessions refuse it. The risk is medium because the priority tier
   spends plan limits faster or bills more per token.
+- `Toggle Ultrafast mode` (#2507) uses the same switch, the same model
+  opt-in, and the same refusals as `Toggle Fast mode`; it also stores
+  `fastModeTier: "ultrafast"`, so requests send `service_tier: "ultrafast"`
+  instead of `"priority"`. The command naming the tier that is already on turns
+  the switch off; the other command keeps it on and changes the tier. The
+  Composer model chip shows a bolt for Fast and, for Ultrafast, a filled bolt
+  with an outline trail.
 - `SubmitPlan` and `SubmitGoal` are model tools, not palette commands. There is
   no Chat mode or request-changes alias.
 - The former app/project/settings/plugin/log commands remain available through
@@ -76,7 +84,7 @@ type CommandExecutionResult =
 
 ## 6. Acceptance
 
-1. The builtin registry contains exactly six unique, prefixed IDs.
+1. The builtin registry contains exactly seven unique, prefixed IDs.
 2. Palette search matches each title and keyword set.
 3. Mode switch commands update the idle session mode immediately; Plan, Goal,
    and Agent refer to the same pi Agent.
@@ -99,11 +107,12 @@ in the same registry that feeds palette search
 | `/plan-mode` | `builtin.mode.plan` |
 | `/goal-mode` | `builtin.mode.goal` |
 | `/fast` | `builtin.session.fast` |
+| `/ultrafast` | `builtin.session.ultrafast` |
 
 Aliases share one namespace with template and plugin command names; builtin
 aliases win collisions, then project templates, then user templates, then
 plugin commands. Selecting an alias inserts `/alias `; sending `/new`,
-`/compact`, or `/fast` alone executes locally without creating an empty prompt. The
+`/compact`, `/fast`, or `/ultrafast` alone executes locally without creating an empty prompt. The
 Agent/Plan/Goal aliases also support a prompt body:
 `/agent-mode <prompt>`, `/plan-mode <prompt>`, or `/goal-mode <prompt>` switches
 the idle session (or the next-session default) and sends `<prompt>` through the

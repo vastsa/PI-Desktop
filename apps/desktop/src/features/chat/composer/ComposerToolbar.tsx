@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { TFunction } from "i18next";
+import type { FastModeTier } from "@pi-desktop/shared";
 import {
   keybindingDisplayParts,
   type Mode,
@@ -53,8 +54,8 @@ export type ComposerToolbarProps = {
   modelMenu: ModelMenuController;
   modelLabel: string;
   thinkingLabel: string;
-  /** The selected model asks for OpenAI's priority tier (ADR 0334). */
-  modelFastMode?: boolean;
+  /** Tier of an active `/fast` or `/ultrafast` switch; undefined while off. */
+  modelFastModeTier?: FastModeTier;
   contextUsage: ContextUsage | null;
   value: string;
   modelReady: boolean;
@@ -96,7 +97,7 @@ export function ComposerToolbar({
   modelMenu,
   modelLabel,
   thinkingLabel,
-  modelFastMode = false,
+  modelFastModeTier,
   contextUsage,
   value,
   modelReady,
@@ -198,7 +199,8 @@ export function ComposerToolbar({
           controller={modelMenu}
           modelLabel={modelLabel}
           thinkingLabel={thinkingLabel}
-          fastMode={modelFastMode}
+          fastMode={modelFastModeTier !== undefined}
+          fastModeTier={modelFastModeTier}
           thinkingLevel={thinkingLevel}
           selectedProviderId={providerId}
           selectedModelId={modelId}

@@ -872,6 +872,7 @@ export function createSessionSlice({
             permissionMode:
               config.permissionMode ?? state.draftConfiguration?.permissionMode,
             fastMode: config.fastMode ?? state.draftConfiguration?.fastMode,
+            fastModeTier: config.fastModeTier ?? state.draftConfiguration?.fastModeTier,
           },
         }));
         return;

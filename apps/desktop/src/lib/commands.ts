@@ -19,7 +19,10 @@ export async function runPaletteCommand(commandId: string): Promise<void> {
       await store.compactContext();
       break;
     case "builtin.session.fast":
-      await toggleSessionFastMode();
+      await toggleSessionFastMode("fast");
+      break;
+    case "builtin.session.ultrafast":
+      await toggleSessionFastMode("ultrafast");
       break;
     case "builtin.mode.agent":
     case "builtin.mode.plan":
