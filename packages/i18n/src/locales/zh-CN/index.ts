@@ -237,6 +237,7 @@ export const zhCN = {
     newTask: "新建任务",
     newProject: "新建项目",
     projects: "项目",
+    remoteProjects: "远程",
     plugins: "扩展",
     settings: "设置",
     checkForUpdates: "检查更新",

@@ -235,6 +235,7 @@ export const de = {
     "newTask": "Neue Aufgabe",
     "newProject": "Neues Projekt",
     "projects": "Projekte",
+    "remoteProjects": "Remote",
     "plugins": "Erweiterungen",
     "settings": "Einstellungen",
     "checkForUpdates": "Auf Updates prüfen",
