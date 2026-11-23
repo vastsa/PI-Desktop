@@ -3520,6 +3520,10 @@ PowerShell-launched fixture; activation must not restore the native outline.
   inspect both row transition durations. In a separate twelve-session project,
   load the remaining two sessions, fold and reopen the group, and verify only
   the initial ten sessions remain visible.
+- At a narrow sidebar width and a larger UI font size, use a long conversation
+  title in Recent. Verify the project label remains readable, the title can
+  truncate in its own space, and the row menu remains reachable. Hover an
+  ellipsized project label and verify its full name is available.
 - **Expected**: Project and conversation hover backgrounds, radii and transitions
   match. The title button stays transparent. Only a conversation uses selected
   fill, which wins over hover; workspace identity remains a separate dot with

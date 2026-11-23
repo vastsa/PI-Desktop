@@ -2241,7 +2241,7 @@ export function Sidebar({
           <WorktreeBadge worktree={session.worktree} sessionId={session.id} />
           <span className="thread-item-title">{taskTitle(session.title)}</span>
           {options?.global ? (
-            <span className="thread-item-project">
+            <span className="thread-item-project" title={owningProject}>
               {owningProject}
             </span>
           ) : null}

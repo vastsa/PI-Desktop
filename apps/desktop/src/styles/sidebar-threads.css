@@ -352,14 +352,15 @@
   padding: 2px 2px 0;
 }
 
-.sidebar-pinned-sessions .thread-item-title {
-  min-width: 0;
+.thread-item-title:has(+ .thread-item-project) {
+  /* Fit the project name before the title takes the remaining space. */
+  min-width: 4ch;
   flex: 1;
 }
 
 .thread-item-project {
   min-width: 0;
-  max-width: 40%;
+  max-width: 60%;
   margin-left: auto;
   overflow: hidden;
   color: var(--ds-text-muted);

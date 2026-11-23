@@ -1725,6 +1725,9 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   scrollbars; the semantic-ink thumb appears when its list is hovered, focused,
   or scrolling and remains visible while dragging, so the independent regions
   stay available without becoming persistent visual rails.
+- Sidebar conversation rows with a project label give the label priority over
+  the conversation title while reserving space for the title. A project name
+  that outgrows its available space is ellipsized and available on hover.
 
 ---
 
