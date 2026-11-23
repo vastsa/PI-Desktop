@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 import { ErrorCodes, type ComposerPastedFile } from "@pi-desktop/shared";
-import { mimeTypeForPath } from "./composer-paste.ts";
+import {
+  importComposerFiles,
+  isImageFile,
+  MAX_FILE_BYTES,
+  MAX_TOTAL_BYTES,
+  mimeTypeForPath,
+} from "./composer-paste.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type FileReference = { version: 1; path: string; projectPath: string; sessionId: string };
@@ -32,8 +38,28 @@ export async function referenceComposerFiles(
     if (!info.isFile()) throw new Error("selected path is not a file");
     return { path: canonical, size: info.size };
   }));
+  // Issue #2529: #2316 turned every clipboard disk file into a path-only
+  // reference, so pasted screenshot-tool images stopped reaching the model as
+  // visual content. Images within the picker import limits materialize into
+  // session scratch exactly like picker and drag imports; non-image files and
+  // oversized images keep the live reference so #2314's no-copy guarantee
+  // survives.
+  const imageFile = prepared.map(({ path, size }) =>
+    size <= MAX_FILE_BYTES && isImageFile(basename(path), mimeTypeForPath(path)));
+  const imageTotal = prepared.reduce(
+    (total, { size }, index) => total + (imageFile[index] ? size : 0), 0);
+  // All-or-nothing batch cap: a mixed paste never lands halfway between
+  // scratch copies and references.
+  const importImages = imageTotal > 0 && imageTotal <= MAX_TOTAL_BYTES;
+  const importsImage = imageFile.map(flag => flag && importImages);
+  const imported = importImages
+    ? await importComposerFiles(dataDir, sessionId, prepared.filter((_, index) => imageFile[index]).map(({ path }) => path))
+    : [];
+  let importedIndex = 0;
+  // importComposerFiles preserves input order, so results align with candidates.
   const root = await referenceRoot(dataDir);
-  return Promise.all(prepared.map(async ({ path, size }) => {
+  return Promise.all(prepared.map(async ({ path, size }, index) => {
+    if (importsImage[index]) return imported[importedIndex++]!;
     const localReference = randomUUID();
     const record: FileReference = { version: 1, path, projectPath: project, sessionId };
     await writeFile(join(root, `${localReference}.json`), JSON.stringify(record), { flag: "wx", mode: 0o600 });

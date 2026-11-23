@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
-import { mkdir, mkdtemp, open, readdir, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -86,6 +86,51 @@ test("a reference to an image remains metadata and never hydrates outside-projec
   assert.equal(prepared.message.kind, "file");
   assert.equal(prepared.inlineData, undefined);
   await assert.rejects(preparePromptAttachments(data, "source", project, [{ ...reference, localReference: undefined }], true, "Inspect"), /outside the session roots/);
+});
+
+test("clipboard disk images within the import limits materialize into scratch like picker imports (#2529)", async t => {
+  const { data, project, other } = await fixture(t);
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNo2PDgPwAG1AMQ/5r/oAAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const image = join(other, "shot.png");
+  const notes = join(other, "notes.txt");
+  const icon = join(other, "icon.svg");
+  await Promise.all([
+    writeFile(image, png),
+    writeFile(notes, "native file bytes"),
+    writeFile(icon, "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"),
+  ]);
+  const files = await referenceComposerFiles(data, "source", project, [image, notes, icon]);
+  assert.deepEqual(files.map(file => file.kind), ["image", "file", "file"]);
+  assert.equal(files[0].localReference, undefined, "imported image dispatches as a visual attachment");
+  assert.ok(files[0].path.startsWith(join(data, "scratch", "source", "pasted")));
+  assert.deepEqual(await readFile(files[0].path), png);
+  assert.notEqual(files[1].localReference, undefined);
+  assert.equal(files[1].path, notes);
+  assert.notEqual(files[2].localReference, undefined, "svg stays a live reference like picker imports");
+  assert.deepEqual(await readdir(join(data, "composer-file-references")).then(names => names.length), 2);
+  const prepared = await preparePromptAttachments(data, "source", project, files, true, "Inspect");
+  assert.equal(prepared[0].message.kind, "image");
+  assert.ok(prepared[0].inlineData);
+  assert.equal(prepared[1].message.kind, "file");
+  assert.equal(prepared[1].inlineData, undefined);
+});
+
+test("an image set past the batch cap stays referenced instead of partially copying (#2529)", async t => {
+  const { data, project, other } = await fixture(t);
+  const images = [];
+  for (let index = 0; index < 3; index += 1) {
+    const path = join(other, `big-${index}.png`);
+    const file = await open(path, "w");
+    await file.truncate(50 * 1024 * 1024);
+    await file.close();
+    images.push(path);
+  }
+  const files = await referenceComposerFiles(data, "source", project, images);
+  assert.deepEqual(files.map(file => file.kind), ["file", "file", "file"]);
+  assert.deepEqual(await readdir(data), ["composer-file-references"], "no scratch copy past the batch cap");
 });
 
 test("native selection IPC binds sender and session before registering and dispatching a large reference", async t => {

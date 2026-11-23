@@ -2380,14 +2380,21 @@ cannot be replayed. The returned `ComposerPastedFile` records are the only
 paths the renderer stores or dispatches, so a picker selection cannot leave an
 external source path in the prompt or bypass the attachment-root boundary.
 
-For native clipboard files, `reference: true` consumes the same one-shot token
-but registers metadata instead of copying bytes. Main requires a local project,
-stores a durable UUID selection record, and returns the canonical original path,
-name, MIME, exact byte size and additive `localReference` id. Only the main window
-may invoke this flow. Ordinary file-only and mixed file/folder clipboard lists
-both use it; no `File.arrayBuffer()` is needed and transfer byte limits do not
-apply. The 20-item clipboard limit remains. Screenshots/generated payloads use
-`pasteFiles`; picker imports without `reference` retain the copy behavior above.
+For native clipboard files, `reference: true` consumes the same one-shot token.
+Image files within the import limits (64 MiB per file, 128 MiB across the
+imported images of one paste, same image decision as picker imports, SVG
+excluded) are copied into `<data_dir>/scratch/<sessionId>/pasted/` exactly like
+picker imports and return without `localReference`, so they dispatch as visual
+attachments. Every other file registers metadata instead of copying bytes: Main
+requires a local project, stores a durable UUID selection record, and returns
+the canonical original path, name, MIME, exact byte size and additive
+`localReference` id. If the images of one paste exceed the total limit, all of
+them fall back to references rather than copying a partial set. Only the main
+window may invoke this flow. Ordinary file-only and mixed file/folder clipboard
+lists both use it; no `File.arrayBuffer()` is needed and non-image transfer
+byte limits do not apply. The 20-item clipboard limit remains.
+Screenshots/generated payloads use `pasteFiles`; picker imports without
+`reference` retain the copy behavior above.
 
 Drafts, queue entries and message attachments retain `localReference` and `size`.
 On dispatch, main matches the id/path to the selection record and current local

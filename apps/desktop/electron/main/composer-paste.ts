@@ -17,8 +17,10 @@ import {
 
 const SAFE_SESSION_ID = /^[A-Za-z0-9_-]+$/;
 const MAX_FILES = 20;
-const MAX_FILE_BYTES = 64 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 128 * 1024 * 1024;
+/** Per-file cap shared by paste transfer and imports; shared with the reference split. */
+export const MAX_FILE_BYTES = 64 * 1024 * 1024;
+/** Batch cap over one paste's imports; shared with the reference split. */
+export const MAX_TOTAL_BYTES = 128 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set([
   ".avif",
   ".bmp",
@@ -64,7 +66,8 @@ function isImageMimeType(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
-function isImageFile(name: string, mimeType: string): boolean {
+/** Same image decision as picker and drag imports; SVG stays a plain file. */
+export function isImageFile(name: string, mimeType: string): boolean {
   if (isSvgAttachment(mimeType, name)) return false;
   if (isImageMimeType(mimeType)) return true;
   return IMAGE_EXTENSIONS.has(extname(name).toLowerCase());

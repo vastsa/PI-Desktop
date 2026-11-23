@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-13
-- Related: composer-pasted-directory-references, issue #2314
+- Related: composer-pasted-directory-references, issue #2314, issue #2529
 
 ## Context
 
@@ -22,6 +22,12 @@ and refreshes the size before the agent receives path and size as context to rea
 normal tool permissions, requesting referenced images through its Read path. Input history
 restores references without reads or snapshots, screenshots and generated payloads keep the
 existing scratch materialization, and records without `localReference` are unchanged.
+Issue #2529 narrowed the reference flow after it regressed screenshot-tool pastes: image
+files within the picker import limits (same image decision, 64 MiB per file, 128 MiB across
+the images of one paste) materialize into session scratch and dispatch as regular visual
+attachments; non-image files and oversized images keep the live reference, and a paste whose
+images exceed the total limit falls back to references for all of them instead of copying a
+partial set.
 
 ## Consequences
 
