@@ -2,7 +2,7 @@ import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ReviewChangesPage, ReviewContextLines, ReviewTurnsPage } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
-import { groupReviewFiles, readReviewPages } from "../../lib/review-history";
+import { createReviewHistoryRevision, groupReviewFiles, readReviewPages } from "../../lib/review-history";
 import { scrollReviewToAnchor, useReviewFocusRequest } from "../../lib/review-focus-request";
 import { readReviewContextLines, rememberReviewContextLines } from "../../lib/review-preferences";
 import { useAppStore } from "../../stores/app-store";
@@ -27,9 +27,9 @@ export function ReviewHistoryPanel({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(true), [error, setError] = useState(false);
   const [reload, setReload] = useState(0), [paging, setPaging] = useState(false);
   const generation = useRef(0), handledFocus = useRef(0), scroller = useRef<HTMLDivElement>(null);
-  // Review facts refresh independently of streamed text, including late delegates.
-  const revision = useMemo(() => messages.filter(message => message.role === "tool")
-    .map(message => `${message.id}:${message.toolStatus}:${JSON.stringify((message.toolResult as { details?: { review?: unknown } } | undefined)?.details?.review ?? null)}`).join("|"), [messages]);
+  // ReviewTab keys this panel by session, so each session gets a fresh reader.
+  const readRevision = useMemo(createReviewHistoryRevision, []);
+  const revision = useMemo(() => readRevision(messages), [messages, readRevision]);
   useEffect(() => {
     if (!focus || focus.seq === handledFocus.current || (focus.sessionId && focus.sessionId !== sessionId)) return;
     handledFocus.current = focus.seq;
