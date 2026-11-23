@@ -1716,11 +1716,14 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   `updatedAt` first. A project conversation therefore appears both in Recent
   and in its project group, so it stays visible while that project is folded;
   a temporary conversation appears only in Recent. Recent opens with seven
-  rows; a trailing Load more button appends ten more per click. Its body is a
-  291px window over ten compact 28px rows, their 1px row gaps, and the 2px
-  label inset; it scrolls internally when more rows are loaded. The Projects list uses the remaining
-  sidebar height and scrolls independently; neither region scrolls the footer
-  or primary navigation. Both list scrollbars use the same global 6px,
+  rows; a trailing Load more button appends ten more per click. With Projects
+  shown, Recent sessions can grow to 291px, and both Recent and Pinned sessions
+  shrink into independently scrolling lists when the sidebar runs out of room.
+  The Projects list uses the remaining height and reserves room for a project
+  header and one conversation row. When the minimum sizes exceed the
+  available height, the sidebar body scrolls so Projects and Settings remain
+  reachable. Resizing or changing zoom preserves the loaded rows. The list
+  scrollbars use the same global 6px,
   trackless, transparent-at-rest rule as the conversation and work-panel
   scrollbars; the semantic-ink thumb appears when its list is hovered, focused,
   or scrolling and remains visible while dragging, so the independent regions
