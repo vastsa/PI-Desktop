@@ -321,12 +321,15 @@ window.reviewProbe = async () => {
   await until(() => !document.querySelector('.review-history.is-nowrap'), "Word wrap restores");
 
   headers()[0].click(); await frame(); assert(!document.querySelector(".review-history-file-body"), "File can collapse after browsing");
+  await mode(true); await choose("对话轮次", seed.round); await ready();
+  assert(!headers().some(node => node.textContent?.includes("late.txt")), "The old round starts without the late edit");
+  const late = await action("late") as UiMessage;
+  useAppStore.setState(state => ({ messages: [...state.messages, late] }));
+  await until(() => headers().some(node => node.textContent?.includes("late.txt")), "Late delegate refreshes the displayed old round without a selection change");
   await mode(false); await ready();
-  await action("late");
-  useAppStore.setState({ messages: [seed.late] }); await ready();
   assert(headers().some(node => node.textContent?.includes("latest.txt")), "Late old delegate does not take over Latest");
   await action("restart");
-  await mount(seed.other); assert(headers().length === 0, "Other session has no leaked files");
+  await mount(seed.other); assert(headers().length === 0, "Other session has no leaked files after the late delegate refresh");
   await contextLines(1, 5);
   flushSync(() => root.render(null));
   await mount(seed.other); await contextLines(1, 1);

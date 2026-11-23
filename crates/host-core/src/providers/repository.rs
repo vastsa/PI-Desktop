@@ -474,7 +474,8 @@ pub fn update_provider(
         };
         forget_missing_discovered_models(db, &input.id, &configured)?;
         db.conn().execute(
-            "UPDATE models SET discovery_state = NULL WHERE provider_id = ?1",
+            "UPDATE models SET discovery_state = NULL, reported_context_window = NULL
+             WHERE provider_id = ?1",
             params![input.id],
         )?;
     }

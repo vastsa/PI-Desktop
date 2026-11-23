@@ -103,6 +103,21 @@ export async function connectRenderer(port) {
   // element.focus(), and the focus-return checks would read the desktop's
   // window stacking instead of the app.
   await call("Emulation.setFocusEmulationEnabled", { enabled: true });
+  // A fresh profile shows the first-launch guide over the shell; automation
+  // drives the shell itself, so keep the startup overlays off. The automation
+  // surface is installed when the shell mounts, before the overlays decide.
+  {
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      const skipped = await run(() => {
+        if (!window.__PI_DESKTOP__?.skipStartupOverlays) return false;
+        window.__PI_DESKTOP__.skipStartupOverlays();
+        return true;
+      });
+      if (skipped) break;
+      await sleep(50);
+    }
+  }
   return {
     run,
     async until(fn, arg, label, timeoutMs = 15_000) {

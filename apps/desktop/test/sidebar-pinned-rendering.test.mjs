@@ -86,6 +86,9 @@ test("sidebar renders global pins once, outside project folding and history limi
     const pinnedSection = (html) =>
       html.match(/<section[^>]*data-sidebar-session-section="pinned"[\s\S]*?<\/section>/)?.[0] ??
       "";
+    const recentSection = (html) =>
+      html.match(/<section[^>]*data-sidebar-session-section="temporary"[\s\S]*?<\/section>/)?.[0] ??
+      "";
     const html = render();
     const expectedPins = [
       "blank-path-pin",
@@ -107,16 +110,34 @@ test("sidebar renders global pins once, outside project folding and history limi
       html.indexOf('data-sidebar-session-section="pinned"') <
         html.indexOf('data-sidebar-session-section="temporary"'),
     );
-    assert.equal(rows(html).length, new Set(rows(html)).size, "pins have no duplicate rows");
-    assert.equal(rows(html).filter((id) => id.startsWith("normal-")).length, 10);
-    assert.ok(rows(html).includes("temporary-normal"));
+    for (const id of expectedPins) {
+      assert.equal(rows(html).filter((row) => row === id).length, 1, `${id} renders once`);
+    }
+    const recentRows = rows(recentSection(html));
+    assert.equal(recentRows.length, 7, "Recent opens with seven rows");
+    assert.ok(recentRows.every((id) => !expectedPins.includes(id)), "Recent skips pins");
+    assert.deepEqual(recentRows.slice(0, 3), ["normal-00", "normal-01", "normal-02"]);
+    assert.match(recentSection(html), /data-action="recent-sessions-load-more"/);
+    const openProject =
+      html.match(/data-sidebar-project-group="\/open"[\s\S]*?<\/section>/)?.[0] ?? "";
+    assert.equal(rows(openProject).filter((id) => id.startsWith("normal-")).length, 10);
+    // 11 normal + date-row + temporary-normal: six wait behind Load more.
+    assert.ok(!recentRows.includes("temporary-normal"));
+    assert.ok(recentSection(html).includes(
+      catalogs.en.nav.loadMoreCount.replace("{{count}}", "6"),
+    ));
     assert.ok(!rows(html).includes("archived-pin"));
     assert.ok(!rows(html).includes("archived-project-pin"));
 
     const unpinned = render({ sessionMeta: {} });
     assert.equal(pinnedSection(unpinned), "");
-    assert.ok(rows(unpinned).includes("temporary-pin"));
     assert.ok(!rows(unpinned).includes("closed-pin"), "unpin respects closed project tabs");
+    // Unpinned rows return to Recent; a closed or archived project stays out.
+    const unpinnedRecent = rows(recentSection(render({ sessionMeta: {}, sessions: pins })));
+    assert.deepEqual(
+      [...unpinnedRecent].sort(),
+      ["archived-pin", "blank-path-pin", "collapsed-pin", "open-pin", "temporary-pin"],
+    );
     const collapsedGroup =
       unpinned.match(/data-sidebar-project-group="\/collapsed"[\s\S]*?<\/section>/)?.[0] ?? "";
     assert.match(
@@ -169,13 +190,23 @@ test("sidebar renders global pins once, outside project folding and history limi
     assert.deepEqual(rows(emptyGroup), [], "an empty project renders no session rows");
     const restored = render({ sessionView: { sort: "recent", archived: true } });
     assert.equal(rows(pinnedSection(restored)).length, pins.length);
-    assert.equal(rows(restored).length, new Set(rows(restored)).size);
+    for (const { id } of pins) {
+      assert.equal(rows(restored).filter((row) => row === id).length, 1, `${id} renders once`);
+    }
 
-    const selectedRows = (markup) => [...markup.matchAll(
+    // A project session can show in Recent and in its project at once; both
+    // copies mark the same selection, so compare the distinct ids.
+    const selectedRows = (markup) => [...new Set([...markup.matchAll(
       /class="thread-item active[^"]*" data-sidebar-session-row="([^"]+)"/g,
-    )].map((match) => match[1]);
+    )].map((match) => match[1]))];
+    // `temporary-normal` is older than the first Recent page, so render it
+    // with only the pins around it to keep its row on screen.
     for (const id of ["normal-00", "open-pin", "temporary-normal", "temporary-pin"]) {
-      const selected = render({ activeProjectPath: "/open", activeSessionId: id });
+      const selected = render({
+        activeProjectPath: "/open",
+        activeSessionId: id,
+        ...(id === "temporary-normal" ? { sessions: [...pins, session(id, null)] } : {}),
+      });
       assert.deepEqual(selectedRows(selected), [id]);
       assert.match(selected, /data-sidebar-project-group="\/open" data-current-workspace="true"/);
       assert.match(selected, /sidebar-project-active-dot/);

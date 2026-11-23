@@ -78,6 +78,7 @@ CREATE TABLE models (
   source            TEXT NOT NULL DEFAULT 'user',
   capabilities_json TEXT NOT NULL DEFAULT '[]',
   context_window    INTEGER,
+  reported_context_window INTEGER,
   max_output_tokens INTEGER,
   deprecated        INTEGER NOT NULL DEFAULT 0,
   discovery_state   TEXT CHECK (discovery_state IN ('published', 'unlisted')),

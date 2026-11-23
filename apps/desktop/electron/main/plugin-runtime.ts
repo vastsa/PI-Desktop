@@ -12,7 +12,7 @@ import type { Stats } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
+import { MAX_PLUGIN_BINARY_RESPONSE_BYTES, pluginNetFetch, parseFetchRedirect, type PluginFetchTransport } from "./plugin-net-fetch";
 import type { LoadedSkillDocument } from "./skill-document";
 import { assertLocalPluginRoot, pluginFsReadOptions, readRemotePluginFiles, type PluginRemoteFilesRead } from "./plugin-remote-files";
 import { getModuleDirectory } from "./module-path";
@@ -87,6 +87,7 @@ import {
   type PluginComposerSuggestInput,
   type PluginComposerSuggestResult,
   type PluginComposerClearSuggestionInput,
+  type PluginModelContextInput,
   PLUGIN_COMPOSER_SUGGESTION_MAX_CHARS,
   PLUGIN_COMPOSER_SUGGESTION_TTL_MS,
   PLUGIN_COMPOSER_SUGGESTION_TTL_MIN_MS,
@@ -143,6 +144,12 @@ import {
   type PluginShortcutRegistry,
 } from "./plugin-shortcut-registry";
 import { repairImportedExtensionWrapper } from "./imported-plugin-wrapper";
+import {
+  type PluginDesktopConsentAnswer,
+  PluginDesktopConsentGrants,
+  canRememberDesktopConsent,
+  normalizeDesktopConsentAnswer,
+} from "./plugin-desktop-consent-grants";
 import {
   migrateLegacyPromptEnhancementSettings,
   PROMPT_ENHANCEMENT_PLUGIN_ID,
@@ -324,7 +331,11 @@ export type PluginDesktopConsentRequest = {
   description: string;
   /** Positional arguments as the plugin supplied them (secret-stripped later). */
   args: unknown[];
+  /** Whether the dialog may offer "Allow until quit" for this operation. */
+  offerSession?: boolean;
 };
+
+export type { PluginDesktopConsentAnswer };
 
 export type PluginHostServices = {
   getWorkspacePath: () => string | null;
@@ -420,7 +431,9 @@ export type PluginHostServices = {
    * user decides here. Without this service every dangerous operation from a
    * plugin is refused, which is the safe default for a headless host.
    */
-  confirmDesktopControl?: (request: PluginDesktopConsentRequest) => Promise<boolean>;
+  confirmDesktopControl?: (
+    request: PluginDesktopConsentRequest,
+  ) => Promise<boolean | PluginDesktopConsentAnswer>;
   audit?: (entry: Record<string, unknown>) => void;
   /**
    * Blocking, native consent for a file access the manifest did not declare.
@@ -563,6 +576,8 @@ export type PluginHostServices = {
   suggestComposer?: (offer: ComposerSuggestionOffer) => Promise<ComposerSuggestionOutcome>;
   /** `pi.composer.clearSuggestion`: drop this plugin's own line. */
   clearComposerSuggestion?: (pluginId: string, sessionId?: string) => void;
+  getComposerSuggestionTarget?: (pluginId: string, input: unknown) => Promise<string | null>;
+  suggestComposerCandidates?: (pluginId: string, input: unknown) => Promise<PluginComposerSuggestResult>;
   project?: {
     create: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
@@ -608,6 +623,7 @@ const HOST_API_ALLOWLIST = new Set([
   "app.getVersion",
   "app.getLocale",
   "app.getAppearance",
+  "app.getCapabilities",
   "app.setTheme",
   "themes.upsert",
   "themes.remove",
@@ -619,6 +635,8 @@ const HOST_API_ALLOWLIST = new Set([
   "ui.revealView",
   "composer.suggest",
   "composer.clearSuggestion",
+  "composer.getSuggestionTarget",
+  "composer.suggestCandidates",
   "ui.openPanel",
   "ui.closePanel",
   "ui.showToast",
@@ -1529,6 +1547,11 @@ export class PluginRuntime {
    * session would be a standing permission nobody reviewed.
    */
   private fsConsent = new Map<string, Set<string>>();
+  /**
+   * Desktop operations the user allowed a plugin until quit. In memory only,
+   * and dropped when the plugin is explicitly stopped.
+   */
+  private desktopConsent = new PluginDesktopConsentGrants();
   /** Cached write ledgers, keyed by plugin id. */
   private writeLedgers = new Map<string, Record<string, number>>();
   private nextBusSubscription = 1;
@@ -1891,6 +1914,43 @@ export class PluginRuntime {
     }
   }
 
+  /** Capture only providers permitted at the first request of a durable turn. */
+  modelContextProviders(inScope: (pluginId: string) => boolean) {
+    return [...this.loaded.values()]
+      .filter((loaded) => loaded.manifest.contributes?.modelContext === true && loaded.child &&
+        !loaded.disposing && loaded.permissions.has("agent.modelContext") && inScope(loaded.manifest.id))
+      .sort((a, b) => a.manifest.id.localeCompare(b.manifest.id))
+      .slice(0, 8)
+      .map((loaded) => {
+        const pluginId = loaded.manifest.id;
+        const eligible = () => this.loaded.get(pluginId) === loaded && Boolean(loaded.child) &&
+          !loaded.disposing && loaded.permissions.has("agent.modelContext") && inScope(pluginId);
+        return {
+          pluginId,
+          eligible,
+          read: async (input: PluginModelContextInput, signal: AbortSignal): Promise<string | undefined> => {
+            if (!eligible() || signal.aborted) return undefined;
+            try {
+              const result = await this.sendToChild(loaded,
+                { t: "call", method: "agent.modelContext", payload: input }, 250, signal);
+              if (!eligible() || signal.aborted || result === null) return undefined;
+              const text = (result as { text?: unknown } | undefined)?.text;
+              if (typeof text !== "string" || text.length > 4096 || Buffer.byteLength(text, "utf8") > 4096) {
+                throw apiError("PLUGIN_INVALID_RESULT", "invalid model context contribution");
+              }
+              return text.trim() || undefined;
+            } catch (error) {
+              if (!signal.aborted) this.services.audit?.({
+                pluginId, api: "agent.modelContext", ok: false,
+                errorCode: (error as PluginApiError)?.code ?? "PLUGIN_CONTEXT_FAILED", ts: Date.now(),
+              });
+              return undefined;
+            }
+          },
+        };
+      });
+  }
+
   getLoaded(pluginId: string): LoadedPlugin | undefined {
     return this.loaded.get(pluginId);
   }
@@ -2119,6 +2179,8 @@ export class PluginRuntime {
   broadcastEvent(event: string, args: unknown[] = [], filter?: (pluginId: string) => boolean): void {
     for (const loaded of this.loaded.values()) {
       if (filter && !filter(loaded.manifest.id)) continue;
+      if ((event === "session:turnStarted" || event === "session:userMessagePersisted") &&
+          (!filter || loaded.disposing || !loaded.permissions.has("session.observe"))) continue;
       try {
         loaded.child?.postMessage({ t: "event", event, args });
       } catch (error) {
@@ -2309,7 +2371,10 @@ export class PluginRuntime {
       loaded.disposing = true;
       this.toolInvocations.cancelOwner(loaded, "Plugin unloaded");
       // An explicit stop ends supervision; a supervisor-driven reload keeps it.
-      if (!this.restarting.has(pluginId)) this.cancelRestarts(pluginId);
+      if (!this.restarting.has(pluginId)) {
+        this.cancelRestarts(pluginId);
+        this.desktopConsent.revoke(pluginId);
+      }
       await this.stopServices(loaded);
     }
     if (loaded?.child) {
@@ -2615,6 +2680,8 @@ export class PluginRuntime {
           headers: (payload?.headers as Record<string, string> | undefined) ?? undefined,
           body: payload?.body ? String(payload.body) : undefined,
           timeoutMs: typeof payload?.timeoutMs === "number" ? payload.timeoutMs : undefined,
+          responseType: payload?.responseType === undefined ? undefined : String(payload.responseType) as "text" | "base64",
+          maxResponseBytes: typeof payload?.maxResponseBytes === "number" ? payload.maxResponseBytes : undefined,
           redirect: payload?.redirect,
         });
       case "plugin.getSettings":
@@ -5637,6 +5704,10 @@ export class PluginRuntime {
       app: {
         getVersion: async () => this.services.getAppVersion?.() ?? "0.2.1",
         getLocale: async () => this.services.getLocale?.() ?? "en",
+        getCapabilities: async () => ({
+          sessionUserMessagePersisted: loaded.permissions.has("session.observe"),
+          composerSuggestionCandidates: true,
+        }),
         getAppearance: async () =>
           this.services.getAppearance?.() ?? {
             theme: "system",
@@ -5883,6 +5954,16 @@ export class PluginRuntime {
           this.suggestComposer(loaded, input),
         clearSuggestion: async (input?: PluginComposerClearSuggestionInput) =>
           this.clearComposerSuggestion(loaded, input),
+        getSuggestionTarget: async (input: unknown) => {
+          this.assertPermission(loaded, "composer.suggest");
+          if (!this.services.getComposerSuggestionTarget) throw apiError("UNSUPPORTED", "host api not available: composer.getSuggestionTarget");
+          return this.services.getComposerSuggestionTarget(pluginId, input);
+        },
+        suggestCandidates: async (input: unknown) => {
+          this.assertPermission(loaded, "composer.suggest");
+          if (!this.services.suggestComposerCandidates) throw apiError("UNSUPPORTED", "host api not available: composer.suggestCandidates");
+          return this.services.suggestComposerCandidates(pluginId, input);
+        },
       },
       workspace: {
         get: async () => {
@@ -5959,20 +6040,28 @@ export class PluginRuntime {
               );
             }
             const consent = this.services.confirmDesktopControl;
-            const granted = consent
-              ? await consent({
-                  pluginId,
-                  pluginName: resolvePluginLocalizedString(
-                    loaded.manifest.name,
-                    this.services.getLocale?.(),
-                    pluginId,
-                  ),
-                  operation,
-                  description: operationInfo.description,
-                  args,
-                })
-              : false;
-            if (!granted) {
+            const remembered = this.desktopConsent.has(pluginId, operation);
+            const answer: PluginDesktopConsentAnswer = remembered
+              ? "session"
+              : consent
+                ? normalizeDesktopConsentAnswer(
+                    await consent({
+                      pluginId,
+                      pluginName: resolvePluginLocalizedString(
+                        loaded.manifest.name,
+                        this.services.getLocale?.(),
+                        pluginId,
+                      ),
+                      operation,
+                      description: operationInfo.description,
+                      args,
+                      offerSession: canRememberDesktopConsent(operation),
+                    }),
+                    operation,
+                  )
+                : "deny";
+            if (answer === "session") this.desktopConsent.grant(pluginId, operation);
+            if (answer === "deny") {
               this.services.audit?.({
                 pluginId,
                 api: "desktop.invoke",
@@ -6587,13 +6676,15 @@ export class PluginRuntime {
         closeOutput: async () => this.refuseAudio(loaded, "audio.closeOutput"),
       },
       net: {
-        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"] }),
+        getCapabilities: async () => ({ fetchRedirectModes: ["follow", "error", "manual"], binaryResponseBody: true, maxResponseBodyBytes: MAX_PLUGIN_BINARY_RESPONSE_BYTES }),
         fetch: async (input: {
           url: string;
           method?: string;
           headers?: Record<string, string>;
           body?: string;
           timeoutMs?: number;
+          responseType?: "text" | "base64";
+          maxResponseBytes?: number;
           redirect?: unknown;
         }) => {
           this.assertPermission(loaded, "net.fetch");

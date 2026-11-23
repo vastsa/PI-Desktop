@@ -47,7 +47,7 @@ pub(super) async fn handle(
             "INVALID_PARAMS",
         ));
     }
-    let st = state.lock().await;
+    let mut st = state.lock().await;
     authorize(&st, &request.session_id)?;
     match method {
         "backgroundJobs.capabilities" => Ok(json!({"version": 1, "supported": true})),
@@ -79,6 +79,8 @@ pub(super) async fn handle(
             // Only a short signal operation may hold the state lock. Waiting
             // for output/exit must leave other sessions and Stop responsive.
             if method == "backgroundJobs.stop" {
+                st.background_tasks
+                    .cancel_continuations(Some(&request.session_id), None, Some(id));
                 jobs::stop(&task)
                     .await
                     .map_err(|e| rpc_err(1000, e, "INTERNAL"))?;

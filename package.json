@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.23.0-beta.1",
+  "version": "0.24.0-beta.1",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@12.8.1+sha512.f64ba907507f5ceafe06c8d38e6052d0179444580ec1279ddd5bfc11cb48aa8a2644b66598e07e761da84872a9fc57d5f902b87fa49d024198d558612aabbe45",
   "engines": {
@@ -23,6 +23,7 @@
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:jev": "node --test apps/desktop/test/jev-api-key-check.test.mjs apps/desktop/test/jev-config.test.mjs apps/desktop/test/jev-settings-user-path.test.mjs apps/desktop/test/jev-service-setup-user-path.test.mjs apps/desktop/test/jev-session-launch.test.mjs && node packages/agent-runtime/node_modules/vitest/vitest.mjs run packages/agent-runtime/src/jev-classifier-tool.test.ts packages/agent-runtime/src/runtime.test.ts -t Jev --config packages/agent-runtime/vitest.config.ts",
     "test:e2e:storage": "node scripts/e2e-storage-settings.mjs && node scripts/e2e-storage-migration.mjs && node scripts/e2e-storage-bootstrap.mjs && node scripts/e2e-storage-directory.mjs && node scripts/e2e-storage-files.mjs && node scripts/e2e-storage-backup-lock.mjs",
+    "test:e2e:background-continuation": "node scripts/e2e-background-continuation.mjs",
     "test:e2e:asktool-card": "node scripts/e2e-asktool-card.mjs",
     "test:e2e:worktree-live": "node scripts/e2e-worktree-live.mjs",
     "test:e2e:question-notification": "node scripts/e2e-question-notification.mjs",

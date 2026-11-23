@@ -1,4 +1,5 @@
 import { formatSessionLink } from "./session-link.js";
+import { fileLineLabel, type FileLineRange } from "./file-line-reference.js";
 
 /**
  * Trigger detection and completion insertion for the composer autocomplete
@@ -299,7 +300,7 @@ function directoryPromptReference(path: string): string {
  */
 export function serializeInlineComposerFileReferences(
   draft: string,
-  references: ReadonlyArray<{ path: string; kind?: string; token?: string; plugin?: ComposerReferencePluginPart }>,
+  references: ReadonlyArray<{ path: string; kind?: string; token?: string; lineRange?: FileLineRange; plugin?: ComposerReferencePluginPart }>,
 ): string {
   let content = draft;
   for (const reference of references) {
@@ -307,7 +308,9 @@ export function serializeInlineComposerFileReferences(
     if (!token || !content.includes(token)) continue;
     const send = reference.plugin?.send;
     const agent = reference.kind === "agent";
-    const insert = typeof send === "string"
+    const insert = reference.lineRange
+      ? fileLineLabel(reference.path, reference.lineRange)
+      : typeof send === "string"
       ? send
       : agent
         ? `@${reference.path}`

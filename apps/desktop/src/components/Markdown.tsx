@@ -51,6 +51,7 @@ import {
 import { TooltipButton } from "./ui";
 import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { MarkdownTable } from "./MarkdownTable";
+import { MermaidSvgActions } from "./MermaidSvgActions";
 import { markdownTableData } from "../lib/markdown-table";
 import { PluginBlockRenderer } from "./PluginBlockRenderer";
 import { blockRendererCandidate } from "../lib/block-renderer";
@@ -71,6 +72,7 @@ import { useReferencedImageDataUrl } from "../lib/use-referenced-image-data-url"
 import { absoluteImagePath, remarkLocalImagePaths } from "../lib/markdown-image-paths";
 import { remarkNormalizeWrappedMarkdownLinkDestinations } from "../lib/markdown-link-destinations";
 import { useOpenChatFileRef } from "../hooks/use-preview-target";
+import { directionAttr } from "../lib/text-direction";
 import {
   useChatFileMenuItems,
   type ChatFileMenuTarget,
@@ -291,6 +293,7 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
     [reactId],
   );
   const rootRef = useRef<HTMLDivElement>(null);
+  const svgPreviewRef = useRef<HTMLDivElement>(null);
   const nearViewport = useNearViewport(rootRef);
   const renderedSourceRef = useRef("");
   const [svg, setSvg] = useState("");
@@ -355,6 +358,7 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
           <span>mermaid</span>
         </span>
         <div className="mermaid-block-actions">
+          <MermaidSvgActions svg={!error && !loading ? svg : ""} previewRef={svgPreviewRef} />
           {svg && !error ? (
             <TooltipButton
               type="button"
@@ -397,15 +401,18 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
           <pre className="mermaid-source">
             <code>{code}</code>
           </pre>
-        ) : svg ? (
+        ) : null}
+        {svg && !error ? (
           <div
+            ref={svgPreviewRef}
+            hidden={sourceVisible}
             className={`mermaid-svg${loading ? " refreshing" : ""}`}
             role="img"
             aria-label={t("chat.mermaidDiagram")}
             // Mermaid strict mode output is sanitized again in renderMermaidSvg.
             dangerouslySetInnerHTML={{ __html: svg }}
           />
-        ) : (
+        ) : !sourceVisible ? (
           <div
             className="mermaid-loading"
             role="status"
@@ -415,7 +422,7 @@ function MermaidBlock({ code, ...position }: { code: string } & SourcePositionPr
             <span aria-hidden />
             <span aria-hidden />
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -833,7 +840,39 @@ const markdownComponents: Components = {
   audio: AudioBlock,
   video: VideoBlock,
   table: Table,
+  p: BidiParagraph,
+  li: BidiListItem,
 };
+
+// #2388: mixed RTL/LTR paragraphs must not take their base direction from the
+// first strong character alone. Each block paragraph picks its direction from
+// the whole text (majority strong script), so a Persian paragraph that opens
+// with an English word still reads right-to-left while embedded English runs,
+// numbers, and code stay left-to-right inside it.
+function textOfChildren(node: unknown): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOfChildren).join("");
+  if (
+    node &&
+    typeof node === "object" &&
+    "props" in node &&
+    node.props &&
+    typeof node.props === "object" &&
+    "children" in node.props
+  ) {
+    return textOfChildren(node.props.children);
+  }
+  return "";
+}
+
+function BidiParagraph({ children, ...rest }: ComponentProps<"p">) {
+  return <p {...rest} dir={directionAttr(textOfChildren(children))}>{children}</p>;
+}
+
+function BidiListItem({ children, ...rest }: ComponentProps<"li">) {
+  return <li {...rest} dir={directionAttr(textOfChildren(children))}>{children}</li>;
+}
 
 // The grammar the block splitter parses with, plus the renderer-only rewrite
 // of local image paths. `remarkLocalImagePaths` transforms URLs and moves no

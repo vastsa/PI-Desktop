@@ -5,6 +5,7 @@ use std::path::PathBuf;
 pub const MAX_OPS_BYTES: usize = 256 * 1024;
 pub const MAX_OPS_PER_CALL: usize = 200;
 pub const MAX_REGISTER_LINES: usize = 4096;
+const EDIT_OP_GUIDANCE: &str = "use `PUT N.=M:` with `+TEXT` rows to replace, `CUT N.=M` to delete, or `PUT <N:` / `PUT >N:` to insert";
 pub const MAX_REGISTER_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,7 +90,7 @@ pub fn parse_ops(ops: &str) -> Result<ParsedOps, ParseError> {
             return Err(ParseError::new(
                 "EDIT_PARSE_FAILED",
                 format!(
-                    "body or context row without a header at op line {}: {raw}",
+                    "body or context row without a header at op line {}: {raw}; put `+TEXT` rows after `PUT N.=M:`; a lone `+` writes a blank line",
                     idx + 1
                 ),
             ));
@@ -225,7 +226,7 @@ fn parse_header(raw: &str) -> Result<(ParsedOp, bool), ParseError> {
             if colon {
                 return Err(ParseError::new(
                     "EDIT_PARSE_FAILED",
-                    "CUT takes no body; drop the colon",
+                    "CUT takes no body; use `CUT N.=M` to delete or `PUT N.=M:` with `+TEXT` rows to replace",
                 ));
             }
             let locator_raw = parts
@@ -276,10 +277,20 @@ fn parse_header(raw: &str) -> Result<(ParsedOp, bool), ParseError> {
             let dest = parse_dest(rest)?;
             Ok((ParsedOp::Mv { dest }, false))
         }
-        other => Err(ParseError::new(
-            "EDIT_PARSE_FAILED",
-            format!("unknown operation {other}; expected PUT, CUT, REM, or MV"),
-        )),
+        other => {
+            if other == "@@" {
+                return Err(ParseError::new(
+                    "EDIT_PARSE_FAILED",
+                    format!("unified-diff hunk header is not valid Edit ops; {EDIT_OP_GUIDANCE}"),
+                ));
+            }
+            Err(ParseError::new(
+                "EDIT_PARSE_FAILED",
+                format!(
+                    "unknown operation {other}; expected PUT, CUT, REM, or MV; {EDIT_OP_GUIDANCE}"
+                ),
+            ))
+        }
     }
 }
 
@@ -316,7 +327,7 @@ fn parse_locator(raw: &str) -> Result<Locator, ParseError> {
     }
     Err(ParseError::new(
         "EDIT_PARSE_FAILED",
-        format!("invalid locator {raw}; expected N.=M, N*, <N, >N, >$, or >N*"),
+        format!("invalid locator {raw}; expected N.=M, N*, <N, >N, >$, or >N*; {EDIT_OP_GUIDANCE}"),
     ))
 }
 
@@ -431,6 +442,35 @@ mod tests {
             error.message,
             "PUT header `PUT 48.=48` is missing a trailing `:` before + body rows; use `PUT 48.=48:`"
         );
+    }
+
+    #[test]
+    fn parse_errors_name_the_corrective_operation() {
+        for (ops, expected, corrective) in [
+            (
+                "PUT 2.=2:\n",
+                "PUT with a colon requires",
+                "use CUT to delete",
+            ),
+            ("@@ -1,2 +1,2 @@\n", "unified-diff hunk header", "PUT N.=M:"),
+            ("### Heading\n", "unknown operation ###", "CUT N.=M"),
+            ("CUT 2.=2:\n", "CUT N.=M", "PUT N.=M:"),
+            ("+orphan\n", "PUT N.=M:", "a lone `+`"),
+            ("PUT 2:\n+new\n", "PUT N.=M:", "CUT N.=M"),
+        ] {
+            let error = parse_ops(ops).unwrap_err();
+            assert_eq!(error.code, "EDIT_PARSE_FAILED");
+            assert!(
+                error.message.contains(expected),
+                "expected {expected:?} in {:?}",
+                error.message
+            );
+            assert!(
+                error.message.contains(corrective),
+                "expected {corrective:?} in {:?}",
+                error.message
+            );
+        }
     }
 
     #[test]

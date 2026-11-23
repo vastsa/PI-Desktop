@@ -40,6 +40,7 @@ async function handlersFor(t, row, body) {
 
   const original = globalThis.fetch;
   const calls = [];
+  const cacheWrites = [];
   globalThis.fetch = async (url) => {
     calls.push(String(url));
     return String(url).endsWith("/models") ? jsonResponse(body) : new Response("", { status: 404 });
@@ -52,10 +53,14 @@ async function handlersFor(t, row, body) {
   registerProviderIpc({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => ({
-      call: async (method) => {
+      call: async (method, params) => {
         if (method === "providers.list") return { providers: [row] };
         if (method === "providers.getSecret") return { value: "sk-secret" };
         if (method === "providers.get") return { provider: row };
+        if (method === "providers.cacheModels") {
+          cacheWrites.push(params);
+          return { models: params.models };
+        }
         return {};
       },
     }),
@@ -75,6 +80,7 @@ async function handlersFor(t, row, body) {
 
   return {
     calls,
+    cacheWrites,
     row,
     result: await listModels({ providerId: row.id, source: "refresh" }),
     /** The hand-typed id channel a picker uses when a user types an id in. */
@@ -149,14 +155,21 @@ test("a model-list capacity report takes precedence over catalog limits", async 
     name: "Relay",
     baseUrl: "https://relay.example/v1",
   });
-  const { result } = await handlersFor(t, row, {
-    data: [{ id: "claude-sonnet-4-5", context_length: 321_000, max_tokens: 12_345 }],
+  const { result, cacheWrites } = await handlersFor(t, row, {
+    data: [
+      { id: "claude-sonnet-4-5", context_length: 321_000, max_tokens: 12_345 },
+      { id: "some-private-model" },
+    ],
   });
 
   const [model] = result.models;
   assert.equal(model.contextWindow, 321_000, "the endpoint reports its actual context window");
   assert.equal(model.maxTokens, 12_345, "the endpoint reports its actual output limit");
   assert.equal(model.catalogSource, "models.dev", "catalog metadata still identifies the model");
+  assert.deepEqual(cacheWrites[0].endpoint, { baseUrl: row.baseUrl, apiStyle: row.apiStyle });
+  assert.equal(cacheWrites[0].models[0].reportedContextWindow, 321_000);
+  assert.equal(cacheWrites[0].models[1].contextWindow, 128_000);
+  assert.equal(cacheWrites[0].models[1].reportedContextWindow, undefined);
 });
 
 test("a hand-typed id on the same relay answers with the same record", async (t) => {

@@ -42,6 +42,26 @@ test("large disk file becomes metadata, survives a new session, and refreshes si
   assert.deepEqual(await readdir(data), ["composer-file-references"]);
 });
 
+test("disk metadata and project line ranges remain distinct in a mixed prompt", async t => {
+  const { data, project, path } = await fixture(t);
+  const [reference] = await referenceComposerFiles(data, "source", project, [path]);
+  const source = join(project, "gpt.py");
+  await writeFile(source, "first\nsecond\n");
+  const line = { kind: "file", path: source, name: "gpt.py", lineRange: { start: 1, end: 2 } };
+  const prepared = await preparePromptAttachments(data, "source", project, [reference, line], false, "Compare");
+  assert.equal(prepared.length, 2);
+  assert.equal(prepared[0].message.localReference, reference.localReference);
+  assert.equal(prepared[0].message.size, 67108865);
+  assert.deepEqual(prepared[1].message.lineRange, line.lineRange);
+  const prompt = appendPromptFallbackPaths("Compare", prepared);
+  assert.ok(prompt.includes("67108865 bytes"));
+  assert.ok(!prompt.includes(source), "line ranges are resolved by the scoped runtime Read");
+  assert.deepEqual(await readdir(data), ["composer-file-references"]);
+  for (const attachment of [{ ...reference, lineRange: line.lineRange }, { ...line, localReference: reference.localReference }]) {
+    await assert.rejects(preparePromptAttachments(data, "source", project, [attachment], false, "Inspect"), { errorCode: "INVALID_ARGUMENT" });
+  }
+});
+
 test("selection records reject forged paths, another project, remote context, and redirected files", async t => {
   const { data, project, other, path, root } = await fixture(t);
   const [reference] = await referenceComposerFiles(data, "source", project, [path]);

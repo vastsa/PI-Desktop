@@ -516,3 +516,119 @@ test("an unscoped plugin keeps full desktop.control session reads", async (t) =>
   );
   assert.deepEqual(result.sessions, [{ id: "any", projectPath: "/anywhere" }]);
 });
+
+const PROMPT_ANSWER_OPERATIONS = [
+  {
+    id: "agent/askTool/resolve",
+    channel: "askToolResolve",
+    description: "Answer an Agent question",
+    risk: "dangerous",
+  },
+  {
+    id: "tool/resolvePermission",
+    channel: "toolResolvePermission",
+    description: "Resolve a pending tool permission request",
+    risk: "dangerous",
+  },
+  {
+    id: "extensions/ui/respond",
+    channel: "extensionsUiRespond",
+    description: "Answer a pending trusted extension prompt",
+    risk: "dangerous",
+  },
+  {
+    id: "session/delete",
+    channel: "sessionDelete",
+    description: "Delete a session",
+    risk: "dangerous",
+  },
+];
+
+const RELAY_PLUGIN = `
+  module.exports = {
+    onPanelInvoke: async (channel, payload) => {
+      try {
+        return { ok: true, result: await pi.desktop.invoke({ operation: payload.operation, args: [{}], confirm: true }) };
+      } catch (error) {
+        return { ok: false, code: error.code };
+      }
+    },
+  };
+`;
+
+test("an Agent question answer can be allowed until quit; approvals never can", async (t) => {
+  const calls = [];
+  const prompts = [];
+  let answer = "session";
+  const runtime = createRuntime(t, calls, {
+    desktopControl: {
+      operations: PROMPT_ANSWER_OPERATIONS,
+      invoke: async (input) => {
+        calls.push(input.operation);
+        return { ok: true };
+      },
+    },
+    confirmDesktopControl: async (request) => {
+      prompts.push(request);
+      return answer;
+    },
+  });
+  const dir = writePlugin("demo.relay", ["desktop.control"], RELAY_PLUGIN);
+  await runtime.loadFromPath(dir, ["desktop.control"]);
+  const relay = (operation) =>
+    runtime.invokePanelBridge("demo.relay", "desktop.test", { operation });
+
+  // Allow until quit on a question answer: the next answer raises no dialog.
+  assert.equal((await relay("agent/askTool/resolve")).ok, true);
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0].offerSession, true);
+  answer = "deny";
+  assert.equal((await relay("agent/askTool/resolve")).ok, true);
+  assert.equal(prompts.length, 1, "a remembered answer must not prompt again");
+
+  // Tool permissions, extension prompts, and destructive operations never
+  // offer the option, and a "session" answer for them is not remembered.
+  answer = "session";
+  for (const operation of ["tool/resolvePermission", "extensions/ui/respond", "session/delete"]) {
+    const before = prompts.length;
+    assert.equal((await relay(operation)).ok, false, `${operation} must not accept "session"`);
+    assert.equal(prompts.length, before + 1);
+    assert.equal(prompts.at(-1).offerSession, false, `${operation} must not offer "session"`);
+    answer = "once";
+    assert.equal((await relay(operation)).ok, true);
+    assert.equal((await relay(operation)).ok, true);
+    assert.equal(prompts.length, before + 3, `${operation} must prompt every time`);
+    answer = "session";
+  }
+
+  // An explicit stop drops the grant.
+  await runtime.unload("demo.relay");
+  await runtime.loadFromPath(dir, ["desktop.control"]);
+  const before = prompts.length;
+  answer = "deny";
+  assert.equal((await relay("agent/askTool/resolve")).ok, false);
+  assert.equal(prompts.length, before + 1, "unloading must forget the grant");
+});
+
+test("Allow once is never remembered for an Agent question answer", async (t) => {
+  const prompts = [];
+  const runtime = createRuntime(t, [], {
+    desktopControl: {
+      operations: PROMPT_ANSWER_OPERATIONS,
+      invoke: async () => ({ ok: true }),
+    },
+    confirmDesktopControl: async (request) => {
+      prompts.push(request);
+      return "once";
+    },
+  });
+  const dir = writePlugin("demo.relay.once", ["desktop.control"], RELAY_PLUGIN);
+  await runtime.loadFromPath(dir, ["desktop.control"]);
+  for (let i = 0; i < 2; i += 1) {
+    const result = await runtime.invokePanelBridge("demo.relay.once", "desktop.test", {
+      operation: "agent/askTool/resolve",
+    });
+    assert.equal(result.ok, true);
+  }
+  assert.equal(prompts.length, 2);
+});

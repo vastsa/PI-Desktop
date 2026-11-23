@@ -47,6 +47,8 @@ import type {
   ComposerCommand,
   ComposerPasteFile,
   ComposerPastedFile,
+  ComposerSuggestionAnswer,
+  ComposerSuggestionMessage,
   FsChatRefResolveResult,
   FsEntry,
   FsImageDataUrlResult,
@@ -77,6 +79,8 @@ import type {
   PluginViewMeta,
   PluginScenicThemesDestinationMeta,
   PluginTheme,
+  MarketBrowseQuery,
+  MarketBrowseResult,
   MarketPluginSummary,
   MarketPluginDetail,
   PluginInstallResult,
@@ -175,7 +179,9 @@ import {
   normalizeNetworkProxy,
   normalizeNetworkPolicy,
   normalizeRadialMenuPreferences,
+  normalizeSidebarModulePreferences,
   radialMenuWriteError,
+  sidebarModulesWriteError,
   resolveFontScale,
   normalizeChatContentMaxWidth,
   validateNetworkPolicy,
@@ -386,6 +392,7 @@ export type BackgroundTaskSummary = {
   state: "running" | "exited" | "failed" | "stopped";
   elapsedMs: number;
   exitCode?: number;
+  continuation?: "pending" | "started" | "consumed" | "cancelled" | "failed";
 };
 
 export type BackgroundTasksListResult = {
@@ -461,6 +468,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     infiniteProviderRetry:
       (settings as { infiniteProviderRetry?: unknown }).infiniteProviderRetry === true,
     jevEnabled: (settings as { jevEnabled?: unknown }).jevEnabled === true,
+    codemodeEnabled: (settings as { codemodeEnabled?: unknown }).codemodeEnabled === true,
     defaultCommandShell: isCommandShellId(
       (settings as { defaultCommandShell?: unknown }).defaultCommandShell,
     )
@@ -472,6 +480,7 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
     ),
     fontScale: resolveFontScale(settings),
     radialMenu: normalizeRadialMenuPreferences(settings.radialMenu),
+    sidebarModules: normalizeSidebarModulePreferences(settings.sidebarModules),
     networkProxy: normalizeNetworkProxy(
       (settings as { networkProxy?: unknown }).networkProxy,
     ),
@@ -529,6 +538,12 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       errorCode: "INVALID_PARAMS",
     });
   }
+  const sidebarModulesProblem = sidebarModulesWriteError(settings.sidebarModules);
+  if (sidebarModulesProblem) {
+    throw Object.assign(new Error(sidebarModulesProblem), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
   const value = settings as AppSettings & {
     defaultCommandShell?: unknown;
     largePasteThreshold?: unknown;
@@ -536,6 +551,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     chatContentMaxWidth?: unknown;
     infiniteProviderRetry?: unknown;
     jevEnabled?: unknown;
+    codemodeEnabled?: unknown;
     smoothStreaming?: unknown;
     sidebarRunningIndicators?: unknown;
     sidebarRunningBadge?: unknown;
@@ -600,6 +616,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     typeof value.jevEnabled !== "boolean"
   ) {
     throw Object.assign(new Error("jevEnabled is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "codemodeEnabled") &&
+    typeof value.codemodeEnabled !== "boolean"
+  ) {
+    throw Object.assign(new Error("codemodeEnabled is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }
@@ -856,7 +880,8 @@ export const api = {
   /** Ask the host for a first-prompt title; it refuses a renamed session. */
   deriveSessionTitle: (id: string, title: string) =>
     invoke<{ updated: boolean }>(IPC.invoke.sessionDeriveTitle, id, title),
-  moveSessionProject: (sessionId: string, projectPath: string) =>
+  /** `projectPath: null` moves the session out of its project. */
+  moveSessionProject: (sessionId: string, projectPath: string | null) =>
     invoke<{ session: SessionSummary }>(IPC.invoke.sessionMoveProject, {
       sessionId,
       projectPath,
@@ -912,6 +937,8 @@ export const api = {
     invoke<BackgroundTasksListResult>(IPC.invoke.backgroundTasksList),
   backgroundTasksOutput: (id: string) =>
     invoke<BackgroundTaskOutput>(IPC.invoke.backgroundTasksOutput, { id }),
+  backgroundTasksCancelContinuation: (id: string) =>
+    invoke<{ ok: boolean }>(IPC.invoke.backgroundTasksCancelContinuation, { id }),
   backgroundTasksStop: (id: string) =>
     invoke<{ ok: boolean; found: boolean }>(IPC.invoke.backgroundTasksStop, { id }),
   onBackgroundTasksChanged: (listener: (payload: { version?: number }) => void) => {
@@ -1569,7 +1596,7 @@ export const api = {
   pluginViewOpen: (
     pluginId: string,
     viewId: string,
-    extra?: { sessionId?: string; location?: string; tabId?: string },
+    extra?: { sessionId?: string; location?: string; tabId?: string; selection?: string },
   ) => invoke(IPC.invoke.pluginViewOpen, { pluginId, viewId, ...extra }),
   pluginViewClose: (pluginId: string, viewId: string, extra?: { sessionId: string; tabId?: string }) =>
     invoke(IPC.invoke.pluginViewClose, { pluginId, viewId, ...extra }),
@@ -1606,6 +1633,9 @@ export const api = {
       providerId: string;
       sourceUrl: string;
     }>(IPC.invoke.marketSearch, { query, category }),
+  /** One page of the marketplace; the host falls back to its snapshot offline. */
+  marketBrowse: (query: MarketBrowseQuery) =>
+    invoke<MarketBrowseResult>(IPC.invoke.marketBrowse, query),
   marketGetDetail: (id: string) =>
     invoke<{ plugin: MarketPluginDetail }>(IPC.invoke.marketGetDetail, id),
   marketInstall: (input: {
@@ -1948,21 +1978,10 @@ export const api = {
    * only the renderer knows whether the draft can take it. A malformed message
    * is ignored — nothing here decides whether a plugin's suggestion is valid.
    */
-  onPluginComposerSuggestion: (
-    listener: (
-      event:
-        | {
-            kind: "offer";
-            requestId: string;
-            pluginId: string;
-            sessionId: string;
-            turnId?: string;
-            text: string;
-            expiresAt: number;
-          }
-        | { kind: "clear"; pluginId?: string; sessionId?: string },
-    ) => void,
-  ) => {
+  onComposerFileLines: (listener: (payload: { sessionId: string; reference: import("@pi-desktop/shared").FileLineReference }) => void) =>
+    window.piDesktop?.on?.(IPC.event.composerFileLines, (payload) => listener(payload as Parameters<typeof listener>[0])) ?? (() => {}),
+  /** Shell-only composer target, offer and clear messages. */
+  onPluginComposerSuggestion: (listener: (event: ComposerSuggestionMessage) => void) => {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.pluginComposerSuggestion, (payload) => {
       const event = payload as {
@@ -1972,47 +1991,47 @@ export const api = {
         sessionId?: unknown;
         turnId?: unknown;
         text?: unknown;
+        candidates?: unknown;
+        revision?: unknown;
+        validUntil?: unknown;
         expiresAt?: unknown;
       };
       if (event?.kind === "clear") {
         listener({
           kind: "clear",
-          ...(typeof event.pluginId === "string" && event.pluginId
-            ? { pluginId: event.pluginId }
-            : {}),
-          ...(typeof event.sessionId === "string" && event.sessionId
-            ? { sessionId: event.sessionId }
-            : {}),
+          ...(typeof event.pluginId === "string" && event.pluginId ? { pluginId: event.pluginId } : {}),
+          ...(typeof event.sessionId === "string" && event.sessionId ? { sessionId: event.sessionId } : {}),
         });
         return;
       }
-      if (
-        event?.kind !== "offer" ||
-        typeof event.requestId !== "string" ||
-        typeof event.pluginId !== "string" ||
-        typeof event.sessionId !== "string" ||
-        typeof event.text !== "string" ||
-        typeof event.expiresAt !== "number"
-      ) {
+      if (typeof event?.requestId !== "string" || typeof event.sessionId !== "string") return;
+      if (event.kind === "target") {
+        listener({ kind: "target", requestId: event.requestId, sessionId: event.sessionId });
         return;
       }
-      listener({
-        kind: "offer",
+      if (event.kind !== "offer" || typeof event.pluginId !== "string" ||
+          typeof event.expiresAt !== "number" || !Number.isFinite(event.expiresAt)) return;
+      const offer = {
+        kind: "offer" as const,
         requestId: event.requestId,
         pluginId: event.pluginId,
         sessionId: event.sessionId,
         ...(typeof event.turnId === "string" && event.turnId ? { turnId: event.turnId } : {}),
-        text: event.text,
         expiresAt: event.expiresAt,
-      });
+      };
+      if (event.candidates !== undefined) {
+        if (!Array.isArray(event.candidates) || event.candidates.length < 1 ||
+            event.candidates.length > 3 || !event.candidates.every((text) => typeof text === "string" && text) ||
+            typeof event.revision !== "string" || !event.revision ||
+            typeof event.validUntil !== "number" || !Number.isFinite(event.validUntil)) return;
+        listener({ ...offer, candidates: event.candidates, revision: event.revision, validUntil: event.validUntil });
+      } else if (typeof event.text === "string") {
+        listener({ ...offer, text: event.text });
+      }
     });
   },
-  /** The shell's answer to one composer suggestion the main process is waiting on. */
-  pluginComposerSuggestionResult: (input: {
-    requestId: string;
-    shown: boolean;
-    reason?: string;
-  }) => invoke<{ ok: boolean }>(IPC.invoke.pluginComposerSuggestionResult, input),
+  pluginComposerSuggestionResult: (input: ComposerSuggestionAnswer) =>
+    invoke<{ ok: boolean }>(IPC.invoke.pluginComposerSuggestionResult, input),
   onBrowserOpenFile: (listener: (event: { path: string }) => void) => {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.browserOpenFile, (payload) => {

@@ -2,7 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "Bei einer Neuinstallation erzeugt das mitgelieferte Plugin „Offizielle Erweiterungen“ Sitzungstitel automatisch; Vorschläge, Entwurfsverbesserung und KI-Gedächtnis bleiben aus, bis du sie einschaltest.",
+      "Neue Aufgabe startet jetzt einen temporären Chat außerhalb von Projekten, und Unterhaltungen lassen sich zwischen Projekten oder zurück in den temporären Chat verschieben.",
+      "Auf der leeren Startseite wechselst du das Projekt per Klick auf den Projektnamen oder „temporär“ im Titel; das projektlose Ziel heißt jetzt überall Temporärer Chat.",
+      "Optional melden abgeschlossene Hintergrundbefehle ihre Ergebnisse und setzen eine ruhende Unterhaltung nach Ende des Durchgangs fort; standardmäßig aus.",
+      "Plugins können Einträge zum Kontextmenü des Verlaufs hinzufügen, um markierten Text an eine angedockte Ansicht zu senden, und Vorschläge sowie begrenzten Kontext für die Unterhaltung liefern.",
+      "Fortschrittsnotizen von OpenAI-Responses-Modellen bleiben in ursprünglicher Reihenfolge im Ablauf des Durchgangs statt in der Antwort, auch nach erneutem Öffnen; „Letzte Antwort kopieren“ kopiert nur die Antwort.",
+      "Benutzerdefinierte OpenAI-kompatible Endpunkte behalten ihren Prompt-Cache über Durchgänge hinweg, sodass lange Unterhaltungen nicht mehr lange auf das erste Token warten.",
+      "Persische, arabische und andere rechtsläufige Absätze, die mit einem englischen Wort beginnen, werden jetzt in der richtigen Richtung angezeigt.",
+      "Das Dateimanager-Plugin 0.9.1 zeigt eingebettete Markdown-Bilder sicher an und bietet schreibgeschützte Tabellenvorschauen.",
+      "Behoben: Verzweigen älterer, aus dem Verlauf geladener Antworten, wiederholt fehlschlagende Konfigurationssynchronisierung nach einseitigem Löschen, abgeschnittene Modellnamen in den Einstellungen, der Arbeitsbereich-Schalter über der Suche und von manchen Responses-Endpunkten abgelehnte Tooldefinitionen.",
+    ],
+  },
+  {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Aktiviere OpenAI Fast pro Modell und nutze /fast im Gespräch für bevorzugte Verarbeitung; dadurch können Abo-Limits schneller sinken oder die Kosten pro Token steigen.",
       "Inline-Visualisierungen laden mit wiederverwendbaren Diagrammhelfern schneller; fehlgeschlagene Skripte zeigen jetzt hilfreiche Fehler statt leerer Karten.",
@@ -11,6 +28,13 @@ export const deEntries: ChangelogEntry[] = [
       "Der Kontextindikator zeigt die komprimierte Schätzung sofort nach manueller oder automatischer Komprimierung an.",
       "Bei chinesischer IME-Eingabe warten Slash-Befehle auf den Abschluss der Eingabe und bewahren den Entwurf, statt einen Schrägstrich zu duplizieren.",
       "Neu generierte Prompts bleiben nach der letzten Antwort an der richtigen Stelle, wenn ihr Archiv außerhalb des geladenen Verlaufs fertig wird.",
+      "Den Plugin-Marktplatz als eine Liste durchsuchen, die beim Scrollen nachlädt, nach Empfohlen, Beliebt, Neueste oder Name sortieren und die Trefferzahl je Kategorie sehen; ist das Plugin-Center nicht erreichbar, antwortet der zuletzt gespeicherte Katalog.",
+      "Jedes Plugin liegt jetzt auf einem zweisprachigen Regal, sodass der Marktplatz auf Deutsch oder Englisch liest und nach derselben Kategorie filtert.",
+      "Plugin-Details zeigen jetzt Herausgeber, Readme und Sicherheitshinweise aus dem Katalog; sie gingen beim Einlesen verloren.",
+      "Wähle GPT-6.2 Sol und GPT-6.2 Astra bei OpenAI, ChatGPT, GitHub Copilot, OpenCode und Gateways, die sie anbieten, mit ihren veröffentlichten Limits und Preisen.",
+      "Die Einstellungen öffnen sich jetzt als Dialog über der aktuellen Seite, die Seitenleiste zeigt Neue Aufgabe, Geplant und Plugin-Marktplatz oben, und eine kurze Startanleitung hilft beim Hinzufügen eines Modells und beim Kennenlernen des Plugin-Launcher-Kürzels.",
+      "Unter Einstellungen → Darstellung → Seitenleistenmodule legst du fest, welche Seitenleistenmodule erscheinen: Neue Aufgabe, Geplant, Plugin-Marktplatz, angeheftete Sitzungen, Sitzungen, Projekte, ihre Schaltflächen und die Versionsanzeige.",
+      "Der Seitenleistenbereich „Sitzungen“ heißt jetzt „Zuletzt“: Alle nicht angehefteten Unterhaltungen erscheinen neueste zuerst, mit „Mehr laden“; der leere Startseitentitel zeigt außerdem einen Dropdown-Pfeil zum Wechseln des Projekts.",
     ],
   },
   {
@@ -32,6 +56,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Gerenderte Mermaid-Diagramme als SVG-Text kopieren oder als eigenständige SVG-Dateien exportieren, auch in README-Vorschauen.",
       "Sieh im Kontextinspektor und in der Rundennutzungs-Kapsel, was jede Runde und die ganze Unterhaltung kostet; Abo-Nutzung wird getrennt von nutzungsbasierten Kosten gezeigt.",
       "Eigenes Video als Startanimation verwenden: einfach eines in den Ordner „startup“ legen; danach wird die Oberfläche eingeblendet.",
       "Plugins können gespeicherte Projekte und ihre Ordner auflisten, ohne die aktive Sitzung zu wechseln.",

@@ -197,7 +197,12 @@ export type AppState = {
   toasts: ToastItem[];
   notifications: AppNotification[];
   unreadNotificationCount: number;
-  page: "chat" | "scheduled" | "plugins" | "settings";
+  page: "chat" | "scheduled" | "plugins";
+  /**
+   * Settings is a modal dialog over the current page, not a route. The dialog
+   * may still wait behind higher-priority startup overlays (guide, notice).
+   */
+  settingsOpen: boolean;
   /** Tab ids come from the shared settings index. */
   settingsTab: SettingsTabId;
   /** Pending row anchor (i18n key) to flash after landing on a settings tab. */
@@ -325,7 +330,8 @@ export type AppState = {
   restoreSession: (id: string) => void;
   renameSession: (id: string, title: string) => Promise<void>;
   /** Move an idle session into an already-known project, preserving history. */
-  moveSessionProject: (id: string, projectPath: string) => Promise<boolean>;
+  /** `projectPath: null` moves the session into the temporary group. */
+  moveSessionProject: (id: string, projectPath: string | null) => Promise<boolean>;
   deleteSession: (id: string) => Promise<void>;
   setSessionSort: (sort: SessionSort) => void;
   setSessionArchiveVisibility: (show: boolean) => void;
@@ -371,6 +377,10 @@ export type AppState = {
   handleAgentEvent: (envelope: AgentEventEnvelope) => void;
   handlePlansChanged: (event: PlanningStateEvent) => void;
   setPage: (page: AppState["page"], opts?: { record?: boolean }) => void;
+  /** Open the Settings dialog on its current (or the given) destination. */
+  openSettings: (tab?: AppState["settingsTab"]) => void;
+  closeSettings: () => void;
+  /** Open the Settings dialog on `tab`, even when that tab is already shown. */
   setSettingsTab: (tab: AppState["settingsTab"]) => void;
   setSettingsAnchor: (key: string | null) => void;
   navBack: () => void;

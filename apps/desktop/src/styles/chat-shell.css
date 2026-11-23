@@ -29,14 +29,17 @@
 }
 
 .drag {
+  --window-drag-region: drag;
   -webkit-app-region: drag;
 }
 
 .no-drag {
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
 }
 
 .main-pane {
+  anchor-name: --main-pane;
   position: relative;
   display: flex;
   /* MainChat is the first-priority column and must never be compressed below
@@ -439,6 +442,7 @@
   cursor: col-resize;
   touch-action: none;
   user-select: none;
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -538,6 +542,7 @@
     calc(4px - var(--minimap-marker-count) * 0.05px),
     2px
   );
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -775,17 +780,39 @@
 }
 
 .empty-hero .project-underline {
-  display: inline-block;
+  display: inline-flex;
+  align-items: baseline;
   max-width: 100%;
+  padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.empty-hero .project-underline-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-decoration: underline dotted;
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
   text-decoration-color: var(--ds-text-faint);
+  transition: text-decoration-color 150ms ease;
+}
+
+.empty-hero .project-underline:hover .project-underline-name,
+.empty-hero .project-underline[aria-expanded="true"] .project-underline-name {
+  text-decoration-style: solid;
+  text-decoration-color: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-hero .project-underline-name {
+    transition: none;
+  }
 }
 
 .empty-hero .project-underline:hover,
@@ -958,11 +985,6 @@
 .home-project-switcher-clone-submit:disabled {
   cursor: default;
   opacity: 0.6;
-}
-
-.home-onboarding-checklist {
-  margin-top: 0;
-  max-width: 100%;
 }
 
 @media (max-height: 760px) {

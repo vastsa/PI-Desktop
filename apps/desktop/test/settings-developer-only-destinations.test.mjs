@@ -16,10 +16,13 @@ import {
   visibleSettingsNav,
 } from "../src/lib/settings-search.ts";
 
-const settingsPage = readFileSync(
-  new URL("../src/features/settings/SettingsPage.tsx", import.meta.url),
-  "utf8",
-);
+// The rail lives in SettingsPage; destination bodies in SettingsDestinationContent.
+const settingsPage =
+  readFileSync(new URL("../src/features/settings/SettingsPage.tsx", import.meta.url), "utf8") +
+  readFileSync(
+    new URL("../src/features/settings/SettingsDestinationContent.tsx", import.meta.url),
+    "utf8",
+  );
 const searchDialog = readFileSync(
   new URL("../src/components/SearchDialog.tsx", import.meta.url),
   "utf8",

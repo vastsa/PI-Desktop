@@ -11,6 +11,69 @@ Click the production Composer Stop button for a Native Pi source. Let abort succ
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Sessions, transcripts, the composer, streaming, queueing, context, and review.
 > Scenario template, gates, and traceability live in the plan.
 
+## E2E-FILE-LINES — File Manager selections in Composer
+
+Install the File Manager normally. In a temporary local project, open a source
+file with two distinct lines and select both. Verify **Add to chat** adds one
+removable `gpt.py (85:86)` chip
+without sending. Delete it, copy the selection, and paste into the Composer:
+the same chip appears, while paste into an ordinary editor yields the selected
+text. End a selection at the start of the next line and verify that line is
+excluded. A one-line selection displays one line number.
+
+Open the same view from a development-loaded File Manager and verify that
+the host does not advertise `composerFileLines`.
+
+With the Host unavailable, open an eligible installed File Manager view.
+Verify opening completes immediately and `composerFileLines` remains true.
+**Add to chat** reports Host unavailability. Reconnect the Host and retry
+from the same view. The selection is added after registration is checked.
+
+Insert an unsaved line before the range. Copying still pastes the original
+text and the selection menu has no **Add to chat** action. Save the file and
+verify that both actions use the new saved line numbers.
+
+Change the saved text after adding the chip, then send it. Observe one scoped
+Read with offset 84 and limit 2 and the saved result in the model request.
+Restart and verify the reference is still visible and there is no synthetic
+Read in the transcript or restored model history. Submit again after deleting
+the file and verify a failed reference marker in the model request. Repeat
+with Read permission denied and verify a blocked marker. Neither marker is
+quoted as file content. Repeat with a queued turn and a project switch. A
+different project's clipboard metadata cannot add the chip.
+Fill the draft with four distinct line references, then paste another range.
+Verify a limit warning, four unchanged references, and the pasted plain text.
+Paste metadata for a 4,001-line selection or an out-of-bounds line number and
+verify ordinary text paste. A trailing workspace separator must behave the same
+for the context-menu and clipboard paths; another workspace must still fail.
+Submit five references or a malformed range directly to the prompt boundary
+and runtime boundary: both reject with `INVALID_ARGUMENT` before any Read.
+Restore a historical attachment with range metadata and a recorded excerpt;
+verify the excerpt remains a file-lines block without an assistant tool call.
+Repeat a file-reference prompt in a staged Goal run: the current objective is
+already in the system prompt when the scoped Read executes, and the provider
+input retains the file context. Controlled coverage: `runtime.test.ts`.
+
+Add a line selection and a native disk-file reference to the same draft. Recall
+it from input history and verify the range, disk identity and byte size remain.
+Send and restart: the model context retains the scoped file-lines block and the
+disk path/size metadata, with no synthetic tool history or eager disk-file read.
+An attachment combining `lineRange` and `localReference` is rejected before any
+Read. Coverage: `composer-input-history.test.mjs`, `composer-file-reference-draft.test.mjs`,
+`composer-file-references.test.mjs` and `runtime.test.ts`.
+
+Automated installed-package coverage:
+`PI_FILE_MANAGER_QA_DIR=<existing Playwright install> PI_DESKTOP_HOST_BIN=<candidate Host> node scripts/e2e-file-manager-lines.mjs <File Manager .piplug>`.
+Build the candidate Desktop and workspace packages first. The runner installs
+the package through Host with its declared grants, selects the real session,
+and opens the production view through its public IPC. Context-menu input then
+reaches the real Composer. It verifies unsaved-selection rejection, scoped
+reads of current disk lines at the provider boundary, and range persistence
+across a full Desktop/Host restart without resending. The provider is a
+loopback Chat Completions fixture; application, capability and agent state
+use temporary directories. Native clipboard gestures and live providers
+remain separate qualification.
+
 ## E2E-CHAT-output-token-truncation (#2277)
 
 Use the real Desktop runtime and Pi loop with a controlled provider stream
@@ -367,10 +430,12 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Preconditions**: Provider configured; a session is open.
 - **Steps**: 1) Leave Enter-to-send enabled. Type a draft and press Enter.
   2) Disable Enter-to-send in Settings. 3) Type a second draft and press
-  Cmd/Ctrl+Enter. 4) Press Enter and Shift+Enter in a third draft.
+  Cmd/Ctrl+Enter. 4) Press Enter and Shift+Enter in a third draft, then
+  Shift+Enter at the end and type one character.
 - **Expected**: Step 1 sends. After the setting is off, Cmd/Ctrl+Enter sends;
   plain Enter and Shift+Enter insert newlines and do not send. IME composition
-  and an open autocomplete menu still take precedence over send.
+  and an open autocomplete menu still take precedence over send. The character
+  typed on the empty last line stays on that line.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md` §11.5,
   `04-ux/09-interaction-patterns.md` §1.2
 - **Acceptance**: C (composer send)
@@ -981,11 +1046,15 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Preconditions**: Provider configured; at least one real session exists so
   the sidebar history is non-empty.
 - **Steps**: 1) Invoke New Task from the sidebar, the top bar, or Cmd/Ctrl+N
-  inside a retained project and in the temporary scope. 2) Inspect the sidebar
-  history and the composer. 3) Click the same group's New Task control several
-  times quickly. 4) Type a message and send it. 5) Inspect the sidebar history
-  again and repeat in a different project group.
-- **Expected**: When the group's latest session is non-empty, the empty home
+  while a retained project is active, then use a project row's `+` action.
+  2) Inspect the sidebar history and the composer. 3) Click the same target's
+  New Task control several times quickly. 4) Type a message and send it. 5)
+  Inspect the sidebar history again and repeat for a different project group.
+- **Expected**: Global New Task creates a path-less conversation in the
+  temporary group and clears the visible workspace, whatever project was
+  active (issue #2455); only a project row's `+` or the empty-home project
+  switcher creates inside a project. When the target group's latest session is
+  non-empty, the empty home
   replaces the previous transcript on the first frame, then one new row is
   persisted from `session.create` (without a blocking `session.list` /
   `session.get` round-trip) and selected before the first send. Once that row
@@ -999,7 +1068,29 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Milestone**: M2
 - **Status**: Source-level regression covered
   (`app-store-sidebar.test.mjs`, `composer-send-state.test.mjs`,
-  `session-create.test.mjs`); full UI scenario Draft
+  `session-create.test.mjs`, `session-project-scope.test.mjs`); full UI
+  scenario Draft
+
+## E2E-011f2: A conversation leaves or joins a project from its crumb
+
+- **Preconditions**: Two projects are open; one idle conversation with
+  messages belongs to the first project and one temporary conversation exists.
+- **Steps**: 1) Open the project conversation and choose "Temporary chat" from the
+  topbar project crumb. 2) Choose the second project from the same crumb. 3)
+  Open the temporary conversation's empty home or topbar and choose a project.
+  4) Start a turn and open the crumb while it runs.
+- **Expected**: Each move keeps the transcript, title, and model, regroups the
+  sidebar row, and the visible workspace follows the active conversation. The
+  next turn uses the new project's instructions (or none). A running,
+  remote, native, or isolated-worktree conversation shows a static crumb and
+  cannot move.
+- **Specs linked**: `04-ux/01-ui-ia.md` (§5), `04-ux/09-interaction-patterns.md`
+- **Acceptance**: C (session grouping), F (persistence)
+- **Milestone**: M2
+- **Status**: Source-level regression covered (`session-project-scope.test.mjs`,
+  `topbar-title-rendering.test.mjs`, host-core
+  `move_session_project_reassigns_only_the_project_and_rejects_running_turns`);
+  full UI scenario Draft
 
 ## E2E-011e: Empty-session reuse is scoped to the latest session
 
@@ -1801,6 +1892,9 @@ this does not claim an installed full-app settings journey.
   tool, and denied tool. 7) Toggle `Show thinking` off and on and inspect the
   active-thinking, failure/recovery and completed states. 8) Remount rows within
   the retained pane, then reload the renderer and reopen the session.
+  9) Stream explicitly marked Responses commentary followed by a final answer;
+  check that only the process shows the commentary, then copy the answer before
+  and after reopening the signed transcript row. Neither copy includes progress.
 - **Expected**: A turn renders exactly one process disclosure containing every
   pre-answer row, the `Bash`/run rows included; the trailing answer, assistant
   errors and stopped trailing text stay outside it, as do pending actions. The
@@ -2972,18 +3066,32 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      closing fence arrives.
   2. Scroll the completed diagram into view, toggle source, copy the source,
      and switch between light and dark themes.
-  3. Scroll upward so transcript follow is paused, then bring another completed
+  3. Copy SVG and export SVG; parse the clipboard text and downloaded file
+     as standalone SVG, verify the diagram labels, explicit dimensions and
+     resolved UI font, then repeat in a README preview. Give the preview a
+     different font from the document root and themed node colors; open
+     exported SVG in an isolated SVG document and compare computed fonts and
+     colors. In SVG export fixtures, verify app CSS variables, per-node
+     overrides, nested fallbacks, inline styles and presentation attributes,
+     export from source
+     view, and that the live SVG remains unchanged. Deny clipboard access
+     and force download setup failure; verify localized error feedback.
+     Repeat while rendering and with invalid input: SVG actions stay disabled.
+     Switch diagrams/themes and confirm subsequent exports use the new SVG.
+  4. Scroll upward so transcript follow is paused, then bring another completed
      diagram near the viewport.
-  4. Render invalid and over-20,000-character Mermaid sources plus a payload
+  5. Render invalid and over-20,000-character Mermaid sources plus a payload
      attempting an HTML label, external image, link, or Mermaid config override.
-  5. Expand thinking content containing a `mermaid` fence.
+  6. Expand thinking content containing a `mermaid` fence.
 - **Expected**:
   - The partial stream remains a normal source code block; only the complete
     answer fence starts rendering, and only near the viewport. Ordinary code
     fences and thinking Mermaid fences retain their source presentation.
   - The diagram uses bounded card chrome, remains within the transcript width,
     switches theme without stale colors, and exposes keyboard-accessible
-    diagram/source and copy controls. Copy returns the original fence source.
+    diagram/source and copy controls. Source copy returns the original fence
+    source; SVG copy returns XML text and SVG export downloads `diagram.svg`.
+    Exported content retains the sanitization applied to the preview.
   - Diagram height changes keep a pinned transcript at the bottom but never
     resume follow after the user scrolls upward.
   - Invalid, oversized, or unsafe input cannot fail the assistant turn, execute
@@ -2993,7 +3101,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `04-ux/09-interaction-patterns.md` §2, `05-security/01-security.md` §2, D165
 - **Acceptance**: C (chat & stream), Security, Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`mermaid-rendering.test.mjs`); rendered security and
+- **Status**: Unit-covered (`mermaid-rendering.test.mjs`); README SVG copy/export,
+  theme/source updates, and error recovery covered in isolated Electron
+  (`mermaid-export-user-path.test.mjs`). Remaining rendered security and
   visual scenario Draft
 
 ## E2E-CHAT-opaque-floating-decision-and-retry-surfaces: Dock, Plan approval, and retry surfaces occlude transcript text
@@ -4890,3 +5000,17 @@ Build two actual runtimes with identical configuration and different scratch dir
   wrapped descriptions; preserve detail navigation, Stop and responsive layout.
 - Qualification: isolated Chromium geometry checks cover this layout regression;
   installed-client and live-provider checks remain separate.
+
+## E2E-PLUGIN-transcript-selection-view
+
+- With an opted-in plugin installed, select part of a message bubble and
+  right-click. The item shows its localized title and host icon. Repeat with
+  no selection, a selection outside the bubble, and the plugin disabled.
+  Each of those menus omits the item.
+- Choose the item on a cold view and again on an already open view. Verify the
+  same docked tab receives one `view:selection` payload per click with the
+  session ID and excerpt only. Escape delivers nothing. Switching sessions
+  while the view is loading discards the pending excerpt.
+- With a side-question plugin, verify the quote preview can be removed
+  atomically and the first explicitly sent prompt contains only the excerpt
+  and the new question. The main conversation and its input remain intact.

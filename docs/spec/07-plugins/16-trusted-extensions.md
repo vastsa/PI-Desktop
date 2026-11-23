@@ -312,7 +312,9 @@ not persisted.
 Neutral values: `getFlag` returns the declared default; `registerFlag` records
 the declaration so `getFlag` works but exposes no CLI or UI in v1;
 `sessionManager` accessors return empty results; UI setters return a no-op
-`dispose`.
+`dispose`. `getContextUsage()` returns `{ tokens, contextWindow, percent, autoCompactAt }`,
+where `contextWindow` is the session's hard input budget and `autoCompactAt` is
+the active automatic compaction threshold (`null` when automatic compaction is disabled).
 
 ## 6. Event mapping
 
@@ -355,7 +357,11 @@ can each add to the provider request. Unreturned input mutations are dropped.
 The user-run payload also carries `messageType: "user"` and `prompt`, matching
 the Pi 1.3 discriminator. This is additive to the legacy shim surface; it does
 not enable `sendMessage` or custom-message runs. Native Pi sessions continue
-using the upstream SDK event union and lifecycle.
+using the upstream SDK event union and lifecycle. Each provider call wrapper
+invocation also attaches a monotonic in-process `contextRequestId` to
+`before_provider_request` and `after_provider_response` so handlers can pair
+out-of-order async response notifications with their request without mutating
+outgoing headers or payloads.
 
 Each turn starts this chain from its freshly composed base prompt, so additions
 do not accumulate across turns. The same ordered handlers, base, and returned
