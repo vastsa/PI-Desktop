@@ -37,7 +37,7 @@ const timer = setInterval(() => {
 await writeFile(join(workspace, "independent.txt"), "work while Bash runs");
 await writeFile(join(workspace, "quick.cjs"), "process.exitCode = 4;\n");
 await writeFile(join(workspace, "batch.cjs"), `
-setTimeout(() => require("node:fs").writeFileSync("batch.txt", "Bash settled"), 6250);
+setTimeout(() => require("node:fs").writeFileSync("batch.txt", "Bash settled"), 11250);
 `);
 const host = new Host(resolveHostBinary(), join(scratch, "data"), {
   quiet: true,
@@ -156,6 +156,7 @@ const server = createServer(async (req, res) => {
       case 15: {
         const running = parseResult(body, "call-15");
         assert.equal(running.state, "running");
+        assert(running.elapsedMs >= 10_000, "the first wait must use the ten-second window");
         assert.equal(running.exitCode, undefined);
         assert.match(running.stdout, /before-yield/);
         assert.equal(running.job.kind, "bash");
@@ -176,7 +177,7 @@ const server = createServer(async (req, res) => {
         assert.equal(finished.exitCode, 7);
         assert.equal(finished.stdout.replaceAll("\r", ""), "before-yield\nafter-yield\n");
         assert.equal(await readFile(join(workspace, "starts.txt"), "utf8"), "start\n");
-        name = "Bash"; args = { command: "node service.cjs", timeout: 8 };
+        name = "Bash"; args = { command: "node service.cjs", timeout: 13 };
         break;
       }
       case 18: {
@@ -189,8 +190,8 @@ const server = createServer(async (req, res) => {
         const timedOut = parseResult(body, "call-19");
         assert.equal(timedOut.state, "failed");
         assert.equal(timedOut.exitCode, null);
-        assert.match(timedOut.stderr, /timed out after 8000ms/);
-        assert(timedOut.elapsedMs < 12500, "the original timeout must include the first wait");
+        assert.match(timedOut.stderr, /timed out after 13000ms/);
+        assert(timedOut.elapsedMs < 20000, "the original timeout must include the first wait");
         name = "Bash"; args = { command: "node service.cjs", timeout: 25 };
         break;
       }

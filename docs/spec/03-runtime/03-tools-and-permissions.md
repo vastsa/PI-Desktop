@@ -638,7 +638,7 @@ Host execution baseline:
   `errorCode: TOOL_FAILED` while preserving its `exitCode`, stdout, and stderr
   in `content` so the agent can diagnose the command without blindly retrying.
 - For a parent Agent's ordinary local Bash call at the end of a tool batch,
-  wait up to 5s for the first response. If the command is still running and the
+  wait up to 10s for the first response. If the command is still running and the
   session has background capacity, return a `running` snapshot with bounded
   output and a Bash job reference. Host keeps the same process and its original
   timeout, and the agent can use `TaskWait` before consuming its results or

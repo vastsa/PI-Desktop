@@ -1626,7 +1626,7 @@ backgroundTasks methods remain outside the model proxy.
 
 For a local parent Agent, the runtime can send `yieldAfterInitialWait: true`
 on a `tools.execute` Bash request when no later tool in the same batch is
-waiting behind it. If the process is still running at the 5s wait boundary,
+waiting behind it. If the process is still running at the 10s wait boundary,
 Host can return a `running` background-job snapshot without an `exitCode`.
 The snapshot also contains `backgroundTaskId` and `commandShellId`. The
 existing `backgroundJobs.*` methods observe and stop the same process. The

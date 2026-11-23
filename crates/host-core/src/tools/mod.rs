@@ -54,7 +54,7 @@ pub const MAX_TIMEOUT_MS: u64 = 2_147_483_647;
 pub const MIN_BASH_TIMEOUT_MS: u64 = 1_000;
 pub const MAX_BASH_TIMEOUT_MS: u64 = 21_600_000;
 pub const DEFAULT_BASH_TIMEOUT_MS: u64 = 60_000;
-const BASH_INITIAL_WAIT_MS: u64 = 5_000;
+const BASH_INITIAL_WAIT_MS: u64 = 10_000;
 pub const INTERNAL_TOOL_RUNNER_FLAG: &str = "--internal-tool-runner";
 // Windows inherits the parent process' Job Object unless the child is created
 // with CREATE_BREAKAWAY_FROM_JOB. The hidden runner is immediately assigned to
@@ -3196,7 +3196,7 @@ async fn run_foreground_bash(
                 may_yield = false;
                 let Some(state) = options.app_state.as_ref() else { continue };
                 let Some(early) = early.take() else { continue };
-                match crate::background_tasks::register_yielded_task(
+                match crate::background_tasks::yielded::register_yielded_task(
                     state, &options.session_id, &command, &options.command_shell_id,
                     started_at, cancellation.as_ref(), [stdout.result(), stderr.result()],
                 ).await {
