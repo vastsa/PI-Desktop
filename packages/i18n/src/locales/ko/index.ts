@@ -244,6 +244,7 @@ export const ko = {
     newTask: "새 작업",
     newProject: "새 프로젝트",
     projects: "프로젝트",
+    remoteProjects: "원격",
     plugins: "확장 기능",
     settings: "설정",
     checkForUpdates: "업데이트 확인",

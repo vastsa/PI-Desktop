@@ -242,6 +242,7 @@ export const en = {
     newTask: "New task",
     newProject: "New project",
     projects: "Projects",
+    remoteProjects: "Remote",
     plugins: "Extensions",
     settings: "Settings",
     checkForUpdates: "Check for updates",
