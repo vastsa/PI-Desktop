@@ -520,7 +520,7 @@ export function registerProviderIpc({
       };
 
       const cacheForCurrentProvider = async (models: unknown[], complete: boolean) => {
-        if (!provider || req.source === "cache") return;
+        if (!host || !provider || req.source === "cache") return;
         const savedBaseUrl = (provider.baseUrl ?? "").trim().replace(/\/+$/, "");
         const requestBaseUrl = baseUrl.replace(/\/+$/, "");
         const usesSavedEndpoint =
@@ -528,23 +528,15 @@ export function registerProviderIpc({
           apiStyle === (provider.apiStyle ?? "chat_completions");
         if (!usesSavedEndpoint) return;
         try {
-          const latestProvider = (await listRuntimeProviders()).find(
-            (candidate) => candidate.id === provider.id,
-          );
-          const endpointStillCurrent =
-            (latestProvider?.baseUrl ?? "").trim().replace(/\/+$/, "") ===
-              requestBaseUrl &&
-            (latestProvider?.apiStyle ?? "chat_completions") === apiStyle;
-          if (endpointStillCurrent) {
-            const cached = await host!.call<{ models: CachedModel[] }>("providers.cacheModels", {
-              providerId: provider.id,
-              models,
-              complete,
-            });
-            discoveryStates = new Map((cached.models ?? []).map((model) => [
-              model.modelId.trim().toLowerCase(), model.discoveryState,
-            ]));
-          }
+          const cached = await host.call<{ models: CachedModel[] }>("providers.cacheModels", {
+            providerId: provider.id,
+            endpoint: { baseUrl: provider.baseUrl ?? "", apiStyle: provider.apiStyle ?? "" },
+            models,
+            complete,
+          });
+          discoveryStates = new Map((cached.models ?? []).map((model) => [
+            model.modelId.trim().toLowerCase(), model.discoveryState,
+          ]));
         } catch (e) {
           logger.app("provider", "warn", "model cache update failed", {
             data: {
@@ -671,7 +663,10 @@ export function registerProviderIpc({
             }));
             // Only what the endpoint actually served is cached; a configured id
             // it never offered must not be recorded as discovered.
-            await cacheForCurrentProvider(models, outcome.complete);
+            await cacheForCurrentProvider(models.map((model, index) => ({
+              ...model,
+              reportedContextWindow: outcome.models[index].contextWindow,
+            })), outcome.complete);
             return {
               models: withConfiguredBindings(models),
               source: "remote" as const,

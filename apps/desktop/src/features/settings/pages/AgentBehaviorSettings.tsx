@@ -68,6 +68,20 @@ export function AgentBehaviorSettings({
       </SettingsCard>
 
       <SettingsCard title={t("settings.execution")}>
+        <SettingsRow title={t("settings.backgroundJobContinuation")} description={t("settings.backgroundJobContinuationDesc")}>
+          <SettingsToggle
+            checked={settings.backgroundJobContinuationEnabled === true}
+            label={t("settings.backgroundJobContinuation")}
+            onChange={() => void saveSettings({ backgroundJobContinuationEnabled: settings.backgroundJobContinuationEnabled !== true })}
+          />
+        </SettingsRow>
+        <SettingsRow title={t("settings.codemode")} description={t("settings.codemodeDesc")}>
+          <SettingsToggle
+            checked={settings.codemodeEnabled === true}
+            label={t("settings.codemode")}
+            onChange={() => void saveSettings({ codemodeEnabled: settings.codemodeEnabled !== true })}
+          />
+        </SettingsRow>
         <SettingsRow
           title={t("settings.infiniteProviderRetry")}
           description={t("settings.infiniteProviderRetryDesc")}

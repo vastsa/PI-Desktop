@@ -12,8 +12,7 @@
 :root[data-platform="darwin"],
 :root[data-platform="darwin"] body,
 :root[data-platform="darwin"] #root,
-:root[data-platform="darwin"] .app-shell,
-:root[data-platform="darwin"] .settings-shell {
+:root[data-platform="darwin"] .app-shell {
   background: transparent;
 }
 
@@ -27,6 +26,7 @@
   justify-content: center;
   padding: 24px;
   background: var(--ds-bg-primary);
+  --window-drag-region: drag;
   -webkit-app-region: drag;
   animation: startup-splash-in var(--motion-duration-slow) var(--motion-ease-out) both;
 }
@@ -59,6 +59,7 @@
   align-items: center;
   gap: 18px;
   width: min(100%, 280px);
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
 }
 
@@ -190,6 +191,7 @@
   background: #000;
   opacity: 1;
   /* The window has no chrome yet, so the surface itself has to be draggable. */
+  --window-drag-region: drag;
   -webkit-app-region: drag;
   transition: opacity var(--motion-startup-reveal) var(--motion-ease-out);
 }
@@ -298,6 +300,7 @@
   justify-content: center;
   padding: 24px;
   background: var(--ds-bg-primary);
+  --window-drag-region: drag;
   -webkit-app-region: drag;
   animation: startup-splash-in var(--motion-duration-slow) var(--motion-ease-out) both;
 }
@@ -319,6 +322,7 @@
   gap: 14px;
   width: min(100%, 420px);
   text-align: center;
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
 }
 
@@ -590,6 +594,7 @@
   /* Keep the shell continuous; titlebar hierarchy comes from spacing and
    * surface color instead of a hard lower rule. */
   border-bottom: 0;
+  --window-drag-region: drag;
   -webkit-app-region: drag;
 }
 
@@ -599,19 +604,28 @@
 
 /* Conversation top bar (Codex/WorkBuddy-style): replaces the empty chat
  * titlebar band with a real toolbar — session title and action buttons. It
- * mirrors the frameless drag semantics of the
- * old .main-titlebar: an absolute 46px band that is draggable, with the
- * interactive controls opting back into pointer events. */
+ * mirrors the frameless drag semantics of .main-titlebar, with interactive
+ * controls opting back into pointer events. */
 .conversation-topbar {
-  position: absolute;
-  inset-inline: 0;
+  --ct-inline-padding: 12px;
+  position: fixed;
+  left: anchor(--main-pane left);
+  /* Follow the pane as it resizes, clamping the action group clear of the
+   * fixed toggle even while the dock is too narrow to contain that control. */
+  right: max(
+    anchor(--main-pane right),
+    calc(
+      var(--ds-work-panel-toggle-right) + var(--ds-work-panel-toggle-size) +
+        8px - var(--ct-inline-padding)
+    )
+  );
   top: 0;
   z-index: 10;
   display: flex;
   height: var(--ds-toolbar-height);
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 var(--ct-inline-padding);
   background: var(--ds-bg-primary);
   /* Keep the conversation surface visually continuous with the titlebar. */
   border-bottom: 0;
@@ -624,6 +638,7 @@
    * governs expansion; the .ct-collapsed rule below matches sidebar-out.
    */
   transition: padding-left var(--motion-duration-normal) var(--motion-ease-out);
+  --window-drag-region: drag;
   -webkit-app-region: drag;
   app-region: drag;
 }
@@ -637,6 +652,7 @@
 
 .conversation-topbar .ct-left,
 .conversation-topbar .ct-right {
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
   display: flex;
@@ -654,11 +670,6 @@
 .conversation-topbar .ct-right {
   flex: 0 0 auto;
   justify-content: flex-end;
-  padding-right: 36px;
-}
-
-.conversation-topbar.ct-work-panel-open .ct-right {
-  padding-right: 0;
 }
 
 .conversation-topbar .ct-title-wrap {
@@ -669,6 +680,7 @@
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
+  --window-drag-region: drag;
   -webkit-app-region: drag; /* keep the title area draggable */
   app-region: drag;
 }
@@ -688,6 +700,39 @@
   font-size: var(--text-xs);
   line-height: var(--leading-compact);
   white-space: nowrap;
+}
+
+.conversation-topbar .ct-project-menu {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.conversation-topbar .ct-project-trigger {
+  max-width: 100%;
+  margin: -2px -4px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-3xs);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.conversation-topbar .ct-project-trigger:hover,
+.conversation-topbar .ct-project-trigger[aria-expanded="true"] {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-secondary);
+}
+
+.conversation-topbar .ct-project-trigger:focus-visible {
+  outline: 2px solid var(--ds-focus);
+  outline-offset: 1px;
+}
+
+.conversation-topbar .ct-project-trigger:disabled {
+  cursor: default;
 }
 
 .conversation-topbar .ct-project > svg {
@@ -744,6 +789,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: text;
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -778,6 +824,7 @@
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-tight);
   line-height: var(--leading-compact);
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -801,6 +848,7 @@
   background: transparent;
   color: var(--ds-text-secondary);
   cursor: pointer;
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
   transition: background var(--motion-duration-fast) var(--motion-ease-out),
@@ -892,9 +940,10 @@
 .app-work-panel-toggle {
   position: fixed;
   top: 9px;
-  right: var(--ds-work-panel-toggle-inset);
+  right: var(--ds-work-panel-toggle-right);
   z-index: 30;
   pointer-events: auto;
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -924,9 +973,9 @@
   opacity: 0;
 }
 
-:root[data-platform="win32"] .app-work-panel-toggle,
-:root[data-platform="linux"] .app-work-panel-toggle {
-  right: calc(
+:root[data-platform="win32"],
+:root[data-platform="linux"] {
+  --ds-work-panel-toggle-right: calc(
     var(--ds-window-controls-width) + var(--ds-work-panel-toggle-inset)
   );
 }
@@ -989,6 +1038,7 @@
    * own carve-out the button falls inside the top bar's drag region, which on
    * macOS swallows the click and keeps the arrow cursor instead of the pointer.
    */
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
   opacity: 0;
@@ -1009,19 +1059,6 @@
 
 .conversation-topbar .ct-lead > .ct-icon-btn {
   flex: 0 0 28px;
-}
-
-/* Frameless Windows/Linux controls own a 120px band at the conversation pane's
- * right edge: 112px of controls plus an 8px visual buffer. */
-:root[data-platform="win32"] .conversation-topbar,
-:root[data-platform="linux"] .conversation-topbar {
-  right: var(--ds-window-controls-width);
-}
-
-:root[data-platform="win32"] .conversation-topbar.ct-work-panel-open,
-:root[data-platform="linux"] .conversation-topbar.ct-work-panel-open {
-  /* Window controls stay viewport-fixed over the panel, not this pane. */
-  right: 0;
 }
 
 .notification-center {
@@ -1294,6 +1331,7 @@
 }
 
 .window-controls {
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
   pointer-events: auto;
@@ -1335,6 +1373,7 @@
 }
 
 .window-control-btn {
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
   pointer-events: auto;
@@ -1363,9 +1402,7 @@
 /* End every native drag rectangle before the window-control hit targets.
  * Visual padding alone does not exclude an Electron draggable region. */
 :root[data-platform="win32"] .main-titlebar,
-:root[data-platform="linux"] .main-titlebar,
-:root[data-platform="win32"] .settings-titlebar,
-:root[data-platform="linux"] .settings-titlebar {
+:root[data-platform="linux"] .main-titlebar {
   right: var(--ds-window-controls-width);
 }
 
@@ -1382,6 +1419,7 @@
   justify-content: space-between;
   gap: 4px;
   padding: 0 8px;
+  --window-drag-region: drag;
   -webkit-app-region: drag;
 }
 
@@ -1472,6 +1510,7 @@
 
 .window-chrome-row button {
   pointer-events: auto;
+  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -1479,4 +1518,12 @@
 .window-chrome-drag {
   flex: 1 1 auto;
   align-self: stretch;
+}
+
+
+/* A zoomed macOS window stays fixed; double-click restore is renderer-owned
+ * only while these native drag regions are disabled. Normal windows stay OS-owned. */
+:root[data-platform="darwin"][data-window-maximized="true"] * {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
 }

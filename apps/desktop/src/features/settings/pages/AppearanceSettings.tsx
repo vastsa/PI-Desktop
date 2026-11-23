@@ -14,6 +14,7 @@ import { FontSizeRow } from "../../../components/settings/FontSizeRow";
 import { LanguageRow } from "../../../components/settings/LanguageRow";
 import { MacosWindowTranslucencyRow } from "../../../components/settings/MacosWindowTranslucencyRow";
 import { RadialMenuSettings } from "../../../components/settings/RadialMenuSettings";
+import { SidebarModulesSettings } from "../../../components/settings/SidebarModulesSettings";
 import { StartupAnimationRows } from "../../../components/settings/StartupAnimationRows";
 import { ThemeRow } from "../../../components/settings/ThemeRow";
 import { SettingsCard, SettingsRow } from "../primitives";
@@ -88,6 +89,8 @@ export function AppearanceSettings({
           />
         </SettingsRow>
       </SettingsCard>
+
+      <SidebarModulesSettings settings={settings} saveSettings={saveSettings} />
 
       <RadialMenuSettings settings={settings} saveSettings={saveSettings} />
 

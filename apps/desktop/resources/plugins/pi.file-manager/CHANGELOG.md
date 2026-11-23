@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The editor's find / replace panel and the "Go to line" dialog (Ctrl/Cmd+Alt+G)
+  follow the plugin palette: fields, placeholders, carets and buttons stay
+  readable in dark and light appearances instead of falling back to CodeMirror's
+  white light-theme defaults. `pnpm verify` now checks the rule in the source CSS
+  and in the shipped `views/assets/index.js`.
 - Fix SSH workspaces remaining on Loading: remote directories and text/image
   previews now use the paired Host's scoped SDK reads, with explicit read-only
   controls, upgrade/errors and retry. Local file operations never receive an
@@ -12,7 +17,16 @@
 - Show root and nested directory failures with their actual error and Retry
   action, rather than incorrectly showing Loading indefinitely.
 
+- Explain line-reference clipboard fallback, show Host rejection reasons, and
+  indicate when saving or reloading is required before referencing source lines.
+
+- Copying saved source selections includes file paths and line ranges while
+  retaining plain text. Supporting Hosts can enable Add to chat; unsaved
+  selections continue to copy plain text only.
 - HTML、HTM 与 XHTML 文件的「通过…打开」菜单新增「在内置浏览器中打开」，仅在宿主提供 Browser API 时显示；与宿主声明的 `fs.read` 文件范围一致。
+- 新增 **xlsx 只读预览**：`.xlsx` 不再被当成二进制。主进程只读取工作表里的共享字符串、内联文字和数字，转成制表符文本后复用现有表格视图；多张表用表名隔开。不改原文件、不执行宏。
+  工作簿只有表格这一种看法，主进程也拒绝对 `xlsx` / `xlsm` 写入——它显示的是派生文本，不是文件字节，过去那种「编辑页签 + 保存」会把整个工作簿替换成纯文本。
+  上限：压缩包 8 MiB、单个部件解压 32 MiB（防压缩炸弹）、8 张表、5000 行、60 列、单格 2000 字、整份预览 2 MiB；超出与「部件读不到」都在表格上方按界面语言说明（视图本地化，主进程只回标志与上限）。损坏文件和老的 `.xls` 仍显示不支持预览。
 - 重新整理目录树右键菜单的分组与顺序，并补齐右键刷新；空白区域只显示新建和刷新，文件与文件夹按类型显示操作。
 - 新增 **PDF 只读预览**：连续上下滚动，支持「单页 / 双页 / 双页（封面单独）」布局、上一页 / 下一页、输入页码跳转、10%–400% 手动缩放、适应宽度、100% 实际大小，以及有文字层时的选择与复制。
 - 新增可收起的 **导航侧栏**：按可见范围渲染的缩略图与当前页标记、可展开的嵌套目录 / 书签（支持显式与命名目标）、文件名 / 体积 / 页数及 PDF Info / XMP 元数据；无内置目录时明确提示，PDF 页码标签与物理页码同时显示。窄面板中侧栏覆盖显示，跳转后自动收起，Escape 可关闭；界面跟随中英文与亮暗主题。

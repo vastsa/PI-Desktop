@@ -489,18 +489,23 @@ export class UserMcpRuntime {
       existing.lastUsedAt = Date.now();
       return { tools: await existing.connecting, entry: existing };
     }
+    // Session assembly must not repeatedly pay a broken server's connect
+    // timeout. A later explicit tool call is a fresh request, however, and
+    // gets a fresh handshake instead of staying unavailable forever.
+    if (existing?.status.state === "failed") {
+      // A settings probe can mark a transport failed while an older call is
+      // still in flight. Let that call finish rather than closing its client.
+      if (!pin || existing.activeCalls > 0) {
+        if (pin) existing.activeCalls += 1;
+        existing.lastUsedAt = Date.now();
+        return { tools: [], entry: existing };
+      }
+      existing.client.close();
+    }
     if (existing?.client.isConnected()) {
       if (pin) existing.activeCalls += 1;
       existing.lastUsedAt = Date.now();
       return { tools: existing.client.getTools(), entry: existing };
-    }
-    // A server that already failed its handshake this run stays failed until the
-    // user edits it or asks for a test, so every session assembly does not pay
-    // the connect timeout again.
-    if (existing?.status.state === "failed") {
-      if (pin) existing.activeCalls += 1;
-      existing.lastUsedAt = Date.now();
-      return { tools: [], entry: existing };
     }
 
     const entry = existing ?? this.createEntry(record, oauthToken, key, projectPath);

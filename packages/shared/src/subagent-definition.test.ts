@@ -35,6 +35,18 @@ function definition(
 }
 
 describe("parseSubagentDefinition", () => {
+  it("reads frontmatter from a file saved with a UTF-8 byte-order mark", () => {
+    const result = parse(
+      "\uFEFF---\nname: code-reviewer\ndescription: Reviews a diff.\ntools: [Read, Grep]\n---\nReview it.",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.definition.name).toBe("code-reviewer");
+    expect(result.definition.description).toBe("Reviews a diff.");
+    expect(result.definition.tools).toEqual(["Read", "Grep"]);
+    expect(result.definition.prompt).toBe("Review it.");
+  });
+
   it("reads the document a project would actually write", () => {
     const result = parse(`---
 name: code-reviewer

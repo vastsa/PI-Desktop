@@ -140,6 +140,7 @@ async fn isolated_session_user_path_from_create_to_delete() {
             output_tx: None,
             extra_env: env,
             run_in_background: false,
+            continuation_turn_id: None,
             app_state: None,
         })),
     )

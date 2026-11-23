@@ -337,7 +337,7 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     baseUrl: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
     apiStyle: "chat_completions",
     labelKey: "settings.presetAlibabaTokenPlanCn",
-    aliases: ["qwen-token-plan-cn"],
+    aliases: ["qwen-token-plan-cn", "qwen-token-plan-individual-cn"],
   },
   {
     id: "xiaomi-token-plan-cn",
