@@ -3,6 +3,7 @@ import type {
   AgentMessage,
 } from "@earendil-works/pi-agent-core";
 import type { CompactionEntry, MessageEntry } from "./pi-runtime-types.js";
+import { convertToLlm } from "./pi-runtime-messages.js";
 import { buildSessionContext } from "./session-context.js";
 
 function user(id: string, text: string, seq: number): MessageEntry {
@@ -114,11 +115,69 @@ describe("buildSessionContext", () => {
     expect(JSON.stringify(messages)).not.toContain("old answer");
   });
 
+  it("sends the active request before the checkpoint and a new user message after it", () => {
+    const original = user("u1", "This is an empty project", 1);
+    const entry = compaction("c1", 3, [original.message]);
+    entry.summary = "Setup is complete. Verify the homepage.";
+    entry.details = { retainedTailMode: "active_turn" };
+
+    const resumed = convertToLlm(buildSessionContext([original, entry]).messages);
+    expect(resumed.map((message) => message.role)).toEqual(["user", "user"]);
+    expect(resumed[0]).toMatchObject({ content: "This is an empty project" });
+    expect(resumed[1]).toMatchObject({
+      content: [{ type: "text", text: expect.stringContaining(
+        "checkpoint is newer than the original request above",
+      ) }],
+    });
+    expect(JSON.stringify(resumed[1])).toContain(entry.summary);
+
+    const saved = JSON.parse(JSON.stringify(entry)) as CompactionEntry;
+    const next = user("u2", "Change direction", 4);
+    const reopened = convertToLlm(buildSessionContext([original, saved, next]).messages);
+    expect(reopened.slice(0, 2)).toEqual(resumed);
+    expect(reopened[2]).toMatchObject({ role: "user", content: "Change direction" });
+  });
+
+  it("keeps the recovery notice before a fallback's sole retained user message", () => {
+    const original = user("u1", "Set up the empty project", 1);
+    const entry = compaction("c1", 3, [original.message]);
+    entry.summary = "The summary request failed. Continue from the recent messages below.";
+    entry.details = {
+      fallback: "retained_tail",
+      retainedTailMode: "active_turn",
+      retainedTailShape: "recent_window",
+    };
+
+    const request = convertToLlm(buildSessionContext([original, entry]).messages);
+    expect(request).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: [{ type: "text", text: expect.stringContaining(entry.summary) }],
+      }),
+      original.message,
+    ]);
+    expect(JSON.stringify(request[0])).not.toContain("first unchecked step");
+  });
+
+  it("does not add resume framing to completed or empty checkpoints", () => {
+    const completed = compaction("c1", 2);
+    completed.details = { retainedTailMode: "completed_turn" };
+    const empty = compaction("c2", 3, [user("u1", "original", 1).message]);
+    empty.details = { retainedTailMode: "active_turn" };
+    empty.summary = "";
+    for (const entry of [completed, empty]) {
+      const request = convertToLlm(buildSessionContext([entry]).messages);
+      expect(JSON.stringify(request)).not.toContain("checkpoint is newer");
+      expect(JSON.stringify(request[0])).toContain("was compacted into the following summary");
+    }
+  });
+
   it("replays retained reasoning between the summary and the user tail", () => {
     // #296
     const keptUser = user("u2", "keep me", 3).message;
     const entry = compaction("c1", 2, [keptUser]);
     entry.details = {
+      retainedTailMode: "active_turn",
       retainedReasoning: [{ thinking: "prior plan", text: "prior answer" }],
     };
     const messages = buildSessionContext([
