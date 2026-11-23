@@ -596,6 +596,10 @@ decides what a *successful* checkpoint leaves behind:
   retention limit below; if that message crosses the limit it is truncated
   rather than dropped (`[checkpoint truncated: this message crossed the
   retained context budget]`).
+  When the summary is nonempty and there is no reasoning to replay, the model
+  receives the retained request before the checkpoint and any newer messages
+  after it. The checkpoint describes the current state of the original goal
+  (issue #2512). Reasoning replay stays between the summary and the user tail.
 - A `completed_turn` checkpoint is created at a terminal turn boundary, before
   a new user prompt, or for manual compaction. It carries no naked historical
   user messages. The summary is authoritative for completed work, and the next
@@ -603,6 +607,7 @@ decides what a *successful* checkpoint leaves behind:
 - A retained-tail fallback carries its recent window in both modes, because the
   alternative is an empty context; the mode still decides whether it has to
   keep the active task's user message as well.
+  Its recovery notice precedes that window even if only the user message fits.
 - The `fresh_window` family remains the deliberate no-summary exception from
   ADR 0064 and always carries an empty tail.
 
