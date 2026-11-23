@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   AppSettings,
   PluginScenicThemesDestinationMeta,
-  ShortcutPlatform,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
@@ -20,7 +19,6 @@ import {
   IconBookOpen,
   IconBot,
   IconChat,
-  IconChevronLeft,
   IconFileText,
   IconGlobe,
   IconInfo,
@@ -35,26 +33,10 @@ import {
   IconMic,
   IconWorkflow,
 } from "../../components/icons";
-import { Badge, Button, cx } from "../../components/ui";
-import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
-import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
-import { ProjectsPage } from "../../pages/ProjectsPage";
-import { AgentSkillsPage } from "../../components/settings/AgentSkillsPage";
-import { AgentMcpPage } from "../../components/settings/AgentMcpPage";
-import { AgentSubagentsPage } from "../../components/settings/AgentSubagentsPage";
-import { RemoteHostsPage } from "../../components/settings/RemoteHostsPage";
-import { VoiceSettingsSection } from "./voice/VoiceSettingsSection";
-import { AgentInstructionsSection } from "./agent-sections";
+import { Badge, cx } from "../../components/ui";
 import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
-import { ConfigSyncPage } from "../../components/settings/ConfigSyncPage";
-import { AboutSettings } from "./pages/AboutSettings";
-import { AgentBehaviorSettings } from "./pages/AgentBehaviorSettings";
-import { AppearanceSettings } from "./pages/AppearanceSettings";
-import { ConversationSettings } from "./pages/ConversationSettings";
-import { SystemSettings } from "./pages/SystemSettings";
-import { ModesSettingsPage } from "../modes/ModesSettingsPage";
-
-type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
+import { SettingsDestinationContent, type SettingsTab } from "./SettingsDestinationContent";
+import { useSettingsPersistence } from "./useSettingsPersistence";
 
 type NavItem = {
   id: SettingsTab;
@@ -68,6 +50,11 @@ type NavItem = {
   keywordKeys: string[];
 };
 
+/**
+ * Settings rail + destination content. Hosted by the Settings dialog; each
+ * destination body comes from `SettingsDestinationContent` so other surfaces
+ * can embed one destination without the rail.
+ */
 export function SettingsPage() {
   const { t } = useTranslation();
   const tab = useAppStore((s) => s.settingsTab);
@@ -75,10 +62,7 @@ export function SettingsPage() {
   const settingsAnchor = useAppStore((s) => s.settingsAnchor);
   const settingsTabNonce = useAppStore((s) => s.settingsTabNonce);
   const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
-  const setPage = useAppStore((s) => s.setPage);
-  const settings = useAppStore((s) => s.settings);
-  const refreshProviders = useAppStore((s) => s.refreshProviders);
-  const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
+  const { settings, saveSettings } = useSettingsPersistence();
 
   // Experimental feature surfaces remain available in development builds only.
   const includeDevelopmentOnly = import.meta.env.DEV;
@@ -94,8 +78,6 @@ export function SettingsPage() {
   );
 
   const [query, setQuery] = useState("");
-  const [recoveringSettings, setRecoveringSettings] = useState(!settings);
-  const [settingsRecoveryFailed, setSettingsRecoveryFailed] = useState(false);
   const [extensions, setExtensions] = useState<PluginScenicThemesDestinationMeta[]>([]);
   const [activeExtension, setActiveExtension] = useState<PluginScenicThemesDestinationMeta | null>(null);
   const seenSettingsTabNonce = useRef(settingsTabNonce);
@@ -143,24 +125,6 @@ export function SettingsPage() {
     setSettingsTab(DEFAULT_SETTINGS_TAB);
   }, [settings, tabHidden, setSettingsTab]);
 
-  const recoverSettings = useCallback(async () => {
-    setRecoveringSettings(true);
-    setSettingsRecoveryFailed(false);
-    try {
-      const recovered = await api.getSettings();
-      useAppStore.setState({ settings: recovered });
-    } catch {
-      setSettingsRecoveryFailed(true);
-    } finally {
-      setRecoveringSettings(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (settings) return;
-    void recoverSettings();
-  }, [settings, recoverSettings]);
-
   // Arriving from the global search dialog: scroll to and flash the row
   // whose title matches the pending anchor key. This runs after the
   // destination reset and before paint, so a category change does not flash
@@ -203,14 +167,6 @@ export function SettingsPage() {
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [settingsAnchor, tab, t, setSettingsAnchor]);
-
-  const saveSettings = async (patch: Partial<AppSettings>) => {
-    if (!settings) return;
-    const nextSettings = { ...settings, ...patch };
-    await api.setSettings(nextSettings);
-    useAppStore.setState({ settings: nextSettings });
-    await refreshProviders();
-  };
 
   const selectPluginTheme = async (theme: string) => {
     await saveSettings({ theme: theme as AppSettings["theme"] });
@@ -278,14 +234,12 @@ export function SettingsPage() {
 
   const activeNavItem = navItems.find((item) => item.id === tab);
   const activeTitleKey = activeNavItem?.titleKey ?? "settings.title";
-  const tabNeedsSettings = ["appearance", "chat", "behavior", "system", "shortcuts", "agent"].includes(tab);
 
   return (
     <div className="settings-shell settings-shell-full">
-      <div className="settings-titlebar" aria-hidden="true" />
       <aside className="settings-nav sidebar-surface" aria-label={t("settings.title")}>
-        <div className="settings-nav-top drag">
-          <div className="settings-search-wrap no-drag">
+        <div className="settings-nav-top">
+          <div className="settings-search-wrap">
             <IconSearch size={14} />
             <input
               ref={settingsSearchRef}
@@ -301,7 +255,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <div className="settings-nav-scroll no-drag">
+        <div className="settings-nav-scroll">
           {filteredGroups.length === 0 ? (
             <div className="settings-nav-empty">{t("settings.noResults")}</div>
           ) : (
@@ -354,20 +308,6 @@ export function SettingsPage() {
           )}
         </div>
 
-        {/* Pinned to the rail's bottom so it lands on the same line as the
-            main shell's sidebar footer icon row. Both the band and the control
-            stay explicitly non-draggable, like the rail's other controls. */}
-        <div className="settings-nav-footer no-drag">
-          <button
-            type="button"
-            className="settings-back no-drag"
-            data-nav="back-to-app"
-            onClick={() => setPage("chat")}
-          >
-            <IconChevronLeft size={15} />
-            <span>{t("settings.backToApp")}</span>
-          </button>
-        </div>
       </aside>
 
       <div className="settings-content" ref={contentRef}>
@@ -405,88 +345,7 @@ export function SettingsPage() {
             <PluginScenicThemesDestination destination={activeExtension} selectTheme={selectPluginTheme} />
           ) : <>
 
-          {tabNeedsSettings && !settings ? (
-            <div className="settings-recovery" role="status" aria-live="polite">
-              {recoveringSettings ? (
-                <>
-                  <span className="route-pending-indicator" aria-hidden />
-                  <span>{t("common.loading")}</span>
-                </>
-              ) : settingsRecoveryFailed ? (
-                <>
-                  <span>{t("errors.HOST_UNAVAILABLE")}</span>
-                  <Button variant="secondary" onClick={() => void recoverSettings()}>
-                    {t("errors.action.retry")}
-                  </Button>
-                </>
-              ) : null}
-            </div>
-          ) : null}
-
-          {tab === "appearance" && settings && (
-            <AppearanceSettings
-              settings={settings}
-              saveSettings={saveSettings}
-              platform={platform}
-            />
-          )}
-
-          {tab === "chat" && settings && (
-            <ConversationSettings settings={settings} saveSettings={saveSettings} />
-          )}
-
-          {tab === "behavior" && settings && (
-            <AgentBehaviorSettings settings={settings} saveSettings={saveSettings} />
-          )}
-
-          {tab === "system" && settings && (
-            <SystemSettings
-              settings={settings}
-              saveSettings={saveSettings}
-              platform={platform}
-            />
-          )}
-
-          {tab === "voice" && !tabHidden && settings && (
-            <VoiceSettingsSection
-              t={t}
-              settings={settings}
-              saveSettings={saveSettings}
-            />
-          )}
-
-          {tab === "shortcuts" && settings && (
-            <div className="settings-stack">
-              <KeyboardShortcutsSection
-                settings={settings}
-                platform={platform}
-                saveSettings={saveSettings}
-              />
-            </div>
-          )}
-
-          {tab === "agent" && <ModelConfigPage />}
-
-          {tab === "skills" && <AgentSkillsPage />}
-
-          {tab === "mcp" && <AgentMcpPage />}
-
-          {tab === "subagents" && <AgentSubagentsPage />}
-
-          {tab === "modes" && <ModesSettingsPage />}
-
-          {tab === "instructions" && <AgentInstructionsSection />}
-
-
-          {tab === "projects" && <ProjectsPage />}
-
-          {tab === "sync" && !tabHidden && <ConfigSyncPage />}
-
-          {tab === "remoteHosts" && !tabHidden && <RemoteHostsPage />}
-
-          {tab === "about" && (
-            <AboutSettings settings={settings ?? null} saveSettings={saveSettings} />
-          )}
+          <SettingsDestinationContent tab={tab} tabHidden={tabHidden} />
           </>}
 
           </div>

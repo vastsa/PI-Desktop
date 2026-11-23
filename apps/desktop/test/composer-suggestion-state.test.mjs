@@ -27,6 +27,7 @@ function makeHandle({
 } = {}) {
   return {
     state: { sessionId, text, references, caret, focused: false },
+    draftRevision() { return 1; },
     read() {
       return {
         draftKey: this.state.sessionId || "home",
@@ -233,4 +234,96 @@ test("the completion list keeps Tab, and the first Escape closes it", () => {
   assert.equal(composerSuggestionKeyAction({ key: "Tab", metaKey: true }, showing), null);
   assert.equal(composerSuggestionKeyAction({ key: "Enter" }, showing), null);
   assert.equal(composerSuggestionKeyAction({ key: "Escape", altKey: true }, showing), null);
+});
+
+function group(bridge, overrides = {}) {
+  const { text: _legacy, ...base } = offer();
+  const revision = bridge.getTarget(SESSION);
+  assert.ok(revision);
+  return { ...base, revision, validUntil: Date.now() + 30_000, candidates: ["one", "two", "three"], ...overrides };
+}
+
+test("a target dies across a renderer selection hop even if React never published another draft", () => {
+  const bridge = new ComposerSuggestionBridge();
+  bridge.selectSession(SESSION);
+  bridge.register(makeHandle());
+  const before = group(bridge);
+  bridge.selectSession("session-2");
+  assert.equal(bridge.getTarget(SESSION), null);
+  bridge.selectSession(SESSION);
+  assert.notEqual(bridge.getTarget(SESSION), before.revision);
+  assert.deepEqual(bridge.offer(before), { shown: false, reason: "stale-turn" });
+  assert.equal(bridge.get(), null);
+});
+
+test("typing then deleting and staging then removing attachments invalidate without a publish", () => {
+  const bridge = new ComposerSuggestionBridge();
+  const handle = makeHandle();
+  let revision = 1;
+  handle.draftRevision = () => revision;
+  bridge.register(handle);
+  const beforeTyping = group(bridge);
+  handle.state.text = "draft";
+  revision++;
+  handle.state.text = "";
+  revision++;
+  assert.deepEqual(bridge.offer(beforeTyping), { shown: false, reason: "stale-turn" });
+
+  const beforeAttach = group(bridge);
+  handle.state.references = [{ id: "ref-1" }];
+  revision++;
+  assert.equal(bridge.getTarget(SESSION), null, "attachments are never eligible");
+  handle.state.references = [];
+  revision++;
+  assert.deepEqual(bridge.offer(beforeAttach), { shown: false, reason: "stale-turn" });
+});
+
+test("a visible group is replaced whole, cycles circularly and writes only its current candidate", () => {
+  const bridge = new ComposerSuggestionBridge();
+  const handle = makeHandle();
+  bridge.register(handle);
+  const firstGroup = group(bridge);
+  bridge.offer(firstGroup);
+  assert.equal(bridge.get()?.text, "one");
+  assert.equal(bridge.cycle(-1), true);
+  assert.equal(bridge.get()?.text, "three");
+  assert.equal(bridge.cycle(1), true);
+  assert.equal(bridge.get()?.text, "one");
+  const staleView = bridge.get();
+  bridge.offer(group(bridge, { pluginId: "other.plugin", candidates: ["new first", "new last"] }));
+  assert.equal(bridge.accept(staleView), false, "an old UI action cannot accept the replacement");
+  bridge.clear({ pluginId: firstGroup.pluginId });
+  assert.deepEqual(bridge.get()?.candidates, ["new first", "new last"]);
+  assert.equal(handle.state.text, "", "navigation never changes the draft");
+  assert.equal(bridge.cycle(-1), true);
+  assert.equal(bridge.accept(), true);
+  assert.equal(handle.state.text, "new last");
+  assert.equal(handle.state.caret, "new last".length);
+  assert.equal(bridge.get(), null);
+});
+
+test("a staged attachment racing a grouped Tab wins, and a late delivery cannot appear", () => {
+  const bridge = new ComposerSuggestionBridge();
+  const handle = makeHandle();
+  bridge.register(handle);
+  assert.deepEqual(bridge.offer(group(bridge, { validUntil: Date.now() - 1 })), {
+    shown: false, reason: "stale-turn",
+  });
+  bridge.offer(group(bridge));
+  handle.state.references = [{ id: "ref-1" }];
+  assert.equal(bridge.accept(), false);
+  assert.equal(handle.state.text, "");
+  assert.equal(bridge.get(), null);
+});
+
+test("directional keys preserve history, IME and autocomplete ownership", () => {
+  const state = { suggestion: true, candidateCount: 2, completionOpen: false, completionItems: false };
+  assert.equal(composerSuggestionKeyAction({ key: "ArrowUp" }, state), "previous");
+  assert.equal(composerSuggestionKeyAction({ key: "ArrowDown" }, state), "next");
+  assert.equal(composerSuggestionKeyAction({ key: "ArrowDown" }, { ...state, candidateCount: 1 }), null);
+  assert.equal(composerSuggestionKeyAction({ key: "ArrowUp" }, { ...state, completionOpen: true }), null);
+  assert.equal(composerSuggestionKeyAction({ key: "ArrowUp" }, { ...state, completionItems: true }), null);
+  assert.equal(composerSuggestionKeyAction({ key: "ArrowDown", shiftKey: true }, state), null);
+  assert.equal(composerSuggestionKeyAction({ key: "ArrowDown", isComposing: true }, state), null);
+  assert.equal(composerSuggestionKeyAction({ key: "Tab", keyCode: 229 }, state), null);
 });

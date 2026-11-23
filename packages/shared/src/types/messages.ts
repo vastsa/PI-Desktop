@@ -71,9 +71,10 @@ export { addUsage, contextOccupancyTokens, withUsageIdentity } from "../message-
 
 export type MessageAttachment = {
   localReference?: string;
+  lineRange?: import("../file-line-reference.js").FileLineRange;
   kind: "image" | "file" | "session";
   name: string;
-  /** Workspace-relative path, session-scratch absolute path, or a session id. */
+  /** Workspace-relative path, absolute scratch or project line-reference path, or a session id. */
   ref: string;
   mimeType?: string;
   size?: number;

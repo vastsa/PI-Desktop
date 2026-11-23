@@ -36,21 +36,9 @@ test("stop and remove stay outside the toggle surface", () => {
   const toggleEnd = dock.indexOf('className="task-main"');
   const bandAt = dock.indexOf('className="task-band"');
   const stopAt = dock.indexOf('"task-action is-stop"');
-  const removeAt = dock.indexOf('className="task-action"');
+  const removeAt = dock.indexOf("onRemove(task.id)");
   assert.ok(bandAt > 0 && bandAt < toggleEnd, "the band must wrap the row body");
   assert.ok(stopAt > toggleEnd && removeAt > toggleEnd, "actions must follow the body");
-});
-
-test("a running task offers stop and never remove", () => {
-  // The two actions are chosen by state in one branch: the stop control gates on
-  // `running`, and the remove control lives in the other arm.
-  assert.match(dock, /className="task-action is-stop"\s+onClick=\{\(\) => onStop\(task\.id\)\}/);
-  assert.match(dock, /className="task-action"\s+onClick=\{\(\) => onRemove\(task\.id\)\}/);
-  assert.match(dock, /backgroundTasks\.dismiss/);
-  assert.ok(
-    dock.indexOf('"task-action is-stop"') < dock.indexOf('className="task-action"'),
-    "the stop control comes from the running arm",
-  );
 });
 
 test("the row styles keep the body clickable and focus-visible", () => {

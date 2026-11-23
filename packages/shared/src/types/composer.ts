@@ -53,3 +53,27 @@ export type ComposerPastedFile = {
   mimeType: string;
   size: number;
 };
+
+/** Trusted main/renderer transport; the renderer revision is never sent to plugins. */
+export type ComposerSuggestionMessage =
+  | { kind: "target"; requestId: string; sessionId: string }
+  | ({
+      kind: "offer";
+      requestId: string;
+      pluginId: string;
+      sessionId: string;
+      turnId?: string;
+      expiresAt: number;
+    } & (
+      | { text: string }
+      | { candidates: readonly string[]; revision: string; validUntil: number }
+    ))
+  | { kind: "clear"; pluginId?: string; sessionId?: string };
+
+export type ComposerSuggestionAnswer = {
+  requestId: string;
+  shown: boolean;
+  reason?: "session-not-visible" | "draft-not-empty" | "stale-turn" | "replaced" | "unsupported";
+  /** Present only when the renderer has an eligible empty composer for the target probe. */
+  revision?: string;
+};

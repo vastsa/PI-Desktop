@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="pi-plugin-chrome" content="v2" />
+    <title>Official Enhancements</title>
+    <style>
+      /*
+       * Page chrome only. These rules come before Tailwind's sheet so a utility
+       * class always wins; anything that is layout or colour belongs in a class.
+       *
+       * A docked view has no window controls and no drag band, so the top offset
+       * comes from the host's variable: 0px docked, 46px in a detached panel.
+       */
+      :root { color-scheme: dark; }
+      :root[data-base="light"] { color-scheme: light; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        box-sizing: border-box;
+        overflow: hidden;
+        padding: calc(var(--pi-plugin-titlebar-height, 0px) + 12px) 12px 12px;
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: #ffffff;
+        color: #18181b;
+      }
+      :root[data-base="dark"] body { background: #18181b; color: #fafafa; }
+      /* Scroll below the titlebar; even moving content must not enter the drag band. */
+      #root { height: 100%; overflow: auto; }
+    </style>
+    <style><!--VIEW_STYLE--></style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script><!--VIEW_SCRIPT--></script>
+  </body>
+</html>

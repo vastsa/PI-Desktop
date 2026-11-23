@@ -84,6 +84,7 @@ export function createSessionCoordination({
     const turn = turnId.trim();
     if (!id || !turn) return;
     const turns = startedTurnsBySession.get(id) ?? new Set<string>();
+    if (turns.has(turn)) return;
     turns.add(turn);
     startedTurnsBySession.set(id, turns);
     try {

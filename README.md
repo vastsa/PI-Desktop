@@ -37,7 +37,7 @@ Local-first · Model-agnostic · Plugin-powered · macOS / Windows / Linux
 
 </div>
 
-> **Current release line: 0.23.x.**
+> **Current release line: 0.24.x.**
 
 ---
 

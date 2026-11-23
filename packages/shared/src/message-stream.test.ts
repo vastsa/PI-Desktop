@@ -134,6 +134,17 @@ describe("mergeMessageUpdates", () => {
     expect(merged.resetText).toBe(true);
   });
 
+  it("extends signed progress locally when a pending snapshot absorbs a delta", () => {
+    const original = assistant({ id: "m", content: "A", providerReplay: {
+      version: 1, blocks: [{ type: "text", length: 1, signature: '{"v":1,"id":"m","phase":"commentary"}' }],
+    } });
+    const append = toWireMessageUpdate({ type: "message_update", message: original, deltaText: "🔎" });
+    const { message } = mergeMessageUpdates({ type: "message_update", message: original }, append);
+    expect(message.providerReplay?.blocks[0].length).toBe(message.content.length);
+    expect(original.providerReplay?.blocks[0].length).toBe(1);
+    expect(applyMessageUpdate(message, { ...append, resetText: true, deltaText: "replacement" }).providerReplay).toBeUndefined();
+  });
+
   it("applies a later delta onto a pending snapshot replacement", () => {
     const snapshot = assistant({ id: "m1", content: "Hello" });
     const merged = mergeMessageUpdates(

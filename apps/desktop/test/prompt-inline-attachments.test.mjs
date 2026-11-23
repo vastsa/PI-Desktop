@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { appendPromptFallbackPaths, preparePromptAttachments } from "../electron/main/prompt-attachments.ts";
 
@@ -102,4 +102,39 @@ test("a replayed copy still travels for the path the prompt names", async (t) =>
   // The stored blob is replayed into scratch, so that working path is added.
   assert.notEqual(prepared.fallbackPath, ref);
   assert.ok(text.includes(prepared.fallbackPath));
+});
+
+test("line ranges stay deferred and cannot escape the session project", async (t) => {
+  const { data, path: outside } = await fixture(t);
+  const project = join(dirname(data), "project");
+  const path = join(project, "sample.txt");
+  const escape = join(project, "escape.png");
+  await mkdir(project);
+  await writeFile(path, "before\nselected\nafter\n");
+  await symlink(outside, escape, "file");
+  const range = { start: 2, end: 2 };
+  const attachment = { path, name: "sample.txt", kind: "file", lineRange: range };
+  const [prepared] = await preparePromptAttachments(data, sessionId, project, [attachment], false, "Review this");
+  assert.deepEqual(prepared.message.lineRange, range);
+  assert.equal(prepared.message.ref, path);
+  assert.equal(prepared.inlineData, undefined);
+  assert.equal(appendPromptFallbackPaths("Review this", [prepared]), "Review this");
+
+  for (const references of [
+    Array.from({ length: 5 }, () => attachment),
+    [{ ...attachment, lineRange: { start: 1, end: 9e15 } }],
+    [{ ...attachment, lineRange: { start: 1, end: 4001 } }],
+  ]) {
+    await assert.rejects(
+      preparePromptAttachments(data, sessionId, project, references, false, "Review this"),
+      { errorCode: "INVALID_ARGUMENT" },
+    );
+  }
+
+  for (const invalidPath of [outside, escape]) {
+    await assert.rejects(
+      preparePromptAttachments(data, sessionId, project, [{ ...attachment, path: invalidPath }], false, ""),
+      /Invalid file line reference/,
+    );
+  }
 });

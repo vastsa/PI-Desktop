@@ -477,17 +477,20 @@ export function registerSessionIpc({
   });
   handle(
     IPC.invoke.sessionMoveProject,
-    async (input: { sessionId?: string; projectPath?: string } = {}) => {
+    async (input: { sessionId?: string; projectPath?: string | null } = {}) => {
       if (!host) throw new Error("host unavailable");
       const sessionId = String(input.sessionId ?? "").trim();
       rejectNativeMutation(sessionId, "project move");
-      const projectPath = String(input.projectPath ?? "").trim();
+      // An explicit `null` moves the session out of its project into the
+      // temporary group; a missing or blank path is still rejected.
+      const detach = input.projectPath === null;
+      const projectPath = detach ? null : String(input.projectPath ?? "").trim();
       if (!sessionId) {
         throw Object.assign(new Error("sessionId required"), {
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });
       }
-      if (!projectPath) {
+      if (!detach && !projectPath) {
         throw Object.assign(new Error("projectPath required"), {
           errorCode: ErrorCodes.INVALID_ARGUMENT,
         });

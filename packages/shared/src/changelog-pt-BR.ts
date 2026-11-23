@@ -2,7 +2,24 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-20",
+    highlights: [
+      "Em uma instalação nova, o plugin incluído Melhorias oficiais gera automaticamente os títulos das sessões; sugestões, aprimoramento de rascunho e memória de IA continuam desligados até você ativá-los.",
+      "Nova tarefa agora inicia um chat temporário fora de qualquer projeto, e as conversas podem ser movidas entre projetos ou de volta para Chat temporário.",
+      "Na tela inicial vazia, clique no nome do projeto ou em \"temporariamente\" no título para trocar de projeto; o destino sem projeto agora se chama Chat temporário em todo lugar.",
+      "Opcionalmente, comandos em segundo plano concluídos relatam seus resultados e retomam uma conversa ociosa depois que o turno termina; desativado por padrão.",
+      "Plugins podem adicionar itens ao menu de contexto da conversa para enviar o texto selecionado a uma visualização acoplada, além de oferecer sugestões e contexto limitado.",
+      "As notas de progresso dos modelos OpenAI Responses ficam no processo do turno, na ordem original, em vez de se misturar à resposta, também ao reabrir uma sessão; Copiar última resposta copia apenas a resposta.",
+      "Endpoints personalizados compatíveis com OpenAI mantêm o cache de prompt entre turnos, evitando longas esperas pelo primeiro token em conversas longas.",
+      "Parágrafos em persa, árabe e outros idiomas da direita para a esquerda que começam com uma palavra em inglês agora aparecem na direção correta.",
+      "O plugin Gerenciador de arquivos 0.9.1 exibe com segurança imagens Markdown embutidas e mostra prévias de planilhas somente leitura.",
+      "Corrigido: bifurcar respostas antigas carregadas do histórico, sincronização de configuração falhando repetidamente após excluir um registro de um lado, nomes de modelos cortados em Configurações, o botão do painel de trabalho cobrindo a Pesquisa e definições de ferramentas rejeitadas por alguns endpoints Responses.",
+    ],
+  },
+  {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Ative o OpenAI Fast por modelo e use /fast na conversa para solicitar prioridade; isso pode consumir os limites da assinatura mais rápido ou aumentar o custo por token.",
       "Visualizações inline carregam mais rápido com auxiliares de gráfico reutilizáveis; scripts com falha agora mostram erros úteis em vez de cartões vazios.",
@@ -15,6 +32,9 @@ export const ptBREntries: ChangelogEntry[] = [
       "Cada plugin agora fica em uma prateleira bilíngue, então o marketplace é lido em português ou chinês e filtra pela mesma categoria.",
       "Os detalhes do plugin agora mostram o publicador, o readme e as notas de segurança do catálogo, que eram descartados na leitura.",
       "Escolha GPT-6.2 Sol e GPT-6.2 Astra com OpenAI, ChatGPT, GitHub Copilot, OpenCode e gateways que os publicam, com os limites e preços publicados.",
+      "As configurações agora abrem como uma caixa de diálogo sobre a página atual, a barra lateral mostra Nova tarefa, Agendadas e Mercado de plugins no topo, e um breve guia inicial ajuda você a adicionar um modelo e conhecer o atalho do lançador de plugins.",
+      "Escolha quais módulos da barra lateral aparecem em Configurações → Aparência → Módulos da barra lateral: Nova tarefa, Agendadas, Marketplace de plugins, sessões fixadas, Sessões, Projetos, seus botões e a versão.",
+      "A seção Sessões da barra lateral agora é Recentes: todas as conversas não fixadas, das mais novas para as mais antigas, com Carregar mais; o título da página inicial vazia também mostra uma seta suspensa para trocar de projeto.",
     ],
   },
   {
@@ -36,6 +56,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copie diagramas Mermaid como texto SVG ou exporte arquivos SVG independentes, inclusive nas prévias de README.",
       "Veja quanto custa cada turno e a conversa inteira no inspetor de contexto e na cápsula de uso do turno, com o uso da assinatura separado do gasto por uso.",
       "Use seu próprio vídeo como animação de inicialização: coloque um na pasta \"startup\" e a interface aparece com um fade ao terminar.",
       "Plugins podem listar projetos salvos e suas pastas sem trocar a sessão ativa.",

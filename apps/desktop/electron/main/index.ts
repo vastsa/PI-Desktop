@@ -1,3 +1,4 @@
+import { createBackgroundContinuationCoordinator } from "./runtime/background-continuations";
 import {
   app,
   BrowserWindow,
@@ -348,6 +349,7 @@ const pluginServices = createPluginServices({
    * coordination instance that reads it too.
    */
   getActiveTurn: (sessionId) => activeTurns.get(sessionId) ?? null,
+  isTurnDispatchable: (sessionId, turnId) => isTurnDispatchable(sessionId, turnId),
   /** The same scope lookup every plugin view IPC consults. */
   isPluginActiveInProject: (pluginId) => pluginActiveInProject(pluginId, currentWorkspacePath()),
   vendorOAuth,
@@ -362,6 +364,7 @@ const {
   pluginViews,
   browserHost,
   announceTurnEnded,
+  observePersistedUserMessage,
   speech,
 } = pluginServices;
 
@@ -656,6 +659,7 @@ const sessionCoordination = createSessionCoordination({
     // A new turn owns the composer now, so a suggestion about the previous one
     // stops being shown and stops being showable (ADR 0333).
     pluginServices.composerSuggestion.noteTurnStarted(sessionId, turnId);
+    pluginServices.announceObservedSession("session:turnStarted", { sessionId, turnId });
   },
 });
 const {
@@ -707,6 +711,16 @@ const sessionCollaboration = createSessionCollaborationService({
   log: (message, data) => logger.app("runtime", "warn", message, { data }),
 });
 
+const backgroundContinuations = createBackgroundContinuationCoordinator({
+  getHost,
+  start: async (sessionId, origin) => {
+    if (!mainState.agentHostBridge) throw new Error("Agent Host unavailable");
+    return mainState.agentHostBridge.startBackgroundContinuation(sessionId, origin);
+  },
+  isQuitting: () => mainState.quitting,
+  log: (message, error) => logger.app("session", "warn", message, { data: String(error) }),
+});
+
 const modeServices = createModeServices({
   getHost,
   getAgentHostBridge: () => mainState.agentHostBridge,
@@ -738,7 +752,9 @@ const planRuntime = createPlanRuntime({
   acquireSessionOperation,
   resolveAgentRuntimeLaunch,
   isQuitting: () => mainState.quitting,
-  onTurnSettled: sessionCollaboration.settle,
+  onTurnSettled: async (sessionId, turnId) => {
+    try { await sessionCollaboration.settle(sessionId, turnId); } finally { backgroundContinuations.wake(); }
+  },
   onTurnEnded: (sessionId, turnId, end) => modeServices.runs.settleTurn(sessionId, turnId, end),
 });
 const {
@@ -789,11 +805,13 @@ function publishComputerGrant(grant: ComputerGrantView | null): void {
 }
 
 const sidecarRuntime = createSidecarRuntime({
+  observeBackgroundResult: backgroundContinuations.observe,
   runtimeState,
   steeringReplies,
   logger,
   sendToRenderer,
   persistAgentEvent,
+  readPluginModelContext: pluginServices.readPluginModelContext,
   activeTurns,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
@@ -826,6 +844,7 @@ emitAgentEvent = sidecarRuntime.emitAgentEvent;
 const { startSidecar } = sidecarRuntime;
 
 const { startHost } = createHostRuntime({
+  onBackgroundTasksChanged: backgroundContinuations.wake,
   runtimeState,
   dataDir,
   logger,
@@ -984,6 +1003,7 @@ function registerIpc() {
     beginTranscriptRewrite: eventPersistence.beginTranscriptRewrite,
     forgetTranscriptRewriteHistory: sessionCoordination.forgetTranscriptRewriteHistory,
     recordTurnStart,
+    observePersistedUserMessage,
     stripWinLongPrefix,
     normalizeSettings,
     validateSettingsWrite,

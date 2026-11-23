@@ -8,10 +8,12 @@ import {
   createAssistantMessageEventStream,
   getCurrentTools,
   getCurrentSystemMessage,
+  normalizeContext,
   toToolDeclaration,
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
-import { formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { applyMessageUpdate, deltaStreamPayloadFits, formatSessionMessage, type SessionMessageOrigin } from "@pi-desktop/shared";
+import { restoreAssistantProviderReplay } from "./assistant-provider-replay.js";
 import { estimateContextTokens as estimateTranscriptTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { buildSessionContext } from "./session-context.js";
 import { estimateContextTokens as estimateAgentContextTokens, estimateTokens } from "./pi-runtime-estimates.js";
@@ -20,6 +22,7 @@ import {
   DesktopAgentRuntime,
   PATH_INSTRUCTION_RESOLUTION_TIMEOUT_MS,
   isolatedWorkspaceGuidance,
+  isProgressOnlyAssistantTurn,
   delegateWorktreeNote,
   looksLikePseudoToolCall,
   toolResultFromUi,
@@ -28,7 +31,8 @@ import {
   type RuntimeMatchConfig,
   type RuntimeProviderConfig,
 } from "./runtime.js";
-import { estimateOutputCapInputTokens } from "./output-cap.js";
+import { estimateOutputCapInputTokens, requestTranscript } from "./output-cap.js";
+import { builtinModeDefinition } from "./mode-definitions.js";
 
 import { COMPACTION_SUMMARY_MAX_RETRIES } from "./compaction-summary-input.js";
 import { loadInstructionChain, type ProjectInstructions } from "./project-instructions.js";
@@ -173,6 +177,7 @@ function createRuntime(
     provider: RuntimeProviderConfig;
     mode: Mode | "chat";
     thinkingLevel: SessionThinkingLevel;
+    backgroundJobContinuationEnabled: boolean;
     history: UiMessage[];
     compaction: ContextCompactionRecord;
     compactionSettings: ContextCompactionSettings;
@@ -192,6 +197,7 @@ function createRuntime(
     pluginSkills: import("./plugin-skills-prompt.js").PluginSkillDef[];
     commandShell: CommandShellOption;
     jevApiKey: string;
+    codemodeEnabled: boolean;
     turnId: string;
     host: { call: ReturnType<typeof vi.fn>; onNotification?: ReturnType<typeof vi.fn> };
     onEvent: (envelope: unknown) => void;
@@ -202,10 +208,12 @@ function createRuntime(
     sessionId: "session-1",
     mode: overrides.mode === "chat" ? "plan" : overrides.mode ?? "agent",
     jevApiKey: overrides.jevApiKey,
+    codemodeEnabled: overrides.codemodeEnabled,
     turnId: overrides.turnId,
     provider: overrides.provider ?? provider,
     commandShell: overrides.commandShell ?? commandShell,
     thinkingLevel: overrides.thinkingLevel ?? "medium",
+    backgroundJobContinuationEnabled: overrides.backgroundJobContinuationEnabled,
     history: overrides.history,
     compaction: overrides.compaction,
     compactionSettings: overrides.compactionSettings,
@@ -226,6 +234,135 @@ function createRuntime(
     onEvent: overrides.onEvent ?? vi.fn(),
   });
 }
+
+it("reads each explicit file line range once before passing its text to the model", async () => {
+  const call = vi.fn(async (method: string, _params: unknown) => {
+    if (method === "tools.fileBatchCapabilities") return { version: 1, supported: true };
+    if (method === "tools.fileBatchRegister") return { ticket: "test-ticket" };
+    if (method === "tools.fileBatchSeal") return { ok: true };
+    if (method === "tools.execute") return { ok: true, content: { content: "85: saved first\n86: saved second", totalLines: 100 } };
+  });
+  const onEvent = vi.fn();
+  const runtime = createRuntime({ host: { call }, onEvent, projectPath: "/project", workspaceRoot: "/project" });
+  const agent = (runtime as unknown as { agent: Agent }).agent;
+  const model = vi.spyOn(agent, "prompt").mockResolvedValue(undefined);
+  const reference = { kind: "file" as const, path: "/project/src/gpt.py", name: "gpt.py", lineRange: { start: 85, end: 86 } };
+  const local = { kind: "file" as const, path: "/external/large.bin", name: "large.bin", size: 67108865, localReference: "11111111-2222-4333-8444-555555555555" };
+  try {
+    await runtime.prompt({ text: "Explain these lines", attachments: [reference, reference, local] }, "prompt", "turn");
+    expect(call.mock.calls.filter(([method]) => method === "tools.execute")).toEqual([
+      ["tools.execute", expect.objectContaining({
+        toolName: "Read",
+        turnId: "turn",
+        workspaceOnly: true,
+        args: { path: "/project/src/gpt.py", offset: 84, limit: 2 },
+      })],
+    ]);
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({
+      role: "user",
+      content: expect.stringContaining("85: saved first"),
+    }));
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("86: saved second") }));
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("/external/large.bin (67108865 bytes)") }));
+    expect(call.mock.calls.map(([method]) => method)).not.toContain("tools.fileBatchRegister");
+    expect(onEvent.mock.calls.map(([event]) => event.type)).not.toContain("tool_end");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it("refreshes the staged objective before reading file references for the same prompt", async () => {
+  let readSystemPrompt: string | undefined;
+  const call = vi.fn(async (method: string) => {
+    if (method === "project.instructions.resolve") readSystemPrompt = agent.state.systemPrompt;
+    if (method === "tools.execute") {
+      return { ok: true, content: { content: "saved review line" } };
+    }
+  });
+  const runtime = createRuntime({ host: { call }, projectPath: "/project", workspaceRoot: "/project" });
+  runtime.setMode("goal", builtinModeDefinition("goal"));
+  const agent = (runtime as unknown as { agent: Agent }).agent;
+  const model = vi.spyOn(agent, "prompt").mockResolvedValue(undefined);
+  try {
+    await runtime.prompt({
+      text: "Review this line",
+      modeTurn: { runId: "run", stageId: "work", origin: "user", enteredStage: true,
+        input: "Review snapshot objective", artifactPaths: { goal: ".pi/goals/run.md" } },
+      attachments: [{ kind: "file", path: "/project/review.txt", name: "review.txt", lineRange: { start: 2, end: 2 } }],
+    }, "prompt", "turn");
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("saved review line") }));
+    expect(readSystemPrompt).toContain("Review snapshot objective");
+    expect(call).toHaveBeenCalledWith("tools.execute", expect.objectContaining({ workspaceOnly: true, mode: "goal" }));
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it.each([
+  { label: "too many", attachments: Array.from({ length: 5 }, (_, index) => ({
+    kind: "file" as const, path: `/project/${index}.txt`, name: `${index}.txt`, lineRange: { start: 1, end: 1 },
+  })) },
+  { label: "invalid", attachments: [
+    { kind: "file" as const, path: "/project/a.txt", name: "a.txt", lineRange: { start: 2, end: 1 } },
+  ] },
+  { label: "ambiguous local and line", attachments: [
+    { kind: "file" as const, path: "/project/a.txt", name: "a.txt", lineRange: { start: 1, end: 2 }, localReference: "11111111-2222-4333-8444-555555555555" },
+  ] },
+])("rejects $label file references before any Host read", async ({ attachments }) => {
+  const call = vi.fn();
+  const runtime = createRuntime({ host: { call }, projectPath: "/project", workspaceRoot: "/project" });
+  try {
+    await expect(runtime.resolveFileLineReferences({ text: "Review", attachments }))
+      .rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
+    expect(call.mock.calls.filter(([method]) => method === "tools.execute")).toEqual([]);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it("restores a recorded line-range excerpt without synthesizing an assistant tool call", async () => {
+  const runtime = createRuntime({ history: [{
+    id: "file-lines", role: "user", content: "Review /project/a.txt (85:86)",
+    createdAt: "2026-11-08T00:00:00.000Z",
+    attachments: [{ kind: "file", ref: "/project/a.txt", name: "a.txt",
+      lineRange: { start: 85, end: 86 }, text: "recorded saved excerpt" },
+      { kind: "file", ref: "/external/large.bin", name: "large.bin", size: 67108865,
+        localReference: "11111111-2222-4333-8444-555555555555" }],
+  }] });
+  try {
+    const messages = (runtime as unknown as { agent: Agent }).agent.state.messages;
+    expect(messages.filter(message => message.role === "user")).toEqual([expect.objectContaining({
+      role: "user", content: expect.stringContaining('<file_lines source="/project/a.txt (85:86)">\nrecorded saved excerpt\n</file_lines>'),
+    })]);
+    expect(messages.some(message => message.role === "assistant" || message.role === "toolResult")).toBe(false);
+    expect(messages.find(message => message.role === "user")?.content).toContain("/external/large.bin (67108865 bytes)");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it.each([
+  { denied: true, status: "blocked", reason: "Read denied" },
+  { denied: false, status: "failed", reason: "File not found" },
+])("labels a $status file reference separately from file content", async ({ denied, status, reason }) => {
+  const call = vi.fn(async (method: string) => {
+    if (method === "tools.execute") return { ok: false, denied, content: reason };
+  });
+  const runtime = createRuntime({ host: { call }, projectPath: "/project", workspaceRoot: "/project" });
+  const agent = (runtime as unknown as { agent: Agent }).agent;
+  const model = vi.spyOn(agent, "prompt").mockResolvedValue(undefined);
+  const reference = { kind: "file" as const, path: "/project/sample.txt", name: "sample.txt", lineRange: { start: 2, end: 2 } };
+  try {
+    await runtime.prompt({ text: "Explain this line", attachments: [reference] });
+    const message = model.mock.calls[0]?.[0];
+    expect(message).toMatchObject({
+      content: expect.stringContaining(`status="${status}">\n${reason}\n</file_reference_error>`),
+    });
+    expect(message).not.toMatchObject({ content: expect.stringContaining("<file_lines") });
+  } finally {
+    await runtime.dispose();
+  }
+});
 
 function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
   const internal = runtime as unknown as { agent: { state: { tools: AgentTool[] } } };
@@ -983,6 +1120,7 @@ describe("Task/read mixed-batch safety", () => {
    */
   function setupMixedBatch(
     calls: unknown[] = [taskCall("task"), readCall("read")],
+    options: { codemodeEnabled?: boolean } = {},
   ) {
     const entered: string[] = [];
     const events: any[] = [];
@@ -997,6 +1135,7 @@ describe("Task/read mixed-batch safety", () => {
     };
     const runtime = createRuntime({
       host,
+      ...options,
       onEvent: (envelope) => { events.push((envelope as any).event); },
       subagents: [{
         name: "explorer",
@@ -1132,6 +1271,29 @@ describe("Task/read mixed-batch safety", () => {
       }
     },
   );
+
+  it("holds a same-batch codemode script behind a writable delegate", async () => {
+    const batch = setupMixedBatch([
+      taskCall("task"),
+      { type: "toolCall", id: "code", name: "codemode", arguments: { code: 'return await tools.Read({ path: "target.txt" });' } },
+    ], { codemodeEnabled: true });
+    try {
+      const pending = batch.runtime.prompt("Delegate, then script.");
+      await vi.waitFor(() => expect(subagentRuns.instances).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(batch.events.some((event) => event.type === "tool_start" && event.toolCallId === "code")).toBe(true));
+      // While the writable delegate runs, the script's nested Read never reaches Host.
+      await expect(vi.waitFor(() => expect(batch.entered).not.toEqual([]), { timeout: 300 })).rejects.toThrow();
+      subagentRuns.resolveRun!(settled());
+      await vi.waitFor(() => expect(batch.entered).toEqual(["code/1"]));
+      batch.release("code/1")!({ ok: true, content: "updated" });
+      await pending;
+      const end = batch.events.find((event) => event.type === "tool_end" && event.toolCallId === "code");
+      expect(JSON.stringify(end?.result)).toContain("updated");
+    } finally {
+      await teardown(batch.runtime);
+    }
+  });
 
   it("serializes a parent Read against an in-flight shared-workspace delegate Edit on the same path", async () => {
     const batch = setupMixedBatch([taskCall("task")]);
@@ -1556,6 +1718,8 @@ describe("DesktopAgentRuntime configuration matching", () => {
       runtimeFirstMismatch(runtime, { projectMemory: "Use the production database." }),
     ).toBe("projectMemory");
     expect(runtimeFirstMismatch(runtime, { mode: "plan" })).toBe("mode");
+    // Turning codemode on changes the tool list, so the runtime is retired.
+    expect(runtimeFirstMismatch(runtime, { codemodeEnabled: true })).toBe("codemodeEnabled");
     await runtime.dispose();
   });
 
@@ -2830,6 +2994,22 @@ describe("DesktopAgentRuntime configuration matching", () => {
     }
     expect(host.call).toHaveBeenCalledTimes(3);
     await runtime.dispose();
+  });
+
+  it("offers background continuation registration only when enabled, and forwards the original job intent", async () => {
+    for (const enabled of [false, true]) {
+      const host = { call: vi.fn().mockResolvedValue({ ok: true, content: "done" }) };
+      const runtime = createRuntime({ host, backgroundJobContinuationEnabled: enabled });
+      try {
+        const agent = Reflect.get(runtime, "agent") as Agent;
+        const bash = agent.state.tools.find(tool => tool.name === "Bash")!;
+        expect(Object.hasOwn(bash.parameters.properties, "notifyOnExit")).toBe(enabled);
+        if (enabled) {
+          await bash.execute("background", { command: "npm test", runInBackground: true, notifyOnExit: true });
+          expect(host.call).toHaveBeenLastCalledWith("tools.execute", expect.objectContaining({ args: { command: "npm test", runInBackground: true, notifyOnExit: true } }));
+        }
+      } finally { await runtime.dispose(); }
+    }
   });
 
   it("opts into background Bash without changing foreground timeout forwarding", async () => {
@@ -6210,6 +6390,81 @@ describe("DesktopAgentRuntime tool history restore (D120)", () => {
 });
 
 describe("DesktopAgentRuntime assistant thinking events", () => {
+  it.each(["provider", "interrupted"])("counts visible commentary in the %s abort estimate", async (termination) => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void>; finalizeCurrentAssistant(status: "aborted"): void };
+    const content = [
+      { type: "text", text: "Checking", textSignature: '{"v":1,"id":"c","phase":"commentary"}' },
+      { type: "text", text: "Done" },
+    ];
+    try {
+      await internal.handleAgentEvent({ type: "message_start", message: { role: "assistant", content } });
+      if (termination === "provider") {
+        await internal.handleAgentEvent({ type: "message_end", message: { role: "assistant", content: [], stopReason: "aborted" } });
+      } else internal.finalizeCurrentAssistant("aborted");
+      const { event } = onEvent.mock.calls.at(-1)![0] as AgentEventEnvelope;
+      if (event.type !== "message_end") throw new Error("missing aborted message");
+      expect(event.message).toMatchObject({ status: "aborted", content: "Done", responseOutputTokens: 3 });
+    } finally { await runtime.dispose(); }
+  });
+
+  it("keeps the answer clean when a Responses replay exceeds the existing storage limit", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void> };
+    try {
+      const content = [
+        { type: "thinking", thinking: "reasoning", thinkingSignature: "x".repeat(65_536) },
+        { type: "text", text: "Checking.", textSignature: '{"v":1,"id":"c","phase":"commentary"}' },
+        { type: "text", text: "Answer." },
+      ];
+      for (const type of ["message_start", "message_end"]) await internal.handleAgentEvent({ type, message: { role: "assistant", content } });
+      const { event } = onEvent.mock.calls.at(-1)![0] as AgentEventEnvelope;
+      if (event.type !== "message_end") throw new Error("missing settled message");
+      expect(event.message.content).toBe("Answer.");
+      expect(event.message.providerReplay).toBeUndefined();
+    } finally { await runtime.dispose(); }
+  });
+
+  it("streams Responses commentary as signed progress without sending replay on every delta", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const internal = runtime as unknown as { handleAgentEvent(event: unknown): Promise<void>; streamSink: { flush(): void } };
+    const signed = (text: string, phase: string) => ({ type: "text" as const, text,
+      textSignature: JSON.stringify({ v: 1, id: `msg_${phase}`, phase }) });
+    const send = async (type: string, content: ReturnType<typeof signed>[]) => {
+      await internal.handleAgentEvent({ type, message: { role: "assistant", content } });
+      internal.streamSink.flush();
+      return onEvent.mock.calls.at(-1)![0].event as AgentEventEnvelope["event"];
+    };
+    try {
+      const progress = signed("Checking", "commentary");
+      const full = signed("Checking 🔎", "commentary");
+      const start = await send("message_start", [progress]);
+      if (start.type !== "message_start") throw new Error("missing start");
+      expect(start.message.providerReplay?.blocks[0]).toMatchObject({ length: progress.text.length, signature: progress.textSignature });
+      const delta = await send("message_update", [full]);
+      if (delta.type !== "message_update") throw new Error("missing progress delta");
+      expect(deltaStreamPayloadFits({ event: delta }, 64_000)).toBe(true);
+      expect(delta.message.providerReplay).toBeUndefined();
+      expect(applyMessageUpdate(start.message, delta).providerReplay?.blocks[0].length).toBe(full.text.length);
+      const boundary = await send("message_update", [full, signed("", "final_answer")]);
+      if (boundary.type !== "message_update") throw new Error("missing phase boundary");
+      expect(boundary.message.providerReplay?.blocks).toHaveLength(2);
+      const final = signed("Answer", "final_answer");
+      const answer = await send("message_update", [full, final]);
+      if (answer.type !== "message_update") throw new Error("missing answer delta");
+      expect(answer.deltaText).toBe("Answer");
+      expect(deltaStreamPayloadFits({ event: answer }, 64_000)).toBe(true);
+      const end = await send("message_end", [full, final]);
+      if (end.type !== "message_end") throw new Error("missing settled message");
+      expect(restoreAssistantProviderReplay(end.message.providerReplay, "", end.message.content)).toEqual([full, final]);
+      expect(isProgressOnlyAssistantTurn({ role: "assistant", content: [full] })).toBe(true);
+      expect(isProgressOnlyAssistantTurn({ role: "assistant", content: [full, signed("Next, use option B.", "final_answer")] })).toBe(false);
+    } finally { await runtime.dispose(); }
+  });
+
   it("normalizes thinking blocks and emits independent thinking deltas", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
@@ -7870,6 +8125,48 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("keeps the context budget reminder out of the collapsed request prefix", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 195_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+    });
+    const model = (runtime as any).model;
+    const before = requestTranscript(model, normalizeContext({ messages: [...(runtime as any).agent.state.messages] }));
+
+    const reminded = await (runtime as any).prepareNextTurn(nextTurn);
+    const after = requestTranscript(model, normalizeContext({ messages: reminded.context.messages }));
+
+    // Issue #2458: the leading system message is the cached prefix; the
+    // reminder may only grow the tail.
+    expect(after.messages[0]).toEqual(before.messages[0]);
+    expect(JSON.stringify(after.messages[0])).not.toContain("<context_budget>");
+    expect(JSON.stringify(after.messages.at(-1))).toContain("<context_budget>");
+    await runtime.dispose();
+  });
+
+  it("keeps the context budget reminder as a system section where mid-run system messages stay in place", async () => {
+    const runtime = createRuntime();
+    (runtime as any).model = { ...(runtime as any).model, compat: { supportsMidConvoSystemMessages: true } };
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 195_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+    });
+
+    const reminded = await (runtime as any).prepareNextTurn(nextTurn);
+
+    expect(reminded.context.messages.at(-1)).toMatchObject({
+      role: "system",
+      content: "",
+      sections: { context_budget: expect.stringContaining("<context_budget>") },
+    });
+    expect(getCurrentSystemMessage(reminded.context.messages)?.sections?.context_budget).toContain("new_context");
+    expect(reminded.context.systemPrompt).not.toContain("<context_budget>");
+    await runtime.dispose();
+  });
+
   it("compacts a long tool loop at the soft threshold after a reminder", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
@@ -7903,20 +8200,20 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
 
     // 29k left is inside the first reminder tier but still below the 90%
     // compaction trigger, so the model can close out before host compaction.
-    expect(below.context.systemPrompt).toContain("<context_budget>");
-    expect(below.context.systemPrompt).toContain("new_context");
+    // The default model folds system updates into the leading system message,
+    // so the reminder rides at the tail as a request-only user message.
+    expect(below.context.systemPrompt).not.toContain("<context_budget>");
     expect(below.context.messages.at(-1)).toMatchObject({
-      role: "system",
-      content: "",
-      sections: { context_budget: expect.stringContaining("<context_budget>") },
+      role: "user",
+      content: [{ type: "text", text: expect.stringContaining("<context_budget>") }],
     });
-    expect(getCurrentSystemMessage(below.context.messages)?.sections?.context_budget).toContain("new_context");
-    expect(stillBelow.context.systemPrompt).not.toContain("<context_budget>");
-    // The legacy prompt baseline stays unchanged; the returned transcript
-    // carries the reminder section through the normal persistence path.
+    expect(JSON.stringify(below.context.messages.at(-1))).toContain("new_context");
+    expect(stillBelow.context.messages.at(-1)?.role).not.toBe("user");
+    // The prompt baseline stays unchanged and nothing lands in agent state.
     expect((runtime as any).agent.state.systemPrompt).not.toContain(
       "<context_budget>",
     );
+    expect(JSON.stringify((runtime as any).agent.state.messages)).not.toContain("<context_budget>");
     expect(runCompaction).not.toHaveBeenCalled();
 
     vi.spyOn(runtime as any, "contextBudget")
@@ -9041,6 +9338,102 @@ describe("DesktopAgentRuntime per-turn context protection", () => {
     await runtime.dispose();
   });
 
+  it("shrinks the retained-tail fallback until it fits a calibrated budget (#2494)", async () => {
+    // A provider tokenizer that counts more tokens than the local estimate
+    // (CJK text, for one) teaches the calibration a ratio above 1. The
+    // fallback tail used to be sized by the raw estimate while the install
+    // check used the calibrated one, so every summary failure past the hard
+    // limit ended the turn with CONTEXT_COMPACTION_FAILED, on every retry.
+    const onEvent = vi.fn();
+    const host = {
+      call: vi.fn(async (method: string) => {
+        if (method === "project.instructions.resolve") return { entries: [] };
+        if (method === "tools.execute") return { ok: true, content: "x ".repeat(6_000) };
+        return undefined;
+      }),
+      onNotification: vi.fn(() => () => {}),
+    };
+    const runtime = createRuntime({
+      host,
+      onEvent,
+      provider: {
+        ...provider,
+        modelConfig: { ...provider.modelConfig!, contextWindow: 128_000, maxTokens: 128_000 },
+      },
+    });
+    const internal = runtime as any;
+    let requests = 0;
+    const usage = (input: number) => ({
+      input,
+      output: 50,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: input + 50,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    });
+    internal.models = {
+      streamSimple: (_model: unknown, context: any) => {
+        requests += 1;
+        const done = requests > 12;
+        const chars =
+          JSON.stringify(context.messages).length +
+          String(context.systemPrompt ?? "").length +
+          JSON.stringify(context.tools ?? []).length;
+        const message = {
+          ...assistantMessage({
+            content: done
+              ? [{ type: "text", text: "done" }]
+              : [{ type: "toolCall", id: `read-${requests}`, name: "Read", arguments: { path: `f${requests}.ts` } }],
+            stopReason: done ? "stop" : "toolUse",
+          }),
+          usage: usage(Math.round((chars / 4) * 1.8)),
+          timestamp: Date.now(),
+        } as AssistantMessage;
+        const stream = createAssistantMessageEventStream();
+        queueMicrotask(() => {
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", reason: done ? "stop" : "toolUse", message } as never);
+          stream.end(message);
+        });
+        return stream;
+      },
+      completeSimple: async () => {
+        throw new Error("summary relay unavailable");
+      },
+    };
+
+    try {
+      await runtime.prompt("Read every file.", "user-2494");
+
+      const events = onEvent.mock.calls.map(([envelope]) => (envelope as any).event);
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: "compaction_end", ok: true, fallback: "retained_tail" }),
+      );
+      expect(events.filter((event) => event.type === "error")).toEqual([]);
+      expect(requests).toBe(13);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("names the checkpoint failure cause in the turn error (#2494)", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(runtime as any, "contextBudget").mockReturnValue({
+      tokens: 225_000,
+      hardLimit: 224_000,
+      requestHeadroom: 32_000,
+    });
+    vi.spyOn(runtime as any, "performCompaction").mockImplementation(async () => {
+      (runtime as any).emitCompactionFailure("threshold", 225_000, "summary relay unavailable");
+      return false;
+    });
+
+    await expect((runtime as any).prepareNextTurn(nextTurn)).rejects.toThrow(
+      "CONTEXT_COMPACTION_FAILED: unable to create a checkpoint before the next model request: summary relay unavailable",
+    );
+    await runtime.dispose();
+  });
+
   it("keeps manual compaction failures terminal instead of silently dropping context", async () => {
     const host = { call: vi.fn().mockResolvedValue(undefined) };
     const onEvent = vi.fn();
@@ -9506,6 +9899,7 @@ describe("DesktopAgentRuntime inline context compaction", () => {
         mark: {
           id: expect.any(String),
           throughMessageId: "recent-user",
+          createdAt: expect.any(String),
           generation: 1,
           summaryTokens: 7,
           contextTokens: 40_000,
@@ -11304,6 +11698,10 @@ describe("DesktopAgentRuntime subagents", () => {
     );
     expect(listed.details.resumable).toEqual([]);
     expect(listed.content[0].text).not.toContain("Reusable subagent sessions");
+    // TaskList must not advertise the `job` shape that made strict models
+    // resend a job next to a multi-id TaskWait (#2487).
+    expect(listed.content[0].text).toContain(`delegationIds=["${delegationId}"]`);
+    expect(listed.content[0].text).not.toContain("job=");
 
     subagentRuns.deferred = false;
     await runtime.dispose();

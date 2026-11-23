@@ -71,7 +71,7 @@ test("only the latest navigation may commit a loaded transcript", () => {
   const selection = sessionSlice.match(
     /selectSession: async[\s\S]*?\n    newSession: async/,
   )?.[0] ?? "";
-  assert.match(selection, /set\(\{ selectingSessionId: id, page: "chat" \}\)/);
+  assert.match(selection, /set\(\{ selectingSessionId: id, page: "chat", settingsOpen: false \}\)/);
   assert.match(selection, /navigationIntentIsCurrent\(intent\)/);
   // The final commit carries the loaded detail window — unless a concurrent
   // idle edit superseded the read while it was in flight, in which case the

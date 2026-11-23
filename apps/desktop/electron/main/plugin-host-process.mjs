@@ -253,6 +253,7 @@ function buildApi() {
       getVersion: () => call("app.getVersion"),
       getLocale: () => call("app.getLocale"),
       getAppearance: () => call("app.getAppearance"),
+      getCapabilities: () => call("app.getCapabilities"),
       setTheme: (themeId) => call("app.setTheme", [themeId]),
     },
     themes: {
@@ -343,6 +344,8 @@ function buildApi() {
     // spending another completion.
     composer: {
       suggest: (input) => call("composer.suggest", [input ?? {}]),
+      getSuggestionTarget: (input) => call("composer.getSuggestionTarget", [input]),
+      suggestCandidates: (input) => call("composer.suggestCandidates", [input]),
       clearSuggestion: (input) => call("composer.clearSuggestion", [input ?? {}]),
     },
     project: {
@@ -771,6 +774,29 @@ async function handleParentCall(method, payload, invocationId, callId) {
         throw error;
       }
       return answer;
+    }
+    case "agent.modelContext": {
+      const handler = pluginModule?.onModelContext;
+      if (typeof handler !== "function") return null;
+      const controller = new AbortController();
+      parentCallControllers.set(callId, controller);
+      // Release the controller even if the plugin never settles its promise.
+      const release = () => parentCallControllers.delete(callId);
+      controller.signal.addEventListener("abort", release, { once: true });
+      try {
+        const answer = await handler(payload, { signal: controller.signal });
+        if (controller.signal.aborted || answer === undefined || answer === null) return null;
+        // Reject before crossing IPC; don't copy arbitrary plugin objects.
+        const text = answer.text;
+        if (typeof text !== "string" || text.length > 4096 || Buffer.byteLength(text, "utf8") > 4096) {
+          throw Object.assign(new Error("onModelContext requires text of at most 4096 UTF-8 bytes"), {
+            code: "PLUGIN_INVALID_RESULT",
+          });
+        }
+        return { text };
+      } finally {
+        release();
+      }
     }
     case "lifecycle.unload": {
       for (const id of invocations.keys()) cancelInvocation(id, "Plugin unloaded");

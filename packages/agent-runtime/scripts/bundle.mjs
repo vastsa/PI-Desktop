@@ -40,6 +40,32 @@ async function bundleImageResizeAssets(directory) {
   );
 }
 
+/**
+ * The codemode sandbox starts a worker thread and compiles QuickJS-WASI. A
+ * packaged app has no node_modules, so both ship in `chunks/`, where the
+ * runtime looks for them (ADR codemode-sandbox-boundary).
+ */
+export async function bundleCodemodeAssets(directory) {
+  const chunksDirectory = join(directory, "chunks");
+  await mkdir(chunksDirectory, { recursive: true });
+  await build({
+    entryPoints: [join(packageRoot, "src/codemode/worker.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    minify: true,
+    outfile: join(chunksDirectory, "codemode-worker.js"),
+    banner: { js: banner },
+  });
+  const codemodeRequire = createRequire(
+    fileURLToPath(import.meta.resolve("@earendil-works/pi-codemode")),
+  );
+  await copyFile(
+    codemodeRequire.resolve("quickjs-wasi/quickjs.wasm"),
+    join(chunksDirectory, "quickjs.wasm"),
+  );
+}
+
 export async function writeBundlePackageManifest(directory) {
   await writeFile(
     join(directory, "package.json"),
@@ -69,6 +95,7 @@ export async function bundleAgentRuntime(outputDir = join(packageRoot, "dist-bun
     });
 
     await bundleImageResizeAssets(stagingDir);
+    await bundleCodemodeAssets(stagingDir);
     await writeBundlePackageManifest(stagingDir);
 
     try {

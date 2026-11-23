@@ -67,8 +67,10 @@ test("terminal notifications flow from host completion to the renderer", () => {
   assert.match(storeSource, /receiveNotification:/);
   assert.match(storeSource, /unreadNotificationCount/);
   assert.match(appSource, /api\.onNotificationChanged/);
-  assert.match(sidebarSource, /<NotificationCenter onBeforeOpen=\{\(\) => closeMenus\(false\)\} \/>/);
-  assert.doesNotMatch(appSource, /<NotificationCenter \/>/);
+  // The sidebar no longer carries a notification entry (issue #2431); the
+  // durable inbox state keeps flowing for sidebar outcome badges.
+  assert.doesNotMatch(sidebarSource, /<NotificationCenter\b/);
+  assert.doesNotMatch(appSource, /<NotificationCenter\b/);
   const changedHandler = appSource.match(
     /api\.onNotificationChanged[\s\S]*?\n\s*\}\);/,
   )?.[0] ?? "";

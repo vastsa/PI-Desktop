@@ -3,6 +3,7 @@ import { register } from "node:module";
 import test from "node:test";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const { contextCompactionMark } = await import("../../../packages/shared/src/context-compaction.ts");
 const { latestTurnContextInspector } = await import("../src/lib/latest-turn-context.ts");
 const { composerContextUsage } = await import("../src/lib/context-usage.ts");
 
@@ -44,6 +45,34 @@ test("the composer reflects a finished compaction before the next request (#2015
   // The provider breakdown still describes the last real request.
   assert.equal(after.usage, usage);
 });
+
+for (const status of ["error", "aborted"]) {
+  test(`manual compaction after an ${status} reply updates the ring before the next turn (#2410)`, () => {
+    const messages = [
+      message("prompt", "user"),
+      message("reply", "assistant", { status, providerId: "p", modelId: "m", usage }),
+    ];
+    // The runtime omits this reply from model history, so its checkpoint covers the prompt.
+    const checkpoint = contextCompactionMark({
+      id: "checkpoint", throughMessageId: "prompt", summary: "Earlier work",
+      tokensBefore: 82_000, details: { contextTokens: 12_000 },
+      createdAt: "2026-10-31T00:01:00.000Z",
+    });
+    assert.equal(composerContextUsage(inspect(messages, [])).usedPercent, 82);
+    const after = inspect(messages, [checkpoint]);
+    assert.equal(composerContextUsage(after).usedPercent, 12);
+    assert.equal(after.usage, usage);
+
+    const nextUsage = { inputTokens: 15_000, outputTokens: 1_000, totalTokens: 16_000 };
+    const later = message("next", "assistant", {
+      status, providerId: "p", modelId: "m", usage: nextUsage,
+      createdAt: "2026-10-31T00:02:00.000Z",
+    });
+    assert.equal(composerContextUsage(inspect([...messages, later], [checkpoint])).usedPercent, 16);
+    assert.equal(inspect(messages.slice(1), [checkpoint]).compactedContextTokens, undefined);
+    assert.equal(inspect(messages, [mark("prompt", { contextTokens: 12_000 })]).compactedContextTokens, undefined);
+  });
+}
 
 test("a request after the compaction reports real usage again", () => {
   const nextUsage = { inputTokens: 15_000, outputTokens: 1_000, totalTokens: 16_000 };

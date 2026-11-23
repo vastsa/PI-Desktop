@@ -414,6 +414,15 @@ describe("contributes.views", () => {
     );
   });
 
+  it("requires an explicit boolean for transcript selection", () => {
+    expect(validateContributions({
+      views: [{ ...view, acceptsTranscriptSelection: true }],
+    })).toBeUndefined();
+    expect(validateContributions({
+      views: [{ ...view, acceptsTranscriptSelection: "true" as never }],
+    })).toMatch(/acceptsTranscriptSelection must be a boolean/);
+  });
+
   it("requires both locales for a localized title", () => {
     expect(
       validateContributions({ views: [{ ...view, title: { en: "Changes" } as never }] }),

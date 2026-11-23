@@ -67,7 +67,7 @@ test("host-core parses runInBackground on ToolsExecuteParams and skips the cance
   );
   assert.match(
     toolSources,
-    /if options\.run_in_background \{[\s\S]*?spawn_background_task_detached/,
+    /if options\.run_in_background \{[\s\S]*?spawn_background_task_with_continuation/,
   );
 });
 
@@ -155,8 +155,8 @@ test("the container shows only live work: a finished row expires and can be remo
   assert.match(controller, /observeTasks\(current, result\.tasks, observedAt\)/);
   // Removal is refused for a live task in the state layer, not just by hiding
   // the control.
-  assert.match(visibility, /task\.state === "running"\) return state;/);
-  assert.match(controller, /if \(!task \|\| task\.state === "running"\)/);
+  assert.match(visibility, /task\.state === "running" \|\| task\.continuation === "pending"\) return state;/);
+  assert.match(controller, /if \(!task \|\| task\.state === "running" \|\| task\.continuation === "pending"\)/);
   assert.match(controller, /dismissTask\(current, task\)/);
   // A finished row offers removal instead of stopping.
   assert.match(bar, /\{t\("backgroundTasks\.dismiss"\)\}/);
