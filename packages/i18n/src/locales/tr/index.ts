@@ -2800,6 +2800,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "agent.modelContext": "Model isteklerine metin ekle",
       "session.observe": "Oturum etkinliğini izle",
       "agent.complete": "Modellerinizle tek seferlik tamamlatma çalıştır",
+      "agent.subagent": "Araçları çalışırken alt ajan başlat",
       "composer.transform": "Oluşturucudaki metni dönüştür",
       "composer.suggest": "Oluşturucuda öneri sun",
       "agent.extension": "Ajanın içinde kod çalıştır",
@@ -2855,6 +2856,8 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "session.observe": "Yetkili projelerde turlar başladığında veya kullanıcı mesajları kaydedildiğinde yalnızca kimlikleri alır; mesaj içeriğini almaz.",
       "agent.complete":
         "Model kotanızı tek seferlik bir tamamlatma için harcayabilir. Eklenti API anahtarlarınızı almaz.",
+      "agent.subagent":
+        "Araçlarından biri çalışırken alt ajan başlatabilir, bekleyebilir ve durdurabilir. Alt ajanlar Task gibi model kotanızı harcar ve bu oturumun araçlarını kullanır.",
       "composer.transform": "Eklentinin Oluşturucu'da açıkça seçtiğiniz metni dönüştürmesine izin verir. Eklenti yalnızca taslağı ve seçili model anahtarını alır; konuşma geçmişini veya ekleri almaz.",
       "composer.suggest": "Taslak boşken Oluşturucu yer tutucusunda yok sayılabilir tek bir satır göstermesine izin verir. Satır yalnızca Tab ile taslağa girer, eklenti onu kendi gönderemez ve yazmaya başlayınca kaybolur.",
       "agent.extension": "ExtensionAPI modüllerini ajan sürecinde, ajanın kendi araçlarıyla aynı erişimle çalıştırır. Yalnızca güvendiğiniz kodu etkinleştirin.",

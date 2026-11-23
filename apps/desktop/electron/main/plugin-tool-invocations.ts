@@ -7,6 +7,10 @@ export type PluginToolInvocation = {
   readonly sessionId: string;
   readonly toolName: string;
   readonly turnId?: string;
+  /** Runtime tool call this invocation answers; the parent of any delegation
+   * the plugin starts (`agent.subagent`). Taken from the broker dispatch,
+   * never from plugin arguments. */
+  readonly toolCallId?: string;
   readonly signal: AbortSignal;
 };
 
@@ -36,6 +40,7 @@ export class PluginToolInvocations {
       sessionId: input.sessionId,
       toolName: input.toolName,
       ...(input.turnId ? { turnId: input.turnId } : {}),
+      ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
       signal: controller.signal,
       owner,
       controller,

@@ -65,6 +65,28 @@ export const AGENT_COMPACT_RPC_TIMEOUT_MS =
 export const WORKTREE_DELEGATE_RPC_TIMEOUT_MS = 10 * 60_000;
 
 /**
+ * `agent.waitSubagents` (plugin `pi.agent.waitSubagents`, issue #2508) holds
+ * the reply until its targets settle or the plugin's own wait bound passes.
+ * That bound is capped at `PLUGIN_SUBAGENT_WAIT_MAX_MS`, below the 110s plugin
+ * tool budget, and the transport waits that bound plus slack so the sidecar's
+ * structured timeout result always wins over a transport timeout. The
+ * agent runtime clamps its wait with the same constant.
+ */
+export const PLUGIN_SUBAGENT_WAIT_MAX_MS = 90_000;
+export const PLUGIN_SUBAGENT_WAIT_RPC_SLACK_MS = 15_000;
+
+function agentWaitSubagentsTimeoutMs(params: unknown): number {
+  const requested =
+    params && typeof params === "object" && "timeoutMs" in params
+      ? Number((params as { timeoutMs?: unknown }).timeoutMs)
+      : Number.NaN;
+  const wait = Number.isFinite(requested)
+    ? Math.min(Math.max(0, requested), PLUGIN_SUBAGENT_WAIT_MAX_MS)
+    : PLUGIN_SUBAGENT_WAIT_MAX_MS;
+  return wait + PLUGIN_SUBAGENT_WAIT_RPC_SLACK_MS;
+}
+
+/**
  * `configSync.syncNow` is a Host-owned multi-step operation. It has no
  * whole-request deadline: individual S3 requests retain their own bounds, and
  * navigating away from Settings only detaches the renderer from the request.
@@ -91,9 +113,10 @@ export function isRpcTimeoutError(error: unknown): boolean {
  */
 export function rpcTimeoutMs(
   method: string,
-  _params: unknown,
+  params: unknown,
 ): number | undefined {
   if (method === "agent.compact") return AGENT_COMPACT_RPC_TIMEOUT_MS;
+  if (method === "agent.waitSubagents") return agentWaitSubagentsTimeoutMs(params);
   if (method === "worktree.delegate.create" || method === "worktree.delegate.settle") {
     return WORKTREE_DELEGATE_RPC_TIMEOUT_MS;
   }

@@ -1091,6 +1091,95 @@ answers with whichever code the failing service classified, in the same
 `data.errorCode` → `errorCode` → `code` precedence every other host boundary
 uses.
 
+### agent.subagent (requires `agent.subagent`)
+```ts
+pi.agent.startSubagent(input: {
+  agent: string        // subagent definition name, same catalog as Task
+  task: string         // the delegate's only brief; non-empty, ≤ 100,000 chars
+  description?: string // short label for the running-tasks UI, ≤ 200 chars
+  model?: string       // optional providerId/modelId override, same rules as Task.model
+}): Promise<{ delegationId: string; agent: string; modelId: string }>
+
+pi.agent.waitSubagents(input?: {
+  delegationIds?: string[]  // 1..32; default: every delegation this plugin started
+                            // in this session that it has not yet received
+  mode?: "all" | "any"      // default "all"
+  timeoutSeconds?: number   // 1..90, default 60
+}): Promise<{
+  results: Array<{
+    delegationId: string
+    agent: string
+    status: "completed" | "failed" | "aborted" | "stopped" | string
+    modelId: string
+    report: string
+    turns: number
+    toolCalls: number
+    usage?: MessageUsage
+    modelFailures?: Array<{ model: string; code: string; message: string }>
+    error?: { code: string; message: string }
+  }>                        // settled targets only
+  running: string[]         // targets still running when the wait ended
+}>
+
+pi.agent.stopSubagents(input?: {
+  delegationIds?: string[]  // default: every delegation this plugin started in
+                            // this session that it has not yet received
+}): Promise<{ stopped: string[] }>
+```
+
+An orchestration plugin can run its own worker loop: start subagents from inside
+one of its Agent tools, wait for their reports, and decide the next step,
+instead of steering the parent model through skill text (issue #2508). Risk is
+`high`, confirmed at install.
+
+- **Same path as `Task`.** The agent runtime starts the delegation through the
+  exact code path of a model-issued `Task` call (`startDelegation`): the same
+  definition catalog, model opt-in (`availableForSubagents`,
+  `provider.resolveSubagentModel`), per-session concurrency cap
+  (`RATE_LIMITED`), isolated worktree, turn-epoch checks, abort on user Stop,
+  and transcript events. Child events carry the plugin tool call's id as
+  `parentToolCallId`, so the delegate's rows nest under the plugin tool row.
+  `resume` is not offered.
+- **Tool execution only.** All three calls are valid only during the calling
+  plugin's own in-flight Agent tool invocation; anywhere else they fail with
+  `INVALID_ARGUMENT` (`only available during tool execution`). The session, turn,
+  and parent tool call come from the broker invocation, never from plugin
+  arguments. The runtime re-checks that the turn is current and the tool call is
+  still running (`TURN_MISMATCH` otherwise).
+- **Mode gate.** When `Task` is not in the session's tool catalog (no subagents
+  configured) or the session mode denies it, start fails with
+  `PERMISSION_DENIED`. Other refusals keep the `Task` reason text with a stable
+  code: `INVALID_ARGUMENT` (unknown agent, empty brief, unavailable model),
+  `UNSUPPORTED` (a definition pin that is not configured, or no declared tool in
+  this session), `INTERNAL` (worktree or initialization failure).
+- **Ownership.** Electron main records which delegation ids each plugin started
+  in each session. Waiting on or stopping an id this plugin did not start in this
+  session is `PERMISSION_DENIED`; an owned id the runtime no longer knows (session
+  runtime disposed, app restarted, or history pruned) is `NOT_FOUND`. Ownership
+  survives across tool invocations of the same plugin in the same session, so a
+  later call may wait on workers an earlier call started. It ends when the plugin
+  is unloaded, reloaded, or crashes. Without `delegationIds` nothing is sent when
+  the plugin owns no unreceived delegation, so a plugin can never wait on or stop
+  the model's own `Task` runs.
+- **Why background plus a bounded wait.** A plugin tool has a 110 s budget
+  (`PLUGIN_TOOL_TIMEOUT_MS`), while a subagent run takes minutes. The API
+  therefore mirrors `Task` + `TaskWait`: start returns immediately and the run
+  continues in the background; each wait is capped at 90 s so it answers inside
+  the tool budget. A wait timeout is not a failure: the targets keep running and
+  are listed in `running`. Tool budgets are unchanged.
+- **Report delivery.** A result the plugin received through `waitSubagents`
+  counts as delivered (`reportDelivered`), so the parent model is not fed the same
+  report again. A report the plugin never read still reaches the parent through
+  the existing idle auto-resume after the turn goes idle. A wait that returns after
+  the plugin tool call already ended does not mark its results delivered.
+- **Lifetime.** Cancelling the plugin tool call (timeout or abort) or unloading
+  the plugin does not stop delegations it started, the same as `Task`: background
+  runs survive the call that started them. User Stop and `TaskStop` still stop
+  them, and so does `stopSubagents`.
+- **Audit.** Each call is audited with the API name, `ok` / `errorCode`, session,
+  and counts (`taskChars`, requested / settled / running / stopped); the brief and
+  reports are never logged.
+
 ### clipboard / shell
 ```ts
 pi.clipboard.readText(): Promise<string>
@@ -1810,6 +1899,8 @@ Any of the following calls must be logged for audit:
 - session.getActive (the selected session's presence, never its transcript)
 - ui.revealView (view id, session id, whether a location was carried)
 - agent.complete (model key, sizes, usage — never prompt or completion text)
+- agent.startSubagent / waitSubagents / stopSubagents (agent name, delegation id,
+  brief length, result counts — never the brief or report text)
 - provider.oauth (plugin id, declared provider id, operation, result/error code — never credential contents)
 
 Log fields:
@@ -1839,6 +1930,7 @@ The desktop plugin runtime now implements the MVP host API surface used by local
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`,
   bounded by `manifest.fs` (ADR 0088)
 - `agent.registerTool` / `unregisterTool` / `agent.complete`
+- `agent.startSubagent` / `waitSubagents` / `stopSubagents` (`agent.subagent`)
 - `speech.registerAdapter` / `unregisterAdapter` (`speech.adapter.register`)
 - `models.list`, `session.getLlmContext`
 - `session.getActive` and the `session:activated` event (`ui.revealView` needs `ui.view`)

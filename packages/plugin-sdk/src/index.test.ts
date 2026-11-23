@@ -717,6 +717,7 @@ describe("PLUGIN_PERMISSIONS", () => {
       "bus.subscribe",
       "agent.prompt.inject",
       "agent.complete",
+      "agent.subagent",
       "composer.transform",
       "composer.suggest",
       "models.list",
