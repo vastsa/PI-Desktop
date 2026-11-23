@@ -12,14 +12,19 @@ import { McpServerClient, describeMcpContent } from "../electron/main/plugin-mcp
  * #2528): `GET <url>` opens the event stream and announces a message endpoint;
  * `POST <url>` is not routed, so a streamable-HTTP client gets 405.
  */
-async function startLegacySseServer(t, { postStatus = 405, endpoint = "/messages?session=abc" } = {}) {
+async function startLegacySseServer(t, { postStatus = 405, endpoint = "/messages?session=abc", endpointDelayMs = 0 } = {}) {
   const posts = [];
   const streams = new Set();
   const server = createServer((req, res) => {
     const path = new URL(req.url, "http://localhost").pathname;
     if (path === "/mcp" && req.method === "GET") {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-      res.write(`: connected\n\nevent: endpoint\ndata: ${endpoint}\n\n`);
+      // A client that aborts mid-announce must not crash the test server.
+      res.on("error", () => {});
+      res.write(`: connected\n\n`);
+      const announce = () => res.write(`event: endpoint\ndata: ${endpoint}\n\n`);
+      if (endpointDelayMs > 0) setTimeout(announce, endpointDelayMs);
+      else announce();
       streams.add({ req, res });
       req.on("close", () => {
         for (const entry of streams) if (entry.res === res) streams.delete(entry);
@@ -101,6 +106,29 @@ test("closing a legacy SSE client ends its event stream", async (t) => {
   for (let i = 0; i < 50 && streams.size > 0; i += 1) {
     await new Promise((resolve) => setImmediate(resolve));
   }
+  assert.equal(streams.size, 0);
+});
+
+test("closing during the fallback endpoint wait tears the legacy stream down (#2530)", async (t) => {
+  // The endpoint event lands after close(), so without the pending-transport
+  // shutdown the fallback activated afterwards, sent initialize, and left
+  // the event stream open with no owner.
+  const { url, posts, streams } = await startLegacySseServer(t, { endpointDelayMs: 250 });
+  const mcp = client(url);
+  const connecting = mcp.connect().then(
+    () => "resolved",
+    (error) => `rejected:${error.code ?? error.message}`,
+  );
+  for (let i = 0; i < 50 && streams.size === 0; i += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  mcp.close();
+  const outcome = await connecting;
+  assert.match(outcome, /^rejected/);
+  // Past the moment the endpoint event would have activated the fallback:
+  // no initialize may reach the server and the event stream must be gone.
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(posts.length, 0);
   assert.equal(streams.size, 0);
 });
 
