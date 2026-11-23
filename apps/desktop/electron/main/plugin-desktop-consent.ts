@@ -1,5 +1,6 @@
 import { type BrowserWindow, type MessageBoxOptions, dialog } from "electron";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
+import type { PluginDesktopConsentAnswer } from "./plugin-desktop-consent-grants";
 import type { PluginDesktopConsentRequest } from "./plugin-runtime";
 
 /**
@@ -9,6 +10,10 @@ import type { PluginDesktopConsentRequest } from "./plugin-runtime";
  * acknowledgement; this dialog is where the user decides. It blocks the
  * plugin's call, so there is no window in which the operation happens before
  * the answer arrives.
+ *
+ * Only operations the runtime marks with `offerSession` (answering an Agent
+ * question) get a third "Allow until quit" button; approvals and destructive
+ * operations only ever get Deny / Allow once.
  *
  * The prompt always names the operation id from the catalog, never text the
  * plugin (or a model behind it) authored, so a prompt-injected transcript
@@ -48,7 +53,9 @@ export function desktopConsentDialogOptions(
     ]
       .filter(Boolean)
       .join("\n\n"),
-    buttons: [strings.deny, strings.allowOnce],
+    buttons: request.offerSession
+      ? [strings.deny, strings.allowOnce, strings.allowSession]
+      : [strings.deny, strings.allowOnce],
     // Escape and the red-X both land on Deny; a dismissed dialog must never
     // read as permission.
     defaultId: 0,
@@ -58,14 +65,19 @@ export function desktopConsentDialogOptions(
 }
 
 /** Anything that is not an explicit allow is a refusal. */
-export function desktopConsentGrantedFromResponse(response: number): boolean {
-  return response === 1;
+export function desktopConsentAnswerFromResponse(
+  response: number,
+  offerSession = false,
+): PluginDesktopConsentAnswer {
+  if (response === 1) return "once";
+  if (response === 2 && offerSession) return "session";
+  return "deny";
 }
 
 export function createDesktopConsentService(deps: {
   getWindow: () => BrowserWindow | null;
   getLocale: () => string;
-}): (request: PluginDesktopConsentRequest) => Promise<boolean> {
+}): (request: PluginDesktopConsentRequest) => Promise<PluginDesktopConsentAnswer> {
   return async (request) => {
     const options = desktopConsentDialogOptions(request, deps.getLocale());
     const window = deps.getWindow();
@@ -73,6 +85,6 @@ export function createDesktopConsentService(deps: {
       window && !window.isDestroyed()
         ? await dialog.showMessageBox(window, options)
         : await dialog.showMessageBox(options);
-    return desktopConsentGrantedFromResponse(result.response);
+    return desktopConsentAnswerFromResponse(result.response, request.offerSession === true);
   };
 }

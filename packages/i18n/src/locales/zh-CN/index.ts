@@ -132,6 +132,7 @@ export const zhCN = {
     detail:
       "这是一个危险的桌面操作。插件已确认风险；是否执行由你决定。如果你没有预期到这个操作，请拒绝。",
     allowOnce: "允许一次",
+    allowSession: "本次运行内允许",
     deny: "拒绝",
   },
   pluginFsConsent: {
@@ -384,6 +385,7 @@ deleteRunningSessionBlocked: "请先停止运行中的会话，再删除它。",
     suggestionNext: "下一条建议",
     addFiles: "添加文件",
     filesAttached: "已将 {{count}} 项加入草稿",
+    fileLineReferenceLimit: "每条消息最多可添加 {{count}} 处文件行引用。",
     filesPasted: "已将 {{count}} 个粘贴文件保存到会话临时目录",
     largeTextPasted: "已将大段粘贴文本保存为 @{{name}}",
     slashMenu: "指令",

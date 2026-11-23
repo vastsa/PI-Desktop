@@ -1183,7 +1183,9 @@ have a 30s capture deadline.
 `desktop.control` exposes `pi.desktop.listOperations()` and
 `pi.desktop.invoke({ operation, args, confirm? })` over a reviewed catalog,
 never arbitrary IPC. Dangerous operations require `confirm: true` **and** the
-user's answer in a host-owned native dialog. Session collaboration `spawn` and
+user's answer in a host-owned native dialog. Only `agent/askTool/resolve`
+offers "Allow until quit"; tool permissions, plan checkpoints, extension
+prompts, and destructive operations ask every time. Session collaboration `spawn` and
 `send` additionally require an active plugin Agent tool invocation; the host
 supplies source session/turn identity. Read the [desktop-control contract](spec/07-plugins/03-plugin-api.md)
 before using operations that create, prompt, cancel, or delete sessions.

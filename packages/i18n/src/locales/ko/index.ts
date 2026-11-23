@@ -138,6 +138,7 @@ export const ko = {
     detail:
       "위험한 데스크톱 작업입니다. 플러그인은 위험을 확인했지만 실행 여부는 사용자가 결정합니다. 예상하지 못한 작업이라면 거부하세요.",
     allowOnce: "한 번 허용",
+    allowSession: "종료할 때까지 허용",
     deny: "거부",
   },
   pluginFsConsent: {
@@ -391,6 +392,7 @@ export const ko = {
     suggestionNext: "다음 제안",
     addFiles: "파일 추가",
     filesAttached: "초안에 항목 {{count}}개 추가됨",
+    fileLineReferenceLimit: "메시지 하나에 파일 줄 참조를 최대 {{count}}개 추가할 수 있습니다.",
     filesPasted: "붙여넣은 파일 {{count}}개를 세션 임시 폴더에 저장함",
     largeTextPasted: "큰 붙여넣기 텍스트를 @{{name}}으로 저장함",
     slashMenu: "명령",

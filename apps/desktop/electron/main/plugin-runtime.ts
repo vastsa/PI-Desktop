@@ -145,6 +145,12 @@ import {
 } from "./plugin-shortcut-registry";
 import { repairImportedExtensionWrapper } from "./imported-plugin-wrapper";
 import {
+  type PluginDesktopConsentAnswer,
+  PluginDesktopConsentGrants,
+  canRememberDesktopConsent,
+  normalizeDesktopConsentAnswer,
+} from "./plugin-desktop-consent-grants";
+import {
   migrateLegacyPromptEnhancementSettings,
   PROMPT_ENHANCEMENT_PLUGIN_ID,
   type LegacyPromptEnhancementSettings,
@@ -325,7 +331,11 @@ export type PluginDesktopConsentRequest = {
   description: string;
   /** Positional arguments as the plugin supplied them (secret-stripped later). */
   args: unknown[];
+  /** Whether the dialog may offer "Allow until quit" for this operation. */
+  offerSession?: boolean;
 };
+
+export type { PluginDesktopConsentAnswer };
 
 export type PluginHostServices = {
   getWorkspacePath: () => string | null;
@@ -421,7 +431,9 @@ export type PluginHostServices = {
    * user decides here. Without this service every dangerous operation from a
    * plugin is refused, which is the safe default for a headless host.
    */
-  confirmDesktopControl?: (request: PluginDesktopConsentRequest) => Promise<boolean>;
+  confirmDesktopControl?: (
+    request: PluginDesktopConsentRequest,
+  ) => Promise<boolean | PluginDesktopConsentAnswer>;
   audit?: (entry: Record<string, unknown>) => void;
   /**
    * Blocking, native consent for a file access the manifest did not declare.
@@ -1535,6 +1547,11 @@ export class PluginRuntime {
    * session would be a standing permission nobody reviewed.
    */
   private fsConsent = new Map<string, Set<string>>();
+  /**
+   * Desktop operations the user allowed a plugin until quit. In memory only,
+   * and dropped when the plugin is explicitly stopped.
+   */
+  private desktopConsent = new PluginDesktopConsentGrants();
   /** Cached write ledgers, keyed by plugin id. */
   private writeLedgers = new Map<string, Record<string, number>>();
   private nextBusSubscription = 1;
@@ -2354,7 +2371,10 @@ export class PluginRuntime {
       loaded.disposing = true;
       this.toolInvocations.cancelOwner(loaded, "Plugin unloaded");
       // An explicit stop ends supervision; a supervisor-driven reload keeps it.
-      if (!this.restarting.has(pluginId)) this.cancelRestarts(pluginId);
+      if (!this.restarting.has(pluginId)) {
+        this.cancelRestarts(pluginId);
+        this.desktopConsent.revoke(pluginId);
+      }
       await this.stopServices(loaded);
     }
     if (loaded?.child) {
@@ -6020,20 +6040,28 @@ export class PluginRuntime {
               );
             }
             const consent = this.services.confirmDesktopControl;
-            const granted = consent
-              ? await consent({
-                  pluginId,
-                  pluginName: resolvePluginLocalizedString(
-                    loaded.manifest.name,
-                    this.services.getLocale?.(),
-                    pluginId,
-                  ),
-                  operation,
-                  description: operationInfo.description,
-                  args,
-                })
-              : false;
-            if (!granted) {
+            const remembered = this.desktopConsent.has(pluginId, operation);
+            const answer: PluginDesktopConsentAnswer = remembered
+              ? "session"
+              : consent
+                ? normalizeDesktopConsentAnswer(
+                    await consent({
+                      pluginId,
+                      pluginName: resolvePluginLocalizedString(
+                        loaded.manifest.name,
+                        this.services.getLocale?.(),
+                        pluginId,
+                      ),
+                      operation,
+                      description: operationInfo.description,
+                      args,
+                      offerSession: canRememberDesktopConsent(operation),
+                    }),
+                    operation,
+                  )
+                : "deny";
+            if (answer === "session") this.desktopConsent.grant(pluginId, operation);
+            if (answer === "deny") {
               this.services.audit?.({
                 pluginId,
                 api: "desktop.invoke",

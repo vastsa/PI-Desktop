@@ -17,6 +17,16 @@ import {
   stripInlineComposerFileReferenceTokens,
 } from "./composer-trigger.js";
 
+it("serializes agent mentions and saved line references in the same draft", () => {
+  const text = serializeInlineComposerFileReferences("\uE001 explain \uE002", [
+    { path: "reviewer", kind: "agent", token: "\uE001" },
+    { path: "/project/sample.txt", kind: "file", token: "\uE002", lineRange: { start: 2, end: 3 } },
+  ]);
+  expect(text).toContain("@reviewer explain /project/sample.txt (2:3)");
+  expect(text).not.toContain("\uE001");
+  expect(text).not.toContain("\uE002");
+});
+
 describe("splitComposerDirectoryPrompt", () => {
   const path = "/tmp/a & <b> &lt;";
 

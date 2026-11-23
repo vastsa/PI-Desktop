@@ -132,6 +132,7 @@ export const zhTW = {
     detail:
       "這是一個危險的桌面操作。外掛已確認風險；是否執行由你決定。如果你沒有預期到這個操作，請拒絕。",
     allowOnce: "允許一次",
+    allowSession: "本次執行內允許",
     deny: "拒絕",
   },
   pluginFsConsent: {
@@ -384,6 +385,7 @@ deleteRunningSessionBlocked: "請先停止執行中的會話，再刪除它。",
     suggestionNext: "下一則建議",
     addFiles: "新增檔案等內容",
     filesAttached: "已將 {{count}} 項加入草稿",
+    fileLineReferenceLimit: "每則訊息最多可新增 {{count}} 處檔案行引用。",
     filesPasted: "已將 {{count}} 個貼上檔案儲存到會話臨時目錄",
     largeTextPasted: "已將大段貼上文本儲存為 @{{name}}",
     slashMenu: "指令",

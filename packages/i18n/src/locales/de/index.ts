@@ -130,6 +130,7 @@ export const de = {
     "detail":
       "Dies ist ein gefährlicher Desktop-Vorgang. Das Plugin hat das Risiko bestätigt; ob er ausgeführt wird, entscheiden Sie. Lehnen Sie ab, wenn Sie ihn nicht erwartet haben.",
     "allowOnce": "Einmal erlauben",
+    "allowSession": "Erlauben bis zum Beenden",
     "deny": "Ablehnen",
   },
   "pluginFsConsent": {
@@ -342,6 +343,7 @@ export const de = {
     sessionMissing: "Diese Sitzung existiert nicht mehr",
   },
   "chat": {
+    fileLineReferenceLimit: "Pro Nachricht sind bis zu {{count}} Verweise auf Dateizeilen möglich.",
     promptRetractionFailed: "Der Entwurf konnte nicht sicher wiederhergestellt werden. Der Gesprächsverlauf bleibt erhalten.",
     "tableActions": "Tabellenaktionen",
     "markdownPlainTextFallback": "Große Antworten werden zur besseren Reaktionsfähigkeit als Klartext angezeigt.",

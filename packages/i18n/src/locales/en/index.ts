@@ -136,6 +136,7 @@ export const en = {
     detail:
       "This is a dangerous desktop operation. The plugin acknowledged the risk; whether it runs is up to you. Deny if you did not expect it.",
     allowOnce: "Allow once",
+    allowSession: "Allow until quit",
     deny: "Deny",
   },
   pluginFsConsent: {
@@ -389,6 +390,7 @@ deleteRunningSessionBlocked: "Stop the running session before deleting it.",
     suggestionNext: "Next suggestion",
     addFiles: "Add files",
     filesAttached: "Added {{count}} item(s) to the draft",
+    fileLineReferenceLimit: "Add up to {{count}} file line references per message.",
     filesPasted: "Saved {{count}} pasted file(s) to the session scratch folder",
     largeTextPasted: "Saved large pasted text as @{{name}}",
     slashMenu: "Commands",

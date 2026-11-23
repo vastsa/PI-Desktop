@@ -175,10 +175,9 @@ app.whenReady().then(async()=>{
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("\nLOCAL EDIT VERIFIED");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await page.waitForFunction(async () => {
-    const result = await window.pluginBridge.invoke("fm.read", { path: "local.txt" });
-    return result.text?.includes("LOCAL EDIT VERIFIED");
-  });
+  // Wait for the completed UI save; an async waitForFunction predicate is a
+  // truthy Promise before its read has observed the atomic write.
+  await page.getByText("Saved", { exact: true }).waitFor();
   assert((await readFile(join(localPath, "local.txt"), "utf8")).includes("LOCAL EDIT VERIFIED"));
   checks.push("project switch rejects late remote contents and restores real local editing and saving");
   await page.locator('[data-path="page.html"]').click({ button: "right" });

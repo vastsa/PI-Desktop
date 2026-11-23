@@ -138,6 +138,7 @@ export const tr = {
     detail:
       "Bu tehlikeli bir masaüstü işlemidir. Eklenti riski kabul etti; çalışıp çalışmayacağına siz karar verirsiniz. Beklemiyorsanız reddedin.",
     allowOnce: "Bir kez izin ver",
+    allowSession: "Çıkışa kadar izin ver",
     deny: "Reddet",
   },
   pluginFsConsent: {
@@ -391,6 +392,7 @@ export const tr = {
     suggestionNext: "Sonraki öneri",
     addFiles: "Dosya ekle",
     filesAttached: "Taslağa {{count}} öğe eklendi",
+    fileLineReferenceLimit: "Her mesaja en fazla {{count}} dosya satırı başvurusu ekleyebilirsiniz.",
     filesPasted: "Yapıştırılan {{count}} dosya oturum klasörüne kaydedildi",
     largeTextPasted: "Uzun yapıştırılan metin @{{name}} olarak kaydedildi",
     slashMenu: "Komutlar",
