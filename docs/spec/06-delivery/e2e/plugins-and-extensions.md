@@ -3389,6 +3389,12 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   lack the `onProviderOAuth` module export. 10) Load manifests whose model uses a
   non-array `thinkingLevels`, a non-string entry, or a non-string
   `defaultThinkingLevel`.
+- **Reasoning-effort variant**: Use a DeepSeek model at a local Chat Completions
+  fixture, declare `supportsReasoningEffort: true`, and select `high`. The stored
+  binding retains the flag and the request includes `reasoning_effort: "high"`.
+  Reload with `false`: the request omits `reasoning_effort`. With the field
+  omitted, the host compatibility default applies. A string value is rejected
+  by manifest validation.
 - **Expected**: Step 1 shows one row in the native provider list with
   `ownerPluginId` set to the plugin and the row id
   `plugin:<pluginId>:<declaredId>`. Its model binding contains the normalized

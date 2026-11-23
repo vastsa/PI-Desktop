@@ -180,7 +180,9 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                                     .get("thinkingProtocol")
                                     .and_then(Value::as_str)
                                     .map(str::to_string),
-                                supports_reasoning_effort: None,
+                                supports_reasoning_effort: model
+                                    .get("supportsReasoningEffort")
+                                    .and_then(Value::as_bool),
                                 supports_images: model
                                     .get("supportsImages")
                                     .and_then(Value::as_bool),

@@ -879,28 +879,49 @@ fn manifest_with_thinking_levels() -> PluginManifest {
 }
 
 #[test]
-fn declared_thinking_levels_survive_into_the_row() {
+fn declared_thinking_configuration_survives_into_the_row() {
     let (_dir, db, secrets) = test_context();
-    let declared = declared_providers(&manifest_with_thinking_levels());
-    assert_eq!(
-        declared[0].models[0].thinking_levels,
-        ["off", "low", "high"]
-    );
-    assert_eq!(
-        declared[0].models[0].default_thinking_level.as_deref(),
-        Some("high")
-    );
-    // The second model declares nothing, so it keeps offering no menu.
-    assert!(declared[0].models[1].thinking_levels.is_empty());
-    assert!(declared[0].models[1].default_thinking_level.is_none());
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    for supports_reasoning_effort in [Some(true), Some(false), None] {
+        let mut value = serde_json::to_value(manifest_with_thinking_levels()).unwrap();
+        if let Some(supported) = supports_reasoning_effort {
+            value["contributes"]["providers"][0]["models"][0]["supportsReasoningEffort"] =
+                json!(supported);
+        }
+        write_plugin(&root, value);
+        let manifest = PluginManager::read_manifest(&root).unwrap();
+        let declared = declared_providers(&manifest);
+        assert_eq!(
+            declared[0].models[0].thinking_levels,
+            ["off", "low", "high"]
+        );
+        assert_eq!(
+            declared[0].models[0].default_thinking_level.as_deref(),
+            Some("high")
+        );
+        // The second model declares nothing, so it keeps offering no menu.
+        assert!(declared[0].models[1].thinking_levels.is_empty());
+        assert!(declared[0].models[1].default_thinking_level.is_none());
+        assert_eq!(
+            declared[0].models[0].supports_reasoning_effort,
+            supports_reasoning_effort
+        );
+        assert!(declared[0].models[1].supports_reasoning_effort.is_none());
 
-    sync_plugin_providers(&db, &secrets, "demo.provider", &declared, true).unwrap();
-    let row = &providers::list_providers(&db, &secrets, true).unwrap()[0];
-    assert_eq!(row.models[0].thinking_levels, ["off", "low", "high"]);
-    assert_eq!(
-        row.models[0].default_thinking_level.as_deref(),
-        Some("high")
-    );
+        sync_plugin_providers(&db, &secrets, "demo.provider", &declared, true).unwrap();
+        let row = &providers::list_providers(&db, &secrets, true).unwrap()[0];
+        assert_eq!(row.models[0].thinking_levels, ["off", "low", "high"]);
+        assert_eq!(
+            row.models[0].default_thinking_level.as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            row.models[0].supports_reasoning_effort,
+            supports_reasoning_effort
+        );
+        assert!(row.models[1].supports_reasoning_effort.is_none());
+    }
 }
 
 #[test]
@@ -946,6 +967,11 @@ fn malformed_thinking_level_fields_are_rejected_by_manifest_validation() {
 
     value["contributes"]["providers"][0]["models"][0]["thinkingLevels"] = json!(["high"]);
     value["contributes"]["providers"][0]["models"][0]["defaultThinkingLevel"] = json!(7);
-    write_plugin(&root, value);
+    write_plugin(&root, value.clone());
     assert!(read_manifest_err(&root).contains("defaultThinkingLevel must be a string"));
+
+    value["contributes"]["providers"][0]["models"][0]["defaultThinkingLevel"] = json!("high");
+    value["contributes"]["providers"][0]["models"][0]["supportsReasoningEffort"] = json!("true");
+    write_plugin(&root, value);
+    assert!(read_manifest_err(&root).contains("supportsReasoningEffort must be a boolean"));
 }

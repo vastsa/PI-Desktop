@@ -759,6 +759,8 @@ export type PluginProviderModelContrib = {
    * one of them. Omit to let the runtime pick the first available level.
    */
   defaultThinkingLevel?: string;
+  /** Chat Completions reasoning_effort support; omit to use host compatibility defaults. */
+  supportsReasoningEffort?: boolean;
 };
 
 /**
@@ -2342,6 +2344,9 @@ export function validateContributions(
       }
       if (model.defaultThinkingLevel !== undefined && typeof model.defaultThinkingLevel !== "string") {
         return `provider "${provider.id}" model ${modelId} defaultThinkingLevel must be a string`;
+      }
+      if (model.supportsReasoningEffort !== undefined && typeof model.supportsReasoningEffort !== "boolean") {
+        return `provider "${provider.id}" model ${modelId} supportsReasoningEffort must be a boolean`;
       }
     }
   }

@@ -388,6 +388,8 @@ type PluginProviderModelContrib = {
  thinkingLevels?: string[];
  /** New sessions use this level when it is present in `thinkingLevels`. */
  defaultThinkingLevel?: string;
+ /** Chat Completions reasoning_effort support; omit to use host compatibility defaults. */
+ supportsReasoningEffort?: boolean;
 };
 ```
 To materialize these fields, the Host trims entries, drops unknown canonical
@@ -398,6 +400,11 @@ dropped and normal binding normalization selects the first available level.
 Manifest validation rejects a non-array `thinkingLevels`, any non-string entry, or
 an explicitly non-string `defaultThinkingLevel`; unknown string names are
 accepted and dropped during normalization.
+
+`supportsReasoningEffort` is an optional boolean copied into the model binding.
+It overrides the host's Chat Completions compatibility default for whether to
+send `reasoning_effort`; omission preserves that default. Non-boolean values
+are rejected. `thinkingLevels` alone does not declare wire-protocol support.
 
 ## 5. permissions enum
 
