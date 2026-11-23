@@ -1,7 +1,7 @@
 import type { SessionSummary } from "@pi-desktop/shared";
 import { api } from "./api";
 import { isRemoteSession, safeSessionSummary } from "./remote-session-safety";
-import { sessionIsReusableEmpty } from "./session-create";
+import { emptySlotPrecedes, sessionIsReusableEmpty } from "./session-create";
 import { isAutomationSession } from "./session-origin";
 import { sessionIsArchived } from "./sidebar-preferences";
 import type { SessionRuntime } from "../stores/runtime/session-runtime";
@@ -30,7 +30,13 @@ export async function openRemoteProjectSession(
       !isAutomationSession(session)
       && session.remoteHostKey === project.hostKey && session.remoteProjectId === project.projectId
       && !sessionIsArchived(session.id, state.sessionMeta),
-    ).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    ).sort((left, right) =>
+      // Empty slots first: a host append elsewhere must not displace the
+      // composing empty slot from the reuse check (#2405). A tier leader
+      // without a durable count still fails the detail read below and
+      // falls through to a fresh session.
+      emptySlotPrecedes(left, right) || right.updatedAt.localeCompare(left.updatedAt),
+    )[0];
     if (latest && sessionIsReusableEmpty(latest, {
       running: state.runningSessions[latest.id] === true,
       liveMessageCount: runtime.liveMessageCountForSession(latest.id, state),

@@ -8,12 +8,21 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 
 const {
   EMPTY_SESSION_WINDOW,
+  emptySlotPrecedes,
   sessionIsReusableEmpty,
 } = await import("../src/lib/session-create.ts");
 const { createSessionRuntime } = await import("../src/stores/runtime/session-runtime.ts");
 
 const sessionSlice = await readStoreModule("slices/session-slice.ts");
 const sessionCoordination = await readStoreModule("runtime/session-coordination.ts");
+const sidebarSource = await readFile(
+  new URL("../src/components/Sidebar.tsx", import.meta.url),
+  "utf8",
+);
+const remoteProjectSessionSource = await readFile(
+  new URL("../src/lib/remote-project-session.ts", import.meta.url),
+  "utf8",
+);
 
 test("an empty latest session is reusable only when the renderer agrees", () => {
   const empty = { messageCount: 0 };
@@ -108,6 +117,68 @@ test("latestSessionInScope excludes automation sessions so empty scheduled runs 
     {},
   );
   assert.equal(candidate3?.id, "session-user-nonempty");
+});
+
+test("emptySlotPrecedes tiers by the durable empty predicate", () => {
+  const empty = { messageCount: 0 };
+  const active = { messageCount: 2 };
+  assert.equal(emptySlotPrecedes(empty, active), -1);
+  assert.equal(emptySlotPrecedes(active, empty), 1);
+  assert.equal(emptySlotPrecedes(empty, empty), 0);
+  assert.equal(emptySlotPrecedes(active, active), 0);
+});
+
+test("a composing empty slot stays the New Task candidate when background output bumps another session (#2405)", () => {
+  const runtime = createSessionRuntime({ get: () => ({}), set: () => {} });
+  const composingEmpty = {
+    id: "session-empty-b",
+    projectPath: "/workspace/project",
+    messageCount: 0,
+    scheduledRun: false,
+    updatedAt: "2026-11-17T09:00:00Z",
+  };
+  const backgroundActive = {
+    id: "session-active-a",
+    projectPath: "/workspace/project",
+    messageCount: 5,
+    scheduledRun: false,
+    updatedAt: "2026-11-17T10:00:00Z",
+  };
+  // A's background append landed after B was created, so A is newer; the
+  // strict updatedAt order made New Task look at A, fail the reuse check,
+  // and create a second empty conversation while B was still composing.
+  const candidate = runtime.latestSessionInScope(
+    [backgroundActive, composingEmpty],
+    "/workspace/project",
+    {},
+  );
+  assert.equal(candidate?.id, "session-empty-b");
+
+  // Once the slot has messages it releases the tier and the newest
+  // ordinary session is the candidate again.
+  const filled = { ...composingEmpty, id: "session-filled-b", messageCount: 1 };
+  const released = runtime.latestSessionInScope(
+    [backgroundActive, filled],
+    "/workspace/project",
+    {},
+  );
+  assert.equal(released?.id, "session-active-a");
+});
+
+test("sidebar recent order and the remote reuse sort keep the empty slot ahead (#2405)", () => {
+  const recentBranch = sidebarSource.match(
+    /} else \{\n\s*\/\/ The composing empty slot stays ahead[\s\S]*?if \(byRecent !== 0\) return byRecent;\n\s*\}/,
+  )?.[0] ?? "";
+  assert.ok(recentBranch.length > 0, "recent sort branch not found");
+  assert.match(recentBranch, /emptySlotPrecedes\(a, b\)/);
+  // Explicit name/creation sorts keep their existing precedence.
+  const nameBranch = sidebarSource.match(/if \(displaySessionSort === "name"\) \{[\s\S]*?if \(byName !== 0\) return byName;\n\s*\}/)?.[0] ?? "";
+  assert.ok(nameBranch.length > 0, "name sort branch not found");
+  assert.doesNotMatch(nameBranch, /emptySlotPrecedes/);
+  const remoteSort = remoteProjectSessionSource.match(
+    /const latest = state\.sessions\.filter\([\s\S]*?\)\[0\];/,
+  )?.[0] ?? "";
+  assert.match(remoteSort, /emptySlotPrecedes\(left, right\)/);
 });
 
 test("empty sessions have a whole, already-known transcript window", () => {

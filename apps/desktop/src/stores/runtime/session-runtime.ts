@@ -22,6 +22,7 @@ import {
   normalizeProjectPath,
   sessionMatchesProject,
 } from "../../lib/sidebar-session-groups";
+import { emptySlotPrecedes } from "../../lib/session-create";
 import type { ComposerDraftSnapshot } from "../../lib/composer-smart-stop";
 import { formatToolValue } from "../../lib/tool-display";
 import { recordPaneTranscript } from "../../lib/session-panes";
@@ -422,6 +423,11 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
             sessionMatchesProject(session, projectPath),
         )
         .sort((a, b) => {
+          // Empty slots outrank ordinary history so a background append
+          // bumping another session's updatedAt cannot displace the
+          // composing empty slot from the reuse check (#2405).
+          const emptySlot = emptySlotPrecedes(a, b);
+          if (emptySlot !== 0) return emptySlot;
           const aUpdated = Date.parse(a.updatedAt);
           const bUpdated = Date.parse(b.updatedAt);
           const aTime = Number.isFinite(aUpdated) ? aUpdated : 0;

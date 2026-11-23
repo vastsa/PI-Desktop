@@ -46,6 +46,7 @@ import {
   selectRecentSessions,
 } from "../lib/sidebar-recent-sessions";
 import { listableSessions } from "../lib/session-origin";
+import { emptySlotPrecedes } from "../lib/session-create";
 import {
   composerDropItems,
   hasComposerFileDrag,
@@ -698,6 +699,12 @@ export function Sidebar({
       );
       if (byCreated !== 0) return byCreated;
     } else {
+      // The composing empty slot stays ahead of ordinary history in the
+      // default recent order; background output bumping another session's
+      // updatedAt must not sink it below the rows New Task compares
+      // against (#2405). Explicit name/creation sorts keep their order.
+      const emptySlot = emptySlotPrecedes(a, b);
+      if (emptySlot !== 0) return emptySlot;
       const byRecent = compareOptionalDate(
         optionalTimestamp(a.updatedAt),
         optionalTimestamp(b.updatedAt),

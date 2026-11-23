@@ -15,6 +15,23 @@ export const EMPTY_SESSION_WINDOW = {
   hasMoreBefore: false,
 } as const;
 
+/**
+ * Empty slots keep their slot above ordinary history while composing (#2405).
+ * A host append to any other session bumps its `sessions.updated_at`, so a
+ * strict updatedAt order lets background activity displace the composing
+ * empty slot: `latestSessionInScope` then hands New Task a session with
+ * messages, the reuse check fails, and a second empty conversation is
+ * created. Tiering by the durable empty predicate keeps the slot the
+ * candidate until the first message lands; runtime signals (running, live
+ * traffic, submitted drafts) stay with the reuse check at the call sites.
+ */
+export function emptySlotPrecedes(
+  a: { messageCount: number },
+  b: { messageCount: number },
+): number {
+  return Number(a.messageCount > 0) - Number(b.messageCount > 0);
+}
+
 export function sessionIsReusableEmpty(
   session: { messageCount: number; worktree?: unknown; scheduledRun?: boolean },
   options: {
