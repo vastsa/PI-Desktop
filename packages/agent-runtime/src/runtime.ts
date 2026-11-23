@@ -1474,7 +1474,7 @@ function commandShellToolDescription(
     shellSyntaxGuidance(shell),
     `The session scratch directory variable is ${shellScratchVariable(shell)}.`,
     `An optional timeout from 1 to ${MAX_COMMAND_TIMEOUT_SECONDS} seconds may be supplied; without it, the command defaults to a 60-second timeout.`,
-    `Set runInBackground: true for long-lived processes the user needs after the turn ends (dev servers, watchers, builds). A background call returns a backgroundTaskId immediately, survives turn aborts and timeouts, and its output is visible in the composer's running-tasks bar. In Agent mode on supported local Hosts, use TaskList to find it, TaskWait with its job reference to read results, and TaskStop with that reference to stop it. By default, background completion does not automatically resume the model. If notifyOnExit is available in the schema, it may arrange completion-triggered continuation for finite tests/builds.`,
+    `In a local Agent session, ordinary Bash can return a running job after a short wait. Do independent work if useful, then use TaskWait with the job reference before relying on the exit code or any files the command produces. The command keeps its original time limit. Set runInBackground: true for long-lived processes the user needs after the turn ends (dev servers, watchers, builds). A background call returns a backgroundTaskId immediately, survives turn aborts and timeouts, and its output is visible in the composer's running-tasks bar. In Agent mode on supported local Hosts, use TaskList to find it, TaskWait with its job reference to read results, and TaskStop with that reference to stop it. By default, background completion does not automatically resume the model. If notifyOnExit is available in the schema, it may arrange completion-triggered continuation for finite tests/builds.`,
     ...(formattedScratch ? [`The session scratch directory is ${formattedScratch}.`] : []),
   ].join(" ");
 }
@@ -2077,6 +2077,7 @@ export class DesktopAgentRuntime {
   private progressTurnRerunAttempted = false;
   private progressTurnRerunInProgress = false;
   private suppressProgressTurnRunEnd = false;
+  private bashYieldCalls = new Set<string>();
   private activeToolCalls = new Map<
     string,
     { toolName: string; args: unknown; startedAt: number }
@@ -2792,12 +2793,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.deferredToolNames.has(context.toolCall.name) && !this.activeDeferredToolNames.has(context.toolCall.name)) {
       return { block: true, reason: `Call ${TOOL_SEARCH_NAME} to activate ${context.toolCall.name} before using it. A tool declaration does not grant execution permission.` };
     }
-    const toolCalls = (context.assistantMessage.content as Array<{ type?: string }>).filter(
-      (block) => block.type === "toolCall",
-    );
+    const toolCalls = context.assistantMessage.content.filter((block) => block.type === "toolCall");
     const transition = MODE_TRANSITION_TOOL_NAMES.has(context.toolCall.name);
     const transitionInBatch = toolCalls.some((block) =>
-      MODE_TRANSITION_TOOL_NAMES.has((block as { name?: string }).name ?? ""),
+      MODE_TRANSITION_TOOL_NAMES.has(block.name),
     );
     if (transitionInBatch && toolCalls.length !== 1) {
       return {
@@ -2814,6 +2813,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       await this.preparePathToolCall(context);
       // Composer prefetches run serially outside the assistant's tool batches.
       if (!this.fileLineReadCalls.has(context.toolCall.id)) await this.registerBatchCall(context);
+      // A later tool in the same model response may depend on Bash finishing.
+      // Yield only when the next action can see and respond to the running job.
+      if (context.toolCall.name === "Bash" && this.mode === "agent"
+          && !this.remoteWorkspace && !this.delegateToolCalls.has(context.toolCall.id)
+          && toolCalls.at(-1)?.id === context.toolCall.id) {
+        this.bashYieldCalls.add(context.toolCall.id);
+      }
       return undefined;
     }
     const enterKind = enterToolKind(context.toolCall.name);
@@ -3686,6 +3692,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               )
           : undefined;
         const isBash = toolName === "Bash";
+        const yieldAfterInitialWait = isBash && this.bashYieldCalls.delete(toolCallId)
+          && !this.delegateToolCalls.has(toolCallId)
+          && !this.modeGateCalls.has(toolCallId)
+          && !(isRecord(params) && (params.runInBackground === true || isPatchCommand(params.command)));
         const timeoutMs = isBash ? commandTimeoutMs(params) : undefined;
         let progress = "";
         let progressDirty = false;
@@ -3854,6 +3864,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                     expectedCommandShellId: this.commandShell.id,
                     expectedCommandShellDialect: this.commandShell.dialect,
                     timeoutMs,
+                    ...(yieldAfterInitialWait ? { yieldAfterInitialWait } : {}),
                     ...(isRecord(params) && params.runInBackground === true
                       ? { runInBackground: true }
                       : {}),
@@ -9245,6 +9256,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const endedAt = Date.now();
           const activeTool = this.activeToolCalls.get(event.toolCallId);
           this.activeToolCalls.delete(event.toolCallId);
+          this.bashYieldCalls.delete(event.toolCallId);
           if (
             this.activeToolCalls.size === 0 &&
             !this.disposed &&
@@ -10098,6 +10110,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.pendingMutationTermination = undefined;
     this.terminatingToolCalls.clear();
     this.delegateToolCalls.clear();
+    this.bashYieldCalls.clear();
     this.appendedDelegationRowIds.clear();
     this.gracefulStopRequested = false;
     this.hostCloseUnsubscribe?.();

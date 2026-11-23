@@ -368,6 +368,13 @@ E2E-196b, E2E-196c, and E2E-200 (Quality, M6+).
 
 ---
 
+The session background jobs E2E (`scripts/e2e-session-background-jobs.mjs`)
+also covers ordinary Bash with a real Host and a deterministic local provider.
+A short command returns its original exit code. A longer command returns a
+running job, allows another tool call, and runs exactly once before
+`TaskWait` receives the terminal output and exit code. The original deadline
+and explicit stop are exercised after the initial return.
+
 ## 9. How AI Must Update This Doc
 
 When adding or changing a feature that affects user-visible or protocol-visible behavior:

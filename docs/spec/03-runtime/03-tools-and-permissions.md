@@ -637,6 +637,14 @@ Host execution baseline:
 - A command that exits non-zero returns `ok: false`, `isError: true`, and
   `errorCode: TOOL_FAILED` while preserving its `exitCode`, stdout, and stderr
   in `content` so the agent can diagnose the command without blindly retrying.
+- For a parent Agent's ordinary local Bash call at the end of a tool batch,
+  wait up to 5s for the first response. If the command is still running and the
+  session has background capacity, return a `running` snapshot with bounded
+  output and a Bash job reference. Host keeps the same process and its original
+  timeout, and the agent can use `TaskWait` before consuming its results or
+  `TaskStop` after handoff to stop it. No continuation is registered. Gates,
+  patch commands, delegated calls, earlier calls in a batch, and native remote
+  workspaces keep waiting for completion.
 - `runInBackground: true` detaches the command from the turn: the call returns
   `backgroundTaskId` as soon as the shell starts, no timeout applies, and the
   process survives `tools.abort` and `agent.abort`. The host owns the process
