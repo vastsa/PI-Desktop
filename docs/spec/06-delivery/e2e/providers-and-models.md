@@ -1122,6 +1122,9 @@ with only Host API controlled. Running-turn configuration remains queued.
     retained tail. The request contains no tool call without its result, and
     expanding the original transcript rows still shows their complete
     persisted results.
+  - A successful active-turn checkpoint with one retained request and no
+    reasoning to replay sends that request before the nonempty summary. Any
+    newer user message follows the summary (issue #2512).
   - Restart restores the summary and the recorded active/completed retention
     mode, and every earlier compaction row is still drawn. A regenerate/fork
     before a checkpoint boundary drops that record specifically; records
@@ -1147,6 +1150,8 @@ with only Host API controlled. Running-turn configuration remains queued.
     once more with tool results cut to a short prefix rather than skipping the
     model. If fallback persistence or the safe budget guard fails,
     `CONTEXT_COMPACTION_FAILED` is emitted once.
+    The fallback's recovery notice precedes the retained window even when it
+    contains only the active request.
   - If the newest checkpoint is already the transcript leaf when a follow-up
     prompt crosses the hard budget, the runtime rebuilds a smaller tail from
     the full transcript and carries the existing summary forward instead of
