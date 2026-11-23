@@ -45,6 +45,7 @@
     "test:e2e:model-discovery-state": "node scripts/e2e-model-discovery-state.mjs",
     "test:e2e:composer-model-selection": "node scripts/e2e-composer-model-selection.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
+    "test:e2e:composer-paste-image-file": "node scripts/e2e-composer-paste-image-file.mjs",
     "test:e2e:transcript": "node scripts/e2e-transcript-render.mjs",
     "test:e2e:gen-ui": "node scripts/e2e-gen-ui.mjs",
     "test:e2e:renderer-responsiveness": "node scripts/e2e-renderer-responsiveness.mjs",

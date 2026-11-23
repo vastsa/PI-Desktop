@@ -356,8 +356,10 @@ session gets a scratch directory outside the workspace:
 ```
 
 Native disk-file pastes retain main-registered live paths and byte sizes; they
-do not copy or read file contents, including referenced images. Subsequent reads
-use normal tool permissions. See [local file references](../../adr/composer-local-file-references.md).
+do not copy or read file contents. Native image files within the import bounds
+are the exception: they are copied into session scratch like picker imports so
+vision models receive the image. Subsequent reads of referenced files use
+normal tool permissions. See [local file references](../../adr/composer-local-file-references.md).
 
 Generated clipboard files and images pasted into the composer are materialized by
 Electron main below `<data_dir>/scratch/<sessionId>/pasted/` before their
