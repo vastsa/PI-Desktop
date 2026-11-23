@@ -556,6 +556,16 @@ Rules the control encodes:
   `tools/list` page completes on its reply instead of on the end of the stream.
   The request budget still bounds the exchange: a server that never replies
   still times out, and a stream left open past its request is aborted.
+- An `http` server that still speaks the 2024-11-05 HTTP+SSE transport rejects
+  the streamable initialize POST. When that POST fails with `400`, `404`, or
+  `405`, the client follows the MCP backwards-compatibility path: it opens
+  `GET <url>` as an event stream, waits for the `endpoint` event, and then
+  POSTs every message to that endpoint while replies arrive on the stream. The
+  endpoint must share the configured URL's origin because it receives the
+  configured headers. Other statuses, including `401`, never fall back. A
+  server that opens no event stream keeps the original streamable HTTP error.
+  The transport chosen by initialize is fixed for the session; closing the
+  client aborts the stream, and a stream that ends closes the session.
 - The MCP row shows “Authorization required” only when runtime status explicitly
   reports `authRequired`. Missing credentials, an untested connection, and
   non-authentication failures do not imply OAuth is required. A stored OAuth
