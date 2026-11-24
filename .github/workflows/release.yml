@@ -113,9 +113,7 @@ jobs:
             platform: windows
             dist: dist:win
           - name: Linux x64
-            # Ubuntu 22.04 keeps host-core at glibc 2.35 so Ubuntu 22.04,
-            # Debian 12, and Fedora 36+ can load the binary. ubuntu-latest
-            # (24.04) would raise the floor to 2.39.
+            # The native runner packages host-core built in Debian 11.
             os: ubuntu-22.04
             arch: x64
             runner_arch: x86_64
@@ -124,10 +122,7 @@ jobs:
             feed: latest-linux.yml
             dist: dist:linux
           - name: Linux arm64
-            # GitHub's native arm64 runner packages the Electron app and the
-            # host-core sidecar at the same architecture; the `-arm` image
-            # keeps the glibc 2.35 floor the x64 lane documents
-            # (ubuntu-24.04-arm would raise it to 2.39).
+            # Use the native runner for the matching Electron and Rust architecture.
             os: ubuntu-22.04-arm
             arch: arm64
             runner_arch: aarch64
@@ -191,10 +186,17 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        if: matrix.platform != 'linux'
 
       - uses: Swatinem/rust-cache@v2
+        if: matrix.platform != 'linux'
 
-      - name: Prepare package inputs
+      - name: Prepare Linux package inputs
+        if: matrix.platform == 'linux'
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare non-Linux package inputs
+        if: matrix.platform != 'linux'
         run: |
           set -euo pipefail
           cargo build --release --locked -p host-core &
@@ -337,9 +339,9 @@ jobs:
         if: matrix.platform == 'macos' && env.MACOS_SIGN_RELEASE == 'true'
         run: scripts/verify-macos-release.sh apps/desktop/release
 
-      - name: Verify Linux host-core glibc floor
+      - name: Verify the Linux Debian package
         if: matrix.platform == 'linux'
-        run: node scripts/check-linux-host-glibc.mjs target/release/pi-desktop-host-core
+        run: node scripts/check-linux-deb.mjs "${{ matrix.arch }}" apps/desktop/release/*.deb
 
       - name: Export Linux ASAR release asset
         if: matrix.platform == 'linux'
@@ -460,26 +462,15 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Build host-core for glibc 2.31
+        run: node scripts/build-linux-host-core.mjs
 
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build inputs (host-core, workspace, sidecar bundle)
+      - name: Build workspace and sidecar bundle
         run: |
-          set -euo pipefail
-          # Ubuntu 22.04 keeps the host-core glibc floor at 2.35, matching the
-          # desktop Linux build so the bundled binary loads on the same distros.
-          cargo build --release --locked -p host-core &
-          host_build_pid=$!
-          trap 'kill "$host_build_pid" 2>/dev/null || true' EXIT
-
           pnpm install --frozen-lockfile
           pnpm build:js
           pnpm --filter @pi-desktop/agent-runtime bundle
           pnpm --filter @pi-desktop/pi-host build
-
-          wait "$host_build_pid"
-          trap - EXIT
 
       - name: Verify host-core glibc floor
         run: node scripts/check-linux-host-glibc.mjs target/release/pi-desktop-host-core

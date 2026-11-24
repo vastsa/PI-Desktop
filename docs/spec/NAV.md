@@ -11,6 +11,7 @@
 - [00-overview.md](01-product/00-overview.md)
 - [01-product-scope.md](01-product/01-product-scope.md)
 - [02-non-goals.md](01-product/02-non-goals.md)
+- [03-pie-code-baseline.md](01-product/03-pie-code-baseline.md)
 
 ## 2. Architecture
 - [README.md](02-architecture/README.md)
@@ -86,6 +87,7 @@
   - [e2e/live-and-remote.md](06-delivery/e2e/live-and-remote.md)
 - [05-change-checklist.md](06-delivery/05-change-checklist.md)
 - [06-release-runbook.md](06-delivery/06-release-runbook.md)
+- [kylin-arm64-offline-install.md](06-delivery/kylin-arm64-offline-install.md)
 - [plugin-reviews-test-plan.md](06-delivery/plugin-reviews-test-plan.md)
 - [07-remote-control-rollout.md](06-delivery/07-remote-control-rollout.md)
 

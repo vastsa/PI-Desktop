@@ -120,10 +120,10 @@ test("release artifacts bypass redundant Actions compression", () => {
 
 test("manual Linux package validation covers the RPM desktop identity", () => {
   assert.match(linuxPackageWorkflowSource, /^on:\s*\n\s+workflow_dispatch:/m);
-  assert.match(linuxPackageWorkflowSource, /runs-on: ubuntu-22\.04/);
+  assert.match(linuxPackageWorkflowSource, /arch: x64\s+runner: ubuntu-22\.04\s/m);
   assert.match(
     linuxPackageWorkflowSource,
-    /run: pnpm --filter @pi-desktop\/desktop run dist:linux -- --x64/,
+    /pnpm --filter @pi-desktop\/desktop run dist:linux -- --\$\{\{ matrix\.arch \}\}/,
   );
   assert.match(
     linuxPackageWorkflowSource,
@@ -145,6 +145,12 @@ test("manual Linux package validation covers the RPM desktop identity", () => {
     linuxPackageWorkflowSource,
     /uses: actions\/upload-artifact@v7[\s\S]*path: apps\/desktop\/release\/\*\.rpm/,
   );
+});
+
+test("manual Linux package validation checks the native ARM64 Debian candidate", () => {
+  assert.match(linuxPackageWorkflowSource, /arch: arm64\s+runner: ubuntu-22\.04-arm/);
+  assert.match(linuxPackageWorkflowSource, /name: Verify the Debian package[\s\S]*?check-linux-deb\.mjs/);
+  assert.match(linuxPackageWorkflowSource, /name: Upload Debian candidate[\s\S]*?path: apps\/desktop\/release\/\*\.deb/);
 });
 
 test("release workflow publishes the Linux ASAR beside installers", () => {

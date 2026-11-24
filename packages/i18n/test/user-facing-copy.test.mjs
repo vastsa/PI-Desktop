@@ -19,11 +19,11 @@ test("shell status and crash copy stay user-facing", () => {
   assert.equal(english["status.fatal"], "Can't reach the local service");
   assert.equal(
     english["status.unsupportedGlibc"],
-    "This Linux build needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36+).",
+    "This Linux build needs glibc 2.31 or newer (Ubuntu 20.04+, Debian 11+, 银河麒麟 V10 SP1+, Fedora 36+).",
   );
   assert.equal(
     chinese["status.unsupportedGlibc"],
-    "当前 Linux 构建需要 glibc 2.35 或更高版本（Ubuntu 22.04、Debian 12、Fedora 36+）。",
+    "当前 Linux 构建需要 glibc 2.31 或更高版本（Ubuntu 20.04+、Debian 11+、银河麒麟 V10 SP1+、Fedora 36+）。",
   );
   assert.equal(english["errors.TURN_ABORTED"], "Stopped.");
   assert.equal(chinese["app.tagline"], "本地 AI 编程助手");

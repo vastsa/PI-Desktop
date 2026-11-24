@@ -584,7 +584,7 @@ macOS releases are signed with a Developer ID certificate and notarized by Apple
 
 <br />
 
-Linux packages require **glibc 2.35+**.
+The Linux core service requires **glibc 2.31+**.
 
 Common supported distributions include:
 

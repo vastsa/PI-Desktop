@@ -585,7 +585,7 @@ macOS Release 使用 Developer ID 签名并经过 Apple Notarization。
 
 <br />
 
-Linux 软件包（x64 与 arm64）需要 **glibc 2.35+**。
+Linux 核心服务（x64 与 arm64）需要 **glibc 2.31+**。
 
 常见支持版本：
 

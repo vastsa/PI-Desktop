@@ -8,8 +8,16 @@ permissions:
 
 jobs:
   build:
-    name: Linux x64 packages
-    runs-on: ubuntu-22.04
+    name: Linux ${{ matrix.arch }} packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     defaults:
       run:
@@ -24,38 +32,33 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Prepare package inputs
-        # Mirrors release.yml: build host-core with --locked so a drifted
-        # Cargo.lock fails here instead of being silently rewritten by the
-        # desktop `build:host-release` script, which does not pass --locked.
-        run: |
-          set -euo pipefail
-          cargo build --release --locked -p host-core &
-          host_build_pid=$!
-          trap 'kill "$host_build_pid" 2>/dev/null || true' EXIT
-
-          pnpm install --frozen-lockfile
-          pnpm --filter '@pi-desktop/desktop^...' --fail-if-no-match build
-
-          wait "$host_build_pid"
-          trap - EXIT
+      - name: Install package inputs
+        run: pnpm install --frozen-lockfile
 
       - name: Build Linux packages
-        run: pnpm --filter @pi-desktop/desktop run dist:linux -- --x64
+        run: |
+          test "$(node -p process.arch)" = "${{ matrix.arch }}"
+          pnpm --filter @pi-desktop/desktop run dist:linux -- --${{ matrix.arch }}
 
-      - name: Verify Linux host glibc floor
-        run: node scripts/check-linux-host-glibc.mjs target/release/pi-desktop-host-core
+      - name: Verify the Debian package
+        run: node scripts/check-linux-deb.mjs "${{ matrix.arch }}" apps/desktop/release/*.deb
+
+      - name: Upload Debian candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: pi-desktop-linux-${{ matrix.arch }}-deb
+          if-no-files-found: error
+          retention-days: 7
+          path: apps/desktop/release/*.deb
 
       - name: Install RPM inspection tools
+        if: matrix.arch == 'x64'
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y cpio rpm
 
       - name: Verify RPM package
+        if: matrix.arch == 'x64'
         run: |
           set -euo pipefail
           mapfile -t packages < <(find apps/desktop/release -maxdepth 1 -type f -name '*.rpm' -print)
@@ -83,6 +86,7 @@ jobs:
           grep -Fx 'StartupWMClass=pi-desktop' "$desktop_entry" >/dev/null
 
       - name: Upload RPM package
+        if: matrix.arch == 'x64'
         uses: actions/upload-artifact@v7
         with:
           name: pi-desktop-linux-x64-rpm
