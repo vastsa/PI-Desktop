@@ -137,12 +137,16 @@ contract changes are required.
    equivalent). A non-empty answer wins, is enriched per model through
    `modelsDevCatalog.findModel`, replaces what the model cache held for that
    provider, and is reported as `source: "remote"`.
-3. Only if the endpoint published nothing usable —no route, an auth error, or an
-   empty list— does `modelsForProvider` supply the vendor's published models,
-   reported as `source: "catalog"` together with any discovery error so the UI
-   can say the service did not answer. This result is **not** cached, so a
-   catalog guess never becomes indistinguishable from a real probe.
-4. Last resort: the provider's configured model, `source: "fallback"`.
+3. For a named preset, if the endpoint published nothing usable (no route, an
+   auth error, or an empty list), `modelsForProvider` supplies the preset's
+   published models. The settings form identifies the selected preset, and the
+   endpoint and API format must match before fallback is allowed. The result is
+   reported as `source: "catalog"` with any discovery error and is not cached.
+4. For custom endpoints, the catalog supplies metadata only. On discovery
+   failure, use the saved endpoint's discoveries (`source: "cache"`) and
+   configured IDs. With no discovery cache, offer the configured IDs
+   (`source: "fallback"`) and keep manual entry available. A failed live probe
+   is reported even when cached models stay visible.
 
 An OAuth vendor account skips step 2 — it has no key to probe with, and pi-ai
 already knows which models the subscription allows.

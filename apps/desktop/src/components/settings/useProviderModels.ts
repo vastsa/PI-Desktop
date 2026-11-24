@@ -76,7 +76,13 @@ function canDiscover(baseUrl: string): boolean {
  */
 export function useProviderModels(
   active: boolean,
-  form: { baseUrl: string; apiKey: string; apiStyle: string; headers?: Record<string, string> },
+  form: {
+    baseUrl: string;
+    apiKey: string;
+    apiStyle: string;
+    presetId?: string;
+    headers?: Record<string, string>;
+  },
   editingProvider?: ProviderPublic | null,
 ): ProviderModelsDiscovery {
   const [state, setState] = useState<ProviderModelsState>(IDLE);
@@ -85,11 +91,11 @@ export function useProviderModels(
   const requestSeq = useRef(0);
   const endpointRef = useRef<string | null>(null);
 
-  const { baseUrl, apiKey, apiStyle, headers } = form;
+  const { baseUrl, apiKey, apiStyle, presetId, headers } = form;
   const headersKey = JSON.stringify(headers ?? {});
   const providerId = editingProvider?.id;
-  const paramsRef = useRef({ active, baseUrl, apiKey, apiStyle, headers, providerId });
-  paramsRef.current = { active, baseUrl, apiKey, apiStyle, headers, providerId };
+  const paramsRef = useRef({ active, ...form, providerId });
+  paramsRef.current = { active, ...form, providerId };
   const modelsRef = useRef(state.models);
   modelsRef.current = state.models;
 
@@ -99,6 +105,7 @@ export function useProviderModels(
       baseUrl: url,
       apiKey: key,
       apiStyle: style,
+      presetId: preset,
       headers: hdrs,
       providerId: id,
     } = paramsRef.current;
@@ -136,6 +143,7 @@ export function useProviderModels(
       // handler, which asks the service first and models.dev only after.
       const result = await api.listProviderModels({
         ...(id ? { providerId: id } : {}),
+        ...(preset ? { presetId: preset } : {}),
         baseUrl: url.trim(),
         ...(key ? { apiKey: key } : {}),
         apiStyle: style,
@@ -188,7 +196,7 @@ export function useProviderModels(
   };
 
   useEffect(() => {
-    const endpoint = `${baseUrl.trim()}|${apiStyle}`;
+    const endpoint = `${baseUrl.trim()}|${apiStyle}|${presetId ?? ""}`;
     const first = endpointRef.current === null;
     const endpointChanged = !first && endpointRef.current !== endpoint;
     endpointRef.current = endpoint;
@@ -207,7 +215,7 @@ export function useProviderModels(
     const immediate = !!providerId && !apiKey && !endpointChanged;
     const timer = setTimeout(() => void run(requestId), immediate ? 0 : FETCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [active, baseUrl, apiKey, apiStyle, headersKey, providerId]);
+  }, [active, baseUrl, apiKey, apiStyle, presetId, headersKey, providerId]);
 
   const reload = () => {
     if (!paramsRef.current.active || !canDiscover(paramsRef.current.baseUrl)) return;

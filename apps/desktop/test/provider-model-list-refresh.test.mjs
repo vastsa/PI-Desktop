@@ -19,6 +19,7 @@ test("offline discovery does not send a saved provider's credentials to an unsav
     id: "relay", name: "Relay", vendorKey: "openai", enabled: true,
     authKind: "api_key_and_base_url", apiStyle: "responses",
     baseUrl: "https://relay.example/v1", headers: { "x-test-auth": "saved-fixture-header" },
+    models: [bindingForCustomModel("manual-id")],
   };
   const handlers = new Map();
   const hostCalls = [];
@@ -49,6 +50,7 @@ test("offline discovery does not send a saved provider's credentials to an unsav
     providerId: row.id, baseUrl: "https://different.example/v1", headers: row.headers,
   });
   assert.equal(edited.error, "PROVIDER_ENDPOINT_CHANGED");
+  assert.deepEqual(edited.models.map(({ modelId }) => modelId), ["manual-id"]);
   assert.deepEqual(requests, []);
   assert.deepEqual(hostCalls, []);
   const saved = await discover({ providerId: row.id, baseUrl: row.baseUrl });
@@ -73,8 +75,9 @@ test("refresh hides unlisted chat choices and preserves editable configured bind
     contextWindowSource: "user",
   });
   let served = ["claude-sonnet-4-5", "gpt-6-sol", "gpt-6-astra"];
+  let failed = false;
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify({
+  globalThis.fetch = async () => failed ? new Response(null, { status: 401 }) : new Response(JSON.stringify({
     data: served.map((id) => ({ id })),
   }), { headers: { "content-type": "application/json" } });
   t.after(() => { globalThis.fetch = originalFetch; });
@@ -117,6 +120,7 @@ test("refresh hides unlisted chat choices and preserves editable configured bind
   const { ModelSelectionPanes, useModelSelection } = await server.ssrLoadModule(
     "/src/components/settings/ModelSelectionPanes.tsx",
   );
+  const { probeOutcome } = await server.ssrLoadModule("/src/components/settings/useProbeFeedback.ts");
   const { composerModelsForProvider } = await server.ssrLoadModule("/src/lib/composer-models.ts");
   const { resolveContextWindow } = await server.ssrLoadModule("/src/lib/context-usage.ts");
   const i18n = createInstance();
@@ -192,6 +196,14 @@ test("refresh hides unlisted chat choices and preserves editable configured bind
     "— · —",
     "an unknown configured model is labeled unknown until its limits are published or overridden",
   );
+  assert.equal(probeOutcome({ status: "ready", ...hydrated }, false, i18n.t), null);
+  failed = true;
+  const failedRefreshHtml = await refresh();
+  assert.deepEqual(ids(failedRefreshHtml, "provider-models-row-id"), served);
+  assert.deepEqual(probeOutcome(discovery, false, i18n.t), {
+    message: "errors.PROVIDER_UNAUTHORIZED",
+    variant: "error",
+  });
   // Offline/manual fallbacks must still expose configured entries for editing.
   discovery = { ...discovery, source: "fallback", models: [] };
   assert.deepEqual(ids(render(), "provider-models-row-id"), [
