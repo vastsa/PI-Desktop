@@ -1881,11 +1881,12 @@ Project drag/drop follows these patterns:
 
 ### 9.2 Sidebar scrolling
 
-- The Recent sessions body is capped at ten compact rows and scrolls
-  internally once Load more has added rows beyond that height.
-- Retained project groups occupy the remaining sidebar height and scroll in a
-  separate region. Both regions stay independent from the footer and primary
-  navigation.
+- When Projects is shown, Recent sessions is capped at ten compact rows.
+  Recent and Pinned sessions scroll internally as the sidebar gets shorter,
+  keeping room for a project header and conversation row.
+- Retained project groups scroll in their own region. If the minimum heights
+  overflow the window, the sidebar body scrolls to expose Projects and the
+  Settings footer. Loaded conversations stay loaded when space returns.
 - No horizontal scroll in sidebar
 - Scroll indicators use the platform's subtle overlay treatment without
   changing either region's width. The 6px thumb is transparent at rest and
