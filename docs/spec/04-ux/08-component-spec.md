@@ -4795,13 +4795,17 @@ as well as its DOM, so submission and draft caching retain the path. Deleted
 reference history is local to the current draft/workspace and is cleared on send;
 pasting a private-use character alone must not restore an attachment. The input owns and disposes the native event listeners.
 
-An empty last line keeps its own caret. Chromium has no box for a line that holds
-nothing, so a caret left after the final line break types the next keystroke onto
-the line above. The editor paints a placeholder break on that line, places an
-end-of-draft caret before it when the draft ends in a newline, and restores it
-after every commit; the draft string, its indices and the caret's position in it
-are unchanged, and the placeholder disappears as soon as the line holds text. A
-middle empty line needs none: the break that ends it already gives it a box.
+An empty last line keeps its own caret. Chromium gives a line that holds nothing a
+box but no caret box, so a caret left after the final line break resolves to the
+line above and types the next keystroke there. A trailing break adds the box but
+also a second caret position below it, which reads as one line too many; the
+editor therefore paints a zero-width space on that line, places an end-of-draft
+caret on the character when the draft ends in a newline, and re-syncs it after
+every commit. Every read, index and caret path strips the character — Chromium can
+merge it into the neighbouring text node — so the draft string, its indices and
+the caret's position in it are unchanged, and the marker is removed as soon as
+the line holds text. A middle empty line needs none: the break that ends it
+already gives it a caret box.
 
 ### Dialog long-text containment
 
