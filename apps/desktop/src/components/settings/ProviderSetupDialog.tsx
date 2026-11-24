@@ -218,6 +218,7 @@ export function ProviderSetupDialog({
     discoveryActive,
     {
       baseUrl: requestBaseUrl,
+      presetId: namedPreset?.id,
       apiKey: custom ? apiKey.trim() : apiKey,
       apiStyle: resolvedApiStyle,
       headers,

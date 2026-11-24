@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -1436,6 +1436,40 @@ test("the application loads the bundled release snapshot without network access"
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("Linux packaging replaces the baseline with a dated snapshot the app can read offline", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-linux-package-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const resources = join(dir, "resources", "models.dev");
+  await mkdir(resources, { recursive: true });
+  const catalogPath = join(resources, "api.json");
+  const baseline = JSON.stringify({ baseline: { models: { old: { id: "old" } } } });
+  await writeFile(catalogPath, baseline);
+
+  const { default: bundleCatalog } = await import("../../../scripts/bundle-models-dev-catalog.mjs");
+  const context = { electronPlatformName: "linux", appOutDir: dir, targets: [{ name: "deb" }] };
+  await bundleCatalog({ ...context, targets: [{ name: "rpm" }] }, async () => {
+    assert.fail("a standalone RPM build does not require a catalog download");
+  });
+  await assert.rejects(bundleCatalog(context, async () => Response.json({ empty: { models: {} } })), /no usable providers/);
+  await assert.rejects(bundleCatalog(context, async () => new Response(null, { status: 503 })), /503/);
+  assert.equal(await readFile(catalogPath, "utf8"), baseline);
+
+  const start = Date.now();
+  await bundleCatalog(context, async (url) => {
+    assert.equal(url, "https://models.dev/api.json");
+    return Response.json(catalogFixture);
+  });
+  const catalog = new ModelsDevCatalog({ catalogPath, fetchImpl: async () => {
+    assert.fail("offline startup must not request models.dev");
+  } });
+  assert.equal(await catalog.ensureLoaded(), true);
+  const status = catalog.getStatus();
+  assert.equal(status.source, "bundled");
+  assert.ok(Date.parse(status.fetchedAt) >= start && Date.parse(status.fetchedAt) <= Date.now());
+  assert.equal(catalog.findModel({ vendorKey: "anthropic", modelId: "claude-opus-4.6" })?.family, "claude-opus");
+  assert.equal(catalog.findModel({ vendorKey: "baseline", modelId: "old" }), undefined);
 });
 
 test("the bundled snapshot maps the latest 0.87.1 model ids to usable metadata", async () => {

@@ -55,3 +55,11 @@ test("a named hostname cannot overwrite a manually saved protocol", () => {
   assert.equal(providerSetupPreset(source("chat_completions")), undefined);
 
 });
+
+test("editing a provider with an old vendor label keeps its local endpoint", () => {
+  assert.equal(providerSetupPreset({
+    ...source("responses"),
+    vendorKey: "openai",
+    baseUrl: "http://127.0.0.1:1234/v1",
+  }), undefined);
+});

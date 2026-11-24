@@ -1,6 +1,8 @@
 import {
   IPC,
   ErrorCodes,
+  NAMED_ENDPOINT_PRESETS,
+  canonicalEndpointUrl,
   inferEndpointProfile,
   normalizeApiStyle,
   type ModelBinding,
@@ -341,6 +343,7 @@ export function registerProviderIpc({
         | string
           | {
             providerId?: string;
+            presetId?: string;
             baseUrl?: string;
             apiKey?: string;
             apiStyle?: string;
@@ -379,6 +382,13 @@ export function registerProviderIpc({
       // stays the key for cache writes: the cache belongs to the saved endpoint,
       // not to a suggestion.
       let endpointBaseUrl = profile?.effectiveBaseUrl ?? baseUrl;
+      const preset = profile && NAMED_ENDPOINT_PRESETS.find((candidate) =>
+        (req.presetId !== undefined
+          ? candidate.id === req.presetId
+          : req.baseUrl === undefined && candidate.vendorKey === provider?.vendorKey) &&
+        candidate.apiStyle === apiStyle &&
+        canonicalEndpointUrl(candidate.baseUrl) === canonicalEndpointUrl(endpointBaseUrl)
+      );
       /*
         Which publisher's metadata this row is read against.
 
@@ -388,11 +398,11 @@ export function registerProviderIpc({
         from a model name. An unknown host keeps `custom`, where the catalog
         only answers an unambiguous id — metadata missing beats metadata wrong.
       */
-      const catalogVendorKey =
+      const catalogVendorKey = preset?.vendorKey ?? (
         provider?.vendorKey && provider.vendorKey !== "custom"
           ? provider.vendorKey
-          : (profile?.providerKey ?? "custom");
-
+          : (profile?.providerKey ?? "custom")
+      );
 
       // Cache hydration must stay fast; the renderer already requests a live
       // refresh after it has painted the cached list. Live requests load the
@@ -692,17 +702,18 @@ export function registerProviderIpc({
         }
       }
 
-      // The endpoint published nothing usable (no /models route, an auth error,
-      // or an empty list). The catalog is the fallback, not the primary source.
-      // The list is the service's own published set, so a key that can call an
-      // embedding or image endpoint sees it here too; nothing is preselected
-      // from those, and `recommendModels` still picks chat models only.
-      const catalogModels = modelsDevCatalog.modelsForProvider({
-        vendorKey: catalogVendorKey,
-        baseUrl: endpointBaseUrl,
-        providerId: provider?.id ?? "",
-        includeNonChat: true,
-      });
+      // A public catalog can describe a custom endpoint's IDs, but cannot
+      // establish availability when that endpoint did not answer discovery.
+      const hasAccountCatalog = provider?.authKind === OAUTH_AUTH_KIND
+        && provider.vendorKey && provider.vendorKey !== "custom";
+      const catalogModels = preset || hasAccountCatalog
+        ? modelsDevCatalog.modelsForProvider({
+            vendorKey: catalogVendorKey,
+            baseUrl: endpointBaseUrl,
+            providerId: provider?.id ?? "",
+            includeNonChat: true,
+          })
+        : [];
       if (catalogModels.length > 0) {
         return {
           models: withConfiguredBindings(
@@ -711,6 +722,15 @@ export function registerProviderIpc({
           source: "catalog" as const,
           ...resolution,
           ...(discoveryError ? { error: discoveryError } : {}),
+        };
+      }
+
+      if (cachedModels.length > 0) {
+        return {
+          models: withConfiguredBindings(cachedModels.map((model) => decorate(model))),
+          source: "cache" as const,
+          ...resolution,
+          error: discoveryError,
         };
       }
 

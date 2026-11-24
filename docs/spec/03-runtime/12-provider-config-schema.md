@@ -514,12 +514,12 @@ type ModelCatalogCacheRecord = {
 
 ## 5. Bundled models.dev snapshot
 
-The raw public catalog is checked into the release resource at
-`apps/desktop/resources/models.dev/api.json` and packaged at
-`resources/models.dev/api.json`. `scripts/release.mjs` fetches and validates
-`https://models.dev/api.json`, then atomically replaces the checked-in file
-before creating a release tag. Electron main reads this bundled snapshot at
-startup without network I/O. Settings → Model configuration can refetch the
+Development and standalone non-Debian builds use the checked-in public catalog at
+`apps/desktop/resources/models.dev/api.json`. Debian packaging fetches and
+validates the current catalog, then writes it with its UTC `fetchedAt` time to
+the packaged `resources/models.dev/api.json`. Electron main reads either
+format without network I/O and exposes the packaged fetch time in the catalog
+status. Settings → Model configuration can refetch the
 URL, but a successful response updates only the current process's in-memory
 catalog; it never writes the packaged resource or a user cache. Cache reads
 never send provider credentials to models.dev. The Rust `models` table continues

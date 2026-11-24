@@ -21,8 +21,11 @@ export async function verifyReasoningEffort({ render, fixture, i18n, updates, cl
   assert(trigger()?.textContent?.trim() === i18n.t("settings.reasoningEffortAuto"), "legacy binding must start on Auto");
   await Promise.all(document.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity).map((animation) => animation.finished));
   const assertFits = () => {
-    const bounds = trigger()!.getBoundingClientRect();
-    const panel = document.querySelector(".provider-chosen-reasoning-effort")!.getBoundingClientRect();
+    const select = trigger();
+    const option = select?.closest(".provider-advanced-option");
+    if (!select || !option) throw new Error("reasoning effort control is missing its advanced settings row");
+    const bounds = select.getBoundingClientRect();
+    const panel = option.getBoundingClientRect();
     assert(bounds.left >= panel.left - 1 && bounds.right <= panel.right + 1 && bounds.right <= innerWidth, "reasoning effort control overflows the model panel");
   };
   assertFits();

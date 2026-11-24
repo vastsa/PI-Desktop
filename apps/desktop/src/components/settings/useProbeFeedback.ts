@@ -24,7 +24,7 @@ export type ProbeOutcome = {
 
 /**
  * The settled outcome of a probe, or null while nothing is settled: idle, in
- * flight, and a cache-only answer all leave the question open.
+ * flight, and a cache-only answer without an error leave the question open.
  */
 export function probeOutcome(
   discovery: Pick<
@@ -35,7 +35,7 @@ export function probeOutcome(
   t: TFunction,
 ): ProbeOutcome | null {
   if (discovery.status !== "ready" && discovery.status !== "error") return null;
-  if (discovery.source === "cache") return null;
+  if (discovery.source === "cache" && !discovery.error) return null;
   const count = discovery.models.length;
   if (discovery.error) {
     // A named vendor without a model-list route still accepted the key, so the

@@ -1,6 +1,7 @@
 import {
   API_STYLES,
   OPENCODE_GO_API_STYLE,
+  canonicalEndpointUrl,
   matchNamedPreset,
   type CatalogApiStyle,
   type ProviderPublic,
@@ -35,12 +36,13 @@ export function needsCustomApiStyleChoice(
 }
 
 export function providerSetupPreset(provider?: ProviderPublic | null) {
-  if (!provider || isAccountOnlyApiStyle(provider.apiStyle)) return undefined;
+  if (!provider || provider.vendorKey === "custom" || isAccountOnlyApiStyle(provider.apiStyle)) return undefined;
   const preset = matchNamedPreset({
     vendorKey: provider.vendorKey,
     baseUrl: provider.baseUrl,
     apiStyle: provider.apiStyle,
   });
-  // A published hostname does not override an explicitly saved wire format.
-  return provider.apiStyle && preset?.apiStyle !== provider.apiStyle ? undefined : preset;
+  // A persisted label must not retarget a custom address to a public preset.
+  if (!preset || canonicalEndpointUrl(provider.baseUrl) !== canonicalEndpointUrl(preset.baseUrl)) return undefined;
+  return provider.apiStyle && preset.apiStyle !== provider.apiStyle ? undefined : preset;
 }

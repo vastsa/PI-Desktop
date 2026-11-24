@@ -129,7 +129,7 @@ export type ModelsDevCatalogStatus = {
 };
 
 export type ModelsDevCatalogOptions = {
-  /** Checked-in/release-packaged api.json; never a user-data path. */
+  /** Checked-in catalog or dated release snapshot; never a user-data path. */
   catalogPath: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -1462,7 +1462,13 @@ export class ModelsDevCatalog {
     this.localLoadPromise = (async () => {
       try {
         const raw = JSON.parse(await readFile(this.catalogPath, "utf8")) as unknown;
-        const parsed = parseModelsDevCatalog(raw);
+        const snapshot = asRecord(raw);
+        const bundled = snapshot !== null && Object.hasOwn(snapshot, "fetchedAt");
+        const fetchedAt = bundled ? nonEmptyString(snapshot.fetchedAt) : undefined;
+        if (bundled && (!fetchedAt || !Number.isFinite(Date.parse(fetchedAt)))) {
+          throw new Error("models.dev snapshot has an invalid fetch date");
+        }
+        const parsed = parseModelsDevCatalog(bundled ? snapshot.catalog : raw);
         if (parsed.length === 0) throw new Error("models.dev snapshot contained no providers");
         this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
         // Replacing the provider map invalidates the derived lookup index.
@@ -1471,6 +1477,7 @@ export class ModelsDevCatalog {
         this.lookupMemo.clear();
         this.loaded = true;
         this.source = "bundled";
+        this.fetchedAt = fetchedAt;
         this.lastError = undefined;
       } catch (error) {
         this.loaded = false;

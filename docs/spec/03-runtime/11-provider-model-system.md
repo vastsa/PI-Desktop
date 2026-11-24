@@ -668,8 +668,9 @@ UI may show tier hints, but must not hard-block unknown models by default.
 3. Provider endpoint discovery preserves configured IDs and Host caches; OAuth
    live discovery publishes account entitlements through the same Models owner.
 4. Failed refresh retains available metadata and configured bindings.
-5. Release catalog changes arrive through the reviewed models.dev snapshot;
-   pi-ai version pins continue to control transport and OAuth behavior.
+5. Debian packaging validates and dates the models.dev snapshot on the build
+   host. Other targets can use the checked-in snapshot. Pi version pins
+   continue to control transport and OAuth behavior.
 
 ## 14. Local / offline model support
 
