@@ -387,6 +387,14 @@ running job, allows another tool call, and runs exactly once before
 `TaskWait` receives the terminal output and exit code. The original deadline
 and explicit stop are exercised after the initial return.
 
+The vendored File Manager journeys exercise the production view:
+`file-manager-directory-location-user-path.e2e.mjs` opens primary and sibling
+project directories, unchanged file targets, and rejected external directories;
+`file-manager-theme-user-path.e2e.mjs` checks editor controls in both themes.
+`e2e-remote-file-manager.mjs` checks scoped SSH reads and local/remote switches
+through the Desktop bridge. The pinned source and its document-tab, Git and
+loading checks are recorded in the bundled plugin’s `UPSTREAM.md`.
+
 ## 9. How AI Must Update This Doc
 
 When adding or changing a feature that affects user-visible or protocol-visible behavior:
