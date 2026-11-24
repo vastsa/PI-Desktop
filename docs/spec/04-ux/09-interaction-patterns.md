@@ -2032,8 +2032,10 @@ This does not prevent state changes — it makes them instant.
   chat-width contract is unchanged; this exception only relaxes the native
   window constraint so small/scaled displays can accept side-by-side tiles.
   The minimum height remains 560 DIP, capped to the work-area height.
-- On macOS and Windows a maximized main window rejects manual edge resizing.
-  Windows retains native drag-to-restore. On macOS the shell temporarily disables
+- On Windows a maximized main window rejects manual edge resizing and retains
+  native drag-to-restore. AppKit owns edge resizing and Zoom/Restore on macOS.
+  Both use the same cancellable resize event, so cancelling it would also block
+  restoration of the window's original frame. The macOS shell temporarily disables
   CSS caption dragging and handles caption double-click as Restore; normal
   windows retain native double-click behavior. The inherited `--window-drag-region`
   marker distinguishes caption text from explicit no-drag controls. Do not use

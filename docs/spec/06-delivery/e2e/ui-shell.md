@@ -2689,8 +2689,9 @@ Native gesture regression: run `node scripts/e2e-window-native-behavior.mjs`
 with the pinned Electron in an interactive desktop. The isolated fixture uses
 production minimum-size and maximize-guard logic. On macOS test both opaque
 and translucent windows: a 1440 DIP display's half-width minimum must allow a
-window below 800 DIP, maximize must preserve native zoom/green controls,
-and restore must re-enable edge resizing. `node scripts/e2e-window-controls.mjs`
+window below 800 DIP. Zoom/Restore must return the window to its original
+position and size, and AppKit must be able to resize its edges.
+`node scripts/e2e-window-controls.mjs`
 then covers the built shell: maximized caption regions must compute to no-drag,
 and a double-click must restore through the real preload/IPC and unlock the
 normal caption. `maximized-window-chrome.test.mjs` covers late-query/event races,
