@@ -200,34 +200,32 @@ test("the display-topology reconcile uses the tracked fullscreen flag", () => {
   );
 });
 
-test("a maximized rect that only overshoots the work area is left alone", () => {
+test("a maximized rect with a native frame inset is clamped to the work area", () => {
   const workArea = { x: 0, y: 0, width: 1920, height: 1032 };
   const maximized = { x: -8, y: -8, width: 1936, height: 1048 };
-  assert.equal(maximizedBoundsExceedWorkArea(maximized, workArea), false);
-  assert.deepEqual(maximizedBoundsForWorkArea(maximized, workArea), maximized);
+  assert.equal(maximizedBoundsExceedWorkArea(maximized, workArea), true);
+  assert.deepEqual(maximizedBoundsForWorkArea(maximized, workArea), workArea);
+});
+
+test("a visible maximized frame overflow on a side-by-side display is clamped", () => {
+  const workArea = { x: 0, y: 0, width: 2880, height: 1704 };
+  const maximized = { x: -13, y: -13, width: 2906, height: 1730 };
+  assert.equal(maximizedBoundsExceedWorkArea(maximized, workArea), true);
+  assert.deepEqual(maximizedBoundsForWorkArea(maximized, workArea), workArea);
 });
 
 test("the frameless restore that hides the taskbar is detected and corrected", () => {
-  // Windows restores a frameless maximized window to the full monitor rect:
-  // height 1120 instead of the work-area-based 1048, so the taskbar is hidden.
   const workArea = { x: 0, y: 0, width: 1920, height: 1032 };
   const restored = { x: -8, y: -8, width: 1936, height: 1120 };
   assert.equal(maximizedBoundsExceedWorkArea(restored, workArea), true);
-  assert.deepEqual(maximizedBoundsForWorkArea(restored, workArea), {
-    x: -8,
-    y: -8,
-    width: 1936,
-    height: 1048,
-  });
+  assert.deepEqual(maximizedBoundsForWorkArea(restored, workArea), workArea);
 });
 
-test("a monitor without a taskbar never reports a false positive", () => {
-  // Secondary display: the work area equals the monitor, so a healthy
-  // maximized window already overshoots the bottom by the same inset as the
-  // top and must not be treated as a broken restore.
+test("a monitor without a taskbar still clamps visible frame insets", () => {
   const workArea = { x: 1920, y: 0, width: 1920, height: 1080 };
   const maximized = { x: 1912, y: -8, width: 1936, height: 1096 };
-  assert.equal(maximizedBoundsExceedWorkArea(maximized, workArea), false);
+  assert.equal(maximizedBoundsExceedWorkArea(maximized, workArea), true);
+  assert.deepEqual(maximizedBoundsForWorkArea(maximized, workArea), workArea);
   const restored = { x: 1912, y: -8, width: 1936, height: 1120 };
   assert.equal(maximizedBoundsExceedWorkArea(restored, workArea), true);
 });
@@ -248,7 +246,7 @@ test("the restore handler re-applies the work-area-based maximized rect", () => 
     block,
     /window\.setBounds\(maximizedBoundsForWorkArea\(bounds, workArea\)\)/,
   );
-  assert.match(block, /window\.on\("restore"/);
+  assert.match(block, /window\.on\("restore"/);\n  assert.match(block, /window\.on\("maximize"/);
   // The OS finishes the restore after the event dispatch, so the correction
   // has to be repeated once the transition settles.
   assert.match(block, /windowBoundsSettleMs/);
