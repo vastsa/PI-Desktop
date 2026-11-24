@@ -254,7 +254,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
     stylesSource,
     /\.toast\s*\{[^}]*-webkit-app-region:\s*no-drag;[^}]*pointer-events:\s*auto;/s,
   );
-  assert.match(mainSource, /window\.on\("maximize", sendMaximized\)/);
+  assert.match(mainSource, /installWindowStateSync\(window, sendMaximized, windowBoundsSettleMs\)/);
   assert.match(
     mainSource,
     /window\.on\("unmaximize", \(\) => \{\s*sendMaximized\(\);[\s\S]*scheduleWorkPanelReservation\(\)/,

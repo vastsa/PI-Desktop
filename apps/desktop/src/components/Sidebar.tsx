@@ -2581,7 +2581,7 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="sidebar-body no-drag">
+      <div className="sidebar-body no-drag" onScroll={() => closeMenus(false)}>
         <SidebarPrimaryNav onNewTask={onNewTask} onBeforeNavigate={() => closeMenus(false)} />
 
         {pinnedSessions.length > 0 ? (
@@ -2728,7 +2728,7 @@ export function Sidebar({
             </div>
 
             <div
-              className={`sidebar-session-groups min-h-0 flex-1 overflow-auto px-0.5 ${projectsDropActive ? "is-drop-target" : ""}`}
+              className={`sidebar-session-groups px-0.5 ${projectsDropActive ? "is-drop-target" : ""}`}
               onScroll={() => {
                 if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
               }}

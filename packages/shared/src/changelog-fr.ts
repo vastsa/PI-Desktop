@@ -14,7 +14,7 @@ export const frEntries: ChangelogEntry[] = [
       "Les notes de progression des modèles OpenAI Responses restent dans le déroulé du tour, dans leur ordre d'origine, au lieu de se mêler à la réponse, y compris après réouverture ; Copier la dernière réponse ne copie que la réponse.",
       "Les points de terminaison personnalisés compatibles OpenAI conservent leur cache de prompt d'un tour à l'autre, évitant de longues attentes avant le premier jeton dans les longues conversations.",
       "Les paragraphes en persan, en arabe et dans d'autres langues de droite à gauche qui commencent par un mot anglais s'affichent maintenant dans le bon sens.",
-      "Le plugin Gestionnaire de fichiers 0.9.1 affiche en toute sécurité les images Markdown intégrées et prévisualise les feuilles de calcul en lecture seule.",
+      "Le Gestionnaire de fichiers 0.13.0 ajoute des onglets aux brouillons indépendants, un espace Git pour les changements, l’historique, l’index et la synchronisation, et des états de chargement plus clairs.",
       "Corrigé : la bifurcation depuis d'anciennes réponses chargées de l'historique, la synchronisation de configuration en échec répété après une suppression d'un côté, les noms de modèles tronqués dans les Réglages, le bouton du panneau de travail masquant la Recherche et les définitions d'outils refusées par certains points de terminaison Responses.",
     ],
   },

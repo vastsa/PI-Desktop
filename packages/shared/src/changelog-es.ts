@@ -14,7 +14,7 @@ export const esEntries: ChangelogEntry[] = [
       "Las notas de progreso de los modelos OpenAI Responses permanecen en el proceso del turno, en su orden original, en lugar de mezclarse con la respuesta, también al reabrir una sesión; Copiar última respuesta copia solo la respuesta.",
       "Los endpoints personalizados compatibles con OpenAI conservan la caché de prompts entre turnos y evitan largas esperas hasta el primer token en conversaciones largas.",
       "Los párrafos en persa, árabe y otros idiomas de derecha a izquierda que empiezan con una palabra en inglés ahora se muestran en la dirección correcta.",
-      "El complemento Administrador de archivos 0.9.1 muestra de forma segura las imágenes Markdown en línea y ofrece vistas previas de hojas de cálculo de solo lectura.",
+      "El Administrador de archivos 0.13.0 añade pestañas con borradores independientes, un espacio de Git para cambios, historial, preparación y sincronización, e indicadores de carga más claros.",
       "Corregido: bifurcar respuestas antiguas cargadas del historial, la sincronización de configuración que fallaba repetidamente tras borrar un registro en un lado, nombres de modelo recortados en Ajustes, el botón del panel de trabajo sobre la búsqueda y definiciones de herramientas rechazadas por algunos endpoints Responses.",
     ],
   },
