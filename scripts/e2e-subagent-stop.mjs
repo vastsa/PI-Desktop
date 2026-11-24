@@ -200,11 +200,25 @@ try {
     assert.equal(result.ok, true, JSON.stringify(result));
     assert.equal((await invoke("settingsGet")).data.subagentStyle, subagentStyle);
   };
+  const taskIds = await page.evaluate(`Array.from(document.querySelectorAll('.subagent-topology-node'), row => row.dataset.messageId)`);
+  assert.equal(taskIds.length, 2);
+  const taskHeaders = taskIds.map(id => `.tool-row[role="region"][data-message-id="${id}"] > .tool-row-head > .tool-row-header`);
+  const assertOrdinaryTasks = async () => {
+    assert.equal(await page.evaluate(`!!document.querySelector('.subagent-topology, .subagent-activity-header')`), false, "bar style must not duplicate inline topology");
+    for (const selector of taskHeaders) assert.ok(await page.evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), "each original Task remains an ordinary tool row");
+  };
   await setStyle("bar");
-  await until(barVisible, "running delegates gain a composer bar without replacing topology");
-  assert.equal((await buttons()).length, 2);
+  await until(barVisible, "running delegates gain a composer bar");
+  await assertOrdinaryTasks();
+  const firstHeader = JSON.stringify(taskHeaders[0]);
+  await page.evaluate(`document.querySelector(${firstHeader}).click()`);
+  await until(() => page.evaluate(`document.querySelector(${firstHeader}).getAttribute('aria-expanded') === 'true'`), "ordinary Task expands");
+  const expandedRow = `document.querySelector(${firstHeader}).closest('.tool-row')`;
+  assert.equal(await page.evaluate(`!!${expandedRow}.querySelector('.tool-row-body')`), true, "generic call details remain accessible");
+  assert.equal(await page.evaluate(`!!${expandedRow}.querySelector('.subagent-run')`), false, "ordinary details do not duplicate the worker transcript");
+  await page.evaluate(`document.querySelector(${firstHeader}).click()`);
   await setStyle("transcript");
-  await until(async () => !await barVisible(), "switching back removes the entire bar");
+  await until(async () => !await barVisible() && (await buttons()).length === 2, "switching back restores topology instead of the bar");
   await setStyle("bar");
   await until(barVisible, "restored presence bar");
   const other = await invoke("sessionCreate", { title: "Idle fixture", mode: "agent", projectPath: workspace });
@@ -236,6 +250,8 @@ try {
   await page.evaluate(`document.querySelector('.presence-card footer button').click()`);
   await until(() => page.evaluate(`!!document.querySelector('.subagent-transcript-composer-controls .stop-btn')`), "detail stop control");
   await until(() => page.evaluate(`document.body.innerText.includes('Partial output from worker A')`), "worker A partial output rendered");
+  await setStyle("transcript");
+  await until(async () => !await barVisible() && (await buttons()).length === 2, "transcript-style node controls");
   const layout = await page.evaluate(`({
     models: [...document.querySelectorAll('.subagent-topology-node-model')].map(e => ({
       text: e.textContent,
@@ -261,7 +277,9 @@ try {
   await until(() => workers.size === 0, "stop-all cancels remaining delegates");
   assert.equal(parents.size, 1, "stop-all preserves coordinator");
   await until(async () => (await buttons()).length === 0, "all terminal controls disappear");
-  await until(async () => !await barVisible(), "last settlement removes the entire presence bar");
+  await setStyle("bar");
+  assert.equal(await barVisible(), false, "settled delegates do not create a bar");
+  await assertOrdinaryTasks();
   const invalid = await invoke("agentStopSubagents", { sessionId: setup.sessionId, delegationIds: [] });
   assert.equal(invalid.ok, false, "empty selection must not mean stop-all");
   await until(async () => {
@@ -300,6 +318,8 @@ try {
     await page.evaluate(`window.__PI_DESKTOP__.selectSession(${JSON.stringify(demoId)})`);
     await invoke("agentPrompt", { sessionId: demoId, content: "这是本地模拟模型演示：启动两个子智能体，可以分别停止，或停止全部。主智能体继续运行。" });
     await until(() => workers.size === 2 && parents.size > 0, "demo ready");
+    await setStyle("transcript");
+    await until(async () => (await buttons()).length === 2, "demo topology");
     await page.evaluate(`document.querySelector('.subagent-topology-node-header').click()`);
     await until(() => page.evaluate(`!!document.querySelector('.subagent-transcript-composer-controls .stop-btn')`), "demo detail stop control");
     const shot = await page.call("Page.captureScreenshot", { format: "png" });

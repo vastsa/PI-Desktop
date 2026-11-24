@@ -1784,7 +1784,7 @@ sklm: {
     smoothStreaming: "Smooth streaming",
     smoothStreamingDesc: "Release streamed text character by character for a typewriter effect. Automatically disabled when the system prefers reduced motion.",
     subagentStyle: "Subagent style",
-    subagentStyleDesc: "Optionally show active delegates above the input as well as in the transcript.",
+    subagentStyleDesc: "Show subagent cards in the transcript, or track active subagents above the input and keep expandable tool rows in the transcript.",
     subagentStyleTranscript: "In transcript",
     subagentStyleBar: "Composer bar",
     inlineVisualizations: "Inline visualizations",

@@ -1780,7 +1780,7 @@ sklm: {
     smoothStreaming: "부드러운 스트리밍",
     smoothStreamingDesc: "스트리밍 텍스트를 한 글자씩 타자기 효과로 표시합니다. 시스템에서 동작 줄이기를 선호하면 자동으로 비활성화됩니다.",
     subagentStyle: "하위 에이전트 표시",
-    subagentStyleDesc: "대화 기록을 유지하면서 입력창 위에도 실행 상태를 표시합니다.",
+    subagentStyleDesc: "대화에 하위 에이전트 카드를 표시하거나, 입력창 위에서 실행 중인 하위 에이전트를 확인하고 대화에서는 도구 호출 행을 펼쳐 볼 수 있습니다.",
     subagentStyleTranscript: "대화 안에 표시",
     subagentStyleBar: "입력창 표시줄",
     inlineVisualizations: "인라인 시각화",

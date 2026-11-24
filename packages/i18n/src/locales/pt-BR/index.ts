@@ -1743,7 +1743,7 @@ export const ptBR = {
     smoothStreaming: "Exibição gradual",
     smoothStreamingDesc: "Exibe o texto recebido caractere por caractere, criando um efeito de máquina de escrever. É desativada automaticamente quando o sistema está configurado para reduzir animações.",
     subagentStyle: "Exibição dos subagentes",
-    subagentStyleDesc: "Mostre os subagentes ativos também acima do campo de mensagem.",
+    subagentStyleDesc: "Mostre os cartões dos subagentes na conversa ou acompanhe os subagentes ativos acima do campo de mensagem e expanda as chamadas de ferramentas na conversa.",
     subagentStyleTranscript: "Na conversa",
     subagentStyleBar: "Barra de entrada",
     inlineVisualizations: "Visualizações embutidas",

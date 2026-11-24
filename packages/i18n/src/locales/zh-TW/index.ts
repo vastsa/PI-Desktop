@@ -1764,7 +1764,7 @@ sklm: {
     smoothStreaming: "平滑串流顯示",
     smoothStreamingDesc: "將串流文字逐字釋放，產生打字機效果。系統開啟「減少動態效果」時自動停用。",
     subagentStyle: "子代理樣式",
-    subagentStyleDesc: "保留對話記錄，也可在輸入框上方查看子代理狀態。",
+    subagentStyleDesc: "可在對話內顯示子代理卡片，也可在輸入框上方查看執行中的子代理，此時對話內會以可展開的工具呼叫列取代卡片。",
     subagentStyleTranscript: "對話內",
     subagentStyleBar: "輸入框貼靠列",
     inlineVisualizations: "聊天內嵌視覺化",

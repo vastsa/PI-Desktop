@@ -1772,7 +1772,7 @@ sklm: {
     "smoothStreaming": "Transmisión suave",
     "smoothStreamingDesc": "Libera el texto transmitido carácter por carácter para un efecto de máquina de escribir. Se desactiva automáticamente cuando el sistema prefiere movimiento reducido.",
     subagentStyle: "Estilo de subagentes",
-    subagentStyleDesc: "Muestra los subagentes activos también sobre el cuadro de entrada.",
+    subagentStyleDesc: "Muestra tarjetas de subagentes en la conversación o sigue a los subagentes activos sobre el cuadro de entrada y consulta las filas de herramientas desplegables en la conversación.",
     subagentStyleTranscript: "En la conversación",
     subagentStyleBar: "Barra de entrada",
     "inlineVisualizations": "Visualizaciones en línea",

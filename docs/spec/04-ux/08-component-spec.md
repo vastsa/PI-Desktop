@@ -998,8 +998,9 @@ Within the process, the `Transcript display` mode decides the grouping.
 `fully-folded` (the default; absent or unknown values use it) forms ordinary
 activity groups from contiguous tool/search/thinking segments between ordinary
 assistant progress paragraphs, and keeps `Bash`/run aliases inside the group
-around them. A `Task` delegation keeps its own topology and is not duplicated
-inside an ordinary group. `command-first` keeps those groups but lifts every
+around them. With **In transcript**, a `Task` delegation keeps its own topology
+and is not duplicated inside an ordinary group. With **Composer bar**, it is an
+ordinary expandable tool row instead. `command-first` keeps those groups but lifts every
 `Bash`/run alias into a standalone row beside them: adjacent calls stay separate,
 a row's detail stays closed until the user opens it, and a normal assistant
 progress message or a command ends the current group. `flat` renders no nested
@@ -2717,7 +2718,12 @@ twice.
 
 ### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, D302, D319, D323, ADR 0062)
 
-A `Task` call is presented as a node of a delegation card, not as a compact tool
+With **Composer bar**, `Task` calls remain ordinary expandable tool rows in the
+transcript throughout their lifecycle. The bar disappears when work settles;
+no inline topology card replaces it. Switching styles changes neither tool
+history nor the delegate's Work panel record.
+
+With the default **In transcript** style, a `Task` call is a delegation node, not a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
 delegate it ran, taken from the rows it produced or, before any arrived, from
 the call's own `agent` argument, and carries the call's short `description`. The

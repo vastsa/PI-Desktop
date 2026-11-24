@@ -1774,7 +1774,7 @@ sklm: {
     smoothStreaming: "Düzgün akış",
     smoothStreamingDesc: "Akan metni daktilo efekti için karakter karakter gösterir. Sistem hareket azaltmayı tercih ettiğinde otomatik devre dışı kalır.",
     subagentStyle: "Alt ajan görünümü",
-    subagentStyleDesc: "Etkin alt ajanları sohbetin yanı sıra giriş alanının üzerinde de gösterin.",
+    subagentStyleDesc: "Alt ajan kartlarını sohbette gösterin veya etkin alt ajanları giriş alanının üzerinden takip edip sohbetteki araç çağrılarının ayrıntılarını genişletin.",
     subagentStyleTranscript: "Sohbet içinde",
     subagentStyleBar: "Giriş çubuğu",
     inlineVisualizations: "Satır içi görselleştirmeler",

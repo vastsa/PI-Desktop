@@ -1764,7 +1764,7 @@ sklm: {
     smoothStreaming: "平滑流式显示",
     smoothStreamingDesc: "将流式文本逐字释放，产生打字机效果。系统开启“减少动态效果”时自动禁用。",
     subagentStyle: "子代理样式",
-    subagentStyleDesc: "保留对话内记录，也可在输入框上方查看子代理的运行状态。",
+    subagentStyleDesc: "可在对话内显示子代理卡片，也可在输入框上方查看运行中的子代理，此时对话内以可展开的工具调用行代替卡片。",
     subagentStyleTranscript: "对话内",
     subagentStyleBar: "输入框贴靠条",
     inlineVisualizations: "聊天内嵌可视化",

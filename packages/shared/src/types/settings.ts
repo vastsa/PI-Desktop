@@ -40,11 +40,13 @@ export type CloseBehavior = "ask" | "tray" | "quit";
 export type TranscriptDisplayMode = "flat" | "command-first" | "fully-folded";
 
 /**
- * Where a running subagent is presented while it works (issue #2549).
+ * How subagents are presented (issue #2549).
  *
- * - `transcript`: delegates stay in the conversation transcript only.
- * - `bar`: a session-scoped avatar row above the composer mirrors the running
- *   delegates; topology cards, lifecycle rows and Work panel tabs stay put.
+ * - `transcript` (default): delegation cards show the topology in the transcript.
+ * - `bar`: a session-scoped avatar row appears above the composer while work is
+ *   active. The transcript uses ordinary expandable tool rows in place of cards,
+ *   including after settlement. Tool history, lifecycle rows and Work panel
+ *   records remain available.
  *
  * Presentation only: neither value changes what a delegate does or what the
  * host executes.
@@ -270,11 +272,8 @@ export type AppSettings = {
    */
   inlineVisualizations?: boolean;
   /**
-   * How a running subagent is presented (issue #2549): `transcript` keeps
-   * delegates in the conversation transcript only, `bar` adds a session-scoped
-   * avatar row above the composer. Absent and any unknown value read as
-   * `transcript`, so the field is written only when the user picks the bar;
-   * reading a missing field never persists the default. Presentation only.
+   * Subagent presentation; see `SubagentStyle`. An absent or unknown value
+   * reads as `transcript`; reading a missing field never persists the default.
    */
   subagentStyle?: SubagentStyle;
   /**

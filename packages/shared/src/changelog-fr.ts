@@ -5,7 +5,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
-      "Activez la barre au-dessus du champ de saisie dans les réglages de conversation pour consulter l’état, la consommation et le journal des sous-agents sans faire défiler la conversation.",
+      "Dans les réglages de conversation, choisissez Barre de saisie pour suivre les sous-agents actifs au-dessus du champ de saisie. Les appels d’outils se présentent sous forme de lignes dépliables plutôt que de fiches, même après la fin de l’exécution.",
       "Sur une nouvelle installation, le plugin intégré Améliorations officielles génère automatiquement les titres de session ; les suggestions, l'amélioration des brouillons et la mémoire IA restent désactivées jusqu'à ce que vous les activiez.",
       "Nouvelle tâche ouvre désormais une discussion temporaire hors de tout projet, et les conversations peuvent passer d'un projet à l'autre ou revenir en Discussion temporaire.",
       "Sur l'accueil vide, cliquez sur le nom du projet ou sur « temporairement » dans le titre pour changer de projet ; la destination sans projet s'appelle désormais partout Discussion temporaire.",

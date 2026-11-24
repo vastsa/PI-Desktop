@@ -1772,7 +1772,7 @@ sklm: {
     "smoothStreaming": "Streaming fluide",
     "smoothStreamingDesc": "Libère le texte diffusé caractère par caractère pour un effet machine à écrire. Automatiquement désactivé lorsque le système préfère un mouvement réduit.",
     subagentStyle: "Affichage des sous-agents",
-    subagentStyleDesc: "Afficher aussi les sous-agents actifs au-dessus du champ de saisie.",
+    subagentStyleDesc: "Affichez les fiches des sous-agents dans la conversation, ou suivez les sous-agents actifs au-dessus du champ de saisie et dépliez les appels d’outils dans la conversation.",
     subagentStyleTranscript: "Dans la conversation",
     subagentStyleBar: "Barre de saisie",
     "inlineVisualizations": "Visualisations intégrées",

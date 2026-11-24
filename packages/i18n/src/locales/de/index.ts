@@ -1772,7 +1772,7 @@ sklm: {
     "smoothStreaming": "Sanftes Streaming",
     "smoothStreamingDesc": "Gibt gestreamten Text zeichenweise aus, um einen Schreibmaschineneffekt zu erzeugen. Wird automatisch deaktiviert, wenn das System reduzierte Bewegung bevorzugt.",
     subagentStyle: "Subagentenanzeige",
-    subagentStyleDesc: "Laufende Subagenten zusätzlich zum Verlauf über dem Eingabefeld anzeigen.",
+    subagentStyleDesc: "Subagenten als Karten im Verlauf anzeigen oder laufende Subagenten über dem Eingabefeld verfolgen und Werkzeugaufrufe im Verlauf aufklappen.",
     subagentStyleTranscript: "Im Verlauf",
     subagentStyleBar: "Eingabeleiste",
     "inlineVisualizations": "Inline-Visualisierungen",
