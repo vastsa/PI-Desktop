@@ -5029,6 +5029,12 @@ async fn handle_request(
                         output_tx: Some(tx.clone()),
                         extra_env: worktree_env.clone(),
                         run_in_background: p.run_in_background,
+                        yield_after_initial_wait: p.yield_after_initial_wait
+                            && p.turn_id.is_some()
+                            && p.delegation_id.is_none()
+                            && p.permission_scope.is_none()
+                            && p.mode_gate.is_none()
+                            && remote_workspace.is_none(),
                         continuation_turn_id: if notify_on_exit {
                             p.turn_id.clone()
                         } else {
