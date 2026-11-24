@@ -226,6 +226,27 @@ with only Host API controlled. Running-turn configuration remains queued.
   binding tests; desktop settings coverage remains part of the provider model
   configuration E2E fixture.
 
+## E2E-PROVIDER-unsigned-thinking-replay
+
+- **Preconditions:** A saved Anthropic Messages custom provider backed by a
+  local mock SSE endpoint. The endpoint emits a non-empty thinking block with
+  an empty signature; no live credentials or external service.
+- **Steps:** In Settings → Models, open the custom model's Advanced options,
+  enable unsigned thinking replay, save, reload the provider configuration,
+  and send two prompts in one session. Capture the second outbound request.
+- **Expected:** The setting survives save and reload. The second request sends
+  the prior reasoning as `{ type: "thinking", signature: "" }`, not as an
+  assistant text block. An absent setting preserves existing adapter/catalog
+  behavior, and an explicit false overrides published metadata.
+- **Coverage:** Host provider storage round-trip tests, model binding tests,
+  and `pi-1.5-adapter-features.test.ts` use a local request fixture. Settings
+  control wiring is covered by `model-advanced-capabilities.test.mjs`.
+- **Specs:** `03-runtime/12-provider-config-schema.md` and
+  `07-plugins/02-plugin-manifest-schema.md`.
+- **Acceptance:** Persisted user configuration and second-request replay.
+- **Milestone:** Maintenance.
+- **Status:** Candidate regression coverage added.
+
 ## Provider & Key
 
 ## E2E-169: Default model picker selects a configured model

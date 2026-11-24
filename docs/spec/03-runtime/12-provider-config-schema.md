@@ -252,6 +252,11 @@ Host read/write and normalization preserve `true`; records created before this
 field existed remain disabled by default. This flag is what Electron main uses
 to build the delegation model catalog, so changing it survives provider edits
 and application restarts.
+`models[].allowEmptyThinkingSignature` is an optional endpoint-specific opt-in.
+When `true`, Anthropic Messages replay keeps reasoning blocks with an empty
+signature as thinking blocks; otherwise the adapter default is unchanged.
+An explicit `false` overrides published compatibility metadata. The setting is
+persisted with its model binding and defaults to absent for existing providers.
 
 `apiStyle: "opencode_go"` is a first-class OpenCode Go preset layered on the
 OpenAI-compatible provider type. It persists as its own style so the UI can

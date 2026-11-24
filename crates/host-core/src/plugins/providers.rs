@@ -188,6 +188,9 @@ pub(crate) fn declared_providers(manifest: &PluginManifest) -> Vec<DeclaredPlugi
                                 available_for_subagents: None,
                                 native_web_search: None,
                                 fast_mode_allowed: None,
+                                allow_empty_thinking_signature: model
+                                    .get("allowEmptyThinkingSignature")
+                                    .and_then(Value::as_bool),
                             })
                         })
                         .collect::<Vec<_>>()

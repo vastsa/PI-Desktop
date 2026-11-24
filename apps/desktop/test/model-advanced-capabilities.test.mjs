@@ -309,3 +309,11 @@ test("model settings let the user allow Fast mode per model on Responses wires",
   assert.match(pickerSource, /"settings\.fastModeAllowedUsageHint"/);
   assert.match(pickerSource, /"settings\.fastModeAllowedUnsupported"/);
 });
+
+test("Anthropic Messages model rows persist unsigned thinking replay as an explicit opt-in", () => {
+  assert.match(pickerSource, /checked=\{binding\.allowEmptyThinkingSignature === true\}/);
+  assert.match(pickerSource, /disabled=\{apiStyle !== "anthropic_messages"\}/);
+  assert.match(pickerSource, /allowEmptyThinkingSignature: event\.target\.checked/);
+  assert.match(pickerSource, /settings\.allowEmptyThinkingSignatureHint/);
+  assert.match(pickerSource, /settings\.allowEmptyThinkingSignatureDefaultHint/);
+});

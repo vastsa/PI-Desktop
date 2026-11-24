@@ -303,6 +303,26 @@ export function ModelAdvancedSettings({
             />
             <HelpIcon label={t(fastModeHint)} />
           </span>
+          <span className="provider-chosen-capability-item">
+            <Checkbox
+              className="provider-chosen-capability"
+              checked={binding.allowEmptyThinkingSignature === true}
+              disabled={apiStyle !== "anthropic_messages"}
+              onChange={(event) =>
+                updateBinding(binding.id, {
+                  allowEmptyThinkingSignature: event.target.checked,
+                })
+              }
+              label={t("settings.allowEmptyThinkingSignature")}
+            />
+            <HelpIcon
+              label={t(
+                apiStyle === "anthropic_messages"
+                  ? "settings.allowEmptyThinkingSignatureHint"
+                  : "settings.allowEmptyThinkingSignatureDefaultHint",
+              )}
+            />
+          </span>
         </div>
       </section>
     </div>
