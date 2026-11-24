@@ -358,7 +358,10 @@
 }
 
 .thread-item-project {
-  min-width: 0;
+  /* The label never shrinks: the conversation title (flex: 1 1 auto) absorbs
+     the overflow up to this 40% cap, so the project name stays visible while
+     space allows instead of competing with the title for truncation. */
+  flex: 0 0 auto;
   max-width: 40%;
   margin-left: auto;
   overflow: hidden;
