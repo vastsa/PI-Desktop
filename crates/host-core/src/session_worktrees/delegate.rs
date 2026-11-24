@@ -75,6 +75,88 @@ pub fn tool_root(
     Ok(Some(root))
 }
 
+/// A scoped writer may not silently fall back to the parent checkout when its
+/// expected delegate worktree is absent, foreign, or still being prepared.
+pub(crate) fn scoped_tool_root(
+    db: &Database,
+    session_id: &str,
+    delegation_id: Option<&str>,
+) -> Result<Option<PathBuf>, WorktreeError> {
+    if let Some(id) = delegation_id {
+        if let Some(row) = registry::for_owner(db, session_id, Some(id))? {
+            match row.status {
+                WorktreeStatus::Active | WorktreeStatus::Conflict
+                    if verified_scoped_worktree(&row) =>
+                {
+                    return Ok(Some(row.workspace_root()));
+                }
+                WorktreeStatus::Missing => return Err(missing_error()),
+                _ => {}
+            }
+        }
+    } else if registry::for_owner(db, session_id, None)?.is_none() {
+        return Ok(None);
+    }
+    Err(WorktreeError::new(
+        "WRITE_SCOPE_UNAVAILABLE",
+        "A scoped write in an isolated session requires its own ready delegate worktree",
+    ))
+}
+
+fn verified_scoped_worktree(row: &WorktreeRow) -> bool {
+    use crate::workspace::simple_canonicalize;
+
+    let root = Path::new(&row.path);
+    if row.setup_status == Some(SetupStatus::Running) || !is_real_dir_chain(root, &row.prefix) {
+        return false;
+    }
+    // A registry entry can outlive the actual worktree. Check Git's link and
+    // its reverse link without running Git or trusting a caller-supplied cwd.
+    let verify = || -> Option<bool> {
+        let git_link = root.join(".git");
+        let link = read_worktree_marker(&git_link)?;
+        let admin = Path::new(link.trim().strip_prefix("gitdir: ")?);
+        if !admin.is_absolute() {
+            return Some(false);
+        }
+        let admin = simple_canonicalize(admin).ok()?;
+        let worktrees = simple_canonicalize(&Path::new(&row.common_dir).join("worktrees")).ok()?;
+        if admin.parent() != Some(worktrees.as_path()) {
+            return Some(false);
+        }
+        let backlink = read_worktree_marker(&admin.join("gitdir"))?;
+        Some(Path::new(backlink.trim()) == git_link)
+    };
+    verify() == Some(true)
+}
+
+fn read_worktree_marker(path: &Path) -> Option<String> {
+    use std::io::Read;
+
+    const LIMIT: u64 = 16 * 1024;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(path).ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut value = String::new();
+    if file.take(LIMIT + 1).read_to_string(&mut value).ok()? as u64 > LIMIT {
+        return None;
+    }
+    Some(value)
+}
+
 /// Shell environment of a delegate's own worktree, else the session's.
 pub fn tool_env(
     db: &Database,

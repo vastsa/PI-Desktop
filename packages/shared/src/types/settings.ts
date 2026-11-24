@@ -40,6 +40,20 @@ export type CloseBehavior = "ask" | "tray" | "quit";
 export type TranscriptDisplayMode = "flat" | "command-first" | "fully-folded";
 
 /**
+ * How subagents are presented (issue #2549).
+ *
+ * - `transcript` (default): delegation cards show the topology in the transcript.
+ * - `bar`: a session-scoped avatar row appears above the composer while work is
+ *   active. The transcript uses ordinary expandable tool rows in place of cards,
+ *   including after settlement. Tool history, lifecycle rows and Work panel
+ *   records remain available.
+ *
+ * Presentation only: neither value changes what a delegate does or what the
+ * host executes.
+ */
+export type SubagentStyle = "transcript" | "bar";
+
+/**
  * Preferences for the user-supplied boot animation (D679 / ADR 0338).
  *
  * The file itself is never named here — it is discovered in
@@ -257,6 +271,11 @@ export type AppSettings = {
    * it because their tools write on the remote machine.
    */
   inlineVisualizations?: boolean;
+  /**
+   * Subagent presentation; see `SubagentStyle`. An absent or unknown value
+   * reads as `transcript`; reading a missing field never persists the default.
+   */
+  subagentStyle?: SubagentStyle;
   /**
    * Prevent the display from sleeping while the app is running. Uses
    * Electron's `powerSaveBlocker` with `prevent-display-sleep` on all

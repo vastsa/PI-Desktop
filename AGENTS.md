@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Policy-Sync: 2026-11-17.1
+Policy-Sync: 2026-11-24.1
 
 Mandatory rules for AI coding agents working in PI-Desktop.
 
@@ -425,18 +425,22 @@ New work must not continuously increase architectural entropy.
 Known hotspots — treat as **SHRINK OR STAY STABLE**:
 
 ```text
+packages/agent-runtime/src/runtime.ts
+crates/host-core/src/rpc/mod.rs
+crates/host-core/src/sessions.rs
+crates/host-core/src/tools/mod.rs
+apps/desktop/electron/main/plugin-runtime.ts
+apps/desktop/src/components/Sidebar.tsx
 apps/desktop/electron/main/index.ts
 apps/desktop/src/stores/app-store.ts
-apps/desktop/src/components/ChatTranscript.tsx
-apps/desktop/src/components/Composer.tsx
-crates/host-core/src/plugins.rs
-crates/host-core/src/db.rs
-crates/host-core/src/providers.rs
-crates/host-core/src/plans.rs
 ```
 
 Do not use a historical God Module as the default place for new
 functionality, and do not solve one God Module by creating another.
+
+`node scripts/check-architecture.mjs` flags any production TS / TSX
+file above 800 LOC or Rust file above 1000 LOC that grows relative to
+its base; see `docs/architecture/README.md`.
 
 Split by real domain / responsibility / ownership / lifecycle, not
 arbitrary line count. Guidance:

@@ -1,47 +1,23 @@
 diff --git a/main.js b/main.js
-index db7ef80..8311c76 100644
+index 1ec3817..1911c0c 100644
 --- a/main.js
 +++ b/main.js
-@@ -821,7 +821,11 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
- 
+@@ -826,6 +826,10 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
      const timer = setTimeout(() => {
        timedOut = true;
+       child.kill("SIGKILL");
 +      // Inherited pipes can delay close; settle at the deadline instead.
 +      finish(reject, fail("GIT_TIMEOUT", "git command timed out"));
-       child.kill("SIGKILL");
 +      child.stdout?.destroy?.();
 +      child.stderr?.destroy?.();
      }, timeoutMs);
  
      child.stdout?.on("data", (chunk) => {
-@@ -2845,6 +2849,12 @@ const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
- function assertValidName(rawName) {
-   if (typeof rawName !== "string") throw fail("INVALID_NAME", "name is required");
+@@ -3055,6 +3059,7 @@ function assertValidName(rawName) {
    const name = rawName.trim();
-+  if (!name || name === "." || name === ".." || /[<>:"/\\|?*\x00-\x1f]/.test(name) || name.endsWith(".") || WINDOWS_RESERVED.test(name)) {
-+    throw fail("INVALID_NAME", "name must be a valid file or directory name");
-+  }
-+  return name;
-+}
-+
- function entryFromStat(name, rel, stat) {
-   return {
-     name,
-@@ -2859,17 +2869,6 @@ function entryFromStat(name, rel, stat) {
-     git: null,
-   };
- }
--  return {
--    name,
--    path: rel,
--    isDirectory: stat.isDirectory(),
--    size: stat.isDirectory() ? undefined : stat.size,
--    mtimeMs: stat.mtimeMs,
--    ignored: false,
--    isSymlink: false,
--    outside: false,
--  };
--}
- 
- async function handleCreate(payload) {
-   const parent = await resolveInsideRoot(payload?.parent ?? "", { allowRoot: true });
+   if (!name || name === "." || name === "..") throw fail("INVALID_NAME", "invalid name");
+   if (/[\\/:*?"<>|\x00-\x1f]/.test(name)) throw fail("INVALID_NAME", "name contains an illegal character");
++  if (name.endsWith(".")) throw fail("INVALID_NAME", "name must not end with a dot");
+   if (WINDOWS_RESERVED.test(name)) throw fail("INVALID_NAME", "name is reserved by the system");
+   if (name.length > 200) throw fail("INVALID_NAME", "name is too long");
+   return name;

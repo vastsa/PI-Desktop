@@ -144,6 +144,18 @@ profiles, data directories, sockets, ports, logs, and artifacts. Install or
 rebuild dependencies only when the host environment is missing or incompatible
 and record the reason. Clean CI and release runners may install from lockfiles.
 
+From a fresh request worktree, run `node scripts/reuse-worktree-deps.mjs` with
+the same Node version/ABI as the primary installation. It links installed
+third-party packages and points `@pi-desktop/*` at this worktree; build those
+workspace packages here. If the primary installation is stale, pass the path of
+another checkout of this repository with matching installed dependencies and
+keep it until the consuming worktree is removed. If none matches, use an
+isolated install. Never install, prune, or rebuild through shared links.
+The helper copies mutable `.bin` shims locally. Before `pnpm run` or `pnpm exec`,
+set `pnpm_config_verify_deps_before_run=false` in the command environment to
+prevent pnpm from automatically installing into the linked layout (PowerShell:
+`$env:pnpm_config_verify_deps_before_run='false'`).
+
 Use the root `package.json` as the source of truth for executable commands.
 The minimum selection is:
 
@@ -367,6 +379,21 @@ The release artifact paths are covered by E2E-192, E2E-192a, E2E-196a,
 E2E-196b, E2E-196c, and E2E-200 (Quality, M6+).
 
 ---
+
+The session background jobs E2E (`scripts/e2e-session-background-jobs.mjs`)
+also covers ordinary Bash with a real Host and a deterministic local provider.
+A short command returns its original exit code. A longer command returns a
+running job, allows another tool call, and runs exactly once before
+`TaskWait` receives the terminal output and exit code. The original deadline
+and explicit stop are exercised after the initial return.
+
+The vendored File Manager journeys exercise the production view:
+`file-manager-directory-location-user-path.e2e.mjs` opens primary and sibling
+project directories, unchanged file targets, and rejected external directories;
+`file-manager-theme-user-path.e2e.mjs` checks editor controls in both themes.
+`e2e-remote-file-manager.mjs` checks scoped SSH reads and local/remote switches
+through the Desktop bridge. The pinned source and its document-tab, Git and
+loading checks are recorded in the bundled plugin’s `UPSTREAM.md`.
 
 ## 9. How AI Must Update This Doc
 

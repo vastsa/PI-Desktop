@@ -35,6 +35,7 @@ fn tool_options(
         allow_external_paths: false,
         hashline: None,
         visualization_root: None,
+        write_scope: None,
     }
 }
 
@@ -140,6 +141,7 @@ async fn isolated_session_user_path_from_create_to_delete() {
             output_tx: None,
             extra_env: env,
             run_in_background: false,
+            yield_after_initial_wait: false,
             continuation_turn_id: None,
             app_state: None,
         })),

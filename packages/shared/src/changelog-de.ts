@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
+      "Mit der Eingabeleiste in den Unterhaltungseinstellungen kannst du laufende Subagenten über dem Eingabefeld verfolgen. Im Verlauf erscheinen auch nach Abschluss aufklappbare Werkzeugzeilen statt Subagentenkarten.",
       "Bei einer Neuinstallation erzeugt das mitgelieferte Plugin „Offizielle Erweiterungen“ Sitzungstitel automatisch; Vorschläge, Entwurfsverbesserung und KI-Gedächtnis bleiben aus, bis du sie einschaltest.",
       "Neue Aufgabe startet jetzt einen temporären Chat außerhalb von Projekten, und Unterhaltungen lassen sich zwischen Projekten oder zurück in den temporären Chat verschieben.",
       "Auf der leeren Startseite wechselst du das Projekt per Klick auf den Projektnamen oder „temporär“ im Titel; das projektlose Ziel heißt jetzt überall Temporärer Chat.",
@@ -13,7 +14,7 @@ export const deEntries: ChangelogEntry[] = [
       "Fortschrittsnotizen von OpenAI-Responses-Modellen bleiben in ursprünglicher Reihenfolge im Ablauf des Durchgangs statt in der Antwort, auch nach erneutem Öffnen; „Letzte Antwort kopieren“ kopiert nur die Antwort.",
       "Benutzerdefinierte OpenAI-kompatible Endpunkte behalten ihren Prompt-Cache über Durchgänge hinweg, sodass lange Unterhaltungen nicht mehr lange auf das erste Token warten.",
       "Persische, arabische und andere rechtsläufige Absätze, die mit einem englischen Wort beginnen, werden jetzt in der richtigen Richtung angezeigt.",
-      "Das Dateimanager-Plugin 0.9.1 zeigt eingebettete Markdown-Bilder sicher an und bietet schreibgeschützte Tabellenvorschauen.",
+      "Dateimanager 0.13.0 bietet Dokument-Tabs mit eigenen Entwürfen, einen Git-Bereich für Änderungen, Verlauf, Staging und Synchronisierung sowie klarere Ladezustände.",
       "Behoben: Verzweigen älterer, aus dem Verlauf geladener Antworten, wiederholt fehlschlagende Konfigurationssynchronisierung nach einseitigem Löschen, abgeschnittene Modellnamen in den Einstellungen, der Arbeitsbereich-Schalter über der Suche und von manchen Responses-Endpunkten abgelehnte Tooldefinitionen.",
     ],
   },

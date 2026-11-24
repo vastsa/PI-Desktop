@@ -229,7 +229,7 @@ test("the nested run is visibly one level inside the call", () => {
   assert.match(messagesCss, /\.tool-row-agent \{/);
 });
 
-test("every Task row renders as one accessible delegation topology", () => {
+test("transcript style renders Task rows as one accessible delegation topology", () => {
   // One delegation gets the same card as a fan-out: the compact row hid the
   // outcome, runtime and step count the card states outright.
   assert.match(

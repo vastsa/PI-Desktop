@@ -7,13 +7,23 @@
 import {
   IPC,
   isModeId,
+  type ModeBundleSettingsRequest,
+  type ModeBundleWriteRequest,
   type ModeControlAction,
   type ModeControlRequest,
+  type ModeCopyRequest,
   type ModeResolveAction,
   type ModeResolveRequest,
   type ModeRunBudget,
   type ModeUpdateRequest,
 } from "@pi-desktop/shared";
+import {
+  hasBundleSettingsPatch,
+  openModeSkillsDirectory,
+  readModeSkillsState,
+  saveModeBundleSettings,
+  type ModeBundleSettingsPatch,
+} from "../runtime/mode-bundle-settings";
 import type { ModeCatalogService } from "../runtime/mode-catalog";
 import type { ModeRunCoordinator } from "../runtime/mode-runs";
 import type { IpcRegistrar } from "./types";
@@ -22,6 +32,13 @@ export type ModesIpcDependencies = {
   registrar: IpcRegistrar;
   catalog: ModeCatalogService;
   runs: ModeRunCoordinator;
+  /**
+   * The host's trusted shell (`shell.openPath`), injected so the mode settings
+   * can open a mode's `skills/` folder without this module importing Electron.
+   * A missing implementation reports the channel as unsupported instead of
+   * silently doing nothing.
+   */
+  openPath?: (path: string) => Promise<string>;
 };
 
 function invalid(message: string): Error {
@@ -90,7 +107,64 @@ export function modeUpdateRequestArg(value: unknown): ModeUpdateRequest {
 }
 const RESOLVE_ACTIONS: readonly ModeResolveAction[] = ["approve", "reject"];
 
-export function registerModesIpc({ registrar, catalog, runs }: ModesIpcDependencies): void {
+/**
+ * A bundle write: the map plus exactly the documents it names.
+ *
+ * Every document text is a string here; whether a reference stays inside the
+ * mode directory and whether the map is well-formed is decided where the files
+ * are, so this only refuses a shape that could not be a request at all.
+ */
+function bundleWriteArg(value: unknown): ModeBundleWriteRequest {
+  const request = (value ?? {}) as Record<string, unknown>;
+  const agents: Record<string, string> = {};
+  if (request.agents !== undefined) {
+    if (typeof request.agents !== "object" || request.agents === null || Array.isArray(request.agents)) {
+      throw invalid("agents must map references to documents");
+    }
+    for (const [reference, text] of Object.entries(request.agents as Record<string, unknown>)) {
+      if (typeof text !== "string") throw invalid(`agents["${reference}"] must be a string`);
+      agents[reference] = text;
+    }
+  }
+  return {
+    id: modeIdArg(request.id),
+    source: sourceArg(request.source),
+    prompt: sourceArg(request.prompt),
+    agents,
+  };
+}
+
+function copyArg(value: unknown): ModeCopyRequest {
+  const request = (value ?? {}) as Record<string, unknown>;
+  return { fromId: modeIdArg(request.fromId), toId: modeIdArg(request.toId) };
+}
+
+/**
+ * A mode-level patch. Only the two keys the settings page owns are accepted, and
+ * at least one must be present: an empty patch would write the bundle for no
+ * reason and bump the file's mtime.
+ */
+function bundleSettingsArg(value: unknown): ModeBundleSettingsPatch {
+  const request = (value ?? {}) as Record<string, unknown>;
+  const patch: ModeBundleSettingsPatch = {};
+  if (request.includeGlobalSubagents !== undefined) {
+    if (typeof request.includeGlobalSubagents !== "boolean") {
+      throw invalid("includeGlobalSubagents must be true or false");
+    }
+    patch.includeGlobalSubagents = request.includeGlobalSubagents;
+  }
+  if (request.disabledSkills !== undefined) {
+    if (!Array.isArray(request.disabledSkills)) throw invalid("disabledSkills must be a list of skill ids");
+    patch.disabledSkills = request.disabledSkills.map((entry) => {
+      if (typeof entry !== "string") throw invalid("disabledSkills accepts skill ids");
+      return entry;
+    });
+  }
+  if (!hasBundleSettingsPatch(patch)) throw invalid("nothing to update");
+  return patch;
+}
+
+export function registerModesIpc({ registrar, catalog, runs, openPath }: ModesIpcDependencies): void {
   registrar.handle(IPC.invoke.modesCatalog, async () => catalog.catalog());
   registrar.handle(IPC.invoke.modesRead, async (id: unknown) => catalog.read(modeIdArg(id)));
   registrar.handle(IPC.invoke.modesValidate, async (request: unknown) => {
@@ -114,5 +188,29 @@ export function registerModesIpc({ registrar, catalog, runs }: ModesIpcDependenc
     const request = runRequestArg(value);
     if (!RESOLVE_ACTIONS.includes(request.action as ModeResolveAction)) throw invalid("action is invalid");
     return runs.resolve(request as ModeResolveRequest);
+  });
+
+  // --- `mode.yaml` bundles (issue #2544) ------------------------------------
+
+  registrar.handle(IPC.invoke.modesBundleRead, async (id: unknown) => catalog.readBundle(modeIdArg(id)));
+  registrar.handle(IPC.invoke.modesBundleWrite, async (value: unknown) => {
+    const request = bundleWriteArg(value);
+    const { id, ...contents } = request;
+    return catalog.writeBundle(id, contents);
+  });
+  registrar.handle(IPC.invoke.modesCopy, async (value: unknown) => {
+    const { fromId, toId } = copyArg(value);
+    return catalog.copy(fromId, toId);
+  });
+  registrar.handle(IPC.invoke.modesBundleSettings, async (value: unknown) => {
+    const id = modeIdArg((value as Record<string, unknown> | null)?.id);
+    return saveModeBundleSettings(catalog, id, bundleSettingsArg(value));
+  });
+  registrar.handle(IPC.invoke.modesSkills, async (id: unknown) => readModeSkillsState(catalog, modeIdArg(id)));
+  registrar.handle(IPC.invoke.modesSkillsOpen, async (id: unknown) => {
+    if (!openPath) {
+      throw Object.assign(new Error("this build cannot open a folder"), { errorCode: "UNSUPPORTED" });
+    }
+    return openModeSkillsDirectory(catalog, modeIdArg(id), openPath);
   });
 }

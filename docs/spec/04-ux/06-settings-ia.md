@@ -364,10 +364,21 @@ so no row repeats it.
 - **Display** card, in rendered order: the **Show thinking** toggle with its
   **Auto-fold finished thinking** sub-row, the **Transcript display** segmented
   control with its **Auto-fold finished groups** sub-row, **Context usage
-  display** (remaining or used), **Smooth streaming**, and **Inline
-  visualizations**. Context usage display controls whether the composer toolbar
-  context ring and its popover lead with the remaining or the used capacity
-  figure; the default is remaining.
+  display** (remaining or used), **Smooth streaming**, **Inline
+  visualizations**, and **Subagent style**. Context usage display controls whether
+  the composer toolbar context ring and its popover lead with the remaining or
+  the used capacity figure; the default is remaining.
+- **Subagent style** defaults to **In transcript** (also for an absent or unknown
+  `subagentStyle`): delegation cards show the topology in the transcript, with no
+  avatar row above the input. **Composer bar** shows the session's delegates
+  above the input while any are active, independently of the collapsible task
+  dock. In this style the transcript shows ordinary expandable tool rows instead
+  of delegation cards, even after the last delegate settles and the bar disappears.
+  Both styles preserve tool history, lifecycle rows and Work panel records.
+  Focus or hover an avatar for its current step or result, model, input/output
+  tokens, elapsed time, average output tokens per elapsed second and turns.
+  Unavailable measurements are not estimated. After six avatars, `+N` opens
+  the grouped roster. Open a delegate's Work panel record or stop a running delegate.
 - **Input & links** card: the **Enter-to-send** control, the large text paste
   threshold, and the **Link open destination**. The threshold controls when a
   text-only paste becomes a temporary session-scratch file; it defaults to 600

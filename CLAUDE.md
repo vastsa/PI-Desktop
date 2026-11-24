@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Policy-Sync: 2026-11-17.1
+Policy-Sync: 2026-11-24.1
 
 Instructions for Claude Code CLI and Claude Cowork on PI-Desktop.
 
@@ -168,17 +168,17 @@ Database / schema changes need migration, schema version bump, upgrade compatibi
 Do not pile new logic into God Modules. Prefer shrink-or-stay-stable for:
 
 ```text
+packages/agent-runtime/src/runtime.ts
+crates/host-core/src/rpc/mod.rs
+crates/host-core/src/sessions.rs
+crates/host-core/src/tools/mod.rs
+apps/desktop/electron/main/plugin-runtime.ts
+apps/desktop/src/components/Sidebar.tsx
 apps/desktop/electron/main/index.ts
 apps/desktop/src/stores/app-store.ts
-apps/desktop/src/components/ChatTranscript.tsx
-apps/desktop/src/components/Composer.tsx
-crates/host-core/src/plugins.rs
-crates/host-core/src/db.rs
-crates/host-core/src/providers.rs
-crates/host-core/src/plans.rs
 ```
 
-New logic belongs in the domain module that owns the state or process boundary. Facades stay for compatibility only.
+New logic belongs in the domain module that owns the state or process boundary. Facades stay for compatibility only. `node scripts/check-architecture.mjs` flags oversized files that grow (see `docs/architecture/README.md`).
 
 Size guidance:
 

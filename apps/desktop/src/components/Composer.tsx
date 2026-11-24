@@ -33,6 +33,7 @@ import { ComposerAutocomplete } from "./ComposerAutocomplete";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";
 import { TaskDock } from "./TaskDock";
+import { ComposerSubagents } from "../features/chat/composer/ComposerSubagents";
 import { ModeRunStatusBar } from "../features/modes/ModeRunStatusBar";
 import {
   COMPOSER_MAX_VISIBLE_ROWS,
@@ -500,7 +501,8 @@ export function Composer({
     cursor,
     composing,
     enabled: !inputBlocked && localToolsAllowed,
-    agentsEnabled: mode === "agent",
+    agentsEnabled: mode !== "plan" && mode !== "goal",
+    agentMode: mode,
     referenceSessionId,
     fileReferencesRef,
     applyEditorDraft,
@@ -584,6 +586,9 @@ export function Composer({
           onDragLeave={onComposerDragLeave}
           onDrop={onComposerDrop}
         >
+          {settings?.subagentStyle === "bar" && activeSessionId && localToolsAllowed && !nativeSession ? (
+            <ComposerSubagents key={activeSessionId} sessionId={activeSessionId} />
+          ) : null}
           {inputFocused ? (
             <ComposerAutocomplete
               anchorRef={composerShellRef}
