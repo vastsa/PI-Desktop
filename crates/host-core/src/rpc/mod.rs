@@ -1233,7 +1233,10 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
-    if object.get("foregroundCacheWarmingEnabled").is_some_and(|value| !value.is_boolean()) {
+    if object
+        .get("foregroundCacheWarmingEnabled")
+        .is_some_and(|value| !value.is_boolean())
+    {
         return Err(rpc_err(
             1002,
             "foregroundCacheWarmingEnabled must be a boolean",
