@@ -763,6 +763,25 @@ with only Host API controlled. Running-turn configuration remains queued.
   retained-reasoning wire proof); live OpenCode / aggregator
   verification deferred; rendered UI scenario pending
 
+## E2E-PROVIDER-mistral-store-compat: Omit OpenAI-only store on Mistral Chat Completions
+
+- **Preconditions**: Agent-runtime provider rows for native Mistral, Mistral-hosted
+  DeepSeek, a custom row pointing at Mistral, and OpenAI; local stub fetch only,
+  with no live credentials or provider requests.
+- **Steps**: Serialize one Chat Completions request for each row through the real
+  pi-ai adapter and capture its request body at the fetch boundary.
+- **Expected**: Mistral requests omit `store`, including the custom Mistral URL
+  and Mistral-hosted DeepSeek rows. DeepSeek reasoning replay compatibility stays
+  enabled. OpenAI keeps its existing `store: false` body.
+- **Coverage**: `provider-binding.test.ts` captures serialized adapter bodies;
+  `provider-presets.test.ts` checks endpoint and vendor matching, including
+  spoofed hosts and rows repointed to another published vendor. No real API is
+  called.
+- **Specs linked**: `03-runtime/11-provider-model-system.md`.
+- **Acceptance**: B (provider Chat Completions compatibility).
+- **Milestone**: Maintenance.
+- **Status**: Unit-covered; live Mistral verification is intentionally not run.
+
 ## E2E-006: Key survives restart
 
 - **Preconditions**: Provider + key configured.
