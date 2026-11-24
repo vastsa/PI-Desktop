@@ -72,6 +72,7 @@ function nativeProjectPaths(params: { projectPaths?: unknown } | undefined): str
 }
 
 const runtimes: RuntimeMap = new Map();
+let cacheWarmingSessionId: string | undefined;
 const hostProxy = new ParentHostProxy();
 const testRuntimeIds = new WeakMap<DesktopAgentRuntime, string>();
 function testRuntimeIdentity(sessionId: string) {
@@ -375,6 +376,7 @@ async function runtimeFor(
     onDiagnostic: (diagnostic) => notify("agent.diagnostic", diagnostic),
   });
   runtimes.set(sessionId, runtime);
+  runtime.setCacheWarmingForeground(sessionId === cacheWarmingSessionId);
   // Load failures are diagnostics, never a failed prompt (spec 16 §4.4).
   await runtime.loadTrustedExtensions().catch(() => undefined);
   if (provider.extensionAgentKey) {
@@ -479,6 +481,25 @@ async function handle(method: string, params: any): Promise<unknown> {
     case "agent.testRuntimeIdentity": {
       return testRuntimeIdentity(String(params.sessionId ?? ""));
     }
+    case "agent.setCacheWarmingSession": {
+      const next = typeof params?.sessionId === "string" ? params.sessionId : undefined;
+      if (next !== cacheWarmingSessionId) {
+        if (cacheWarmingSessionId) runtimes.get(cacheWarmingSessionId)?.setCacheWarmingForeground(false);
+        cacheWarmingSessionId = next;
+        if (next) runtimes.get(next)?.setCacheWarmingForeground(true);
+      }
+      return { ok: true };
+    }
+    case "agent.invalidateCacheWarming": {
+      if (params?.all === true) {
+        for (const runtime of runtimes.values()) runtime.invalidateCacheWarming();
+      } else if (typeof params?.sessionId === "string") {
+        runtimes.get(params.sessionId)?.invalidateCacheWarming();
+      } else if (typeof params?.providerId === "string") {
+        for (const runtime of runtimes.values()) runtime.invalidateCacheWarming(params.providerId);
+      }
+      return { ok: true };
+    }
     case "agent.prompt": {
       const sessionId = String(params.sessionId);
       const content = String(params.content ?? "");
@@ -517,6 +538,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       }
       const prompt: RuntimePrompt = {
         text: content,
+        cacheWarmingEligible: params.cacheWarmingEligible === true,
         ...(params.backgroundCompletion ? { backgroundCompletion: params.backgroundCompletion } : {}),
         mcpServerIds: parseMcpServerIds(params.mcpServerIds),
         mcpToolNames: parseMcpToolNames(params.mcpToolNames),

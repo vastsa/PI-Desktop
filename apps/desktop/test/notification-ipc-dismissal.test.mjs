@@ -69,6 +69,8 @@ function harness({ hostCall } = {}) {
   const handlers = new Map();
   const calls = [];
   const events = [];
+  const viewingSessions = [];
+  const mainWindowSender = {};
   const host = {
     call: async (method, input) => {
       calls.push({ method, input });
@@ -86,23 +88,45 @@ function harness({ hostCall } = {}) {
   };
   const { registerNotificationIpc } = loadNotificationIpc();
   registerNotificationIpc({
-    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    registrar: {
+      handle: (channel, handler) => handlers.set(channel, handler),
+      handleWithEvent: (channel, handler) => handlers.set(channel, handler),
+      assertMainWindowSender: (event) => {
+        if (event !== mainWindowSender) throw new Error("Main window required");
+      },
+    },
     getHost: () => host,
     getMainWindow: () => mainWindow,
     getViewingSessionId: () => "session-current",
-    setViewingSessionId: () => {},
+    setViewingSessionId: (sessionId, cacheWarming) => viewingSessions.push({ sessionId, cacheWarming }),
     sendToRenderer: (channel, payload) => events.push({ channel, payload }),
   });
   return {
     handlers,
     calls,
     events,
+    viewingSessions,
+    view: (input, event = mainWindowSender) =>
+      handlers.get(IPC.invoke.notificationSetViewingSession)(event, input),
     show: (input) => handlers.get(IPC.invoke.notificationShowNative)(input),
     markRead: (id) => handlers.get(IPC.invoke.notificationMarkRead)({ id }),
     markAllRead: () => handlers.get(IPC.invoke.notificationMarkAllRead)(),
     clear: () => handlers.get(IPC.invoke.notificationClear)(),
   };
 }
+
+test("only the main window can enable cache warming for the session it views", async () => {
+  const h = harness();
+  await assert.rejects(h.view({ sessionId: "denied", cacheWarming: true }, {}), /Main window required/);
+  await h.view({ sessionId: " session-1 ", cacheWarming: true });
+  await h.view({ sessionId: "session-2" });
+  await h.view();
+  assert.deepEqual(h.viewingSessions, [
+    { sessionId: "session-1", cacheWarming: true },
+    { sessionId: "session-2", cacheWarming: false },
+    { sessionId: null, cacheWarming: false },
+  ]);
+});
 
 test("duplicate task delivery is idempotent and read dismissal leaves a tombstone", async () => {
   const h = harness();

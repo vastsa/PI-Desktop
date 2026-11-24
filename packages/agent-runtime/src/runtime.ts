@@ -15,6 +15,7 @@ import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, 
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
 import { planWorkspaceRequiredResult } from "./plan-workspace-error.js";
 import { accountModelStream } from "./request-usage.js";
+import { IdleCacheWarming } from "./idle-cache-warming.js";
 import { modeToolDenial, retainModeToolDeclaration, withModeExecutionGuard } from "./mode-tool-access.js";
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
@@ -59,6 +60,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import {
   cleanupSessionResources,
+  getCacheWarmingRequestOptions,
   isContextOverflow,
   getCurrentTools,
   getToolStateChanges,
@@ -322,6 +324,7 @@ import {
   mergeProviderHeaders,
   providerHeadersEqual,
   withProviderHeaders,
+  withProviderHeadersFetch,
 } from "./provider-headers.js";
 import {
   captureProviderResponse,
@@ -372,6 +375,7 @@ export type RuntimePromptAttachment = Omit<AgentPromptAttachment, "kind"> & {
 
 export type RuntimePrompt = {
   text: string;
+  cacheWarmingEligible?: boolean;
   /** Trusted Main delivery, already recorded as a tool row. */
   backgroundCompletion?: UiMessage;
   /** Explicit user selection, resolved against the host-provided tool catalog. */
@@ -1920,6 +1924,20 @@ export function isolatedWorkspaceGuidance(): string {
 }
 
 export class DesktopAgentRuntime {
+  private readonly idleCacheWarming = new IdleCacheWarming(() => !this.disposed && !this.getStatus().isRunning);
+  private cacheWarmingTurnId?: string;
+  private cacheWarmingAttempt = 0;
+
+  setCacheWarmingForeground(foreground: boolean): void {
+    this.idleCacheWarming.setForeground(foreground);
+  }
+
+  invalidateCacheWarming(providerId?: string): void {
+    if (providerId !== undefined && providerId !== this.provider.id) return;
+    this.cacheWarmingAttempt++;
+    this.cacheWarmingTurnId = undefined;
+    this.idleCacheWarming.clear();
+  }
   private agent: Agent;
   private models: Models;
   private model: Model<Api>;
@@ -2322,6 +2340,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // justified a rebuild does not carry into the next request (issue #234).
         this.providerFetchFailure = undefined;
         this.providerTransportHealth.reset();
+        const providerHeaders = mergeProviderHeaders(
+          copilotRequestHeaders(this.provider, context),
+          this.provider.headers,
+        );
         const requestOptions: SimpleStreamOptions = withProviderHeaders(
           withOpenCodeSessionHeaders(
             {
@@ -2362,26 +2384,25 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               sessionId: this.sessionId,
             },
           ),
-          mergeProviderHeaders(
-            copilotRequestHeaders(this.provider, context),
-            this.provider.headers,
-          ),
+          providerHeaders,
           m.api,
         );
+        const baseOptions = withCodexCacheableInstructions(requestOptions, m);
+        const sessionAffinity = {
+          provider: this.provider,
+          api: m.api,
+          baseUrl: m.baseUrl,
+          sessionId: this.sessionId,
+        };
+        let extensionReplacedPayload = false;
         // Only main turns ask for the priority tier: subagents, compaction and
         // one-shot requests build their own options and keep the default.
         const hookedOptions = withFastModeOptions(
           withSessionAffinityOptions(
-            this.withExtensionProviderHooks(
-              withCodexCacheableInstructions(requestOptions, m),
-              m,
-            ),
-            {
-              provider: this.provider,
-              api: m.api,
-              baseUrl: m.baseUrl,
-              sessionId: this.sessionId,
-            },
+            this.withExtensionProviderHooks(baseOptions, m, () => {
+              extensionReplacedPayload = true;
+            }),
+            sessionAffinity,
           ),
           m.api,
           this.fastMode,
@@ -2400,6 +2421,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         };
         const usageTurnId = this.turnId;
         const openAttempt = (retryOptions: SimpleStreamOptions, input = requestContext) => {
+          const startedAt = Date.now();
+          const attempt = ++this.cacheWarmingAttempt;
+          this.idleCacheWarming.clear();
           // Each network attempt owns its idle clock and abort signal.
           const stallAbort = new AbortController();
           const timedOptions = {
@@ -2419,6 +2443,44 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               nativeCost: this.provider.modelConfig?.nativeCost,
               onUsage: (usage) => this.emit({ type: "usage", usage }, usageTurnId),
             });
+          if (usageTurnId && usageTurnId === this.cacheWarmingTurnId &&
+              this.idleCacheWarming.isForeground && input === requestContext &&
+              !m.webSearch) {
+            const model = this.thinkingLevel === "omit" ? omitThinkingModel(m) : m;
+            const omitThinking = this.thinkingLevel === "omit";
+            const replayOptions = {
+              ...retryOptions,
+              fetch: withProviderHeadersFetch(
+                providerRequestFetch(m.api, options?.fetch, this.provider.authKind),
+                providerHeaders,
+              ),
+              // Keep the adapter's payload shaping without replaying extension hooks
+              // or a retry's output-limit repair.
+              onPayload: withSessionAffinityOptions(baseOptions, sessionAffinity).onPayload,
+              onResponse: undefined,
+            };
+            void stream.result().then((result) => {
+              if (extensionReplacedPayload || this.disposed || this.runCancelled ||
+                  attempt !== this.cacheWarmingAttempt) return;
+              this.idleCacheWarming.remember({
+                model, options: replayOptions, startedAt, result,
+                oauth: this.provider.authKind === OAUTH_AUTH_KIND,
+                metered: this.provider.authKind !== OAUTH_AUTH_KIND &&
+                  this.provider.authKind !== "none" && this.provider.modelConfig?.nativeCost !== undefined &&
+                  /^(?:https:\/\/api\.anthropic\.com|https:\/\/api\.openai\.com)(?:\/v1)?\/?$/.test(model.baseUrl),
+                refresh: (signal) => {
+                  const refreshOptions = getCacheWarmingRequestOptions(replayOptions, signal);
+                  return accountModelStream(model, () => omitThinking
+                    ? this.models.stream(model, input, refreshOptions)
+                    : this.models.streamSimple(model, input, refreshOptions), {
+                    providerId: this.provider.id,
+                    nativeCost: this.provider.modelConfig?.nativeCost,
+                    onUsage: (usage) => this.emit({ type: "usage", usage }, usageTurnId),
+                  }).result();
+                },
+              });
+            }).catch(() => undefined);
+          }
           return withStreamIdleTimeout(stream, m, streamIdleTimeoutMs(), () => stallAbort.abort());
         };
         const readPluginContext = opts.readPluginModelContext;
@@ -8753,6 +8815,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         errorCode: "AGENT_BUSY",
       });
     }
+    this.invalidateCacheWarming();
     try {
       const ok = await this.runCompaction("manual", false);
       if (!ok) {
@@ -9571,6 +9634,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         errorCode: "TURN_NOT_FOUND",
       });
     }
+    this.invalidateCacheWarming();
     return this.trackTurnOperation(durableTurnId, () =>
       this.executeApprovedPlanTurn(execution, durableTurnId),
     );
@@ -9694,14 +9758,27 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     if (this.disposed) throw new Error("runtime disposed");
     this.assertNotRunning();
     const turnId = durableTurnId?.trim() || randomUUID();
-    return this.trackTurnOperation(turnId, async () => {
-      try { return await this.promptTurn(input, userMessageId, turnId); }
-      finally {
-        // The run claim belongs to this turn only.
-        this.modeState.endTurn();
-        await this.batchPlanner.drain();
+    this.invalidateCacheWarming();
+    this.cacheWarmingTurnId = typeof input === "string" ||
+      (input.cacheWarmingEligible !== false && !input.backgroundCompletion && !input.sessionMessage &&
+        (!input.modeTurn || input.modeTurn.origin === "user"))
+      ? turnId : undefined;
+    try {
+      const result = await this.trackTurnOperation(turnId, async () => {
+        try { return await this.promptTurn(input, userMessageId, turnId); }
+        finally {
+          // The run claim belongs to this turn only.
+          this.modeState.endTurn();
+          await this.batchPlanner.drain();
+        }
+      });
+      if (this.cacheWarmingTurnId === turnId && !this.runCancelled && !this.turnHadError) {
+        this.idleCacheWarming.settle();
       }
-    });
+      return result;
+    } finally {
+      if (this.cacheWarmingTurnId === turnId) this.cacheWarmingTurnId = undefined;
+    }
   }
 
   /** Execute the ordinary Host Read for explicit composer references before model input. */
@@ -9949,6 +10026,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private withExtensionProviderHooks(
     options: SimpleStreamOptions,
     model: Model<any>,
+    notePayloadReplacement: () => void,
   ): SimpleStreamOptions {
     const runner = this.extensionRunner;
     if (!runner) return options;
@@ -9963,6 +10041,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         const base = await options.onPayload?.(payload, payloadModel);
         const current = base ?? payload;
         const replaced = await runner.emitBeforeProviderRequest(current, { contextRequestId });
+        if (replaced != null) notePayloadReplacement();
         return replaced ?? base;
       };
     }
@@ -10070,6 +10149,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   abort(): Promise<void> {
+    this.invalidateCacheWarming();
     return this.aborting ??= this.abortTurn().finally(() => { this.aborting = undefined; });
   }
 
@@ -10182,6 +10262,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
 
   async dispose(): Promise<void> {
     if (this.disposed) return;
+    this.invalidateCacheWarming();
     const runner = this.extensionRunner;
     this.extensionRunner = undefined;
     const closingExtensions = runner?.dispose();

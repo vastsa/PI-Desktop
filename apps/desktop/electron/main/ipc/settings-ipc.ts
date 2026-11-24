@@ -26,6 +26,7 @@ export type SettingsIpcDependencies = {
   applyDeveloperMode: (settings?: { developerMode?: unknown } | null) => void;
   applyPreventScreenSleep: (settings?: { preventScreenSleep?: unknown } | null) => void;
   applyKeepAwakeWhileRunning: (settings?: { keepAwakeWhileRunning?: unknown } | null) => void;
+  applyForegroundCacheWarming: (settings?: { foregroundCacheWarmingEnabled?: unknown } | null) => void;
   applyUpdatePreference: (preference: UpdatePreference) => void;
   resolveEffectiveCommandShell: () => Promise<unknown>;
   liveCallService?: Pick<LiveCallService, "beginSettingsWrite" | "settingsWritten">;
@@ -46,6 +47,7 @@ export function registerSettingsIpc({
   applyDeveloperMode,
   applyPreventScreenSleep,
   applyKeepAwakeWhileRunning,
+  applyForegroundCacheWarming,
   applyUpdatePreference,
   resolveEffectiveCommandShell,
   liveCallService,
@@ -81,6 +83,7 @@ export function registerSettingsIpc({
     let result: AppSettings;
     try {
       result = await host.call<AppSettings>("settings.set", validatedSettings);
+      applyForegroundCacheWarming(result);
       await liveCallService?.settingsWritten(result);
     } finally {
       releaseSettingsWrite?.();
