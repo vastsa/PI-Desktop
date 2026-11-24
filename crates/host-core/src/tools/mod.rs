@@ -1606,6 +1606,42 @@ fn read_image_block(
     }))
 }
 
+/// Reject malformed tool paths before resolution. Some models emit paths with
+/// trailing conversational junk ("src/pages/Wizard.tsx imma?") or surrounding
+/// whitespace (#2552); resolving those fails with an opaque IO error that
+/// invites blind retries. Answer instead with the intended path.
+///
+/// A path with internal whitespace is only rejected when it cannot exist but
+/// its first whitespace-delimited segment does — "my project/notes.txt" is a
+/// legal path and stays untouched.
+fn malformed_tool_path(root: &Path, path: &str) -> Option<(String, String)> {
+    if path.trim() != path {
+        return Some((
+            "INVALID_ARGUMENT".into(),
+            format!(
+                "path has surrounding whitespace; re-issue the tool call with the bare path, e.g. {}",
+                serde_json::to_string(path.trim()).unwrap_or_default()
+            ),
+        ));
+    }
+    if !path.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let full = root.join(path);
+    let head = path.split_whitespace().next().unwrap_or(path);
+    let head = root.join(head);
+    if !full.exists() && head.exists() {
+        return Some((
+            "INVALID_ARGUMENT".into(),
+            format!(
+                "path looks malformed: {path:?} does not exist but {:?} does; re-issue the tool call with only the file path",
+                path.split_whitespace().next().unwrap_or(path)
+            ),
+        ));
+    }
+    None
+}
+
 fn tool_read(
     workspace: Option<&Path>,
     roots: &ContainedRoots,
@@ -1618,6 +1654,9 @@ fn tool_read(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ("INVALID_ARGUMENT".into(), "path required".into()))?;
+    if let Some((code, message)) = malformed_tool_path(root, path) {
+        return Err((code, message));
+    }
     let (resolved, root_kind) =
         resolve_tool_path_with_external(root, roots, path, allow_external_paths)
             .map_err(|e| (e.clone(), e))?;
@@ -1805,6 +1844,9 @@ fn tool_write(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
+    if let Some((code, message)) = malformed_tool_path(root, path) {
+        return Err(hashline::ToolError::new(code, message));
+    }
     let content = args
         .get("content")
         .and_then(|v| v.as_str())
@@ -1938,6 +1980,9 @@ fn tool_edit(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
+    if let Some((code, message)) = malformed_tool_path(root, path) {
+        return Err(hashline::ToolError::new(code, message));
+    }
     let (resolved, root_kind) =
         resolve_mutation_path(root, roots, path, allow_external_paths, scope)?;
     if ignore_rules::is_sensitive_path(&resolved) {
@@ -6255,5 +6300,58 @@ mod tests {
             msg.contains("no-such-file.txt"),
             "diagnostic should name the path: {msg}"
         );
+    }
+
+    #[tokio::test]
+    async fn malformed_tool_paths_get_a_recoverable_diagnostic() {
+        let ws = tempfile::tempdir().unwrap();
+        std::fs::write(ws.path().join("Wizard.tsx"), "hi\n").unwrap();
+
+        // Trailing conversational junk after the path (#2552): the tool names
+        // the intended file instead of failing with an opaque IO error.
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Edit",
+            &serde_json::json!({
+                "path": "Wizard.tsx imma?",
+                "tag": "abcd",
+                "ops": "..."
+            }),
+            5_000,
+        )
+        .await;
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
+        let msg = result.content["error"].as_str().unwrap_or_default();
+        assert!(
+            msg.contains("\"Wizard.tsx\""),
+            "diagnostic should point at the intended path: {msg}"
+        );
+
+        // Surrounding whitespace is rejected before any resolution.
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": " Wizard.tsx " }),
+            5_000,
+        )
+        .await;
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
+
+        // A legitimate path with internal whitespace still works.
+        let spaced = ws.path().join("my notes.txt");
+        std::fs::write(&spaced, "body\n").unwrap();
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "my notes.txt" }),
+            5_000,
+        )
+        .await;
+        assert!(result.ok, "spaced path must be accepted: {result:?}");
     }
 }
