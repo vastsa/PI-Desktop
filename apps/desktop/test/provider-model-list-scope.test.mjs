@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 
 const { ModelsDevCatalog } = await import("../electron/main/models-dev-catalog.ts");
+const { registerProviderIpc } = await import("../electron/main/ipc/provider-ipc.ts");
+const { IPC } = await import("@pi-desktop/shared");
 
 const catalogPath = fileURLToPath(new URL("../resources/models.dev/api.json", import.meta.url));
 
@@ -63,4 +65,22 @@ test("the wider list keeps one record per id and stays attributed to the provide
   const ids = models.map((model) => model.modelId.toLowerCase());
   assert.equal(new Set(ids).size, ids.length, "an id is listed once");
   assert.ok(models.every((model) => model.providerId === "row-wide"));
+});
+
+test("a local endpoint that cannot list models does not offer catalog IDs as available", async (t) => {
+  const catalog = await loadedCatalog();
+  const baseUrl = "http://127.0.0.1:1234/v1";
+  assert.ok(catalog.modelsForProvider({ baseUrl, providerId: "" }).length > 0);
+  t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 404 }));
+  const handlers = new Map();
+  registerProviderIpc({
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    getHost: () => ({ call: async () => ({}) }),
+    listRuntimeProviders: async () => [],
+    modelsDevCatalog: catalog,
+    logger: { app() {} },
+  });
+  const result = await handlers.get(IPC.invoke.providersListModels)({ baseUrl });
+  assert.equal(result.source, "fallback");
+  assert.deepEqual(result.models, []);
 });

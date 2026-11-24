@@ -962,6 +962,13 @@ with only Host API controlled. Running-turn configuration remains queued.
 - **Status**: Unit-covered (`providers::tests`, `model-cache.test.mjs`,
   `models-dev-catalog.test.mjs`); full restart/offline UI scenario Draft
 
+For the Pie Code Linux release, the packaged snapshot and the offline
+settings-to-coding journey are verified through the
+[Kylin acceptance procedure](../kylin-arm64-offline-install.md). The provider
+discovery regression (`pnpm test:e2e:model-discovery-state`) uses a real
+anonymous loopback service and verifies that a manual ID survives discovery,
+an outage, and a Host restart.
+
 ## E2E-080: Models.dev metadata and generic unknown models
 
 - **Preconditions**: A provider/model exists in the models.dev fixture with

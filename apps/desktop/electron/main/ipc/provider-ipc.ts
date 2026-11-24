@@ -692,17 +692,16 @@ export function registerProviderIpc({
         }
       }
 
-      // The endpoint published nothing usable (no /models route, an auth error,
-      // or an empty list). The catalog is the fallback, not the primary source.
-      // The list is the service's own published set, so a key that can call an
-      // embedding or image endpoint sees it here too; nothing is preselected
-      // from those, and `recommendModels` still picks chat models only.
-      const catalogModels = modelsDevCatalog.modelsForProvider({
-        vendorKey: catalogVendorKey,
-        baseUrl: endpointBaseUrl,
-        providerId: provider?.id ?? "",
-        includeNonChat: true,
-      });
+      // A public catalog can describe a custom endpoint's IDs, but cannot
+      // establish availability when that endpoint did not answer discovery.
+      const catalogModels = provider?.vendorKey && provider.vendorKey !== "custom"
+        ? modelsDevCatalog.modelsForProvider({
+            vendorKey: catalogVendorKey,
+            baseUrl: endpointBaseUrl,
+            providerId: provider.id,
+            includeNonChat: true,
+          })
+        : [];
       if (catalogModels.length > 0) {
         return {
           models: withConfiguredBindings(
@@ -711,6 +710,15 @@ export function registerProviderIpc({
           source: "catalog" as const,
           ...resolution,
           ...(discoveryError ? { error: discoveryError } : {}),
+        };
+      }
+
+      if (cachedModels.length > 0) {
+        return {
+          models: withConfiguredBindings(cachedModels.map((model) => decorate(model))),
+          source: "cache" as const,
+          ...resolution,
+          error: discoveryError,
         };
       }
 

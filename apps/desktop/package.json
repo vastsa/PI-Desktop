@@ -86,6 +86,7 @@
   "build": {
     "appId": "net.aiuo.pi-desktop",
     "productName": "PI-Desktop",
+    "afterPack": "../../scripts/bundle-models-dev-catalog.mjs",
     "directories": {
       "output": "release"
     },
