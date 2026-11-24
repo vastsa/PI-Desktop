@@ -167,41 +167,30 @@ export function clampMinimumSizeToWorkArea(
   };
 }
 
-/** The overshoot a maximized window keeps above the work area. */
-function maximizedBoundsInset(bounds: WindowBounds, workArea: WindowBounds): number {
-  return Math.max(0, workArea.y - bounds.y);
-}
-
 /**
- * Windows restores a frameless maximized window to the full monitor rect
- * instead of the work area, leaving the bottom edge below the work area by the
- * taskbar height (issue #1655). A healthy maximized rect only overshoots the
- * work area by the same inset above and below it.
+ * A frameless maximized window must keep its visible bounds inside the display
+ * work area. Windows can return symmetric frame insets even with `thickFrame:
+ * false`; those pixels are app content and can spill onto an adjacent display
+ * or cover the taskbar (issue #1963).
  */
 export function maximizedBoundsExceedWorkArea(
   bounds: WindowBounds,
   workArea: WindowBounds,
 ): boolean {
-  const inset = maximizedBoundsInset(bounds, workArea);
-  return bounds.y + bounds.height > workArea.y + workArea.height + inset;
+  return (
+    bounds.x < workArea.x ||
+    bounds.y < workArea.y ||
+    bounds.x + bounds.width > workArea.x + workArea.width ||
+    bounds.y + bounds.height > workArea.y + workArea.height
+  );
 }
 
-/**
- * The work-area-based maximized rect matching the inset the window already has
- * above the work area, so re-applying it reproduces the native maximize
- * footprint instead of shrinking the window inside the taskbar.
- */
+/** Use the exact work area as the visible maximized rectangle. */
 export function maximizedBoundsForWorkArea(
-  bounds: WindowBounds,
+  _bounds: WindowBounds,
   workArea: WindowBounds,
 ): WindowBounds {
-  const inset = maximizedBoundsInset(bounds, workArea);
-  return {
-    x: workArea.x - inset,
-    y: workArea.y - inset,
-    width: workArea.width + inset * 2,
-    height: workArea.height + inset * 2,
-  };
+  return { ...workArea };
 }
 
 export function planWorkPanelReservation({
