@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   GlibcUnsupportedError,
-  LINUX_GLIBC_DISTROS,
   MIN_LINUX_GLIBC,
   assertLinuxGlibcSupported,
   formatGlibcVersion,
@@ -17,13 +16,21 @@ import {
 
 test("glibc 2.31 is the packaged Linux floor", () => {
   assert.deepEqual(MIN_LINUX_GLIBC, { major: 2, minor: 31 });
-  assert.match(LINUX_GLIBC_DISTROS, /Ubuntu 20\.04/);
-  assert.match(LINUX_GLIBC_DISTROS, /Debian 11/);
-  assert.match(LINUX_GLIBC_DISTROS, /银河麒麟|Kylin/);
   assert.equal(glibcAtLeast({ major: 2, minor: 31 }, MIN_LINUX_GLIBC), true);
   assert.equal(glibcAtLeast({ major: 2, minor: 35 }, MIN_LINUX_GLIBC), true);
   assert.equal(glibcAtLeast({ major: 2, minor: 39 }, MIN_LINUX_GLIBC), true);
   assert.equal(glibcAtLeast({ major: 2, minor: 30 }, MIN_LINUX_GLIBC), false);
+});
+
+test("glibc error reports the prerequisite and detected version", () => {
+  assert.equal(
+    new GlibcUnsupportedError("2.30").message,
+    "Linux builds need glibc 2.31 or newer; this system has 2.30.",
+  );
+  assert.equal(
+    new GlibcUnsupportedError().message,
+    "Linux builds need glibc 2.31 or newer.",
+  );
 });
 
 test("parseGlibcVersion reads ldd and loader output", () => {

@@ -3029,7 +3029,7 @@ export const ptBR = {
     restarting: "Reconectando…",
     restored: "Conexão restaurada",
     fatal: "Não é possível conectar ao serviço local",
-    unsupportedGlibc: "Esta versão para Linux requer glibc 2.31 ou superior (Ubuntu 20.04+, Debian 11+, 银河麒麟 V10 SP1+, Fedora 36+).",
+    unsupportedGlibc: "Esta versão para Linux requer glibc 2.31 ou superior.",
     dbSchemaTooNew: "Este PI-Desktop é mais antigo do que seus dados locais (esquema de dados {{found}}, esta versão suporta {{supported}}). Instale a versão mais recente do PI-Desktop que abriu estes dados pela última vez ou uma versão posterior.",
     archMismatch: "Esta versão {{buildArch}} está sendo executada por emulação em uma máquina {{machineArch}} e terá desempenho mais lento. Instale a versão para {{machineArch}}.",
     dismissArchMismatch: "Dispensar",

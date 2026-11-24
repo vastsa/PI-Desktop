@@ -11,7 +11,6 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
-  LINUX_GLIBC_DISTROS,
   MIN_LINUX_GLIBC,
   formatGlibcVersion,
   hostGlibcWithinFloor,
@@ -51,11 +50,11 @@ const floor = formatGlibcVersion(MIN_LINUX_GLIBC);
 if (!hostGlibcWithinFloor(needed)) {
   const found = needed ? formatGlibcVersion(needed) : "unknown";
   console.error(
-    `${binary} needs glibc ${found}, above the ${floor} floor (${LINUX_GLIBC_DISTROS}). Build host-core with scripts/build-linux-host-core.mjs.`,
+    `${binary} needs glibc ${found}, above the ${floor} floor. Build host-core with scripts/build-linux-host-core.mjs.`,
   );
   process.exit(1);
 }
 
 console.log(
-  `${binary} glibc ${needed ? formatGlibcVersion(needed) : "none"} <= ${floor} (${LINUX_GLIBC_DISTROS})`,
+  `${binary} glibc ${needed ? formatGlibcVersion(needed) : "none"} <= ${floor}`,
 );

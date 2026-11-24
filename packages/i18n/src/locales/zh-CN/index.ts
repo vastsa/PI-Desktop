@@ -3064,7 +3064,7 @@ sklm: {
     restored: "连接已恢复",
     fatal: "无法连接本地服务",
     unsupportedGlibc:
-      "当前 Linux 构建需要 glibc 2.31 或更高版本（Ubuntu 20.04+、Debian 11+、银河麒麟 V10 SP1+、Fedora 36+）。",
+      "当前 Linux 构建需要 glibc 2.31 或更高版本。",
     dbSchemaTooNew:
       "当前 PI-Desktop 比本地数据更旧（数据库 schema {{found}}，此版本仅支持 {{supported}}）。请安装上次打开这些数据的更新版本，或更高版本。",
     archMismatch:

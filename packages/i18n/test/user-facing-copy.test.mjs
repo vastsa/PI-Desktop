@@ -19,16 +19,24 @@ test("shell status and crash copy stay user-facing", () => {
   assert.equal(english["status.fatal"], "Can't reach the local service");
   assert.equal(
     english["status.unsupportedGlibc"],
-    "This Linux build needs glibc 2.31 or newer (Ubuntu 20.04+, Debian 11+, 银河麒麟 V10 SP1+, Fedora 36+).",
+    "This Linux build needs glibc 2.31 or newer.",
   );
   assert.equal(
     chinese["status.unsupportedGlibc"],
-    "当前 Linux 构建需要 glibc 2.31 或更高版本（Ubuntu 20.04+、Debian 11+、银河麒麟 V10 SP1+、Fedora 36+）。",
+    "当前 Linux 构建需要 glibc 2.31 或更高版本。",
   );
   assert.equal(english["errors.TURN_ABORTED"], "Stopped.");
   assert.equal(chinese["app.tagline"], "本地 AI 编程助手");
   assert.equal(chinese["app.uiCrashed"], "界面出现了问题");
   assert.equal(chinese["status.hostOk"], "已连接");
+});
+
+test("the Linux compatibility banner does not promise unverified distro support", () => {
+  for (const [locale, catalog] of Object.entries(catalogs)) {
+    const message = flattenCatalog(catalog)["status.unsupportedGlibc"];
+    assert.match(message, /glibc 2\.31/, locale);
+    assert.doesNotMatch(message, /Kylin|麒麟/i, locale);
+  }
 });
 
 test("failed turns expose a localized continuation prompt", () => {

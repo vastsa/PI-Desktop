@@ -534,16 +534,15 @@
 - **Status**: Unit-covered (`main-process-errors.test.mjs`); packaged Windows
   proxy journey Documented
 
-## E2E-195: Linux glibc below 2.31 names supported distros
+## E2E-195: Linux glibc below 2.31 reports the minimum version
 
 - **Preconditions**: Linux x64 or arm64 packaged app; the machine glibc is older than
   2.31, or a test doubles `process.report` to `2.30`.
 - **Steps**: 1) Launch the AppImage, deb, or rpm. 2) Observe the main window and
   fatal banner. 3) Confirm host-core is not restarted in a loop.
 - **Expected**: Electron still opens. There is no uncaught `write EPIPE`
-  dialog. The fatal banner says the build needs glibc 2.31 or newer and names
-  Ubuntu 20.04+, Debian 11+, Galaxy Kylin V10 SP1+, and Fedora 36+. Restart
-  supervision does not spin.
+  dialog. The fatal banner states the glibc 2.31 minimum. Restart supervision
+  does not spin.
   A host-core binary whose symbols need glibc 2.39 fails
   `scripts/check-linux-host-glibc.mjs`.
 - **Specs linked**: `03-runtime/07-process-model.md`,

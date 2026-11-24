@@ -1,14 +1,11 @@
 /**
- * Linux packaged host-core supports glibc 2.31 and newer (Ubuntu 20.04+,
- * Debian 11+, 银河麒麟 V10 SP1+, Fedora 36+). Newer glibc can load that
- * binary; older distros fail with `version 'GLIBC_2.xx' not found`. Detect
- * the floor before spawn so the UI can name supported releases instead of
- * looping restarts.
+ * Linux packaged host-core requires glibc 2.31 or newer. Check the version
+ * before spawning host-core so older systems see the requirement instead of
+ * a restart loop.
  */
 
 export const MIN_LINUX_GLIBC = { major: 2, minor: 31 } as const;
 export const GLIBC_UNSUPPORTED_STATUS = "GLIBC_UNSUPPORTED";
-export const LINUX_GLIBC_DISTROS = "Ubuntu 20.04+, Debian 11+, 银河麒麟 V10 SP1+, Fedora 36+";
 
 export type GlibcVersion = { major: number; minor: number };
 
@@ -16,11 +13,8 @@ export class GlibcUnsupportedError extends Error {
   readonly code = GLIBC_UNSUPPORTED_STATUS;
 
   constructor(found?: string) {
-    super(
-      found
-        ? `Linux builds need glibc 2.31 or newer (${LINUX_GLIBC_DISTROS}); this system has ${found}.`
-        : `Linux builds need glibc 2.31 or newer (${LINUX_GLIBC_DISTROS}).`,
-    );
+    const requirement = `Linux builds need glibc ${formatGlibcVersion(MIN_LINUX_GLIBC)} or newer`;
+    super(found ? `${requirement}; this system has ${found}.` : `${requirement}.`);
     this.name = "GlibcUnsupportedError";
   }
 }
