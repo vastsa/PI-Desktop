@@ -227,6 +227,7 @@ identify the platform validation still needed.
 | A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |
+| C / D / Quality — Sidebar lists at high zoom | E2E-LAYOUT-sidebar-height |
 | E / Quality — Browser screenshot timeout recovery | E2E-BROWSER-capture-resize |
 | A / C / Quality — Sidebar material and settings return | E2E-LAYOUT-sidebar-settings |
 | C / Quality — Destination loading and focus | E2E-087b |
@@ -386,6 +387,14 @@ A short command returns its original exit code. A longer command returns a
 running job, allows another tool call, and runs exactly once before
 `TaskWait` receives the terminal output and exit code. The original deadline
 and explicit stop are exercised after the initial return.
+
+The vendored File Manager journeys exercise the production view:
+`file-manager-directory-location-user-path.e2e.mjs` opens primary and sibling
+project directories, unchanged file targets, and rejected external directories;
+`file-manager-theme-user-path.e2e.mjs` checks editor controls in both themes.
+`e2e-remote-file-manager.mjs` checks scoped SSH reads and local/remote switches
+through the Desktop bridge. The pinned source and its document-tab, Git and
+loading checks are recorded in the bundled plugin’s `UPSTREAM.md`.
 
 ## 9. How AI Must Update This Doc
 

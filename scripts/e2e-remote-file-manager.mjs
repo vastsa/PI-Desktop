@@ -132,7 +132,8 @@ app.whenReady().then(async()=>{
   application = await _electron.launch({ executablePath: electronBinary, args: [join(temp, "main.cjs")], env });
   const page = await application.firstWindow(); page.setDefaultTimeout(15_000);
   page.on("pageerror", error => errors.push(String(error)));
-  await page.getByText("Remote · read-only: directory browsing and text/image previews", { exact: true }).waitFor();
+  const remoteStatus = page.getByRole("status").filter({ hasText: "Remote · read-only: directory browsing and text/image previews" });
+  await remoteStatus.waitFor();
   assert.equal(await page.getByRole("textbox", { name: "Search files" }).isDisabled(), true);
   await page.locator('[role="treeitem"][data-path="docs"]').click();
   await page.locator('[role="treeitem"][data-path="docs/guide.md"]').click();
@@ -144,7 +145,7 @@ app.whenReady().then(async()=>{
   assert.equal(await readFile(join(remotePath, "docs/guide.md"), "utf8"), "REMOTE CONTENT\n");
   assert.equal((await page.locator(".cm-content").textContent()).includes("MUST NOT EDIT"), false);
   await page.locator('[data-path="docs/guide.md"]').click({ button: "right" });
-  assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["Copy relative path", "Copy absolute path", "Refresh"]);
+  assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["Copy relative path", "Copy absolute path"]);
   await page.keyboard.press("Escape");
   assert.equal(await page.locator('[data-path=".env"]').count(), 0);
   checks.push("remote nested navigation, real text, credentials hidden, editor/save/menu read-only");
@@ -188,16 +189,15 @@ app.whenReady().then(async()=>{
   checks.push("local Browser action and editor detection recover after remote startup");
 
   workspace = identity;
-  await page.getByText("Remote · read-only: directory browsing and text/image previews", { exact: true }).waitFor();
+  await remoteStatus.waitFor();
   await page.locator('[data-path="nested"]').waitFor();
   held = Promise.withResolvers(); entered = Promise.withResolvers(); heldRef = "nested";
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send("fixture:view:open", { path: "nested/deep.txt" }));
   await waitForSignal(entered.promise, "Ancestor listing never started");
   workspace = localPath;
-  await page.getByText("Remote · read-only: directory browsing and text/image previews", { exact: true }).waitFor({ state: "hidden" });
+  await remoteStatus.waitFor({ state: "hidden" });
   const released = held; held = undefined; released.resolve();
   await page.evaluate(() => window.pluginBridge.invoke("workspace.get"));
-  await page.getByRole("banner").getByRole("button", { name: /Show file list/ }).click();
   await page.locator('[data-path="local.txt"]').click();
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("LOCAL CONTROL"));
   assert(!invocations.some(call => call.workspace === localPath && call.channel === "fm.read" && call.payload?.path === "nested/deep.txt"), "stale ancestor chain must not dispatch a read in the new workspace");

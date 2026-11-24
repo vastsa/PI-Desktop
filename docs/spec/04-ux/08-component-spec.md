@@ -1257,8 +1257,10 @@ entirely inside the plugin's isolated page:
   choices remain available. The Browser action opens a new Browser resource tab
   and requires the bundled Browser plugin to be enabled. **Show in folder**
   remains a file action. The host refuses directory paths for file actions.
-- Selecting a file replaces the tree with a focused viewer: syntax-highlighted
-  editing with save, a Markdown preview toggle, image and audio/video viewing,
+- Selecting a file opens a document tab in the viewer. Tabs retain independent
+  drafts and reuse an existing tab for the same document. Save acts on that
+  document, and closing a dirty tab asks whether to save, discard, or cancel.
+  Viewers include syntax-highlighted editing, Markdown, image and media viewing,
   CSV/TSV tables with paging and sorting, a JSON tree, and read-only SQLite
   browsing with a SQL query box. The editor's CodeMirror find/replace fields
   and buttons use the plugin theme surfaces and foreground in both light and
@@ -1266,11 +1268,16 @@ entirely inside the plugin's isolated page:
   being decoded, and every viewer names its own bound — 2 MiB for text, 8 MiB
   for images, 24 MiB for media, none for databases, whose bytes stay out of
   the page.
+- The local Git sidebar shows changes, diffs and history. Repository setup,
+  staging, commits, fetch, pull and push are explicit user actions; force push
+  requires confirmation and a lease for the reviewed remote commit. Remote SSH
+  workspaces remain read-only and do not run local Git.
 - Saving is atomic and refuses to overwrite a file that changed on disk since it
   was opened until the user confirms. Loading, read failures, unsupported
   binaries, oversized files, empty folders, and folders that fail to load each
-  have a distinct localized state, and a failed directory can be retried in
-  place.
+  have a distinct localized state. Initial reads can show skeletons that respect
+  reduced motion, while a same-target refresh keeps the current content visible.
+  A failed directory can be retried in place.
 - The view chooses which folder of the open project it browses from a control in
   its own top-left area: the project's primary folder by default, its other
   folders after that in group order (ADR 0249), remembered per project and
@@ -1717,11 +1724,14 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   `updatedAt` first. A project conversation therefore appears both in Recent
   and in its project group, so it stays visible while that project is folded;
   a temporary conversation appears only in Recent. Recent opens with seven
-  rows; a trailing Load more button appends ten more per click. Its body is a
-  291px window over ten compact 28px rows, their 1px row gaps, and the 2px
-  label inset; it scrolls internally when more rows are loaded. The Projects list uses the remaining
-  sidebar height and scrolls independently; neither region scrolls the footer
-  or primary navigation. Both list scrollbars use the same global 6px,
+  rows; a trailing Load more button appends ten more per click. With Projects
+  shown, Recent sessions can grow to 291px, and both Recent and Pinned sessions
+  shrink into independently scrolling lists when the sidebar runs out of room.
+  The Projects list uses the remaining height and reserves room for a project
+  header and one conversation row. When the minimum sizes exceed the
+  available height, the sidebar body scrolls so Projects and Settings remain
+  reachable. Resizing or changing zoom preserves the loaded rows. The list
+  scrollbars use the same global 6px,
   trackless, transparent-at-rest rule as the conversation and work-panel
   scrollbars; the semantic-ink thumb appears when its list is hovered, focused,
   or scrolling and remains visible while dragging, so the independent regions
