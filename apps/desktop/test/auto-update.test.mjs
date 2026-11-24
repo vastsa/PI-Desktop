@@ -288,7 +288,7 @@ test("packaging publishes an electron-updater feed for GitHub Releases", async (
   assert.ok(macTargets.includes("zip"), "mac zip target (Squirrel.Mac feed)");
   // electron-builder must never self-publish (implicit tag publishing would
   // fail on the missing token and race the softprops release step).
-  for (const script of ["dist:mac", "dist:win", "dist:linux"]) {
+  for (const script of ["dist:mac", "dist:win", "package:linux"]) {
     assert.match(
       pkg.scripts[script],
       /--publish never|build-desktop-release\.mjs/,

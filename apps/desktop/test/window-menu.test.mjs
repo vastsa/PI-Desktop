@@ -402,7 +402,7 @@ test("desktop packaging builds the native host before every local target", () =>
     packageJson.scripts["build:host-release"],
     /cargo build --release .* -p host-core/,
   );
-  for (const name of ["pack", "dist", "dist:mac", "dist:win", "dist:linux"]) {
+  for (const name of ["pack", "dist:mac", "dist:win"]) {
     const script = packageJson.scripts[name];
     assert.match(script, /pnpm run build:host-release/);
     const packagingCommand = script.includes("build-desktop-release.mjs")
@@ -413,6 +413,15 @@ test("desktop packaging builds the native host before every local target", () =>
       `${name} must build the native host before the packaging command`,
     );
   }
+  assert.match(packageJson.scripts.dist, /build-desktop-release\.mjs --native/);
+  assert.match(
+    packageJson.scripts["dist:linux"],
+    /pnpm run build:linux-host-release && pnpm run package:linux/,
+  );
+  assert.match(
+    packageJson.scripts["package:linux"],
+    /check-linux-host-glibc\.mjs[\s\S]*electron-builder/,
+  );
   assert.ok(
     packageJson.build.win.extraResources.some(
       ({ to }) => to === "bin/pi-desktop-host-core.exe",

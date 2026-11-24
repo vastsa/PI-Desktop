@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 /**
  * Fail a Linux host-core binary that needs a newer glibc than the advertised
- * floor (Ubuntu 22.04 / glibc 2.35). Release packaging must run this after
- * `cargo build --release -p host-core` so ubuntu-latest cannot silently
- * raise the requirement again.
+ * floor (glibc 2.31). Run before packaging the Linux release.
  *
  * Usage:
  *   node scripts/check-linux-host-glibc.mjs [path-to-host-core]
@@ -13,7 +11,6 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
-  LINUX_GLIBC_DISTROS,
   MIN_LINUX_GLIBC,
   formatGlibcVersion,
   hostGlibcWithinFloor,
@@ -53,11 +50,11 @@ const floor = formatGlibcVersion(MIN_LINUX_GLIBC);
 if (!hostGlibcWithinFloor(needed)) {
   const found = needed ? formatGlibcVersion(needed) : "unknown";
   console.error(
-    `${binary} needs glibc ${found}, above the ${floor} floor (${LINUX_GLIBC_DISTROS}). Build host-core on Ubuntu 22.04.`,
+    `${binary} needs glibc ${found}, above the ${floor} floor. Build host-core with scripts/build-linux-host-core.mjs.`,
   );
   process.exit(1);
 }
 
 console.log(
-  `${binary} glibc ${needed ? formatGlibcVersion(needed) : "none"} <= ${floor} (${LINUX_GLIBC_DISTROS})`,
+  `${binary} glibc ${needed ? formatGlibcVersion(needed) : "none"} <= ${floor}`,
 );

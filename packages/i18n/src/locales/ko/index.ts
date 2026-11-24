@@ -3103,7 +3103,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     restored: "연결 복원됨",
     fatal: "로컬 서비스에 연결할 수 없습니다",
     unsupportedGlibc:
-      "이 Linux 빌드에는 glibc 2.35 이상이 필요합니다 (Ubuntu 22.04, Debian 12, Fedora 36+).",
+      "이 Linux 빌드에는 glibc 2.31 이상이 필요합니다.",
     dbSchemaTooNew:
       "이 PI-Desktop은 로컬 데이터보다 오래된 버전입니다(데이터 스키마 {{found}}, 이 버전은 {{supported}}까지 지원). 이 데이터를 마지막으로 연 최신 PI-Desktop 또는 그 이후 버전을 설치하세요.",
     archMismatch:

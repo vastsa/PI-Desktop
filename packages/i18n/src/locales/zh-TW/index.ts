@@ -3062,7 +3062,7 @@ sklm: {
     restored: "連線已恢復",
     fatal: "無法連線本地服務",
     unsupportedGlibc:
-      "目前 Linux 建置需要 glibc 2.35 或更新版本（Ubuntu 22.04、Debian 12、Fedora 36+）。",
+      "目前 Linux 建置需要 glibc 2.31 或更高版本。",
     dbSchemaTooNew:
       "目前的 PI-Desktop 比本機資料更舊（資料庫 schema {{found}}，此版本僅支援 {{supported}}）。請安裝上次開啟這些資料的較新版本，或更高版本。",
     archMismatch:

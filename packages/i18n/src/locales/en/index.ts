@@ -3112,7 +3112,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     restored: "Connection restored",
     fatal: "Can't reach the local service",
     unsupportedGlibc:
-      "This Linux build needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36+).",
+      "This Linux build needs glibc 2.31 or newer.",
     dbSchemaTooNew:
       "This PI-Desktop is older than your local data (data schema {{found}}, this build supports {{supported}}). Install the newer PI-Desktop that last opened this data, or a later version.",
     archMismatch:

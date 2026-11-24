@@ -646,11 +646,10 @@ Shell smoke on each native runner:
 - Linux deb/rpm and the Windows portable ZIP remain notify-and-link update
   modes. Packaged macOS, Windows NSIS, and Linux AppImage use in-app
   `electron-updater`.
-- Linux x64 and arm64 packages are built on Ubuntu 22.04 (native `ubuntu-22.04`
-  and `ubuntu-22.04-arm` runners), so host-core needs glibc 2.35 or newer
-  (Ubuntu 22.04, Debian 12, Fedora 36+). Each tag job runs
-  `scripts/check-linux-host-glibc.mjs` and refuses a binary that needs a
-  newer glibc.
+- The native Linux runners package host-core built inside Debian 11 for
+  glibc 2.31. The Linux tag jobs inspect the actual Debian payload via
+  `scripts/check-linux-deb.mjs`. Use the
+  [Kylin offline procedure](kylin-arm64-offline-install.md) for target acceptance.
 - Linux arm64 microphone capture works on Raspberry Pi boards only:
   `@picovoice/pvrecorder-node` classifies Linux arm64 by `/proc/cpuinfo` CPU
   part. Speech-to-text (`transcribe-cpp` ships a `linux-arm64-cpu-vulkan`

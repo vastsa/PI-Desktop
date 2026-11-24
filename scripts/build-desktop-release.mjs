@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import process from "node:process";
 
 const forwardedArgs = process.argv.slice(2);
+const nativeDispatch = forwardedArgs[0] === "--native";
+if (nativeDispatch) forwardedArgs.shift();
 
 const hostTarget =
   process.platform === "win32"
@@ -20,9 +22,9 @@ if (!["linux", "mac", "win"].includes(target)) {
 
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
-function runBuilder(args) {
+function runPnpm(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(pnpmCommand, ["exec", "electron-builder", ...args], {
+    const child = spawn(pnpmCommand, args, {
       // Windows exposes pnpm as a .cmd shim. Launch it through the shell so
       // Node can start the shim consistently on the hosted Windows runner.
       shell: process.platform === "win32",
@@ -37,7 +39,7 @@ function runBuilder(args) {
       }
       reject(
         new Error(
-          `electron-builder ${target} target failed with ${
+          `Desktop release ${target} target failed with ${
             code === null ? `signal ${signal ?? "unknown"}` : `exit code ${code}`
           }`,
         ),
@@ -46,7 +48,13 @@ function runBuilder(args) {
   });
 }
 
-if (target === "win") {
+function runBuilder(args) {
+  return runPnpm(["exec", "electron-builder", ...args]);
+}
+
+if (nativeDispatch || target === "linux") {
+  await runPnpm(["run", `dist:${target}`, ...forwardedArgs]);
+} else if (target === "win") {
   await runBuilder([
     "--win",
     "nsis",

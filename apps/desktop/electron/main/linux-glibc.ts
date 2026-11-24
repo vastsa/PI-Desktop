@@ -1,13 +1,11 @@
 /**
- * Linux packaged host-core is built on Ubuntu 22.04 (glibc 2.35). Newer
- * glibc can load that binary; older distros fail with
- * `version 'GLIBC_2.xx' not found`. Detect the floor before spawn so the
- * UI can name supported releases instead of looping restarts.
+ * Linux packaged host-core requires glibc 2.31 or newer. Check the version
+ * before spawning host-core so older systems see the requirement instead of
+ * a restart loop.
  */
 
-export const MIN_LINUX_GLIBC = { major: 2, minor: 35 } as const;
+export const MIN_LINUX_GLIBC = { major: 2, minor: 31 } as const;
 export const GLIBC_UNSUPPORTED_STATUS = "GLIBC_UNSUPPORTED";
-export const LINUX_GLIBC_DISTROS = "Ubuntu 22.04, Debian 12, Fedora 36+";
 
 export type GlibcVersion = { major: number; minor: number };
 
@@ -15,11 +13,8 @@ export class GlibcUnsupportedError extends Error {
   readonly code = GLIBC_UNSUPPORTED_STATUS;
 
   constructor(found?: string) {
-    super(
-      found
-        ? `Linux builds need glibc 2.35 or newer (${LINUX_GLIBC_DISTROS}); this system has ${found}.`
-        : `Linux builds need glibc 2.35 or newer (${LINUX_GLIBC_DISTROS}).`,
-    );
+    const requirement = `Linux builds need glibc ${formatGlibcVersion(MIN_LINUX_GLIBC)} or newer`;
+    super(found ? `${requirement}; this system has ${found}.` : `${requirement}.`);
     this.name = "GlibcUnsupportedError";
   }
 }
@@ -55,7 +50,7 @@ export function maxNeededGlibc(text: string): GlibcVersion | null {
 
 /**
  * True when a packaged host-core's needed glibc is at or below the floor
- * we advertise. A 2.39 symbol on a 2.35 floor means the Linux runner was too new.
+ * we advertise. A newer symbol means the binary was built against a newer libc.
  */
 export function hostGlibcWithinFloor(needed: GlibcVersion | null): boolean {
   if (!needed) return true;

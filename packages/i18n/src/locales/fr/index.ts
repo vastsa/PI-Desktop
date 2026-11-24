@@ -3066,7 +3066,7 @@ sklm: {
     "restored": "Connexion restaurée",
     "fatal": "Impossible d'atteindre le service local",
     "unsupportedGlibc":
-      "Cette version Linux nécessite glibc 2.35 ou plus récent (Ubuntu 22.04, Debian 12, Fedora 36+).",
+      "Cette version Linux nécessite glibc 2.31 ou plus récent.",
     "dbSchemaTooNew":
       "Cette version de PI-Desktop est plus ancienne que vos données locales (schéma de données {{found}}, cette version prend en charge {{supported}}). Installez la version plus récente de PI-Desktop qui a ouvert ces données en dernier, ou une version ultérieure.",
     "archMismatch":
