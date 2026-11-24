@@ -431,11 +431,13 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Steps**: 1) Leave Enter-to-send enabled. Type a draft and press Enter.
   2) Disable Enter-to-send in Settings. 3) Type a second draft and press
   Cmd/Ctrl+Enter. 4) Press Enter and Shift+Enter in a third draft, then
-  Shift+Enter at the end and type one character.
+  Shift+Enter at the end, then type one character and press ArrowDown once.
 - **Expected**: Step 1 sends. After the setting is off, Cmd/Ctrl+Enter sends;
   plain Enter and Shift+Enter insert newlines and do not send. IME composition
-  and an open autocomplete menu still take precedence over send. The character
-  typed on the empty last line stays on that line.
+  and an open autocomplete menu still take precedence over send. The composer
+  grows by exactly one line per newline, the caret stays on the new empty line
+  instead of resolving to a neighbouring one, ArrowDown cannot move it below
+  that line, and the character typed there stays on it.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md` §11.5,
   `04-ux/09-interaction-patterns.md` §1.2
 - **Acceptance**: C (composer send)
