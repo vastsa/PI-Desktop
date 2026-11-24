@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentEventEnvelope } from "@pi-desktop/shared";
 import { DesktopAgentRuntime } from "../runtime.js";
 import { clearTrustedExtensionCache } from "./runner.js";
@@ -327,12 +327,14 @@ it("correlates provider request and response hooks with a local contextRequestId
   try {
     await runtime.loadTrustedExtensions();
     const rt = runtime as any;
-    const first = rt.withExtensionProviderHooks({}, rt.model);
-    const second = rt.withExtensionProviderHooks({}, rt.model);
+    const notePayloadReplacement = vi.fn();
+    const first = rt.withExtensionProviderHooks({}, rt.model, notePayloadReplacement);
+    const second = rt.withExtensionProviderHooks({}, rt.model, notePayloadReplacement);
     const firstPayload = await first.onPayload({ step: "one" }, rt.model);
     const secondPayload = await second.onPayload({ step: "two" }, rt.model);
     expect(firstPayload).toEqual({ step: "one", chain: ["h1", "h2"] });
     expect(secondPayload).toEqual({ step: "two", chain: ["h1", "h2"] });
+    expect(notePayloadReplacement).toHaveBeenCalledTimes(2);
     expect("contextRequestId" in firstPayload).toBe(false);
 
     await first.onResponse({ tag: "first" }, rt.model);

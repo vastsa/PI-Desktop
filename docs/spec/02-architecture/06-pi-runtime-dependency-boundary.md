@@ -74,10 +74,12 @@ write stops warming until another real request.
 The sidecar reuses the provider binding and the public Pi cache-warming options
 with continuation and retries disabled. Refresh output stays outside the
 conversation and provider usage follows the existing turn accounting path.
-Requests with hosted search, trusted extension hooks, or per-turn plugin
-context are excluded from replay, as are provider adapters without a bounded
-output option. No transcript, session-data migration, or
-new provider-configuration setting is required.
+Trusted extensions can remain loaded during warming. A refresh retains the
+original request headers and skips extension request and response hooks. A
+request whose body was replaced by an extension is excluded, as are requests
+with hosted search, per-turn plugin context, or adapters without a bounded
+output option. No transcript, session-data migration, or new
+provider-configuration setting is required.
 
 ## 3. `pi-durable` assessment
 

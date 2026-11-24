@@ -2361,20 +2361,22 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ),
           m.api,
         );
+        const baseOptions = withCodexCacheableInstructions(requestOptions, m);
+        const sessionAffinity = {
+          provider: this.provider,
+          api: m.api,
+          baseUrl: m.baseUrl,
+          sessionId: this.sessionId,
+        };
+        let extensionReplacedPayload = false;
         // Only main turns ask for the priority tier: subagents, compaction and
         // one-shot requests build their own options and keep the default.
         const hookedOptions = withFastModeOptions(
           withSessionAffinityOptions(
-            this.withExtensionProviderHooks(
-              withCodexCacheableInstructions(requestOptions, m),
-              m,
-            ),
-            {
-              provider: this.provider,
-              api: m.api,
-              baseUrl: m.baseUrl,
-              sessionId: this.sessionId,
-            },
+            this.withExtensionProviderHooks(baseOptions, m, () => {
+              extensionReplacedPayload = true;
+            }),
+            sessionAffinity,
           ),
           m.api,
           this.fastMode,
@@ -2417,16 +2419,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             });
           if (usageTurnId && usageTurnId === this.cacheWarmingTurnId &&
               this.idleCacheWarming.isForeground && input === requestContext &&
-              !this.extensionRunner && !m.webSearch) {
+              !m.webSearch) {
             const model = this.thinkingLevel === "omit" ? omitThinkingModel(m) : m;
             const omitThinking = this.thinkingLevel === "omit";
             const replayOptions = {
               ...retryOptions,
               fetch: providerRequestFetch(m.api, options?.fetch, this.provider.authKind),
+              // Keep the adapter's payload shaping without replaying extension hooks
+              // or a retry's output-limit repair.
+              onPayload: withSessionAffinityOptions(baseOptions, sessionAffinity).onPayload,
               onResponse: undefined,
             };
             void stream.result().then((result) => {
-              if (this.disposed || this.runCancelled || attempt !== this.cacheWarmingAttempt) return;
+              if (extensionReplacedPayload || this.disposed || this.runCancelled ||
+                  attempt !== this.cacheWarmingAttempt) return;
               this.idleCacheWarming.remember({
                 model, options: replayOptions, startedAt, result,
                 oauth: this.provider.authKind === OAUTH_AUTH_KIND,
@@ -9911,6 +9917,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private withExtensionProviderHooks(
     options: SimpleStreamOptions,
     model: Model<any>,
+    notePayloadReplacement: () => void,
   ): SimpleStreamOptions {
     const runner = this.extensionRunner;
     if (!runner) return options;
@@ -9925,6 +9932,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         const base = await options.onPayload?.(payload, payloadModel);
         const current = base ?? payload;
         const replaced = await runner.emitBeforeProviderRequest(current, { contextRequestId });
+        if (replaced != null) notePayloadReplacement();
         return replaced ?? base;
       };
     }

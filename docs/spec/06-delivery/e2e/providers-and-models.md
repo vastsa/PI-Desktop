@@ -19,6 +19,10 @@ Render the normal Composer toolbar for an active remote session that denies Stop
   the original 30-minute window. A miss or missing usage stops the schedule.
 - Verify that refresh usage belongs to the original turn and that native Pi,
   scheduled runs, and routes with an already sufficient TTL are unaffected.
+- Load a trusted extension that observes provider requests. Verify the refresh
+  retains the original headers, skips the observer, and sends a one-token
+  output limit. Have the extension replace the normal request body and
+  verify no refresh is sent.
 
 ## E2E-USAGE-explicit-zero-cache
 

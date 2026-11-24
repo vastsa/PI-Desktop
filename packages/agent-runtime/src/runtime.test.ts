@@ -200,6 +200,7 @@ function createRuntime(
     subagentProviders: Record<string, RuntimeProviderConfig>;
     subagentModelKeys: string[];
     pluginSkills: import("./plugin-skills-prompt.js").PluginSkillDef[];
+    trustedExtensions: ConstructorParameters<typeof DesktopAgentRuntime>[0]["trustedExtensions"];
     commandShell: CommandShellOption;
     jevApiKey: string;
     codemodeEnabled: boolean;
@@ -236,6 +237,7 @@ function createRuntime(
     projectInstructions: overrides.projectInstructions,
     projectMemory: overrides.projectMemory,
     pluginSkills: overrides.pluginSkills,
+    trustedExtensions: overrides.trustedExtensions,
     onEvent: overrides.onEvent ?? vi.fn(),
   });
 }
@@ -827,18 +829,32 @@ describe("foreground cache warming through the normal turn", () => {
     expect(requests[0].max_completion_tokens ?? requests[0].max_tokens).toBe(1);
   });
 
-  it("replays the last provider request without adding a turn or a transcript message", async () => {
-    vi.useFakeTimers();
+  it.each(["none", "observe", "replace"])("preserves foreground replay limits with the %s extension fixture", async (hook) => {
+    const root = await mkdtemp(join(tmpdir(), "pi-cache-warming-extension-"));
+    const entry = join(root, "extension.mjs");
+    await writeFile(entry, `export default function (pi) {
+      pi.on("before_provider_headers", ({ headers }) => { headers["x-cache-test"] = "retained"; });
+      pi.on("before_provider_request", ({ payload }) => ${hook === "replace" ? "({ ...payload, max_tokens: 64 })" : "undefined"});
+    }`);
     const onEvent = vi.fn();
-    const runtime = createRuntime({ thinkingLevel: "off", onEvent });
+    const runtime = createRuntime({
+      thinkingLevel: "off", onEvent,
+      host: { call: vi.fn().mockResolvedValue({}) },
+      trustedExtensions: hook === "none" ? [] : [{ id: entry, entry, root, label: "Cache warming", source: "plugin" }],
+    });
+    const { TrustedExtensionRunner } = await import("./extensions/runner.js");
+    const beforeRequest = vi.spyOn(TrustedExtensionRunner.prototype, "emitBeforeProviderRequest");
     const models = (runtime as unknown as { models: Models }).models;
-    const stream = vi.spyOn(models, "streamSimple").mockImplementation(() => {
+    const payloads: unknown[] = [];
+    const stream = vi.spyOn(models, "streamSimple").mockImplementation((model, _context, options) => {
       const result = assistantMessage({ content: [{ type: "text", text: "Synthetic answer" }] }) as AssistantMessage;
       result.usage.input = 0;
       result.usage.cacheRead = 2_048;
       result.usage.totalTokens = 2_049;
       const events = createAssistantMessageEventStream();
-      queueMicrotask(() => {
+      const payload = { max_tokens: options?.maxTokens };
+      void Promise.resolve(options?.onPayload?.(payload, model)).then((replacement) => {
+        payloads.push(replacement ?? payload);
         events.push({ type: "start", partial: result });
         events.push({ type: "done", reason: "stop", message: result });
         events.end(result);
@@ -846,16 +862,32 @@ describe("foreground cache warming through the normal turn", () => {
       return events;
     });
     try {
+      await runtime.loadTrustedExtensions();
+      vi.useFakeTimers();
       runtime.setCacheWarmingForeground(true);
       await runtime.prompt("Synthetic prompt", "user-1", "turn-1");
       expect(stream).toHaveBeenCalledTimes(1);
+      const hookCalls = hook === "none" ? 0 : 1;
+      expect(beforeRequest).toHaveBeenCalledTimes(hookCalls);
       onEvent.mockClear();
       await vi.advanceTimersByTimeAsync(270_000);
+      expect(beforeRequest).toHaveBeenCalledTimes(hookCalls);
+      if (hook === "replace") {
+        expect(payloads[0]).toMatchObject({ max_tokens: 64 });
+        expect(stream).toHaveBeenCalledTimes(1);
+        expect(onEvent).not.toHaveBeenCalled();
+        return;
+      }
       expect(stream).toHaveBeenCalledTimes(2);
       expect(stream.mock.calls[1][1]).toEqual(stream.mock.calls[0][1]);
       expect(stream.mock.calls[1][2]).toMatchObject({
         maxTokens: 1, disableContinuation: true, maxRetries: 0,
       });
+      expect(payloads[1]).toMatchObject({ max_tokens: 1, prompt_cache_key: "session-1" });
+      expect(stream.mock.calls[1][2]?.headers).toEqual(stream.mock.calls[0][2]?.headers);
+      if (hook === "observe") {
+        expect(stream.mock.calls[1][2]?.headers).toMatchObject({ "x-cache-test": "retained" });
+      }
       expect(onEvent.mock.calls.map(([event]) => event)).toEqual([
         expect.objectContaining({ turnId: "turn-1", event: expect.objectContaining({ type: "usage" }) }),
       ]);
@@ -867,6 +899,8 @@ describe("foreground cache warming through the normal turn", () => {
     } finally {
       await runtime.dispose();
       vi.useRealTimers();
+      beforeRequest.mockRestore();
+      await rm(root, { recursive: true, force: true });
     }
   });
 });
