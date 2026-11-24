@@ -15,7 +15,6 @@
  * and merge keys reject the document instead of being interpreted.
  */
 
-import { isAlias, isPair, isScalar, parseDocument, visit } from "yaml";
 import {
   BUILTIN_MODE_IDS,
   MODE_LIMITS,
@@ -24,6 +23,14 @@ import {
   type ModeDefinition,
   type ModeDiagnostic,
 } from "@pi-desktop/shared";
+import { parseStrictModeYaml, splitModeDocument, type SplitDocument, type YamlResult } from "./mode-yaml.js";
+export { parseStrictModeYaml, splitModeDocument } from "./mode-yaml.js";
+export type { SplitDocument, YamlResult } from "./mode-yaml.js";
+import {
+  parseModeBundle,
+  readModeBundleReferences,
+  type ModeBundleFile,
+} from "./mode-definitions-bundle.js";
 import {
   AGENT_MODE_SYSTEM_PROMPT,
   GOAL_MODE_SYSTEM_PROMPT,
@@ -34,16 +41,45 @@ import {
 /** User modes beyond this many are reported, not loaded. */
 export const MAX_USER_MODES = 32;
 
+/** One referenced file, read by Electron main; `text: null` carries the reason. */
+export type UserModeBundleFile = {
+  /** The reference exactly as it appears in `mode.yaml`. */
+  path: string;
+  /** Absolute path, for diagnostics only. */
+  filePath?: string;
+  text: string | null;
+  problem?: string;
+};
+
 /**
- * One `~/.pi/modes/<dirName>/mode.md` document read by Electron main.
- * `templates` holds `templates/<name>.md` files keyed by that relative path.
- * An empty `source` means the file was unreadable or larger than the limit.
+ * One mode directory read by Electron main.
+ *
+ * Either `bundle` (new format) or `source` (legacy `mode.md`) is set, never
+ * both: the presence of `mode.yaml` decides which reader runs, and a bundle
+ * whose files could not be read reports an error instead of falling back.
  */
 export type UserModeDocument = {
   dirName: string;
   filePath: string;
+  /** Legacy `mode.md` text. Empty means unreadable or larger than the limit. */
   source: string;
   templates: Record<string, string>;
+  /** Set when the directory carries a `mode.yaml`. */
+  bundle?: UserModeBundle;
+};
+
+/** A `mode.yaml` and the files it references, as Electron main read them. */
+export type UserModeBundle = {
+  /** Absolute path of `mode.yaml`. */
+  filePath: string;
+  /** `mode.yaml` text, or `null` when it could not be read. */
+  source: string | null;
+  /** Why `source` is null. */
+  problem?: string;
+  /** Prompt document named by `promptFile`. */
+  prompt?: UserModeBundleFile;
+  /** Private subagent documents named by `subagents[]`, in order. */
+  subagents: UserModeBundleFile[];
 };
 
 export type LoadedModeDefinitions = {
@@ -112,55 +148,6 @@ export function builtinModeSource(id: string): string | undefined {
   return isBuiltinModeId(id) ? BUILTIN_MODE_SOURCES[id] : undefined;
 }
 
-type SplitDocument =
-  | { ok: true; frontmatter?: string; body: string }
-  | { ok: false; error: string };
-
-/** Frontmatter sits between a leading `---` line and the next `---` line. */
-export function splitModeDocument(source: string): SplitDocument {
-  const text = source.replace(/^\uFEFF/, "");
-  const lines = text.split(/\r?\n/);
-  if (lines[0]?.trimEnd() !== "---") return { ok: true, body: text };
-  const end = lines.findIndex((line, index) => index > 0 && line.trimEnd() === "---");
-  if (end === -1) return { ok: false, error: "frontmatter: missing the closing --- line" };
-  return { ok: true, frontmatter: lines.slice(1, end).join("\n"), body: lines.slice(end + 1).join("\n") };
-}
-
-type YamlResult = { ok: true; value: unknown; warnings: string[] } | { ok: false; errors: string[] };
-
-/**
- * Strict YAML: duplicate keys, anchors, aliases, explicit tags and merge keys
- * reject the frontmatter. A mode document is configuration, not a program, so
- * nothing in it may reshape what the validator sees.
- */
-export function parseStrictModeYaml(source: string): YamlResult {
-  const doc = parseDocument(source, { uniqueKeys: true, schema: "core", merge: false });
-  const errors = doc.errors.map((error) => `frontmatter: ${error.message.split("\n")[0]}`);
-  const structural = new Set<string>();
-  visit(doc, {
-    Pair(_key, pair) {
-      if (isPair(pair) && isScalar(pair.key) && pair.key.value === "<<") {
-        structural.add("frontmatter: merge keys (<<) are not supported");
-      }
-    },
-    Node(_key, node) {
-      if (isAlias(node)) {
-        structural.add("frontmatter: aliases (*name) are not supported");
-        return;
-      }
-      if (node.anchor) structural.add("frontmatter: anchors (&name) are not supported");
-      if (node.tag) structural.add("frontmatter: explicit tags (!tag) are not supported");
-    },
-  });
-  errors.push(...structural);
-  if (errors.length) return { ok: false, errors };
-  return {
-    ok: true,
-    value: doc.toJS({ maxAliasCount: 0 }),
-    warnings: doc.warnings.map((warning) => `frontmatter: ${warning.message.split("\n")[0]}`),
-  };
-}
-
 type ParsedDocument =
   | { ok: true; definition: ModeDefinition; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[]; declaredName?: string };
@@ -196,6 +183,76 @@ function parseModeDocument(
     };
   }
   return { ok: true, definition: parsed.definition, warnings: [...warnings, ...parsed.warnings] };
+}
+
+/**
+ * A bundle reference the parser rejected means the mapped `mode.yaml` itself
+ * is unusable; nothing else in that document can rescue it.
+ */
+function bundleFile(file: UserModeBundleFile): ModeBundleFile {
+  return {
+    path: file.path,
+    ...(file.filePath ? { filePath: file.filePath } : {}),
+    text: file.text,
+    ...(file.problem ? { problem: file.problem } : {}),
+  };
+}
+
+/**
+ * Read one mode directory: the new-format bundle when `mode.yaml` exists, the
+ * legacy `mode.md` document otherwise.
+ *
+ * The two formats never mix. A directory with a `mode.yaml` that cannot be
+ * read, parsed or resolved reports an error and loads nothing, because a
+ * partial bundle would silently change which delegates and skills the mode may
+ * use; `mode.md` is not consulted, not merged and not used as a fallback.
+ */
+export function parseUserModeDocument(
+  document: UserModeDocument,
+  options: { source: "user" | "builtin"; fallbackName: string },
+): ParsedDocument {
+  const bundle = document.bundle;
+  if (!bundle) {
+    return parseModeDocument(document.source, {
+      source: options.source,
+      fallbackName: options.fallbackName,
+      templates: document.templates,
+    });
+  }
+  if (bundle.source === null) {
+    return {
+      ok: false,
+      errors: [`mode.yaml: ${bundle.problem ?? "unreadable"}`],
+      warnings: [],
+    };
+  }
+  const references = readModeBundleReferences(bundle.source);
+  if (!references.ok) {
+    return { ok: false, errors: references.errors, warnings: references.warnings };
+  }
+  const parsed = parseModeBundle({
+    references: references.references,
+    frontmatter: references.frontmatter,
+    prompt: bundle.prompt ? bundleFile(bundle.prompt) : undefined,
+    subagents: bundle.subagents.map(bundleFile),
+    source: options.source,
+    fallbackName: options.fallbackName,
+    ...(Object.keys(document.templates).length ? { templates: document.templates } : {}),
+  });
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      errors: parsed.errors,
+      warnings: [...references.warnings, ...parsed.warnings],
+      ...(parsed.declaredName ? { declaredName: parsed.declaredName } : {}),
+    };
+  }
+  return { ok: true, definition: parsed.definition, warnings: [...references.warnings, ...parsed.warnings] };
+}
+
+/** Entry point the directory's document lives at, for diagnostics. */
+export function modeDocumentPath(document: UserModeDocument): string {
+  return document.bundle?.filePath ?? document.filePath;
 }
 
 /**
@@ -264,12 +321,15 @@ export function loadModeDefinitions(options: { userDocuments: readonly UserModeD
   const loadedIds = new Set<string>();
   let userModes = 0;
   for (const document of options.userDocuments) {
-    const { dirName, filePath } = document;
+    const { dirName } = document;
+    const filePath = modeDocumentPath(document);
     if (isBuiltinModeId(dirName)) {
       applyBuiltinOverride(builtins.get(dirName), document, diagnostics);
       continue;
     }
-    if (!document.source) {
+    // A legacy `mode.md` that could not be read is reported, not parsed: the
+    // loader cannot tell an oversized document from an absent one otherwise.
+    if (!document.bundle && !document.source) {
       userCatalog.push(unavailableEntry(dirName, filePath));
       diagnostics.push({
         modeId: dirName,
@@ -279,11 +339,7 @@ export function loadModeDefinitions(options: { userDocuments: readonly UserModeD
       });
       continue;
     }
-    const parsed = parseModeDocument(document.source, {
-      source: "user",
-      fallbackName: dirName,
-      templates: document.templates,
-    });
+    const parsed = parseUserModeDocument(document, { source: "user", fallbackName: dirName });
     const id = parsed.ok ? parsed.definition.id : parsed.declaredName ?? dirName;
     if (isBuiltinModeId(id)) {
       userCatalog.push(unavailableEntry(id, filePath, {
@@ -339,19 +395,22 @@ export function loadModeDefinitions(options: { userDocuments: readonly UserModeD
 }
 
 /**
- * `~/.pi/modes/<builtin>/mode.md`: a valid document replaces the shipped
- * definition; an invalid one is reported against the builtin, which keeps
- * running as shipped. Either way the entry records the override file.
+ * `~/.pi/modes/<builtin>/mode.yaml` (or the legacy `mode.md`): a valid
+ * document replaces the shipped definition; an invalid one is reported against
+ * the builtin, which keeps running as shipped. Either way the entry records the
+ * override file, so a broken override is visible as a diagnostic rather than
+ * as a mode that quietly reverted.
  */
 function applyBuiltinOverride(
   slot: BuiltinSlot | undefined,
   document: UserModeDocument,
   diagnostics: ModeDiagnostic[],
 ): void {
-  const { dirName: id, filePath } = document;
+  const { dirName: id } = document;
+  const filePath = modeDocumentPath(document);
   if (!slot?.entry) return;
   slot.entry = { ...slot.entry, customized: true, filePath };
-  if (!document.source) {
+  if (!document.bundle && !document.source) {
     diagnostics.push({
       modeId: id,
       filePath,
@@ -360,7 +419,7 @@ function applyBuiltinOverride(
     });
     return;
   }
-  const parsed = parseModeDocument(document.source, { source: "user", fallbackName: id, templates: document.templates });
+  const parsed = parseUserModeDocument(document, { source: "user", fallbackName: id });
   if (!parsed.ok) {
     diagnostics.push({ modeId: id, filePath, errors: parsed.errors, warnings: parsed.warnings });
     return;

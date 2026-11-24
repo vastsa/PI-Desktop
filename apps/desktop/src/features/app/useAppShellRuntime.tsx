@@ -543,11 +543,17 @@ export function useAppShellRuntime() {
     // Host-originated settings writes (plugin `app.setTheme`) must reach the
     // renderer store or the shell keeps painting the previous preference.
     return api.onSettingsChanged((patch) => {
-      if (patch.theme === undefined) return;
+      const style = patch.subagentStyle;
+      const stylePatch = style === "bar" || style === "transcript" ? { subagentStyle: style } as const : undefined;
+      if (patch.theme === undefined && !stylePatch) return;
       const current = useAppStore.getState().settings;
       if (!current) return;
       useAppStore.setState({
-        settings: { ...current, theme: String(patch.theme) as typeof current.theme },
+        settings: {
+          ...current,
+          ...(patch.theme === undefined ? {} : { theme: String(patch.theme) as typeof current.theme }),
+          ...stylePatch,
+        },
       });
     });
   }, [ready]);

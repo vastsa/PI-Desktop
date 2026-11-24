@@ -37,6 +37,7 @@ mod process_group;
 pub mod shell;
 #[cfg(windows)]
 mod windows_process_tree;
+pub(crate) mod write_scope;
 
 pub use hashline::{HashlineContext, HashlineStore};
 
@@ -688,6 +689,10 @@ pub struct ToolsExecuteParams {
     /// host-core resolves it against its registry; an unknown id is ignored.
     #[serde(default)]
     pub delegation_id: Option<String>,
+    /// Frozen per-delegation restriction from the trusted runtime, not a tool
+    /// argument or an approval. Omit for unscoped calls; `[]` denies every write.
+    #[serde(default, deserialize_with = "write_scope::deserialize")]
+    pub write_scope: Option<write_scope::WriteScope>,
     #[serde(default)]
     pub expected_command_shell_id: Option<String>,
     #[serde(default)]
@@ -938,6 +943,8 @@ pub struct ToolExecutionOptions<'a> {
     /// Session visualization directory: a contained root for Read and for
     /// `.html`-only Write/Edit (D671). `None` for remote sessions (contract modes still deny writes).
     pub visualization_root: Option<&'a Path>,
+    /// Additive restriction on the actual file mutation, after normal permissions.
+    pub write_scope: Option<write_scope::BoundWriteScope>,
 }
 
 pub fn validate_timeout_ms(timeout_ms: Option<u64>) -> Result<(), (String, String)> {
@@ -1187,25 +1194,37 @@ pub async fn execute_tool_with_options(
             allow_external_paths: false,
             hashline: None,
             visualization_root: None,
+            write_scope: None,
         },
     )
     .await
 }
 
+struct FileToolPaths<'a> {
+    workspace: Option<&'a Path>,
+    roots: ContainedRoots,
+    allow_external_paths: bool,
+    write_scope: Option<write_scope::BoundWriteScope>,
+}
+
 /// Run a synchronous file-tool body on Tokio's blocking pool so a long
 /// traversal, read, or rg child wait cannot occupy an async worker (#1071).
 async fn run_file_tool(
-    workspace: Option<&Path>,
-    roots: ContainedRoots,
+    paths: FileToolPaths<'_>,
     tool_name: &str,
     args: &Value,
-    allow_external_paths: bool,
     hashline: Option<&HashlineContext<'_>>,
     lease: Option<(
         Arc<crate::tool_budget::ToolPermit>,
         Arc<crate::file_resources::FileResources>,
     )>,
 ) -> Result<Value, hashline::ToolError> {
+    let FileToolPaths {
+        workspace,
+        roots,
+        allow_external_paths,
+        write_scope,
+    } = paths;
     let workspace = workspace.map(Path::to_path_buf);
     let tool_name = tool_name.to_string();
     let args = args.clone();
@@ -1248,10 +1267,23 @@ async fn run_file_tool(
             "Glob" => tool_glob(workspace, roots, args, allow_external_paths).map_err(Into::into),
             "Grep" => tool_grep(workspace, roots, args, allow_external_paths, hashline)
                 .map_err(Into::into),
-            "Write" => tool_write(workspace, roots, args, allow_external_paths, hashline)
-                .map_err(Into::into),
+            "Write" => tool_write(
+                workspace,
+                roots,
+                args,
+                allow_external_paths,
+                hashline,
+                write_scope.as_ref(),
+            ),
             // "Edit": the caller routes only these five file tools here.
-            _ => tool_edit(workspace, roots, args, allow_external_paths, hashline),
+            _ => tool_edit(
+                workspace,
+                roots,
+                args,
+                allow_external_paths,
+                hashline,
+                write_scope.as_ref(),
+            ),
         }
     })
     .await
@@ -1285,6 +1317,7 @@ pub async fn execute_tool_with_file_lease(
         allow_external_paths,
         hashline,
         visualization_root,
+        write_scope,
     } = options;
     let started = Instant::now();
     let timeout_ms = effective_timeout_ms(tool_name, requested_timeout_ms);
@@ -1298,14 +1331,14 @@ pub async fn execute_tool_with_file_lease(
     // Scratch is created lazily, and only for tools that can produce files
     // there — Read/Glob/Grep on a session that never wrote scratch files
     // should not leave empty directories behind.
-    if matches!(tool_name, "Write" | "Edit" | "Bash") {
+    if write_scope.is_none() && matches!(tool_name, "Write" | "Edit" | "Bash") {
         if let Some(dir) = scratch {
             let _ = std::fs::create_dir_all(dir);
         }
     }
     // The visualization dir is created only when a Write/Edit actually
     // targets it, so ordinary sessions never get an empty directory (D671).
-    if matches!(tool_name, "Write" | "Edit") {
+    if write_scope.is_none() && matches!(tool_name, "Write" | "Edit") {
         if let (Some(dir), Some(path)) =
             (visualization_root, args.get("path").and_then(Value::as_str))
         {
@@ -1325,14 +1358,17 @@ pub async fn execute_tool_with_file_lease(
         "GenerateImages" | "Computer" => Ok(serde_json::json!({ "authorized": true })),
         "Read" | "Glob" | "Grep" | "Write" | "Edit" => {
             run_file_tool(
-                workspace,
-                ContainedRoots::scratch_only(scratch).with(
-                    ToolRoot::Visualization,
-                    visualization_root.map(Path::to_path_buf),
-                ),
+                FileToolPaths {
+                    workspace,
+                    roots: ContainedRoots::scratch_only(scratch).with(
+                        ToolRoot::Visualization,
+                        visualization_root.map(Path::to_path_buf),
+                    ),
+                    allow_external_paths,
+                    write_scope,
+                },
                 tool_name,
                 args,
-                allow_external_paths,
                 hashline.as_ref(),
                 file_lease.zip(resources),
             )
@@ -1412,9 +1448,10 @@ pub async fn execute_tool_with_file_lease(
                 is_error: Some(true),
                 content,
                 duration_ms: started.elapsed().as_millis() as u64,
-                denied: Some(
-                    public_code == "TOOL_DENIED" || public_code == "PATH_OUTSIDE_WORKSPACE",
-                ),
+                denied: Some(matches!(
+                    public_code.as_str(),
+                    "TOOL_DENIED" | "PATH_OUTSIDE_WORKSPACE" | write_scope::VIOLATION
+                )),
                 error_code: Some(public_code),
                 command_shell_id,
             }
@@ -1715,45 +1752,90 @@ fn tool_read(
     Ok(out)
 }
 
+/// Resolve once with the usual permission policy, then check the exact path
+/// the mutator will use (including Edit's parsed move destination).
+fn resolve_mutation_path(
+    root: &Path,
+    roots: &ContainedRoots,
+    input: &str,
+    allow_external_paths: bool,
+    scope: Option<&write_scope::BoundWriteScope>,
+) -> Result<(PathBuf, ToolRoot), hashline::ToolError> {
+    if let Some(scope) = scope {
+        scope.validate_target(input)?;
+    }
+    let (resolved, kind) =
+        resolve_tool_path_with_external(root, roots, input, allow_external_paths).map_err(
+            |error| match scope {
+                Some(_) => write_scope::denied(input),
+                None => hashline::ToolError::new(error.clone(), error),
+            },
+        )?;
+    if let Some(scope) = scope {
+        scope.check(root, input, &resolved, kind)?;
+    }
+    Ok((resolved, kind))
+}
+
+/// Review capture can initialize managed directories. Skip it for denied
+/// scoped paths; the blocking mutation body still authorizes them again.
+pub(crate) fn can_review_scoped_write(
+    workspace: Option<&Path>,
+    roots: &ContainedRoots,
+    args: &Value,
+    scope: &write_scope::BoundWriteScope,
+) -> bool {
+    workspace
+        .zip(args.get("path").and_then(Value::as_str))
+        .is_some_and(|(root, path)| {
+            resolve_mutation_path(root, roots, path, false, Some(scope)).is_ok()
+        })
+}
+
 fn tool_write(
     workspace: Option<&Path>,
     roots: &ContainedRoots,
     args: &Value,
     allow_external_paths: bool,
     hashline: Option<&HashlineContext<'_>>,
-) -> Result<Value, (String, String)> {
+    scope: Option<&write_scope::BoundWriteScope>,
+) -> Result<Value, hashline::ToolError> {
     let root = require_workspace(workspace)?;
     let path = args
         .get("path")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| ("INVALID_ARGUMENT".into(), "path required".into()))?;
+        .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
     let content = args
         .get("content")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| ("INVALID_ARGUMENT".into(), "content required".into()))?;
+        .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "content required"))?;
     let content = hashline::strip_write_markup(content);
     let (resolved, root_kind) =
-        resolve_tool_path_with_external(root, roots, path, allow_external_paths)
-            .map_err(|e| (e.clone(), e))?;
+        resolve_mutation_path(root, roots, path, allow_external_paths, scope)?;
     if ignore_rules::is_sensitive_path(&resolved) {
-        return Err(ignore_rules::denied_error(path));
+        return Err(ignore_rules::denied_error(path).into());
     }
     ensure_visualization_fragment(roots, root_kind, &resolved)?;
-    if root_kind != ToolRoot::Visualization {
-        if let Some(parent) = resolved.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| ("TOOL_FAILED".into(), format!("mkdir failed: {e}")))?;
-        }
-    }
-    std::fs::write(&resolved, &content).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            ("FILE_NOT_FOUND".into(), format!("File not found: {path}"))
-        } else {
-            ("TOOL_FAILED".into(), format!("write failed: {e}"))
-        }
-    })?;
-    let landed = std::fs::read(&resolved)
-        .map_err(|e| ("TOOL_FAILED".into(), format!("read back failed: {e}")))?;
+    let landed = if let Some(scope) = scope {
+        let target = scope.target(path, &resolved, true)?;
+        target
+            .write(content.as_bytes(), true)
+            .map_err(|e| scoped_io_error(path, "write", e))?;
+        target
+            .read()
+            .map_err(|e| scoped_io_error(path, "read back", e))?
+    } else {
+        write_file(&resolved, root_kind, content.as_bytes()).map_err(|e| {
+            if e.code == "FILE_NOT_FOUND" {
+                hashline::ToolError::new("FILE_NOT_FOUND", format!("File not found: {path}"))
+            } else {
+                e
+            }
+        })?;
+        std::fs::read(&resolved).map_err(|e| {
+            hashline::ToolError::new("TOOL_FAILED", format!("read back failed: {e}"))
+        })?
+    };
     let file = hashline::normalize_file(&landed);
     let tag = hashline::tag_of_lf_text(&file.text);
     let display = display_tool_path(root_kind, root, &resolved);
@@ -1765,6 +1847,37 @@ fn tool_write(
         "tag": tag,
         "header": hashline::section_header(&display, &tag),
     }))
+}
+
+fn write_file(resolved: &Path, root: ToolRoot, bytes: &[u8]) -> Result<(), hashline::ToolError> {
+    if root != ToolRoot::Visualization {
+        if let Some(parent) = resolved.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                hashline::ToolError::new("TOOL_FAILED", format!("mkdir failed: {e}"))
+            })?;
+        }
+    }
+    std::fs::write(resolved, bytes).map_err(|e| {
+        hashline::ToolError::new(
+            if e.kind() == ErrorKind::NotFound {
+                "FILE_NOT_FOUND"
+            } else {
+                "TOOL_FAILED"
+            },
+            format!("write failed: {e}"),
+        )
+    })
+}
+
+fn scoped_io_error(path: &str, operation: &str, error: io::Error) -> hashline::ToolError {
+    if error.kind() == ErrorKind::NotFound {
+        hashline::ToolError::new("FILE_NOT_FOUND", format!("File not found: {path}"))
+    } else {
+        hashline::ToolError::new(
+            "TOOL_FAILED",
+            format!("{operation} failed for `{path}`: {error}"),
+        )
+    }
 }
 
 /// Lower a legacy `old_string`/`new_string` replacement to one line-anchored op.
@@ -1818,6 +1931,7 @@ fn tool_edit(
     args: &Value,
     allow_external_paths: bool,
     hashline: Option<&HashlineContext<'_>>,
+    scope: Option<&write_scope::BoundWriteScope>,
 ) -> Result<Value, hashline::ToolError> {
     let root = require_workspace(workspace).map_err(|(c, m)| hashline::ToolError::new(c, m))?;
     let path = args
@@ -1825,21 +1939,21 @@ fn tool_edit(
         .and_then(|v| v.as_str())
         .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
     let (resolved, root_kind) =
-        resolve_tool_path_with_external(root, roots, path, allow_external_paths)
-            .map_err(|e| hashline::ToolError::new(e.clone(), e))?;
+        resolve_mutation_path(root, roots, path, allow_external_paths, scope)?;
     if ignore_rules::is_sensitive_path(&resolved) {
         let (code, message) = ignore_rules::denied_error(path);
         return Err(hashline::ToolError::new(code, message));
     }
     ensure_visualization_fragment(roots, root_kind, &resolved)
         .map_err(|(code, message)| hashline::ToolError::new(code, message))?;
-    let live = std::fs::read(&resolved).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            hashline::ToolError::new("FILE_NOT_FOUND", format!("File not found: {path}"))
-        } else {
-            hashline::ToolError::new("TOOL_FAILED", format!("read failed: {e}"))
-        }
-    })?;
+    let scoped_target = scope
+        .map(|scope| scope.target(path, &resolved, false))
+        .transpose()?;
+    let live = match &scoped_target {
+        Some(target) => target.read(),
+        None => std::fs::read(&resolved),
+    }
+    .map_err(|e| scoped_io_error(path, "read", e))?;
     let legacy_old = args.get("old_string").and_then(Value::as_str);
     let legacy_new = args.get("new_string").and_then(Value::as_str);
     let (tag, ops) = match (
@@ -1905,10 +2019,12 @@ fn tool_edit(
     )?;
 
     if success.delete_file {
-        ensure_visualization_fragment(roots, root_kind, &resolved)
-            .map_err(|(code, message)| hashline::ToolError::new(code, message))?;
-        std::fs::remove_file(&resolved)
-            .map_err(|e| hashline::ToolError::new("TOOL_FAILED", format!("delete failed: {e}")))?;
+        ensure_visualization_fragment(roots, root_kind, &resolved)?;
+        match &scoped_target {
+            Some(target) => target.remove(),
+            None => std::fs::remove_file(&resolved),
+        }
+        .map_err(|e| hashline::ToolError::new("TOOL_FAILED", format!("delete failed: {e}")))?;
         hashline::invalidate_path(hashline, &canonical);
         return Ok(json!({
             "path": display,
@@ -1922,8 +2038,7 @@ fn tool_edit(
     let bytes = hashline::encode_success(&file);
     if let Some(dest) = &success.moved_to {
         let (dest_resolved, dest_root) =
-            resolve_tool_path_with_external(root, roots, dest, allow_external_paths)
-                .map_err(|e| hashline::ToolError::new(e.clone(), e))?;
+            resolve_mutation_path(root, roots, dest, allow_external_paths, scope)?;
         if ignore_rules::is_sensitive_path(&dest_resolved) {
             let (code, message) = ignore_rules::denied_error(dest);
             return Err(hashline::ToolError::new(code, message));
@@ -1938,19 +2053,23 @@ fn tool_edit(
                 "MV destination resolves to the source file; choose a different destination",
             ));
         }
-        if dest_root != ToolRoot::Visualization {
-            if let Some(parent) = dest_resolved.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    hashline::ToolError::new("TOOL_FAILED", format!("mkdir failed: {e}"))
-                })?;
-            }
+        ensure_visualization_fragment(roots, root_kind, &resolved)?;
+        if let (Some(scope), Some(source)) = (scope, &scoped_target) {
+            scope.check(root, path, &resolved, root_kind)?;
+            let destination = scope.target(dest, &dest_resolved, true)?;
+            destination
+                .write(&bytes, true)
+                .map_err(|e| scoped_io_error(dest, "write", e))?;
+            source
+                .remove()
+                .map_err(|e| scoped_io_error(path, "move", e))?;
+        } else {
+            write_file(&dest_resolved, dest_root, &bytes)
+                .map_err(|e| hashline::ToolError::new("TOOL_FAILED", e.message))?;
+            std::fs::remove_file(&resolved).map_err(|e| {
+                hashline::ToolError::new("TOOL_FAILED", format!("move failed: {e}"))
+            })?;
         }
-        ensure_visualization_fragment(roots, root_kind, &resolved)
-            .map_err(|(code, message)| hashline::ToolError::new(code, message))?;
-        std::fs::write(&dest_resolved, &bytes)
-            .map_err(|e| hashline::ToolError::new("TOOL_FAILED", format!("write failed: {e}")))?;
-        std::fs::remove_file(&resolved)
-            .map_err(|e| hashline::ToolError::new("TOOL_FAILED", format!("move failed: {e}")))?;
         hashline::invalidate_path(hashline, &canonical);
         let dest_display = display_tool_path(dest_root, root, &dest_resolved);
         let dest_file = hashline::normalize_file(&bytes);
@@ -1973,8 +2092,11 @@ fn tool_edit(
 
     ensure_visualization_fragment(roots, root_kind, &resolved)
         .map_err(|(code, message)| hashline::ToolError::new(code, message))?;
-    std::fs::write(&resolved, &bytes)
-        .map_err(|e| hashline::ToolError::new("TOOL_FAILED", format!("write failed: {e}")))?;
+    match &scoped_target {
+        Some(target) => target.write(&bytes, false),
+        None => std::fs::write(&resolved, &bytes),
+    }
+    .map_err(|e| hashline::ToolError::new("TOOL_FAILED", format!("write failed: {e}")))?;
     hashline::record_write(hashline, &canonical, &file, &success.tag);
     Ok(json!({
         "path": display,
@@ -4331,6 +4453,7 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;
@@ -4491,6 +4614,7 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;
@@ -4515,6 +4639,7 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;
@@ -4539,6 +4664,7 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;
@@ -4567,6 +4693,7 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;
@@ -4595,6 +4722,7 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;
@@ -4617,6 +4745,7 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;

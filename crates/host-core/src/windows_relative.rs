@@ -1,20 +1,20 @@
 //! The documented NtCreateFile RootDirectory contract is Windows' native
 //! directory-relative open. No DOS child path or reopened ancestor is used.
 
-use super::FragmentReadError;
 use std::ffi::{c_void, OsStr};
 use std::fs::File;
+use std::io;
 use std::mem::size_of;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use windows_sys::Win32::Foundation::{
-    HANDLE, INVALID_HANDLE_VALUE, NTSTATUS, OBJ_CASE_INSENSITIVE, OBJ_DONT_REPARSE, UNICODE_STRING,
+    RtlNtStatusToDosError, HANDLE, INVALID_HANDLE_VALUE, NTSTATUS, OBJ_CASE_INSENSITIVE,
+    OBJ_DONT_REPARSE, UNICODE_STRING,
 };
-use windows_sys::Win32::Storage::FileSystem::{
-    FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_READ_DATA, FILE_SHARE_READ, SYNCHRONIZE,
-};
+use windows_sys::Win32::Storage::FileSystem::SYNCHRONIZE;
 
-const FILE_OPEN: u32 = 1;
+pub(crate) const OPEN: u32 = 1;
+pub(crate) const CREATE: u32 = 2;
 const FILE_DIRECTORY_FILE: u32 = 0x0000_0001;
 const FILE_NON_DIRECTORY_FILE: u32 = 0x0000_0040;
 const FILE_SYNCHRONOUS_IO_NONALERT: u32 = 0x0000_0020;
@@ -64,14 +64,18 @@ unsafe extern "system" {
     ) -> NTSTATUS;
 }
 
-pub(super) fn open_child(
+pub(crate) fn open_child(
     parent: &File,
     name: &OsStr,
     directory: bool,
-) -> Result<File, FragmentReadError> {
+    access: u32,
+    share: u32,
+    disposition: u32,
+    case_insensitive: bool,
+) -> io::Result<File> {
     let mut wide = component_name(name)?;
-    let length = u16::try_from(wide.len() * 2).map_err(|_| FragmentReadError::NotFound)?;
-    let maximum_length = length.checked_add(2).ok_or(FragmentReadError::NotFound)?;
+    let length = (wide.len() * 2) as u16;
+    let maximum_length = length + 2;
     wide.push(0);
     let unicode = UNICODE_STRING {
         Length: length,
@@ -82,7 +86,12 @@ pub(super) fn open_child(
         length: size_of::<ObjectAttributes>() as u32,
         root_directory: parent.as_raw_handle(),
         object_name: &unicode,
-        attributes: OBJ_CASE_INSENSITIVE | OBJ_DONT_REPARSE,
+        attributes: OBJ_DONT_REPARSE
+            | if case_insensitive {
+                OBJ_CASE_INSENSITIVE
+            } else {
+                0
+            },
         security_descriptor: std::ptr::null(),
         security_quality_of_service: std::ptr::null(),
     };
@@ -93,13 +102,6 @@ pub(super) fn open_child(
         information: 0,
     };
     let mut handle: HANDLE = std::ptr::null_mut();
-    let desired_access = FILE_READ_ATTRIBUTES
-        | SYNCHRONIZE
-        | if directory {
-            FILE_LIST_DIRECTORY
-        } else {
-            FILE_READ_DATA
-        };
     let options = FILE_OPEN_REPARSE_POINT
         | FILE_SYNCHRONOUS_IO_NONALERT
         | if directory {
@@ -109,19 +111,19 @@ pub(super) fn open_child(
         };
     // SAFETY: parent is a live directory File, the single-component UTF-16
     // name and all repr(C) arguments live through the synchronous create.
-    // FILE_OPEN never creates/truncates; SYNCHRONIZE is paired with synchronous
-    // I/O. OBJ_DONT_REPARSE rejects reparsing and OPEN_REPARSE_POINT forbids
+    // SYNCHRONIZE is paired with synchronous I/O. OBJ_DONT_REPARSE rejects
+    // reparsing and OPEN_REPARSE_POINT forbids
     // following the final entry; the caller also checks opened-handle metadata.
     let status = unsafe {
         nt_create_file(
             &mut handle,
-            desired_access,
+            access | SYNCHRONIZE,
             &attributes,
             &mut io_status,
             std::ptr::null(),
             0,
-            FILE_SHARE_READ,
-            FILE_OPEN,
+            share,
+            disposition,
             options,
             std::ptr::null(),
             0,
@@ -138,12 +140,16 @@ pub(super) fn open_child(
     };
     // NT_SUCCESS is status >= 0. Native failures are NTSTATUS, not GetLastError.
     if status < 0 {
-        return Err(FragmentReadError::NotFound);
+        // SAFETY: conversion accepts the synchronous call's returned status.
+        let error = unsafe { RtlNtStatusToDosError(status) };
+        return Err(io::Error::from_raw_os_error(error as i32));
     }
-    owned.map(File::from).ok_or(FragmentReadError::NotFound)
+    owned
+        .map(File::from)
+        .ok_or_else(|| io::Error::other("NtCreateFile returned no handle"))
 }
 
-fn component_name(name: &OsStr) -> Result<Vec<u16>, FragmentReadError> {
+fn component_name(name: &OsStr) -> io::Result<Vec<u16>> {
     let wide: Vec<u16> = name.encode_wide().collect();
     if wide.is_empty()
         || name == "."
@@ -151,7 +157,10 @@ fn component_name(name: &OsStr) -> Result<Vec<u16>, FragmentReadError> {
         || wide.iter().any(|unit| matches!(*unit, 0 | 47 | 58 | 92))
         || wide.len() > (u16::MAX as usize - 2) / 2
     {
-        return Err(FragmentReadError::NotFound);
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid relative path component",
+        ));
     }
     Ok(wide)
 }
@@ -196,8 +205,8 @@ mod tests {
             "a\0b",
         ] {
             assert_eq!(
-                component_name(OsStr::new(name)),
-                Err(FragmentReadError::NotFound)
+                component_name(OsStr::new(name)).unwrap_err().kind(),
+                io::ErrorKind::InvalidInput
             );
         }
         assert!(component_name(OsStr::new("a folder")).is_ok());

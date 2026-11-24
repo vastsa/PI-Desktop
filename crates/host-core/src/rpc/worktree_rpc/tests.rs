@@ -35,6 +35,7 @@ fn tool_options(
         allow_external_paths: false,
         hashline: None,
         visualization_root: None,
+        write_scope: None,
     }
 }
 
