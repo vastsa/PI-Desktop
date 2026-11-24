@@ -85,6 +85,14 @@ pub(super) fn requires_external_permission(
             })
 }
 
+pub(super) fn unsupported_write_scope() -> JsonRpcError {
+    rpc_err(
+        1003,
+        "Cannot verify a delegation write scope on the remote tool transport",
+        "WRITE_SCOPE_UNAVAILABLE",
+    )
+}
+
 fn failure(
     p: &ToolsExecuteParams,
     code: &str,
@@ -278,6 +286,9 @@ pub(super) async fn handle(
     input["mode"] = json!("agent");
     let p: ToolsExecuteParams = serde_json::from_value(input)
         .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+    if p.write_scope.is_some() {
+        return Err(unsupported_write_scope());
+    }
     let started = std::time::Instant::now();
     if !matches!(
         p.tool_name.as_str(),
@@ -343,6 +354,7 @@ pub(super) async fn handle(
                 // Remote workspaces are never isolated (ADR 0329).
                 extra_env: Vec::new(),
                 run_in_background: false,
+                yield_after_initial_wait: false,
                 continuation_turn_id: None,
                 app_state: None,
             })
@@ -355,6 +367,7 @@ pub(super) async fn handle(
             store: &hashline,
         }),
         visualization_root: None,
+        write_scope: None,
     };
     let mut result = tokio::select! {
         result = tools::execute_tool_with_path_access(Some(&root),None,&p.tool_name,&p.args,options) => result,

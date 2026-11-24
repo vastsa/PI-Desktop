@@ -68,6 +68,12 @@ export type SidecarRuntimeDependencies = {
     projectPath: string | null,
   ) => Promise<LoadedSkillDocument | null>;
   activeUserSkills: (projectPath: string | undefined) => Promise<any[]>;
+  /**
+   * Load a mode-private skill for the `Skill` tool. `null` means "not a mode
+   * skill"; a stale selection (mode switched, skill disabled or moved) throws so
+   * the model cannot fall back to a same-named global skill (issue #2544 §3).
+   */
+  loadModeSkillBody?: (id: string, sessionId: string) => Promise<LoadedSkillDocument | null>;
   disabledBuiltinSkills: () => Promise<string[]>;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   currentNetworkProxy: () => any;
@@ -105,6 +111,7 @@ export function createSidecarRuntime({
   sessionProjects,
   loadUserSkillBody,
   activeUserSkills,
+  loadModeSkillBody,
   disabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
@@ -667,10 +674,15 @@ export function createSidecarRuntime({
     const projectPath = sessionProjects.get(sessionId) ?? null;
     try {
       await assertBuiltinSkillEnabled(id, disabledBuiltinSkills);
+      // A mode-private id resolves against the session's *current* mode, so a
+      // selection made before a disable, a move or a mode switch is refused
+      // here instead of loading another document (issue #2544 §3).
+      const modeSkill = await loadModeSkillBody?.(id, sessionId);
       // Bundled skills answer first; they are not owned by any plugin. A user
       // skill is looked up next, and only then a plugin's — the ids cannot
       // collide, since a plugin skill id always carries a `<pluginId>/` prefix.
       const skill: LoadedSkillDocument =
+        modeSkill ??
         loadBuiltinSkillBody(id) ??
         (await loadUserSkillBody(id, projectPath)) ??
         plugins.loadSkillBody(id);

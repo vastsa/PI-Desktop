@@ -78,7 +78,8 @@ belongs in the domain module that owns its state or process boundary.
 
 Source budgets are reported and enforced by
 [`scripts/check-architecture.mjs`](../../architecture/README.md). Its
-allowlist records only existing extraction debt with a reason.
+allowlist records only existing extraction debt with a reason. The checker also
+warns when a production source file that is already above its size budget grows.
 
 ## 2. Package responsibilities
 

@@ -13,16 +13,18 @@ import { findAgentMentions, type AgentMention, type Mode } from "@pi-desktop/sha
 export async function resolvePromptAgentMentions({
   content,
   mode,
+  bundleDelegation = false,
   subagentNames,
   workspaceRoot,
 }: {
   content: string;
   mode: Mode | undefined;
+  bundleDelegation?: boolean;
   subagentNames: readonly string[];
   /** Local workspace root; `null` for a remote or project-less session. */
   workspaceRoot: string | null;
 }): Promise<AgentMention[]> {
-  if (mode !== "agent" || subagentNames.length === 0 || !content.includes("@")) return [];
+  if ((mode !== "agent" && !bundleDelegation) || subagentNames.length === 0 || !content.includes("@")) return [];
   const mentions = findAgentMentions(content, new Set(subagentNames));
   if (!mentions.length || !workspaceRoot) return mentions;
   const shadowed = new Set<string>();
