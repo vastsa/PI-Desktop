@@ -32,7 +32,7 @@ import { createSessionCodemodeTool } from "./codemode/session.js";
 import { scheduledToolParameters, scheduledToolDescriptions } from "./scheduled-tools.js";
 import { withPiFileOpToolNames } from "./pi-file-ops.js";
 import { remoteMutationIdentity } from "./remote-workspace.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import {
   settledDelegationMessage,
@@ -62,6 +62,7 @@ import {
   cleanupSessionResources,
   getCacheWarmingRequestOptions,
   isContextOverflow,
+  normalizeContext,
   getCurrentTools,
   getToolStateChanges,
   toToolDeclaration,
@@ -284,9 +285,9 @@ import {
   type ReasoningReplayIdentity,
 } from "./reasoning-replay.js";
 import { genericModelConfig, visionFromModelConfig } from "./model-capabilities.js";
-import type { ProjectInstructions } from "./project-instructions.js";
+import { loadInstructionChain, type ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
-import type { CustomSystemPrompt } from "./custom-system-prompt.js";
+import { loadCustomSystemPrompt, type CustomSystemPrompt } from "./custom-system-prompt.js";
 import { projectMemoryPrompt } from "./project-memory-prompt.js";
 import {
   pluginSkillsPrompt,
@@ -2420,7 +2421,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           maxTokens: clampOutputToContext(m, requestContext, hookedOptions.maxTokens),
         };
         const usageTurnId = this.turnId;
-        const openAttempt = (retryOptions: SimpleStreamOptions, input = requestContext) => {
+        const readPluginContext = opts.readPluginModelContext;
+        const openAttempt = (retryOptions: SimpleStreamOptions, input = requestContext,
+          pluginContextCanChange = readPluginContext !== undefined) => {
           const startedAt = Date.now();
           const attempt = ++this.cacheWarmingAttempt;
           this.idleCacheWarming.clear();
@@ -2448,6 +2451,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               !m.webSearch) {
             const model = this.thinkingLevel === "omit" ? omitThinkingModel(m) : m;
             const omitThinking = this.thinkingLevel === "omit";
+            const messageCount = this.agent.state.messages.length;
+            const prefix = !pluginContextCanChange && !this.hasOpaqueCachePrefixHooks()
+              ? this.cacheWarmingPrefix(messageCount) : undefined;
+            const canResume = () => prefix !== undefined && !this.hasOpaqueCachePrefixHooks() &&
+              prefix === this.cacheWarmingPrefix(messageCount);
+            const foregroundRevision = this.idleCacheWarming.foregroundRevision;
             const replayOptions = {
               ...retryOptions,
               fetch: withProviderHeadersFetch(
@@ -2463,12 +2472,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               if (extensionReplacedPayload || this.disposed || this.runCancelled ||
                   attempt !== this.cacheWarmingAttempt) return;
               this.idleCacheWarming.remember({
-                model, options: replayOptions, startedAt, result,
+                model, options: replayOptions, startedAt, result, foregroundRevision,
+                canResume,
                 oauth: this.provider.authKind === OAUTH_AUTH_KIND,
                 metered: this.provider.authKind !== OAUTH_AUTH_KIND &&
                   this.provider.authKind !== "none" && this.provider.modelConfig?.nativeCost !== undefined &&
                   /^(?:https:\/\/api\.anthropic\.com|https:\/\/api\.openai\.com)(?:\/v1)?\/?$/.test(model.baseUrl),
-                refresh: (signal) => {
+                refresh: async (signal, deadline) => {
+                  if (foregroundRevision !== this.idleCacheWarming.foregroundRevision) {
+                    if (!await this.cacheWarmingInstructionSourcesMatch() || !canResume()) {
+                      throw new Error("Cache warming prefix changed");
+                    }
+                    if (Date.now() >= deadline) throw new Error("Cache warming deadline passed");
+                    signal.throwIfAborted();
+                  }
                   const refreshOptions = getCacheWarmingRequestOptions(replayOptions, signal);
                   return accountModelStream(model, () => omitThinking
                     ? this.models.stream(model, input, refreshOptions)
@@ -2483,7 +2500,6 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           }
           return withStreamIdleTimeout(stream, m, streamIdleTimeoutMs(), () => stallAbort.abort());
         };
-        const readPluginContext = opts.readPluginModelContext;
         const retryStream = createProviderRetryStream(
           m,
           requestContext,
@@ -2491,16 +2507,16 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           readPluginContext && usageTurnId && this.activeTurnSettlements.has(usageTurnId)
             ? async (retryOptions) => {
                 const signal = retryOptions.signal;
-                const contributions = await readPluginContext({
+                const pluginContext = await readPluginContext({
                   sessionId: this.sessionId, turnId: usageTurnId,
                   modelKey: `${this.provider.id}/${m.id}`,
                 }, signal).catch(() => undefined);
                 signal?.throwIfAborted();
                 const messages = this.turnId === usageTurnId && !this.runCancelled
-                  ? withPluginModelContext(requestContext.messages, contributions)
+                  ? withPluginModelContext(requestContext.messages, pluginContext?.contributions)
                   : requestContext.messages;
                 return openAttempt(retryOptions, messages === requestContext.messages
-                  ? requestContext : { ...requestContext, messages });
+                  ? requestContext : { ...requestContext, messages }, pluginContext?.hasProviders !== false);
               }
             : openAttempt,
           {
@@ -2534,9 +2550,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             sessionId: this.sessionId, turnId: this.turnId, message,
           });
         });
-        return alignRetainedReasoningIdentity(
-          convertToLlm(this.dropDuplicateToolCalls(messages)), this.reasoningReplayIdentity(),
-        );
+        return this.modelRequestMessages(this.dropDuplicateToolCalls(messages));
       },
       prepareRequest: ({ context }) => this.prepareToolDeclarations(context),
       // Extensions see every provider request, including the first one of a
@@ -2720,6 +2734,47 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return this.agentUsesTranscriptSystemMessages()
       ? systemPromptContent(this.agent.state.messages)
       : this.agent.state.systemPrompt;
+  }
+
+  private cacheWarmingPrefix(messageCount: number): string | undefined {
+    const model = this.agent.state.model;
+    if (!model || this.agent.state.messages.length < messageCount) return;
+    try {
+      // The reply is outside the original request. Rebuild only its input,
+      // without persisting transcript rows or running extension hooks.
+      const messages = this.agent.state.messages.slice(0, messageCount);
+      const context = requestTranscript(model, normalizeContext({
+        messages: this.modelRequestMessages(dedupeToolCallMessages(messages).messages),
+      }));
+      const tools = this.declaredTools().map(toToolDeclaration);
+      return createHash("sha256").update(JSON.stringify([
+        this.provider.id, this.provider.authKind, model.provider, model.id, model.api, model.baseUrl, model.compat,
+        this.agent.state.systemPrompt, context, tools,
+      ])).digest("hex");
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async cacheWarmingInstructionSourcesMatch(): Promise<boolean> {
+    if (this.remoteWorkspace || safeJson(this.projectInstructions) !== safeJson(this.baseProjectInstructions)) return false;
+    const root = this.workspaceRoot ?? this.projectPath;
+    const [instructions, customPrompt] = await Promise.all([loadInstructionChain(root), loadCustomSystemPrompt(root)]);
+    // Group instructions come from Host configuration, not the local file chain.
+    const original = this.baseProjectInstructions?.entries.filter(entry =>
+      entry.source !== "Project group folders" && entry.source !== "Project group instructions") ?? [];
+    return safeJson(instructions?.entries ?? []) === safeJson(original) &&
+      safeJson(customPrompt) === safeJson(this.customSystemPrompt);
+  }
+
+  private modelRequestMessages(messages: AgentMessage[]): ReturnType<typeof convertToLlm> {
+    return alignRetainedReasoningIdentity(convertToLlm(messages), this.reasoningReplayIdentity());
+  }
+
+  private hasOpaqueCachePrefixHooks(): boolean {
+    const runner = this.extensionRunner;
+    return runner !== undefined && (runner.hasHandlers("before_agent_start") || runner.hasHandlers("context") ||
+      runner.hasHandlers("before_provider_headers") || runner.hasHandlers("before_provider_request"));
   }
 
   private composeSystemPrompt(): string {

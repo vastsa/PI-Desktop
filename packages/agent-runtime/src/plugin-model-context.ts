@@ -4,7 +4,10 @@ export type ReadPluginModelContext = (input: {
   sessionId: string;
   turnId: string;
   modelKey: string;
-}, signal?: AbortSignal) => Promise<unknown>;
+}, signal?: AbortSignal) => Promise<{
+  contributions: unknown[];
+  hasProviders: boolean;
+} | undefined>;
 
 /** Attach data to the request's user message without changing history, system
  * instructions, or the relative order of assistant/tool message pairs. */

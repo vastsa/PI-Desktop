@@ -39,6 +39,7 @@ import { estimateOutputCapInputTokens, requestTranscript } from "./output-cap.js
 import { builtinModeDefinition } from "./mode-definitions.js";
 
 import { COMPACTION_SUMMARY_MAX_RETRIES } from "./compaction-summary-input.js";
+import { loadCustomSystemPrompt } from "./custom-system-prompt.js";
 import { loadInstructionChain, type ProjectInstructions } from "./project-instructions.js";
 import { classifyAgentError } from "./agent-errors.js";
 import {
@@ -201,6 +202,7 @@ function createRuntime(
     subagentModelKeys: string[];
     pluginSkills: import("./plugin-skills-prompt.js").PluginSkillDef[];
     trustedExtensions: ConstructorParameters<typeof DesktopAgentRuntime>[0]["trustedExtensions"];
+    readPluginModelContext: ConstructorParameters<typeof DesktopAgentRuntime>[0]["readPluginModelContext"];
     commandShell: CommandShellOption;
     jevApiKey: string;
     codemodeEnabled: boolean;
@@ -217,6 +219,7 @@ function createRuntime(
     codemodeEnabled: overrides.codemodeEnabled,
     turnId: overrides.turnId,
     provider: overrides.provider ?? provider,
+    readPluginModelContext: overrides.readPluginModelContext,
     commandShell: overrides.commandShell ?? commandShell,
     thinkingLevel: overrides.thinkingLevel ?? "medium",
     backgroundJobContinuationEnabled: overrides.backgroundJobContinuationEnabled,
@@ -907,7 +910,7 @@ describe("foreground cache warming through the normal turn", () => {
         expect.objectContaining({ turnId: "turn-1", event: expect.objectContaining({ type: "usage" }) }),
       ]);
       runtime.setCacheWarmingForeground(false);
-      runtime.invalidateCacheWarming("local");
+      if (hook === "none") runtime.invalidateCacheWarming("local");
       runtime.setCacheWarmingForeground(true);
       await vi.advanceTimersByTimeAsync(270_000);
       expect(stream).toHaveBeenCalledTimes(2);
@@ -919,6 +922,85 @@ describe("foreground cache warming through the normal turn", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it.each(["unchanged", "system prompt", "message", "tool order", "model", "endpoint", "plugin source", "instruction file", "validation timeout"])(
+    "rebuilds the foreground prefix locally before resuming with %s", async (change) => {
+      const projectPath = await mkdtemp(join(tmpdir(), "pi-cache-prefix-"));
+      const file = join(projectPath, "AGENTS.md");
+      await writeFile(file, "Original workspace instructions");
+      const runtime = createRuntime({
+        projectPath, thinkingLevel: "off",
+        projectInstructions: await loadInstructionChain(projectPath),
+        customSystemPrompt: await loadCustomSystemPrompt(projectPath),
+        readPluginModelContext: async () => ({ contributions: [], hasProviders: change === "plugin source" }),
+      });
+      const state = runtime as unknown as {
+        agent: Agent;
+        models: Models;
+        declaredTools(): AgentTool[];
+        setAgentSystemPrompt(prompt: string): void;
+        cacheWarmingInstructionSourcesMatch(): Promise<boolean>;
+      };
+      const fileCheck = vi.spyOn(state, "cacheWarmingInstructionSourcesMatch");
+      vi.useFakeTimers();
+      if (change === "validation timeout") {
+        fileCheck.mockImplementationOnce(async () => {
+          await new Promise(resolve => setTimeout(resolve, 16_000));
+          return true;
+        });
+      }
+      const stream = vi.spyOn(state.models, "streamSimple").mockImplementation(() => {
+        const result = assistantMessage({ content: [{ type: "text", text: "Synthetic answer" }] }) as AssistantMessage;
+        result.usage.input = 0;
+        result.usage.cacheRead = 2_048;
+        result.usage.totalTokens = 2_049;
+        const events = createAssistantMessageEventStream();
+        events.push({ type: "start", partial: result });
+        events.push({ type: "done", reason: "stop", message: result });
+        events.end(result);
+        return events;
+      });
+      try {
+        runtime.setCacheWarmingForeground(true);
+        await runtime.prompt({ text: "Synthetic prompt" }, "user-1", "turn-1");
+        expect(stream).toHaveBeenCalledTimes(1);
+        runtime.setCacheWarmingForeground(false);
+        await vi.advanceTimersByTimeAsync(90_000);
+        if (change === "instruction file") await writeFile(file, "Updated workspace instructions");
+        if (change === "system prompt") state.setAgentSystemPrompt("Different system instructions");
+        if (change === "message") {
+          state.agent.state.messages = state.agent.state.messages.map(message =>
+            message.role === "user" ? { ...message, content: "Different prompt" } : message);
+        }
+        if (change === "tool order") {
+          const tools = state.declaredTools();
+          expect(tools.length).toBeGreaterThan(1);
+          vi.spyOn(state, "declaredTools").mockReturnValue([...tools].reverse());
+        }
+        if (change === "model" || change === "endpoint") {
+          const model = state.agent.state.model!;
+          state.agent.state.model = change === "model"
+            ? { ...model, id: "different-model" }
+            : { ...model, baseUrl: "https://changed.invalid/v1" };
+        }
+        runtime.setCacheWarmingForeground(true);
+        expect(stream).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(180_000);
+        if (change === "validation timeout") await vi.advanceTimersByTimeAsync(16_000);
+        if (change === "unchanged" || change === "instruction file" || change === "validation timeout") {
+          expect(fileCheck).toHaveBeenCalledOnce();
+          await fileCheck.mock.results[0].value;
+        } else {
+          expect(fileCheck).not.toHaveBeenCalled();
+        }
+        expect(stream).toHaveBeenCalledTimes(change === "unchanged" ? 2 : 1);
+      } finally {
+        await runtime.dispose();
+        vi.useRealTimers();
+        await rm(projectPath, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("parallel file batches", () => {

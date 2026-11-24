@@ -62,8 +62,14 @@ visible, focused main window. The sidecar captures the last successful real
 request and refreshes it only after the turn has settled. Focus loss, navigation,
 a new turn, a provider, session, or plugin configuration change, and runtime
 disposal cancel warming. Returning to a conversation can resume an eligible
-request within the original window, provided plugin configuration has not
-changed. Native Pi sessions retain their SDK lifecycle.
+request within the original window. Before resuming, the sidecar rebuilds the
+original input locally and checks the route, system instructions, and ordered
+messages and tool declarations. The check excludes the appended answer and
+rechecks local instruction files before sending. It does not invoke a provider
+or run plugin hooks. If the prefix changed or depends on a
+plugin hook the local check cannot evaluate, a new normal request is required.
+Plugin settings and transcript edits through the SDK also invalidate paused candidates.
+Native Pi sessions retain their SDK lifecycle.
 
 Use the effective request's known TTL and skip a cache that covers the
 30-minute window. An unknown TTL, including for custom endpoints, uses a

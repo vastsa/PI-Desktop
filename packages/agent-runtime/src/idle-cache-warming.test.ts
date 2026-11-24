@@ -28,7 +28,10 @@ function arm(
   requestModel: Model<Api> = model,
   result = response(0, 4_096),
 ) {
-  warming.remember({ model: requestModel, options: {}, startedAt: Date.now(), result, metered: false, oauth: false, refresh });
+  warming.remember({
+    model: requestModel, options: {}, startedAt: Date.now(), result, metered: false, oauth: false,
+    canResume: () => true, foregroundRevision: warming.foregroundRevision, refresh,
+  });
   warming.settle();
 }
 

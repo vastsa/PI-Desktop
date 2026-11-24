@@ -321,6 +321,10 @@ const pluginServices = createPluginServices({
   pluginActiveInProject,
   getMainWindow,
   getHost,
+  invalidateCacheWarming: async (sessionId) => {
+    await getSidecar()?.call("agent.invalidateCacheWarming", sessionId ? { sessionId } : { all: true })
+      .catch(() => undefined);
+  },
   sendToRenderer,
   safeOpenExternal,
   stripWinLongPrefix,

@@ -19,7 +19,9 @@ type CacheRequest = {
   result: AssistantMessage;
   metered: boolean;
   oauth: boolean;
-  refresh: (signal: AbortSignal) => Promise<AssistantMessage>;
+  canResume: () => boolean;
+  foregroundRevision: number;
+  refresh: (signal: AbortSignal, deadline: number) => Promise<AssistantMessage>;
 };
 
 type CacheCandidate = {
@@ -33,6 +35,7 @@ type CacheCandidate = {
 
 export class IdleCacheWarming {
   private foreground = false;
+  private revision = 0;
   private settled = false;
   private candidate?: CacheCandidate;
   private timer?: ReturnType<typeof setTimeout>;
@@ -44,10 +47,17 @@ export class IdleCacheWarming {
     return this.foreground;
   }
 
+  get foregroundRevision(): number {
+    return this.revision;
+  }
+
   setForeground(foreground: boolean): void {
     if (this.foreground === foreground) return;
     this.foreground = foreground;
-    if (!foreground && this.inFlight) this.clear();
+    if (!foreground) {
+      this.revision++;
+      if (this.inFlight) this.clear();
+    }
     this.schedule();
   }
 
@@ -89,6 +99,10 @@ export class IdleCacheWarming {
     this.timer = undefined;
   }
 
+  private canReuse(candidate: CacheCandidate): boolean {
+    return candidate.request.foregroundRevision === this.revision || candidate.request.canResume();
+  }
+
   private schedule(): void {
     this.clearTimer();
     const candidate = this.candidate;
@@ -96,7 +110,8 @@ export class IdleCacheWarming {
     const now = Date.now();
     const dueAt = candidate.lastStartedAt + candidate.interval;
     const deadline = Math.min(dueAt + candidate.margin, candidate.expiresAt);
-    if (candidate.remaining === 0 || dueAt >= candidate.expiresAt || now >= deadline) {
+    if (candidate.remaining === 0 || dueAt >= candidate.expiresAt || now >= deadline ||
+        (this.foreground && !this.canReuse(candidate))) {
       this.clear();
       return;
     }
@@ -109,7 +124,7 @@ export class IdleCacheWarming {
   private async refresh(candidate: CacheCandidate, deadline: number): Promise<void> {
     this.timer = undefined;
     if (candidate !== this.candidate || !this.foreground) return;
-    if (Date.now() >= deadline || !this.canRefresh()) {
+    if (!this.canRefresh() || !this.canReuse(candidate) || Date.now() >= deadline) {
       this.clear();
       return;
     }
@@ -122,7 +137,7 @@ export class IdleCacheWarming {
         controller.signal,
         AbortSignal.timeout(Math.max(1, candidate.expiresAt - startedAt)),
       ]);
-      const result = await candidate.request.refresh(signal);
+      const result = await candidate.request.refresh(signal, deadline);
       if (candidate !== this.candidate) return;
       if ((result.stopReason !== "stop" && result.stopReason !== "length") ||
           result.usage.cacheRead <= result.usage.input + result.usage.cacheWrite) {
