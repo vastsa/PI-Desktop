@@ -11,6 +11,10 @@ Escape. Stop a worker while another runs: its settled status remains visible;
 after the last worker settles the entire row disappears. Switch sessions and
 restart to verify isolation and the saved presentation preference.
 
+Production Electron captures (local streaming fixture): [Transcript only](/screenshots/subagent-presence/transcript-light.png), [Light, task dock collapsed](/screenshots/subagent-presence/bar-light-collapsed.png), [Dark, reduced motion](/screenshots/subagent-presence/card-dark-reduced-motion.png).
+Set `PI_SUBAGENT_SCREENSHOT_DIR` when running `node scripts/e2e-subagent-stop.mjs`
+to capture the same states.
+
 ## E2E-stop-navigation-running-state
 
 Hold the history read after a successful local Stop, switch to another running session, then resolve the older session's history. Verify only the stopped session is settled, the new transcript remains and its toolbar still offers Stop. Also navigate synchronously during the hydration commit to exercise the final state writer. Coverage: `stop-navigation-running-state.test.mjs`, related smart-stop/terminal regressions, and `scripts/e2e-stop-navigation-running-state.mjs` using the production store and ComposerToolbar in Electron.

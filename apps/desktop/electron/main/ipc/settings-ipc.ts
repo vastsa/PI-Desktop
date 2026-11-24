@@ -80,13 +80,15 @@ export function registerSettingsIpc({
       ? { ...currentSettings, ...(validatedSettings as Partial<AppSettings>) }
       : currentSettings;
     const releaseSettingsWrite = liveCallService?.beginSettingsWrite(prospectiveSettings);
-    let result: AppSettings;
+    let result: { ok: true };
     try {
-      result = await host.call<AppSettings>("settings.set", validatedSettings);
-      if (isSubagentStyle(result.subagentStyle) && result.subagentStyle !== currentSettings.subagentStyle) {
-        sendToRenderer(IPC.event.settingsChanged, { subagentStyle: result.subagentStyle });
+      result = await host.call<{ ok: true }>("settings.set", validatedSettings);
+      // settings.set acknowledges the write; it does not return the stored settings.
+      const style = validatedSettings?.subagentStyle;
+      if (isSubagentStyle(style)) {
+        sendToRenderer(IPC.event.settingsChanged, { subagentStyle: style });
       }
-      await liveCallService?.settingsWritten(result);
+      await liveCallService?.settingsWritten(prospectiveSettings);
     } finally {
       releaseSettingsWrite?.();
     }

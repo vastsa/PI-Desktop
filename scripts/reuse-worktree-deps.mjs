@@ -1,6 +1,6 @@
-// Run from a fresh request worktree. Links only; never install against this layout.
+// Run from a fresh request worktree. Never install against this shared layout.
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, symlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
@@ -27,6 +27,7 @@ if (projectLock(installedLock) !== projectLock(join(root, "pnpm-lock.yaml"))) th
 const packages = inputs.filter(path => /^(?:(?:apps|packages)\/[^/]+|docs)\/package\.json$/.test(path));
 const workspace = new Map(packages.map(file => [JSON.parse(readFileSync(join(root, file), "utf8")).name, join(root, dirname(file))]));
 const links = [];
+const binDirs = [];
 const directories = [];
 for (const folder of [".", ...packages.map(dirname)]) {
   const source = join(main, folder, "node_modules");
@@ -45,6 +46,9 @@ for (const folder of [".", ...packages.map(dirname)]) {
         if (!target) throw new Error(`Unknown workspace package @pi-desktop/${name}`);
         links.push([target, join(to, name)]);
       }
+    } else if (entry.name === ".bin") {
+      // pnpm can regenerate shims even during `exec`; never share writable bins.
+      binDirs.push([from, to]);
     } else if (entry.isDirectory() || entry.isSymbolicLink()) {
       links.push([realpathSync(from), to]);
     }
@@ -52,5 +56,7 @@ for (const folder of [".", ...packages.map(dirname)]) {
 }
 for (const dir of directories) mkdirSync(dir);
 for (const [target, path] of links) symlinkSync(target, path, process.platform === "win32" ? "junction" : "dir");
+for (const [from, to] of binDirs) cpSync(realpathSync(from), to, { recursive: true, verbatimSymlinks: true });
 console.log(`Linked ${links.length} dependency directories. Workspace packages resolve inside ${root}.`);
 console.log("Build workspace packages here. Do not install, prune, or rebuild shared dependencies through these links.");
+console.log("For pnpm run/exec, set pnpm_config_verify_deps_before_run=false to disable automatic installs.");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +22,8 @@ test("reuse refuses incompatible or existing installs and resolves internal pack
   git("add", "packages/shared/package.json", "pnpm-lock.yaml");
   git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "-m", "Fixture");
   git("worktree", "add", "--detach", wt, "HEAD");
-  for (const path of [".pnpm/react", "@pi-desktop"]) mkdirSync(join(main, "node_modules", path), { recursive: true });
+  for (const path of [".pnpm/react", "@pi-desktop", ".bin"]) mkdirSync(join(main, "node_modules", path), { recursive: true });
+  writeFileSync(join(main, "node_modules/.bin/tool"), "original shim");
   writeFileSync(join(main, "node_modules/.pnpm/lock.yaml"), "lock");
   const kind = process.platform === "win32" ? "junction" : "dir";
   symlinkSync(join(main, "packages/shared"), join(main, "node_modules/@pi-desktop/shared"), kind);
@@ -38,5 +39,9 @@ test("reuse refuses incompatible or existing installs and resolves internal pack
   assert.equal(result.status, 0, result.stderr);
   assert.equal(realpathSync.native(join(wt, "node_modules/react")), realpathSync.native(join(main, "node_modules/react")));
   assert.equal(realpathSync.native(join(wt, "node_modules/@pi-desktop/shared")), realpathSync.native(join(wt, "packages/shared")));
+  const localShim = join(wt, "node_modules/.bin/tool");
+  assert.equal(readFileSync(localShim, "utf8"), "original shim");
+  writeFileSync(localShim, "regenerated shim");
+  assert.equal(readFileSync(join(main, "node_modules/.bin/tool"), "utf8"), "original shim");
   assert.match(run(wt).stderr, /Refusing to overwrite/);
 });

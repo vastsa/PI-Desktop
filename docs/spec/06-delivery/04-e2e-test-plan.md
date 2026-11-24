@@ -151,6 +151,10 @@ workspace packages here. If the primary installation is stale, pass the path of
 another checkout of this repository with matching installed dependencies and
 keep it until the consuming worktree is removed. If none matches, use an
 isolated install. Never install, prune, or rebuild through shared links.
+The helper copies mutable `.bin` shims locally. Before `pnpm run` or `pnpm exec`,
+set `pnpm_config_verify_deps_before_run=false` in the command environment to
+prevent pnpm from automatically installing into the linked layout (PowerShell:
+`$env:pnpm_config_verify_deps_before_run='false'`).
 
 Use the root `package.json` as the source of truth for executable commands.
 The minimum selection is:
