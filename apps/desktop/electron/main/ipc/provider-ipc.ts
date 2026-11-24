@@ -1,6 +1,8 @@
 import {
   IPC,
   ErrorCodes,
+  NAMED_ENDPOINT_PRESETS,
+  canonicalEndpointUrl,
   inferEndpointProfile,
   normalizeApiStyle,
   type ModelBinding,
@@ -341,6 +343,7 @@ export function registerProviderIpc({
         | string
           | {
             providerId?: string;
+            presetId?: string;
             baseUrl?: string;
             apiKey?: string;
             apiStyle?: string;
@@ -379,6 +382,13 @@ export function registerProviderIpc({
       // stays the key for cache writes: the cache belongs to the saved endpoint,
       // not to a suggestion.
       let endpointBaseUrl = profile?.effectiveBaseUrl ?? baseUrl;
+      const preset = profile && NAMED_ENDPOINT_PRESETS.find((candidate) =>
+        (req.presetId !== undefined
+          ? candidate.id === req.presetId
+          : req.baseUrl === undefined && candidate.vendorKey === provider?.vendorKey) &&
+        candidate.apiStyle === apiStyle &&
+        canonicalEndpointUrl(candidate.baseUrl) === canonicalEndpointUrl(endpointBaseUrl)
+      );
       /*
         Which publisher's metadata this row is read against.
 
@@ -388,11 +398,11 @@ export function registerProviderIpc({
         from a model name. An unknown host keeps `custom`, where the catalog
         only answers an unambiguous id — metadata missing beats metadata wrong.
       */
-      const catalogVendorKey =
+      const catalogVendorKey = preset?.vendorKey ?? (
         provider?.vendorKey && provider.vendorKey !== "custom"
           ? provider.vendorKey
-          : (profile?.providerKey ?? "custom");
-
+          : (profile?.providerKey ?? "custom")
+      );
 
       // Cache hydration must stay fast; the renderer already requests a live
       // refresh after it has painted the cached list. Live requests load the
@@ -694,11 +704,13 @@ export function registerProviderIpc({
 
       // A public catalog can describe a custom endpoint's IDs, but cannot
       // establish availability when that endpoint did not answer discovery.
-      const catalogModels = provider?.vendorKey && provider.vendorKey !== "custom"
+      const hasAccountCatalog = provider?.authKind === OAUTH_AUTH_KIND
+        && provider.vendorKey && provider.vendorKey !== "custom";
+      const catalogModels = preset || hasAccountCatalog
         ? modelsDevCatalog.modelsForProvider({
             vendorKey: catalogVendorKey,
             baseUrl: endpointBaseUrl,
-            providerId: provider.id,
+            providerId: provider?.id ?? "",
             includeNonChat: true,
           })
         : [];
