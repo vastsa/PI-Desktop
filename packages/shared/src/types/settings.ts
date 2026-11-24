@@ -40,6 +40,18 @@ export type CloseBehavior = "ask" | "tray" | "quit";
 export type TranscriptDisplayMode = "flat" | "command-first" | "fully-folded";
 
 /**
+ * Where a running subagent is presented while it works (issue #2549).
+ *
+ * - `transcript`: delegates stay in the conversation transcript only.
+ * - `bar`: a session-scoped avatar row above the composer mirrors the running
+ *   delegates; topology cards, lifecycle rows and Work panel tabs stay put.
+ *
+ * Presentation only: neither value changes what a delegate does or what the
+ * host executes.
+ */
+export type SubagentStyle = "transcript" | "bar";
+
+/**
  * Preferences for the user-supplied boot animation (D679 / ADR 0338).
  *
  * The file itself is never named here — it is discovered in
@@ -257,6 +269,14 @@ export type AppSettings = {
    * it because their tools write on the remote machine.
    */
   inlineVisualizations?: boolean;
+  /**
+   * How a running subagent is presented (issue #2549): `transcript` keeps
+   * delegates in the conversation transcript only, `bar` adds a session-scoped
+   * avatar row above the composer. Absent and any unknown value read as
+   * `transcript`, so the field is written only when the user picks the bar;
+   * reading a missing field never persists the default. Presentation only.
+   */
+  subagentStyle?: SubagentStyle;
   /**
    * Prevent the display from sleeping while the app is running. Uses
    * Electron's `powerSaveBlocker` with `prevent-display-sleep` on all

@@ -675,6 +675,7 @@ export const ko = {
     subagentCount_one: "서브에이전트 {{count}}개",
     subagentCount_other: "서브에이전트 {{count}}개",
     subagentFinishedCount: "{{finished}}/{{total}} 완료",
+    presenceTurns: "{{n}}라운드", presenceRecord: "기록 보기", presenceCurrent: "현재", presenceResult: "결과",
     subagentCreating: "하위 에이전트 생성 중…",
     subagentStatus: {
       running: "실행 중",
@@ -1778,6 +1779,10 @@ sklm: {
     infiniteProviderRetryDesc: "네트워크 및 일시적인 제공자 오류가 성공할 때까지 계속 재시도됩니다. 언제든 중지할 수 있지만 API 사용량이 계속 발생할 수 있습니다.",
     smoothStreaming: "부드러운 스트리밍",
     smoothStreamingDesc: "스트리밍 텍스트를 한 글자씩 타자기 효과로 표시합니다. 시스템에서 동작 줄이기를 선호하면 자동으로 비활성화됩니다.",
+    subagentStyle: "하위 에이전트 표시",
+    subagentStyleDesc: "대화 기록을 유지하면서 입력창 위에도 실행 상태를 표시합니다.",
+    subagentStyleTranscript: "대화 안에 표시",
+    subagentStyleBar: "입력창 표시줄",
     inlineVisualizations: "인라인 시각화",
     inlineVisualizationsDesc: "에이전트가 세션 시각화 디렉터리에 작성한 대화형 HTML 카드를 대화에 표시합니다. 기본적으로 꺼져 있습니다: 프롬프트에 시각화 디렉터리를 제공하지 않고 visualize 스킬을 숨기며 기존 참조 줄도 표시하지 않습니다.",
     preventScreenSleep: "화면 절전 방지",

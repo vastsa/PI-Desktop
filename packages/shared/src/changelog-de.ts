@@ -5,6 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
+      "Aktiviere in den Unterhaltungseinstellungen die Leiste über dem Eingabefeld, um Status, Verbrauch und Protokolle der Subagenten ohne Scrollen zu sehen.",
       "Bei einer Neuinstallation erzeugt das mitgelieferte Plugin „Offizielle Erweiterungen“ Sitzungstitel automatisch; Vorschläge, Entwurfsverbesserung und KI-Gedächtnis bleiben aus, bis du sie einschaltest.",
       "Neue Aufgabe startet jetzt einen temporären Chat außerhalb von Projekten, und Unterhaltungen lassen sich zwischen Projekten oder zurück in den temporären Chat verschieben.",
       "Auf der leeren Startseite wechselst du das Projekt per Klick auf den Projektnamen oder „temporär“ im Titel; das projektlose Ziel heißt jetzt überall Temporärer Chat.",

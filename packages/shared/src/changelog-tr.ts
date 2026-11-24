@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
+      "Sohbeti kaydırmadan alt ajanların durumunu, kullanımını ve kayıtlarını görmek için konuşma ayarlarından giriş alanı çubuğunu seçin.",
       "Yeni kurulumda, birlikte gelen Resmi geliştirmeler eklentisi oturum başlıklarını otomatik oluşturur; öneriler, taslak iyileştirme ve yapay zekâ belleği siz açana kadar kapalı kalır.",
       "Yeni görev artık herhangi bir projenin dışında geçici bir sohbet başlatır ve sohbetler projeler arasında ya da Geçici sohbete geri taşınabilir.",
       "Boş ana sayfada projeyi değiştirmek için başlıktaki proje adına veya \"geçici\" sözcüğüne tıklayın; projesiz hedefin adı artık her yerde Geçici sohbet.",

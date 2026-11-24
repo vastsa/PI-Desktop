@@ -666,6 +666,7 @@ export const fr = {
     "subagentCount_one": "{{count}} sous-agent",
     "subagentCount_other": "{{count}} sous-agents",
     "subagentFinishedCount": "{{finished}}/{{total}} terminé",
+    presenceTurns: "Tours : {{n}}", presenceRecord: "Voir le journal", presenceCurrent: "En cours", presenceResult: "Résultat",
     "subagentCreating": "Démarrage du sous-agent…",
     "subagentStatus": {
       "running": "En cours d'exécution",
@@ -1770,6 +1771,10 @@ sklm: {
     "infiniteProviderRetryDesc": "Réessaie les erreurs réseau et temporaires jusqu’à la réussite. Vous pouvez toujours arrêter le tour ; la consommation d’API peut continuer.",
     "smoothStreaming": "Streaming fluide",
     "smoothStreamingDesc": "Libère le texte diffusé caractère par caractère pour un effet machine à écrire. Automatiquement désactivé lorsque le système préfère un mouvement réduit.",
+    subagentStyle: "Affichage des sous-agents",
+    subagentStyleDesc: "Afficher aussi les sous-agents actifs au-dessus du champ de saisie.",
+    subagentStyleTranscript: "Dans la conversation",
+    subagentStyleBar: "Barre de saisie",
     "inlineVisualizations": "Visualisations intégrées",
     "inlineVisualizationsDesc": "Affiche les cartes HTML interactives que l'agent écrit dans le répertoire de visualisations de la session. Désactivé par défaut : le prompt n'annonce aucun répertoire de visualisations, la compétence visualize est retirée et les lignes de référence existantes restent masquées.",
     "preventScreenSleep": "Empêcher la mise en veille",

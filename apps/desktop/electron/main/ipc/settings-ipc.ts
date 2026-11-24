@@ -1,4 +1,4 @@
-import { IPC, type UpdatePreference } from "@pi-desktop/shared";
+import { IPC, isSubagentStyle, type UpdatePreference } from "@pi-desktop/shared";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
 import type { IpcRegistrar } from "./types";
@@ -8,6 +8,7 @@ import { currentSystemProxyRelayUrl } from "../network-proxy";
 
 export type SettingsIpcDependencies = {
   registrar: IpcRegistrar;
+  sendToRenderer: (channel: string, payload: unknown) => void;
   getHost: () => HostProcess | null;
   getSidecar: () => AgentSidecar | null;
   dataDir: string;
@@ -34,6 +35,7 @@ export type SettingsIpcDependencies = {
 /** Register app settings and command-shell channels. */
 export function registerSettingsIpc({
   registrar,
+  sendToRenderer,
   getHost,
   getSidecar,
   dataDir,
@@ -81,6 +83,9 @@ export function registerSettingsIpc({
     let result: AppSettings;
     try {
       result = await host.call<AppSettings>("settings.set", validatedSettings);
+      if (isSubagentStyle(result.subagentStyle) && result.subagentStyle !== currentSettings.subagentStyle) {
+        sendToRenderer(IPC.event.settingsChanged, { subagentStyle: result.subagentStyle });
+      }
       await liveCallService?.settingsWritten(result);
     } finally {
       releaseSettingsWrite?.();

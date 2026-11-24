@@ -1,5 +1,16 @@
 # E2E Scenarios: Conversation and Sessions
 
+## E2E-SUBAGENT-composer-presence
+
+Start delegates in a local session. In transcript-only mode, verify the composer
+has no avatar row. Enable **Composer bar** in Conversation settings: the same
+running delegates appear above the input with their existing topology unchanged.
+Collapse the task dock; inspect an avatar and open its Work panel record. With
+more than six workers, focus `+N`, enter the grouped roster, and dismiss it with
+Escape. Stop a worker while another runs: its settled status remains visible;
+after the last worker settles the entire row disappears. Switch sessions and
+restart to verify isolation and the saved presentation preference.
+
 ## E2E-stop-navigation-running-state
 
 Hold the history read after a successful local Stop, switch to another running session, then resolve the older session's history. Verify only the stopped session is settled, the new transcript remains and its toolbar still offers Stop. Also navigate synchronously during the hydration commit to exercise the final state writer. Coverage: `stop-navigation-running-state.test.mjs`, related smart-stop/terminal regressions, and `scripts/e2e-stop-navigation-running-state.mjs` using the production store and ComposerToolbar in Electron.

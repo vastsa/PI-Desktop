@@ -144,6 +144,14 @@ profiles, data directories, sockets, ports, logs, and artifacts. Install or
 rebuild dependencies only when the host environment is missing or incompatible
 and record the reason. Clean CI and release runners may install from lockfiles.
 
+From a fresh request worktree, run `node scripts/reuse-worktree-deps.mjs` with
+the same Node version/ABI as the primary installation. It links installed
+third-party packages and points `@pi-desktop/*` at this worktree; build those
+workspace packages here. If the primary installation is stale, pass the path of
+another checkout of this repository with matching installed dependencies and
+keep it until the consuming worktree is removed. If none matches, use an
+isolated install. Never install, prune, or rebuild through shared links.
+
 Use the root `package.json` as the source of truth for executable commands.
 The minimum selection is:
 

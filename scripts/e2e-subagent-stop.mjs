@@ -123,6 +123,11 @@ async function connect(port, type) {
 }
 const ports = [await freePort(), await freePort()];
 const env = { ...process.env, HOME: join(scratch, "home"), PI_DESKTOP_DATA_DIR: join(scratch, "data"), PI_DESKTOP_HOST_BIN: resolveHostBinary(), PI_DESKTOP_PLAN_UI_PROBE: "1", PI_DESKTOP_TEST_API_KEY: "local-fixture", PI_DESKTOP_TEST_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`, PI_DESKTOP_TEST_MODEL: "deepseek-flash", ELECTRON_RENDERER_URL: "", PI_DESKTOP_START_MAXIMIZED: "0" };
+if (process.platform === "win32") {
+  env.USERPROFILE = env.HOME;
+  env.APPDATA = join(scratch, "roaming");
+  env.LOCALAPPDATA = join(scratch, "local");
+}
 delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(resolveElectronBinary(root).electronBinary, [`--remote-debugging-port=${ports[0]}`, `--inspect=${ports[1]}`, `--user-data-dir=${join(scratch, "profile")}`, "."], { cwd: join(root, "apps/desktop"), env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
 let output = "";
@@ -143,6 +148,7 @@ try {
   const setup = await main.evaluate(`globalThis.__PI_DESKTOP_PLAN_UI_PROBE({operation:'liveSetup',workspace:${JSON.stringify(workspace)}})`);
   assert.equal(setup.ok, true, JSON.stringify(setup));
   const invoke = (key, ...input) => page.evaluate(`piDesktop.invoke(piDesktop.channels.invoke[${JSON.stringify(key)}],...${JSON.stringify(input)})`);
+  assert.equal((await invoke("settingsSet", { transcriptDisplayMode: "flat" })).ok, true);
   assert.equal((await invoke("providersUpdate", { id: setup.providerId, models: [{ id: setup.modelId, contextWindow: 128000, maxTokens: 8192, thinkingLevels: ["off", "medium"], defaultThinkingLevel: "medium" }] })).ok, true);
   assert.equal((await invoke("sessionConfigure", setup.sessionId, { mode: "agent", providerId: setup.providerId, modelId: setup.modelId, thinkingLevel: "medium" })).ok, true);
   await invoke("sessionRename", setup.sessionId, "Subagent stop controls · local fixture");
@@ -150,8 +156,30 @@ try {
   assert.equal((await invoke("agentPrompt", { sessionId: setup.sessionId, content: "Start two fixture workers for the stop controls demo." })).ok, true);
   await until(() => workers.size === 2 && parents.size > 0, "two real delegates and coordinator");
   const buttons = () => page.evaluate(`Array.from(document.querySelectorAll('.subagent-topology-node-actions .subagent-stop-button')).map(b=>({text:b.textContent,disabled:b.disabled}))`);
-  await until(async () => (await buttons()).length === 2, "two stop buttons");
-  await page.evaluate(`document.querySelector('.subagent-topology-node-header').click()`);
+  await until(async () => (await buttons()).length === 2, "two stop buttons").catch(async error => {
+    throw new Error(`${error.message}\nFixture UI: ${await page.evaluate('document.body.innerText.slice(-2200)')}`);
+  });
+  const bar = '.composer-shell > .subagent-bar:first-child';
+  const barVisible = () => page.evaluate(`!!document.querySelector(${JSON.stringify(bar)})`);
+  assert.equal(await barVisible(), false, "transcript-only is the default");
+  const settings = await invoke("settingsGet");
+  assert.equal(settings.ok, true);
+  const setStyle = async subagentStyle => {
+    const result = await invoke("settingsSet", { subagentStyle });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal((await invoke("settingsGet")).data.subagentStyle, subagentStyle);
+  };
+  await setStyle("bar");
+  await until(barVisible, "running delegates gain a composer bar without replacing topology");
+  assert.equal((await buttons()).length, 2);
+  await setStyle("transcript");
+  await until(async () => !await barVisible(), "switching back removes the entire bar");
+  await setStyle("bar");
+  await until(barVisible, "restored presence bar");
+  await page.evaluate(`document.querySelector('.presence-avatar').focus()`);
+  await until(() => page.evaluate(`!!document.querySelector('.presence-card footer button')`), "focus opens delegate card");
+  assert.equal(await page.evaluate(`document.querySelector('.presence-card').closest('.composer-shell') === null`), true);
+  await page.evaluate(`document.querySelector('.presence-card footer button').click()`);
   await until(() => page.evaluate(`!!document.querySelector('.subagent-transcript-composer-controls .stop-btn')`), "detail stop control");
   await until(() => page.evaluate(`document.body.innerText.includes('Partial output from worker A')`), "worker A partial output rendered");
   const layout = await page.evaluate(`({
@@ -179,6 +207,7 @@ try {
   await until(() => workers.size === 0, "stop-all cancels remaining delegates");
   assert.equal(parents.size, 1, "stop-all preserves coordinator");
   await until(async () => (await buttons()).length === 0, "all terminal controls disappear");
+  await until(async () => !await barVisible(), "last settlement removes the entire presence bar");
   const invalid = await invoke("agentStopSubagents", { sessionId: setup.sessionId, delegationIds: [] });
   assert.equal(invalid.ok, false, "empty selection must not mean stop-all");
   await until(async () => {
