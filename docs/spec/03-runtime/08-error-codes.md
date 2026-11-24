@@ -139,6 +139,9 @@ and transient 5xx envelopes retain their existing classifications.
 | `TOOL_BINARY_CONTENT` | no | `Read` refused to dump a binary file into the model context |
 | `TOOL_NOT_FOUND` | no | unknown tool |
 | `TOOL_DENIED` | no | permission denied / mode forbidden |
+| `TOOL_CONTEXT_CHANGED` | no | session mode or workspace changed during admission; start a new authorized call |
+| `WRITE_SCOPE_UNAVAILABLE` | no | the host cannot verify a local write scope for this workspace |
+| `WRITE_SCOPE_VIOLATION` | no | a delegated write target or move destination is outside the verified scope; report the blocked path |
 | `TOOL_TIMEOUT` | yes | tool execution timeout |
 | `TOOL_FAILED` | maybe | tool executed but failed |
 | `FILE_NOT_FOUND` | no | Read/Write/Edit target path does not exist (distinct from `TOOL_DENIED`) |

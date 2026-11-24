@@ -28,11 +28,16 @@ export type SubagentSource = "builtin" | "user";
 
 /** Provider/model pin declared by a definition (resolved in Electron main). */
 export type SubagentModelPin = {
+  thinkingLevel?: SubagentThinkingLevel;
   providerId: string;
   modelId: string;
 };
 
 export type SubagentDefinition = {
+  /** Assigned by the mode catalog, never parsed from an agent document. */
+  modeOwner?: string;
+  /** Catalog identity checked by main immediately before a bundled Task starts. */
+  catalogMode?: string;
   /** Delegate id used as the `Task` argument, e.g. "code-reviewer". */
   name: string;
   /** One line telling the parent model when to delegate to this agent. */
@@ -113,6 +118,7 @@ export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
   "TaskWait",
   "TaskList",
   "TaskStop",
+  "TaskSend",
   "EnterPlanMode",
   "EnterGoalMode",
   "TodoWrite",
@@ -421,8 +427,19 @@ export function parseSubagentDefinition(
 
   const model = parseModelPin(frontmatter, errors);
   const fallbackModels: SubagentModelPin[] = [];
-  for (const value of asList(frontmatter.get("fallbackmodels"))) {
+  const fallbackKeys = asList(frontmatter.get("fallbackmodels"));
+  const levels = asList(frontmatter.get("fallbackthinkinglevels"));
+  if (levels.length && levels.length !== fallbackKeys.length) {
+    errors.push("fallbackThinkingLevels: expected one level per fallback model (use inherit for the role default)");
+  }
+  for (const [index, value] of fallbackKeys.entries()) {
     const pin = parseModelPin(new Map([["model", value]]), errors);
+    const level = levels[index];
+    if (pin && level && level !== "inherit") {
+      const valid = SUBAGENT_THINKING_LEVELS.find(candidate => candidate === level);
+      if (valid) pin.thinkingLevel = valid;
+      else errors.push(`fallbackThinkingLevels: unknown level "${level}" for ${value}`);
+    }
     if (pin && !fallbackModels.some((entry) => subagentModelKey(entry) === subagentModelKey(pin))) {
       fallbackModels.push(pin);
     }

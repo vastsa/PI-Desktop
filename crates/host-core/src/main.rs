@@ -39,6 +39,8 @@ mod turn_queue;
 mod user_skills;
 mod user_subagents;
 mod visualizations;
+#[cfg(windows)]
+mod windows_relative;
 mod workspace;
 
 use std::sync::Arc;
