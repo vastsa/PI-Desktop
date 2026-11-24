@@ -722,8 +722,7 @@ export async function createWindow({
     windowState.workPanelBaseBounds = { ...appliedBounds };
     windowState.workPanelLastAppliedBounds = { ...appliedBounds };
   };
-  // Custom window controls (Windows/Linux) need maximize state to swap the
-  // maximize/restore glyph.
+  // Windows/Linux window controls use maximize state for the restore glyph.
   if (process.platform !== "darwin") {
     // Native-runner E2E fixture: establish the initial native state before
     // the renderer mounts, then let WindowControls query it through IPC.
