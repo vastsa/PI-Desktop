@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
+      "In Conversation settings, choose Composer bar to track active subagents above the input. The transcript shows expandable tool rows instead of subagent cards, even after a run ends.",
       "On a fresh install, session titles are generated automatically by the bundled Official enhancements plugin; suggestions, draft enhancement and AI memory stay off until you turn them on.",
       "New task now starts a temporary chat outside any project, and conversations can move between projects or back to Temporary chat.",
       "On the empty home, click the project name or \"temporarily\" in the title to switch projects; the project-free destination is now called Temporary chat everywhere.",

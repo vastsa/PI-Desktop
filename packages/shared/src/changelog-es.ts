@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
+      "Elige Barra de entrada en los ajustes de conversación para seguir a los subagentes activos sobre el cuadro de entrada. La conversación muestra filas de herramientas desplegables en lugar de tarjetas de subagentes, incluso después de que terminen.",
       "En una instalación nueva, el complemento incluido Mejoras oficiales genera automáticamente los títulos de las sesiones; las sugerencias, la mejora de borradores y la memoria de IA siguen desactivadas hasta que las actives.",
       "Nueva tarea ahora inicia un chat temporal fuera de cualquier proyecto, y las conversaciones pueden moverse entre proyectos o volver a Chat temporal.",
       "En la página de inicio vacía, haz clic en el nombre del proyecto o en «temporal» del título para cambiar de proyecto; el destino sin proyecto ahora se llama Chat temporal en todas partes.",

@@ -665,6 +665,7 @@ export const ptBR = {
     subagentCount_one: "{{count}} subagente",
     subagentCount_other: "{{count}} subagentes",
     subagentFinishedCount: "{{finished}}/{{total}} finalizados",
+    presenceTurns: "Rodadas: {{n}}", presenceRecord: "Ver histórico", presenceCurrent: "Atual", presenceResult: "Resultado",
     subagentCreating: "Iniciando subagente…",
     subagentStatus: {
       running: "Em execução",
@@ -1741,6 +1742,10 @@ export const ptBR = {
     infiniteProviderRetryDesc: "Continua tentando indefinidamente em caso de falhas temporárias de rede ou do provedor. Ainda é possível interromper a rodada; enquanto esta opção estiver ativada, o consumo e os custos da API podem continuar.",
     smoothStreaming: "Exibição gradual",
     smoothStreamingDesc: "Exibe o texto recebido caractere por caractere, criando um efeito de máquina de escrever. É desativada automaticamente quando o sistema está configurado para reduzir animações.",
+    subagentStyle: "Exibição dos subagentes",
+    subagentStyleDesc: "Mostre os cartões dos subagentes na conversa ou acompanhe os subagentes ativos acima do campo de mensagem e expanda as chamadas de ferramentas na conversa.",
+    subagentStyleTranscript: "Na conversa",
+    subagentStyleBar: "Barra de entrada",
     inlineVisualizations: "Visualizações embutidas",
     inlineVisualizationsDesc: "Mostra os cartões HTML interativos que o agente escreve no diretório de visualizações da sessão. Desativado por padrão: o prompt não anuncia diretório de visualizações, a habilidade visualize fica oculta e as linhas de referência existentes permanecem escondidas.",
     preventScreenSleep: "Impedir suspensão da tela",

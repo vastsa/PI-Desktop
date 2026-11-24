@@ -1,5 +1,26 @@
 # E2E Scenarios: Conversation and Sessions
 
+## E2E-SUBAGENT-composer-presence
+
+Start delegates in a local session with the default **In transcript** style.
+Verify the delegation topology cards appear in the transcript and there is no
+avatar row above the input. Select **Composer bar** in Conversation settings:
+verify the same workers appear above the input and their `Task` calls are now
+ordinary expandable tool rows. Expand a row to inspect its tool history and
+check that no inline delegation card duplicates the bar.
+
+Collapse the task dock; inspect an avatar and open its Work panel record. With
+more than six workers, focus `+N`, enter the grouped roster, and dismiss it with
+Escape. Stop a worker while another runs: its settled status remains visible in
+the bar. After the last worker settles, verify the bar disappears but no inline
+cards return. The expandable `Task` rows, lifecycle rows and open Work panel
+record remain available. Switch sessions and restart to verify isolation and
+the saved style. Switch back to **In transcript** to restore the topology cards.
+
+Production Electron captures (local streaming fixture): [Transcript only](/screenshots/subagent-presence/transcript-light.png), [Light, task dock collapsed](/screenshots/subagent-presence/bar-light-collapsed.png), [Dark, reduced motion](/screenshots/subagent-presence/card-dark-reduced-motion.png).
+Set `PI_SUBAGENT_SCREENSHOT_DIR` when running `node scripts/e2e-subagent-stop.mjs`
+to capture the same states.
+
 ## E2E-stop-navigation-running-state
 
 Hold the history read after a successful local Stop, switch to another running session, then resolve the older session's history. Verify only the stopped session is settled, the new transcript remains and its toolbar still offers Stop. Also navigate synchronously during the hydration commit to exercise the final state writer. Coverage: `stop-navigation-running-state.test.mjs`, related smart-stop/terminal regressions, and `scripts/e2e-stop-navigation-running-state.mjs` using the production store and ComposerToolbar in Electron.

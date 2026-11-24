@@ -308,6 +308,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
   registerSettingsIpc({
     registrar,
+    sendToRenderer,
     getHost,
     getSidecar,
     dataDir,

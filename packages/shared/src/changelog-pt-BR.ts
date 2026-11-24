@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
+      "Selecione Barra de entrada nas configurações de conversa para acompanhar os subagentes ativos acima do campo de mensagem. A conversa mostra linhas expansíveis de ferramentas em vez de cartões de subagentes, mesmo após o fim da execução.",
       "Em uma instalação nova, o plugin incluído Melhorias oficiais gera automaticamente os títulos das sessões; sugestões, aprimoramento de rascunho e memória de IA continuam desligados até você ativá-los.",
       "Nova tarefa agora inicia um chat temporário fora de qualquer projeto, e as conversas podem ser movidas entre projetos ou de volta para Chat temporário.",
       "Na tela inicial vazia, clique no nome do projeto ou em \"temporariamente\" no título para trocar de projeto; o destino sem projeto agora se chama Chat temporário em todo lugar.",

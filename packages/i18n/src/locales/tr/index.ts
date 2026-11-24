@@ -675,6 +675,7 @@ export const tr = {
     subagentCount_one: "{{count}} alt ajan",
     subagentCount_other: "{{count}} alt ajan",
     subagentFinishedCount: "{{finished}}/{{total}} bitti",
+    presenceTurns: "Tur: {{n}}", presenceRecord: "Kaydı aç", presenceCurrent: "Şimdi", presenceResult: "Sonuç",
     subagentCreating: "Alt ajan başlatılıyor…",
     subagentStatus: {
       running: "Çalışıyor",
@@ -1772,6 +1773,10 @@ sklm: {
     infiniteProviderRetryDesc: "Ağ ve geçici sağlayıcı hataları istek başarılı olana kadar yeniden denenir. Çalışmayı yine durdurabilirsiniz; açıkken API kullanımı sürebilir.",
     smoothStreaming: "Düzgün akış",
     smoothStreamingDesc: "Akan metni daktilo efekti için karakter karakter gösterir. Sistem hareket azaltmayı tercih ettiğinde otomatik devre dışı kalır.",
+    subagentStyle: "Alt ajan görünümü",
+    subagentStyleDesc: "Alt ajan kartlarını sohbette gösterin veya etkin alt ajanları giriş alanının üzerinden takip edip sohbetteki araç çağrılarının ayrıntılarını genişletin.",
+    subagentStyleTranscript: "Sohbet içinde",
+    subagentStyleBar: "Giriş çubuğu",
     inlineVisualizations: "Satır içi görselleştirmeler",
     inlineVisualizationsDesc: "Aracının oturumun görselleştirme dizinine yazdığı etkileşimli HTML kartlarını gösterir. Varsayılan olarak kapalı: istem görselleştirme dizinini bildirmez, visualize becerisi gizlenir ve mevcut referans satırları gösterilmez.",
     preventScreenSleep: "Ekran uykusunu engelle",
