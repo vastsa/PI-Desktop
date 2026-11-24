@@ -317,6 +317,7 @@ import {
   mergeProviderHeaders,
   providerHeadersEqual,
   withProviderHeaders,
+  withProviderHeadersFetch,
 } from "./provider-headers.js";
 import {
   captureProviderResponse,
@@ -2315,6 +2316,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // justified a rebuild does not carry into the next request (issue #234).
         this.providerFetchFailure = undefined;
         this.providerTransportHealth.reset();
+        const providerHeaders = mergeProviderHeaders(
+          copilotRequestHeaders(this.provider, context),
+          this.provider.headers,
+        );
         const requestOptions: SimpleStreamOptions = withProviderHeaders(
           withOpenCodeSessionHeaders(
             {
@@ -2355,10 +2360,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               sessionId: this.sessionId,
             },
           ),
-          mergeProviderHeaders(
-            copilotRequestHeaders(this.provider, context),
-            this.provider.headers,
-          ),
+          providerHeaders,
           m.api,
         );
         const baseOptions = withCodexCacheableInstructions(requestOptions, m);
@@ -2424,7 +2426,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             const omitThinking = this.thinkingLevel === "omit";
             const replayOptions = {
               ...retryOptions,
-              fetch: providerRequestFetch(m.api, options?.fetch, this.provider.authKind),
+              fetch: withProviderHeadersFetch(
+                providerRequestFetch(m.api, options?.fetch, this.provider.authKind),
+                providerHeaders,
+              ),
               // Keep the adapter's payload shaping without replaying extension hooks
               // or a retry's output-limit repair.
               onPayload: withSessionAffinityOptions(baseOptions, sessionAffinity).onPayload,

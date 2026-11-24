@@ -30,6 +30,10 @@ test("only the selected, visible, focused conversation is sent to the sidecar", 
   controller.setViewingSession("second");
   controller.noteTurnStarted("second");
   assert.deepEqual(last(), ["agent.invalidateCacheWarming", { sessionId: "second" }]);
+  controller.notePluginChanged({ reason: "themes" });
+  assert.deepEqual(last(), ["agent.invalidateCacheWarming", { sessionId: "second" }]);
+  controller.notePluginChanged({ reason: "scope" });
+  assert.deepEqual(last(), ["agent.invalidateCacheWarming", { all: true }]);
   focused = false;
   window.emit("blur");
   assert.deepEqual(last(), ["agent.setCacheWarmingSession", { sessionId: null }]);

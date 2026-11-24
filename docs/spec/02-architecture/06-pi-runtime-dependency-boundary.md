@@ -60,8 +60,10 @@ Settings → Agent Behavior exposes a default-off experimental switch. Electron
 authorizes at most one ordinary local Desktop conversation, selected in the
 visible, focused main window. The sidecar captures the last successful real
 request and refreshes it only after the turn has settled. Focus loss, navigation,
-a new turn, a provider or session configuration change, and runtime disposal
-cancel warming. Native Pi sessions retain their SDK lifecycle.
+a new turn, a provider, session, or plugin configuration change, and runtime
+disposal cancel warming. Returning to a conversation can resume an eligible
+request within the original window, provided plugin configuration has not
+changed. Native Pi sessions retain their SDK lifecycle.
 
 Use the effective request's known TTL and skip a cache that covers the
 30-minute window. An unknown TTL, including for custom endpoints, uses a

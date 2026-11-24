@@ -23,6 +23,9 @@ Render the normal Composer toolbar for an active remote session that denies Stop
   retains the original headers, skips the observer, and sends a one-token
   output limit. Have the extension replace the normal request body and
   verify no refresh is sent.
+- Switch away from a conversation and change a plugin setting, activation,
+  or scope. Return before the original deadline and verify that only a new
+  normal request can arm warming.
 
 ## E2E-USAGE-explicit-zero-cache
 

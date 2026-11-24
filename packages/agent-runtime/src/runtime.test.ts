@@ -833,18 +833,26 @@ describe("foreground cache warming through the normal turn", () => {
     const root = await mkdtemp(join(tmpdir(), "pi-cache-warming-extension-"));
     const entry = join(root, "extension.mjs");
     await writeFile(entry, `export default function (pi) {
-      pi.on("before_provider_headers", ({ headers }) => { headers["x-cache-test"] = "retained"; });
+      pi.on("before_provider_headers", ({ headers }) => {
+        headers["x-cache-test"] = "retained";
+        headers["x-cache-route"] = "extension";
+      });
       pi.on("before_provider_request", ({ payload }) => ${hook === "replace" ? "({ ...payload, max_tokens: 64 })" : "undefined"});
     }`);
+    const wireFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response("synthetic wire response", { status: 400 }),
+    );
     const onEvent = vi.fn();
     const runtime = createRuntime({
       thinkingLevel: "off", onEvent,
       host: { call: vi.fn().mockResolvedValue({}) },
+      provider: { ...provider, headers: { "X-Cache-Route": "configured" } },
       trustedExtensions: hook === "none" ? [] : [{ id: entry, entry, root, label: "Cache warming", source: "plugin" }],
     });
     const { TrustedExtensionRunner } = await import("./extensions/runner.js");
     const beforeRequest = vi.spyOn(TrustedExtensionRunner.prototype, "emitBeforeProviderRequest");
     const models = (runtime as unknown as { models: Models }).models;
+    const actualStream = models.streamSimple.bind(models);
     const payloads: unknown[] = [];
     const stream = vi.spyOn(models, "streamSimple").mockImplementation((model, _context, options) => {
       const result = assistantMessage({ content: [{ type: "text", text: "Synthetic answer" }] }) as AssistantMessage;
@@ -887,6 +895,13 @@ describe("foreground cache warming through the normal turn", () => {
       expect(stream.mock.calls[1][2]?.headers).toEqual(stream.mock.calls[0][2]?.headers);
       if (hook === "observe") {
         expect(stream.mock.calls[1][2]?.headers).toMatchObject({ "x-cache-test": "retained" });
+        for (const args of stream.mock.calls) await actualStream(...args).result();
+        expect(wireFetch).toHaveBeenCalledTimes(2);
+        for (const [, init] of wireFetch.mock.calls) {
+          const headers = new Headers(init?.headers);
+          expect(headers.get("x-cache-route")).toBe("configured");
+          expect(headers.get("x-cache-test")).toBe("retained");
+        }
       }
       expect(onEvent.mock.calls.map(([event]) => event)).toEqual([
         expect.objectContaining({ turnId: "turn-1", event: expect.objectContaining({ type: "usage" }) }),
@@ -900,6 +915,7 @@ describe("foreground cache warming through the normal turn", () => {
       await runtime.dispose();
       vi.useRealTimers();
       beforeRequest.mockRestore();
+      wireFetch.mockRestore();
       await rm(root, { recursive: true, force: true });
     }
   });

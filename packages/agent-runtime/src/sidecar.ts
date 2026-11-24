@@ -491,7 +491,9 @@ async function handle(method: string, params: any): Promise<unknown> {
       return { ok: true };
     }
     case "agent.invalidateCacheWarming": {
-      if (typeof params?.sessionId === "string") {
+      if (params?.all === true) {
+        for (const runtime of runtimes.values()) runtime.invalidateCacheWarming();
+      } else if (typeof params?.sessionId === "string") {
         runtimes.get(params.sessionId)?.invalidateCacheWarming();
       } else if (typeof params?.providerId === "string") {
         for (const runtime of runtimes.values()) runtime.invalidateCacheWarming(params.providerId);

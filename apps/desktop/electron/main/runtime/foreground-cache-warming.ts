@@ -1,6 +1,11 @@
 import type { BrowserWindow } from "electron";
 import type { AgentSidecar } from "../agent-sidecar";
 
+const PLUGIN_CHANGES = new Set([
+  "agentExtensions", "disable", "enable", "importExtension", "install",
+  "market.applyUpdates", "market.install", "reload", "scope", "settings", "uninstall",
+]);
+
 export function createForegroundCacheWarming({
   getMainWindow,
   getSidecar,
@@ -31,6 +36,12 @@ export function createForegroundCacheWarming({
 
   return {
     sync,
+    notePluginChanged(change: unknown): void {
+      const reason = (change as { reason?: unknown } | null)?.reason;
+      if (typeof reason === "string" && PLUGIN_CHANGES.has(reason)) {
+        void getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined);
+      }
+    },
     applySettings(settings?: { foregroundCacheWarmingEnabled?: unknown } | null): void {
       enabled = settings?.foregroundCacheWarmingEnabled === true;
       sync();

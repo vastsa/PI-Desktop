@@ -485,6 +485,7 @@ function sendToRenderer(channel: string, payload: unknown) {
   applicationLifecycle?.traySessions.observeEvent(channel, payload);
   applicationLifecycle?.taskbarUnreadBadge.observeEvent(channel, payload);
   if (channel === IPC.event.pluginChanged) {
+    foregroundCacheWarming.notePluginChanged(payload);
     applicationLifecycle?.applyNativeThemeSource({
       theme: applicationAppearanceState.appThemePreference,
     });
