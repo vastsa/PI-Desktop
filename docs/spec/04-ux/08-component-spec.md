@@ -1737,6 +1737,12 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   or scrolling and remains visible while dragging, so the independent regions
   stay available without becoming persistent visual rails.
 
+  Project-bound rows in Recent keep their project label ahead of an
+  ellipsizing session title, so long titles cannot consume the label's width.
+  The label retains its full name on hover. This sizing applies only to
+  unpinned project rows in Recent; pinned rows, path-less sessions, and rows
+  inside project groups keep their existing layout and session semantics.
+
 ---
 
 ## 7. ChatTranscript

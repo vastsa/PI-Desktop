@@ -362,6 +362,12 @@
   white-space: nowrap;
 }
 
+/* Recent rows share one line between task and project identity. Let a long
+   task title take only the space left after the project label. */
+.thread-item.recent-project-session .thread-item-project {
+  flex: 0 0 auto;
+}
+
 /* Multi-select highlight: visually distinct from the single active row. */
 .thread-item.selected {
   background: color-mix(in oklab, var(--ds-accent) 12%, transparent);

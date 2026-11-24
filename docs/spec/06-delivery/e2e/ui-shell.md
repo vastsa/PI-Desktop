@@ -1781,6 +1781,28 @@
   supported window size. Existing hover cards, context menus, drag/drop, and
   project pinning retain their normal behavior.
 
+## E2E-SIDEBAR-recent-project-label-width
+
+- **Preconditions**: Sidebar contains an unpinned project conversation and a
+  path-less Temporary conversation in Recent; at least one project session has
+  a title much longer than its project display name. The same project also has
+  a pinned conversation and a visible project-group row.
+- **Steps**: 1) Open the chat sidebar at its default width and inspect the
+  Recent rows. 2) Focus the session row and hover the project label.
+  3) Open the row menu and select the conversation. 4) Repeat at the minimum
+  supported sidebar width, then compare the Pinned, Temporary, and project
+  history rows.
+- **Expected**: The long Recent session title ellipsizes before it needlessly
+  consumes the project label's width; the full project name remains available
+  on hover. The session row remains selectable and its existing actions open.
+  Temporary rows have no Recent project-label sizing, and Pinned and
+  project-history row presentation and semantics are unchanged.
+- **Specs linked**: `04-ux/08-component-spec.md` §6.6.
+- **Acceptance**: Quality (sidebar layout and navigation).
+- **Milestone**: M5.
+- **Status**: Documented; SSR regression coverage in
+  `sidebar-pinned-rendering.test.mjs`.
+
 ## US-UI-59 Session-rooted background tools
 - Start a visible turn in project A, switch to project B while it runs, and
   inspect both sidebar status indicators.
