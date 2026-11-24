@@ -111,7 +111,10 @@ test("image generation selection hides the summary when nothing can be chosen", 
   // model — now lives in the shared helper, pinned by image-generation-default.test.mjs.
   assert.ok(imageModelRowSource.includes("imageGenerationPickerCandidates("));
   assert.match(imageModelRowSource, /if \(!options\.some\(\(option\) => !option\.disabled\)\) return null;/);
-  assert.match(imageModelRowSource, /if \(candidates\.length === 0\) return null;/);
+  // With no candidates the row must still render, so the GenerateImages
+  // error pointer lands on a visible setting instead of a dead end (#2563).
+  assert.match(imageModelRowSource, /if \(candidates\.length === 0\) \{/);
+  assert.match(imageModelRowSource, /imageModelNoneAvailable/);
   assert.match(imageModelRowSource, /imageModelUnavailable/);
 });
 

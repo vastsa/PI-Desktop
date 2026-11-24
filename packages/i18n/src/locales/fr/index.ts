@@ -1120,6 +1120,7 @@ export const fr = {
     "imageModel": "Modèle de génération d’images",
     "imageModelUnset": "Non configuré",
     "imageModelUnavailable": "Indisponible pour le moment",
+    "imageModelNoneAvailable": "Aucun modèle de génération d’images disponible. Marquez un modèle comme capable de générer des images dans les réglages des modèles d’un fournisseur.",
     "imageModelSaveFailed": "Impossible d’enregistrer le modèle.",
     "clearImageModel": "Effacer",
     "setImageModel": "Définir comme modèle d’images",

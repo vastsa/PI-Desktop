@@ -1127,6 +1127,7 @@ export const ko = {
     "imageModel": "이미지 생성 모델",
     "imageModelUnset": "설정되지 않음",
     "imageModelUnavailable": "현재 사용 불가",
+    "imageModelNoneAvailable": "사용 가능한 이미지 생성 모델이 없습니다. 제공자 모델 설정에서 모델을 이미지 생성 가능으로 표시하세요.",
     "imageModelSaveFailed": "이미지 모델을 저장할 수 없습니다.",
     "clearImageModel": "지우기",
     "setImageModel": "이미지 모델로 설정",

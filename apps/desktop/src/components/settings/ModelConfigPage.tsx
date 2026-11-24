@@ -583,18 +583,19 @@ export function ModelConfigPage() {
         statusRevision={jevStatusRevision}
       />
 
-      {imageGenerationCandidates.length > 0 ? (
-        <section className="settings-card-block">
-          <div className="settings-panel model-default-panel">
-            <ImageGenerationModelRow
-              settings={settings}
-              providers={providers}
-              busy={changingImageModel}
-              onChange={setImageGenerationDefault}
-            />
-          </div>
-        </section>
-      ) : null}
+      {/* Rendered unconditionally: an empty candidate list must still show
+          the image model row so the GenerateImages error pointer (#2563)
+          always lands on a visible setting. */}
+      <section className="settings-card-block">
+        <div className="settings-panel model-default-panel">
+          <ImageGenerationModelRow
+            settings={settings}
+            providers={providers}
+            busy={changingImageModel}
+            onChange={setImageGenerationDefault}
+          />
+        </div>
+      </section>
 
       {setupFor !== null ? (
         <ProviderSetupDialog

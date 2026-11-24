@@ -1127,6 +1127,7 @@ export const tr = {
     "imageModel": "Görsel oluşturma modeli",
     "imageModelUnset": "Yapılandırılmadı",
     "imageModelUnavailable": "Şu anda kullanılamıyor",
+    "imageModelNoneAvailable": "Kullanılabilir görsel üretim modeli yok. Bir sağlayıcının model ayarlarında bir modeli görsel üretebilir olarak işaretleyin.",
     "imageModelSaveFailed": "Görsel modeli kaydedilemedi.",
     "clearImageModel": "Temizle",
     "setImageModel": "Görsel modeli olarak ayarla",

@@ -38,7 +38,23 @@ export function ImageGenerationModelRow({
     binding,
     providers,
   );
-  if (candidates.length === 0) return null;
+  // The row never disappears, not even with nothing to pick (#2563): the
+  // built-in GenerateImages error sends the user here, and a hidden row
+  // turned that pointer into a dead end.
+  if (candidates.length === 0) {
+    return (
+      <div className="settings-row model-default-row model-image-row">
+        <div className="settings-row-copy model-default-copy">
+          <div className="settings-row-title model-default-label">{t("settings.imageModel")}</div>
+          <div className="settings-row-detail model-default-value">
+            <span className="model-default-empty" role="status">
+              {t("settings.imageModelNoneAvailable")}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const activeCandidate = binding
     ? candidates.find((candidate) =>
