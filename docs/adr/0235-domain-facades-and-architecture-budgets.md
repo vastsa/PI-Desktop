@@ -25,7 +25,8 @@ growing again.
    test surface.
 4. Enforce source-size budgets with `node scripts/check-architecture.mjs`, which
    protects the facade limits, rejects newly oversized TypeScript files, and
-   requires a documented reason for oversized Rust files.
+   requires a documented reason for oversized Rust files. It also warns when an
+   existing oversized production file grows relative to the comparison base.
 5. Run the focused Biome lint, architecture checker, Rust formatting, and
    workspace Clippy checks in CI alongside build, typecheck, and test.
 
