@@ -1,6 +1,25 @@
 # Changelog
 
+## 0.13.0
+
+- Show lightweight skeletons shaped for the directory tree, document, diff, page or table being loaded. Keep existing content during background refresh. Respect reduced motion and distinguish loading from empty and error states.
+
+## 0.12.0
+
+- Open, edit and preview multiple documents in one tab strip. Keep drafts, editor state and view modes per file. Save or discard individual tabs without affecting their neighbors.
+
+## 0.11.0
+
+- Keep Files and Git in the bottom bar. Offer repository initialization or installation guidance when needed.
+- Browse changes and history above a docked branch/sync toolbar and commit editor. Add batch index actions and explicit remote synchronization.
+
 ## Unreleased
+
+- Streamline context menus, label the toolbar and add recursive expand/collapse.
+  Move files and folders by dragging them within the local tree. Visible folders
+  track external additions and removals without a manual refresh.
+- Manage local Git changes in the panel: inspect diffs, stage or unstage a file,
+  and commit staged changes without running a terminal command.
 
 - The editor's find / replace panel and the "Go to line" dialog (Ctrl/Cmd+Alt+G)
   follow the plugin palette: fields, placeholders, carets and buttons stay

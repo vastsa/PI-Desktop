@@ -121,6 +121,12 @@ showing Name, Base URL, or API format on the named-service path. Chat turns
 still use the selected pi-ai adapter (`chat_completions`, `responses`,
 `anthropic_messages`, `google_generative_ai`, or `opencode_go`). Zhipu / Z.AI
 Completions requests use `thinkingFormat: "zai"` and `zaiToolStream: true`.
+Mistral Chat Completions requests suppress pi-ai's OpenAI-only `store` field,
+which the endpoint rejects with HTTP 422 (`extra_forbidden`, #2539). Detection
+uses the configured Mistral host or named `vendorKey`; custom rows pointed at
+Mistral are covered, while unrelated custom endpoints and OpenAI keep their
+existing request bodies. DeepSeek-family compatibility remains layered on top
+for Mistral-hosted DeepSeek models.
 DeepSeek-family Completions requests set
 `requiresReasoningContentOnAssistantMessages: true` when the row's `vendorKey`,
 base URL, model id, or catalog `family` identifies DeepSeek. pi-ai only

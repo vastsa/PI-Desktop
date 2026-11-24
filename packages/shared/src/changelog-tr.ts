@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
+      "Etkin alt ajanları giriş alanının üzerinde takip etmek için sohbet ayarlarında Giriş çubuğunu seçin. Çalışma sona erdikten sonra da sohbette alt ajan kartları yerine genişletilebilir araç satırları görünür.",
       "Yeni kurulumda, birlikte gelen Resmi geliştirmeler eklentisi oturum başlıklarını otomatik oluşturur; öneriler, taslak iyileştirme ve yapay zekâ belleği siz açana kadar kapalı kalır.",
       "Yeni görev artık herhangi bir projenin dışında geçici bir sohbet başlatır ve sohbetler projeler arasında ya da Geçici sohbete geri taşınabilir.",
       "Boş ana sayfada projeyi değiştirmek için başlıktaki proje adına veya \"geçici\" sözcüğüne tıklayın; projesiz hedefin adı artık her yerde Geçici sohbet.",
@@ -13,7 +14,7 @@ export const trEntries: ChangelogEntry[] = [
       "OpenAI Responses modellerinin ilerleme notları yanıta karışmak yerine özgün sırasıyla turun sürecinde kalır, oturum yeniden açıldığında da; Son yanıtı kopyala yalnızca yanıtı kopyalar.",
       "Özel OpenAI uyumlu uç noktalar istem önbelleğini turlar arasında korur; uzun sohbetlerde ilk token için uzun beklemeler ortadan kalkar.",
       "İngilizce bir sözcükle başlayan Farsça, Arapça ve diğer sağdan sola paragraflar artık doğru yönde görüntülenir.",
-      "Dosya Yöneticisi eklentisi 0.9.1, satır içi Markdown görsellerini güvenle gösterir ve tabloları salt okunur önizler.",
+      "Dosya Yöneticisi 0.13.0, bağımsız taslaklı belge sekmeleri, değişiklikler, geçmiş, hazırlama ve eşitleme için bir Git alanı ve daha net yükleme durumları sunar.",
       "Düzeltildi: geçmişten yüklenen eski yanıtlardan dallanma, bir tarafta kayıt silindikten sonra sürekli başarısız olan yapılandırma eşitleme, Ayarlar'da kırpılan model adları, sohbet Aramasını örten çalışma paneli düğmesi ve bazı Responses uç noktalarının reddettiği araç tanımları.",
     ],
   },

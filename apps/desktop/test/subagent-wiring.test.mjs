@@ -40,11 +40,9 @@ test("every launch resolves the subagent catalog and its pinned models", () => {
     sessionLaunchSource,
     /const localInstructionRoot = remoteWorkspace \? undefined : projectPath/,
   );
-  assert.match(sessionLaunchSource, /await loadSubagentDefinitions\(localInstructionRoot, \{/);
-  assert.match(
-    sessionLaunchSource,
-    /userDocuments: await activeUserSubagentDocuments\(projectPath\),/,
-  );
+  assert.match(sessionLaunchSource, /sessionSubagents\(policy, async \(\) => loadSubagentDefinitions\(root,/);
+  assert.match(sessionLaunchSource, /userDocuments: await activeUserSubagentDocuments\(root\)/);
+  assert.match(sessionLaunchSource, /await catalogFor\(bundle, projectPath, mode\)/);
   assert.match(sessionLaunchSource, /await resolveSubagentProviders\(\{/);
   assert.match(sessionLaunchSource, /subagents: subagentCatalog\.definitions,/);
   assert.match(sessionLaunchSource, /subagentProviders: subagentBindings\.providers,/);

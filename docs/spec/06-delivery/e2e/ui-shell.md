@@ -3548,6 +3548,24 @@ PowerShell-launched fixture; activation must not restore the native outline.
   `sidebar-navigation.test.mjs`, `sidebar-pinned-rendering.test.mjs`, and
   `sidebar-project-sessions.test.mjs`.
 
+## E2E-LAYOUT-sidebar-height
+
+- **Preconditions**: Pinned sessions, Recent sessions, and Projects are visible.
+  Seed one pinned conversation, at least seventeen unpinned conversations, and
+  an expanded project containing a conversation.
+- **Steps**: Click Load more in Recent sessions. Zoom in until the effective
+  viewport height is roughly 490 CSS px. Click a conversation in the project.
+  Zoom in further until the sidebar's minimum sizes overflow the viewport.
+  Scroll to the Projects list and the Settings footer, then reset zoom.
+- **Expected**: Recent and Pinned sessions can scroll within their lists.
+  The project conversation opens at 490 CSS px. At extreme zoom the sidebar
+  body scrolls and both Projects and Settings stay reachable. Resetting zoom
+  restores space without resetting the loaded Recent sessions.
+- **Specs linked**: `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md` §9.2
+- **Acceptance**: C, D, Quality
+- **Status**: Renderer coverage in `apps/desktop/test/sidebar-height.test.mjs`.
+  The application menu shortcut and installed Windows build are manual checks.
+
 ## E2E-LAYOUT-sidebar-settings
 
 - **Preconditions**: Built desktop, isolated host/profile, visible chat sidebar.

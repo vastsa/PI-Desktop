@@ -1072,11 +1072,11 @@ not override the parent session by default: they follow `auto` completely
 their normal approval behavior. An explicit builtin or user scope remains an
 intentional override.
 
-**Tools (ADR 0089).** Task requires a non-empty subagent catalog. The three
-job controls are always declared and belong to the Agent core set rather than
-the on-demand catalog of §7.1. Execution of all four is restricted to Agent mode:
+**Tools (ADR 0089).** Task requires a non-empty effective role catalog. Its
+job controls belong to the core set, not the on-demand catalog of §7.1.
+Execution requires an agent-level mode or stage:
 
-- `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
+- `Task(agent, task, description?, model?, resume?, userRequest?, scope?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
   whose tools are all unavailable each return a tool error explaining the
   failure rather than throwing), starts the delegate **in the background**, and
@@ -1110,12 +1110,28 @@ the on-demand catalog of §7.1. Execution of all four is restricted to Agent mod
   The Task definition catalog displays each default model and treats omitting
   or repeating that key as keeping the default. See
   [ADR subagent-model-opt-in](../../adr/subagent-model-opt-in.md).
+  For a YAML mode bundle, the private role list is the entire default catalog.
+  Explicit global inclusion adds only active, project-authorized definitions;
+  private names win. A role pin is not a dispatcher permission: switching away
+  from a private role's primary pin requires explicit approval for that task,
+  in addition to model availability. Each fallback may select its own thinking
+  level. Neither the bundle nor a task can change the parent session model.
   When a model key is not pre-resolved, the runtime asks Electron main to resolve it
   on-demand via the `provider.resolveSubagentModel` RPC. The started `Task`
   result details record the effective `modelId` and resolved `thinkingLevel`
   used for that run. The level is resolved after inheritance and target-model
   capability clamping; `omit` records that no provider thinking override was
   sent.
+  When the user names an expert, `userRequest` contains only the original words
+  addressed to that expert. `task` supplies the coordinator's separate context.
+  A quote does not grant permission. A new task may set `scope.write` to a list
+  of workspace paths. Omission preserves existing access, an empty list denies
+  all writes, and opaque tools are withheld when their writes cannot be checked.
+  A resume cannot change the original role, model selection or write boundary.
+- `TaskSend(delegationId, instruction)` queues a correction for the same running
+  child in this conversation. `TaskList` and `TaskWait` distinguish queued,
+  delivered at a child boundary, and undelivered at cancellation or settlement.
+  Sending a correction never replaces the role, its model, or its permissions.
 - `TaskWait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` — converges
   on running delegations (defaults to all of them) and returns their reports;
   `mode: "any"` with `minCompleted` converges as soon as the first N settle.

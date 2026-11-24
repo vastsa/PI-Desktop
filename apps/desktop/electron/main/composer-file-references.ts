@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 import { ErrorCodes, type ComposerPastedFile } from "@pi-desktop/shared";
-import { mimeTypeForPath } from "./composer-paste.ts";
+import { importComposerFiles, mimeTypeForPath, selectImportableComposerImages } from "./composer-paste.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type FileReference = { version: 1; path: string; projectPath: string; sessionId: string };
@@ -39,6 +39,46 @@ export async function referenceComposerFiles(
     await writeFile(join(root, `${localReference}.json`), JSON.stringify(record), { flag: "wx", mode: 0o600 });
     return { path, name: basename(path), kind: "file" as const, mimeType: mimeTypeForPath(path), size, localReference };
   }));
+}
+
+/**
+ * Native clipboard disk files: image files are copied into session scratch
+ * like picker imports so vision models receive their bytes even after the
+ * source (often a screenshot tool's temp file) disappears. Everything else,
+ * and images beyond the import bounds, stays a metadata-only live reference.
+ * Results keep the paste order because the renderer pairs them by index.
+ * Called only with paths consumed from a sender-bound native selection.
+ */
+export async function pasteComposerClipboardFiles(
+  dataDir: string,
+  sessionId: string,
+  projectPath: string | undefined,
+  paths: string[],
+): Promise<ComposerPastedFile[]> {
+  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) throw new Error("invalid session id");
+  if (paths.length > 20) throw new Error("too many referenced files (maximum 20)");
+  const sources = await Promise.all(paths.map(async path => {
+    if (!isAbsolute(path)) throw new Error("file reference path must be absolute");
+    const canonical = await realpath(path);
+    const info = await stat(canonical);
+    if (!info.isFile()) throw new Error("selected path is not a file");
+    return { path: canonical, size: info.size };
+  }));
+  const importable = selectImportableComposerImages(sources);
+  const referencePaths = sources.filter((_, index) => !importable[index]).map(source => source.path);
+  const imagePaths = sources.filter((_, index) => importable[index]).map(source => source.path);
+  if (referencePaths.length > 0 && !projectPath) throw new Error("local file references require a local project");
+  const referenced = referencePaths.length > 0 && projectPath
+    ? await referenceComposerFiles(dataDir, sessionId, projectPath, referencePaths)
+    : [];
+  const imported = await importComposerFiles(dataDir, sessionId, imagePaths);
+  let nextImage = 0;
+  let nextReference = 0;
+  return importable.map(isImage => {
+    const file = isImage ? imported[nextImage++] : referenced[nextReference++];
+    if (!file) throw new Error("pasted file result is missing");
+    return file;
+  });
 }
 
 /** Refresh metadata only; reading contents still belongs to normal tool admission. */

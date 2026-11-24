@@ -6,7 +6,8 @@
  * permission mode and the command shell. Nothing here changes what the model
  * does — the Display card says so once, so no row has to repeat it.
  */
-import type { AppSettings } from "@pi-desktop/shared";
+import { isSubagentStyle, resolveSubagentStyle, type AppSettings } from "@pi-desktop/shared";
+import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
 import { useTranslation } from "react-i18next";
 import { SettingsToggle } from "../../../components/ui";
 import { ShowThinkingRow } from "../../../components/settings/ShowThinkingRow";
@@ -61,6 +62,15 @@ export function ConversationSettings({
                 inlineVisualizations: settings.inlineVisualizations !== true,
               })
             }
+          />
+        </SettingsRow>
+        <SettingsRow title={t("settings.subagentStyle")} description={t("settings.subagentStyleDesc")}>
+          <SettingsMenuSelect label={t("settings.subagentStyle")} value={resolveSubagentStyle(settings)}
+            options={[
+              { id: "transcript", label: t("settings.subagentStyleTranscript") },
+              { id: "bar", label: t("settings.subagentStyleBar") },
+            ]}
+            onChange={value => { if (isSubagentStyle(value)) void saveSettings({ subagentStyle: value }); }}
           />
         </SettingsRow>
       </SettingsCard>

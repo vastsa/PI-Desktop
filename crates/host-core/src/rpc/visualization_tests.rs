@@ -12,6 +12,7 @@ fn options(visualization_root: Option<&Path>) -> tools::ToolExecutionOptions<'_>
         allow_external_paths: false,
         hashline: None,
         visualization_root,
+        write_scope: None,
     }
 }
 

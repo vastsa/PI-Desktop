@@ -33,6 +33,8 @@ mod plugin_reviews_rpc_tests;
 mod review_rpc_tests;
 #[cfg(test)]
 mod visualization_tests;
+#[cfg(test)]
+mod write_scope_tests;
 
 use std::io::{self, BufRead, BufReader as StdBufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -4280,6 +4282,13 @@ async fn handle_request(
             let call_started = std::time::Instant::now();
             let p: ToolsExecuteParams = serde_json::from_value(params.clone())
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            if p.write_scope.is_some() && !crate::file_resources::is_write(&p.tool_name) {
+                return Err(rpc_err(
+                    1002,
+                    "writeScope is only valid on Write and Edit",
+                    "INVALID_PARAMS",
+                ));
+            }
             let workspace_only = p.tool_name == "Read" && p.workspace_only;
             let _pending_file_call = if let Some(ticket) = p.file_batch_ticket.as_deref() {
                 Some(
@@ -4413,6 +4422,11 @@ async fn handle_request(
                 authorization
             };
             let durable_mode = authorization.mode.clone();
+            // The current relay does not negotiate scoped-write enforcement with
+            // the remote Host. Never forward the mutation without its boundary.
+            if p.write_scope.is_some() && remote_workspace.is_some() {
+                return Err(remote_tools::unsupported_write_scope());
+            }
 
             // Register before permission evaluation so tools.abort can cancel
             // an approval wait even when the tool does not own a process.
@@ -4498,21 +4512,7 @@ async fn handle_request(
                         _ => effective_pm,
                     };
                     let effective_pm = authorization.cap_permission_mode(effective_pm);
-                    // Resolve the tool root from the persisted session instead of
-                    // the mutable global workspace. This keeps background turns
-                    // isolated when the renderer switches between project tabs.
-                    // The session's project remains the containment root for all
-                    // known sessions.
-                    let ws = match crate::session_worktrees::delegate::tool_root(
-                        &st.db,
-                        &p.session_id,
-                        p.delegation_id.as_deref(),
-                    )
-                    .map_err(worktree_rpc::to_rpc)?
-                    {
-                        Some(root) => Some(root.to_string_lossy().into_owned()),
-                        None => resolve_tool_workspace_for_call(&st, &p.session_id, &p.args)?,
-                    };
+                    let (ws, _) = file_batches::resolve_root(&st, &p)?;
                     let scratch = scratch::session_dir(&st.data_dir, &p.session_id);
                     let contained_roots = if workspace_only {
                         ContainedRoots::new()
@@ -4754,7 +4754,9 @@ async fn handle_request(
                     return Ok(denied_result);
                 }
 
-                if matches!(final_decision, PermissionDecision::AllowSession) {
+                if p.write_scope.is_none()
+                    && matches!(final_decision, PermissionDecision::AllowSession)
+                {
                     let mut st = state.lock().await;
                     st.session_grants
                         .entry(p.session_id.clone())
@@ -4869,6 +4871,18 @@ async fn handle_request(
                             &p,
                             ws_path.as_deref().and_then(Path::to_str),
                         )?;
+                        if p.write_scope.is_some()
+                            && crate::mode_runs::authorization(&st.db, &p.session_id)
+                                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
+                                .as_ref()
+                                != Some(&authorization)
+                        {
+                            return Err(rpc_err(
+                                1002,
+                                "Session mode changed before the scoped write ran",
+                                "TOOL_CONTEXT_CHANGED",
+                            ));
+                        }
                         local_contained_roots(&st.data_dir, &p.session_id, false)
                     };
                     resources
@@ -4893,6 +4907,22 @@ async fn handle_request(
                         ),
                     )
                 };
+                let write_scope = p
+                    .write_scope
+                    .as_ref()
+                    .map(|scope| {
+                        ws_path
+                            .as_deref()
+                            .and_then(|root| scope.bind(root))
+                            .ok_or_else(|| {
+                                rpc_err(
+                                    1003,
+                                    "Cannot verify the local workspace for this write scope",
+                                    "WRITE_SCOPE_UNAVAILABLE",
+                                )
+                            })
+                    })
+                    .transpose()?;
                 let hashline_ctx = tools::HashlineContext {
                     session_id: p.session_id.as_str(),
                     store: &hashline_store,
@@ -4903,7 +4933,20 @@ async fn handle_request(
                 } else {
                     visualizations::session_dir(&data_dir, &p.session_id)
                 };
-                let pending_review = if remote_workspace.is_some() {
+                let review_roots = if write_scope.is_some() {
+                    ContainedRoots::new()
+                } else {
+                    local_contained_roots(&data_dir, &p.session_id, false)
+                };
+                let pending_review = if remote_workspace.is_some()
+                    || write_scope.as_ref().is_some_and(|scope| {
+                        !tools::can_review_scoped_write(
+                            ws_path.as_deref(),
+                            &review_roots,
+                            &p.args,
+                            scope,
+                        )
+                    }) {
                     None
                 } else {
                     review::prepare_change(
@@ -4911,10 +4954,10 @@ async fn handle_request(
                         &p.session_id,
                         &p.tool_call_id,
                         ws_path.as_deref(),
-                        &local_contained_roots(&data_dir, &p.session_id, false),
+                        &review_roots,
                         &p.tool_name,
                         &p.args,
-                        external_path_permission,
+                        write_scope.is_none() && external_path_permission,
                     )
                     .unwrap_or_else(|error| {
                         tracing::warn!(
@@ -4986,6 +5029,12 @@ async fn handle_request(
                         output_tx: Some(tx.clone()),
                         extra_env: worktree_env.clone(),
                         run_in_background: p.run_in_background,
+                        yield_after_initial_wait: p.yield_after_initial_wait
+                            && p.turn_id.is_some()
+                            && p.delegation_id.is_none()
+                            && p.permission_scope.is_none()
+                            && p.mode_gate.is_none()
+                            && remote_workspace.is_none(),
                         continuation_turn_id: if notify_on_exit {
                             p.turn_id.clone()
                         } else {
@@ -5037,6 +5086,7 @@ async fn handle_request(
                             visualization_root: visualization_path
                                 .as_deref()
                                 .filter(|_| !workspace_only),
+                            write_scope,
                         },
                         Some(tool_permit.clone()),
                         file_resources.clone(),
@@ -5097,7 +5147,19 @@ async fn handle_request(
                     .await;
                 }
 
-                let st = state.lock().await;
+                let mut st = state.lock().await;
+                // A request rejected by its one-shot boundary cannot leave
+                // behind a session-wide grant. Explicit approvals for writes
+                // that landed still follow the ordinary permission contract.
+                if p.write_scope.is_some()
+                    && result.ok
+                    && matches!(final_decision, PermissionDecision::AllowSession)
+                {
+                    st.session_grants
+                        .entry(p.session_id.clone())
+                        .or_default()
+                        .push(p.tool_name.clone());
+                }
                 // Scratch files are temp by definition: keep them out of the
                 // artifacts table so the work panel file list only shows
                 // workspace deliverables (D114).
@@ -8530,6 +8592,7 @@ mod tests {
                 allow_external_paths: false,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;
@@ -8551,6 +8614,7 @@ mod tests {
                 allow_external_paths: false,
                 hashline: None,
                 visualization_root: None,
+                write_scope: None,
             },
         )
         .await;

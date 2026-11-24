@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-20",
     highlights: [
+      "Selecione Barra de entrada nas configurações de conversa para acompanhar os subagentes ativos acima do campo de mensagem. A conversa mostra linhas expansíveis de ferramentas em vez de cartões de subagentes, mesmo após o fim da execução.",
       "Em uma instalação nova, o plugin incluído Melhorias oficiais gera automaticamente os títulos das sessões; sugestões, aprimoramento de rascunho e memória de IA continuam desligados até você ativá-los.",
       "Nova tarefa agora inicia um chat temporário fora de qualquer projeto, e as conversas podem ser movidas entre projetos ou de volta para Chat temporário.",
       "Na tela inicial vazia, clique no nome do projeto ou em \"temporariamente\" no título para trocar de projeto; o destino sem projeto agora se chama Chat temporário em todo lugar.",
@@ -13,7 +14,7 @@ export const ptBREntries: ChangelogEntry[] = [
       "As notas de progresso dos modelos OpenAI Responses ficam no processo do turno, na ordem original, em vez de se misturar à resposta, também ao reabrir uma sessão; Copiar última resposta copia apenas a resposta.",
       "Endpoints personalizados compatíveis com OpenAI mantêm o cache de prompt entre turnos, evitando longas esperas pelo primeiro token em conversas longas.",
       "Parágrafos em persa, árabe e outros idiomas da direita para a esquerda que começam com uma palavra em inglês agora aparecem na direção correta.",
-      "O plugin Gerenciador de arquivos 0.9.1 exibe com segurança imagens Markdown embutidas e mostra prévias de planilhas somente leitura.",
+      "O Gerenciador de arquivos 0.13.0 adiciona abas com rascunhos independentes, um espaço Git para alterações, histórico, preparação e sincronização, e indicadores de carregamento mais claros.",
       "Corrigido: bifurcar respostas antigas carregadas do histórico, sincronização de configuração falhando repetidamente após excluir um registro de um lado, nomes de modelos cortados em Configurações, o botão do painel de trabalho cobrindo a Pesquisa e definições de ferramentas rejeitadas por alguns endpoints Responses.",
     ],
   },

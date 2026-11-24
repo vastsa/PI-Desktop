@@ -10,8 +10,8 @@ import test from "node:test";
  *
  * The point of shipping a panel surface as a plugin rather than host code is
  * that it proves the public contribution channel is sufficient. The file view
- * is now a vendored third-party plugin — the artifact the marketplace also
- * publishes — so these assertions guard both halves of that claim: it must be
+ * is a vendored third-party plugin, so these assertions guard two properties:
+ * it must be
  * an ordinary plugin any third party could have written, and the copy in this
  * repository must stay traceable to the release it came from.
  */
@@ -71,16 +71,17 @@ test("the file manager search panel remains readable in both themes", () => {
   assert.ok(buttons?.includes("color:var(--fg)"));
 });
 
-test("the vendored copy stays traceable to its upstream tag and Desktop patches", () => {
+test("the vendored copy stays traceable to its pinned upstream commit and Desktop patches", () => {
   assert.match(upstream, /github\.com\/Tioit-Wang\/pi-desktop-plugin-file-manager/);
-  assert.match(upstream, /90cfc010a3f9d02ac612055eea065d3c822d4977/);
-  const tag = upstream.match(/`v(\d+\.\d+\.\d+)`/);
-  assert.ok(tag, "UPSTREAM.md must name the vendored base tag");
-  assert.equal(tag[1], "0.9.1");
-  assert.equal(manifest.version, tag[1]);
+  assert.match(upstream, /Source commit \| `6466e52bfd329ba961e81d2537753522ce664fb7`/);
+  assert.match(upstream, /Bundled version \| `0\.13\.0`/);
+  assert.equal(manifest.version, "0.13.0");
   // Every upstream or locally rebuilt file hashes to its recorded value.
   for (const file of [
     "main.js",
+    "git-batch.js",
+    "git-history.js",
+    "git-sync.js",
     "remote-workspace.js",
     "README.md",
     "CHANGELOG.md",

@@ -1445,7 +1445,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   padding: 0 8px 6px;
-  overflow: hidden;
+  overflow: hidden auto;
 }
 
 .brand {

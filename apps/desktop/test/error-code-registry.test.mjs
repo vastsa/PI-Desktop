@@ -32,6 +32,8 @@ function hostEmittedCodes() {
   for (const m of tools.matchAll(/ToolError::new\(\s*"([A-Z][A-Z0-9_]+)"/g)) codes.add(m[1]);
   const ignore = read("crates/host-core/src/tools/ignore_rules.rs");
   for (const m of ignore.matchAll(/DENIED_CODE: &str = "([A-Z][A-Z0-9_]+)"/g)) codes.add(m[1]);
+  const scope = read("crates/host-core/src/tools/write_scope.rs");
+  for (const m of scope.matchAll(/VIOLATION: &str = "([A-Z][A-Z0-9_]+)"/g)) codes.add(m[1]);
   return codes;
 }
 
