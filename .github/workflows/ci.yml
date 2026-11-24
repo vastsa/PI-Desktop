@@ -53,6 +53,9 @@ jobs:
           ARCHITECTURE_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
         run: node scripts/check-architecture.mjs
 
+      - name: Unit-test the architecture checks
+        run: node --test scripts/architecture-growth.test.mjs
+
       - name: Unit-test the Pi patch checks
         run: node --test scripts/pi-patch-hash.test.mjs
 
