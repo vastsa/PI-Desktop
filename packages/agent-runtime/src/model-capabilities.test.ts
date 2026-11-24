@@ -288,3 +288,28 @@ it("keeps native Pi null and absent extended mappings unavailable", () => {
   expect(configured.thinkingLevelMap?.xhigh).toBeNull();
   expect(configured.thinkingLevelMap?.max).toBeUndefined();
 });
+describe("unsigned thinking signature model binding", () => {
+  const model = {
+    ...genericModelConfig("relay-model", "https://relay.example"),
+    reasoning: true,
+    compat: { supportsStrictTools: true, allowEmptySignature: false },
+  };
+  const base = {
+    contextWindow: 128_000,
+    maxTokens: 8_192,
+    thinkingLevels: ["off", "high"] as ThinkingLevel[],
+  };
+
+  it("preserves catalog compat when the binding is absent", () => {
+    const config = modelConfigWithBinding(model, base);
+    expect(config.compat).toEqual({ supportsStrictTools: true, allowEmptySignature: false });
+  });
+
+  it.each([true, false])("lets the explicit binding value %s override catalog compat", (value) => {
+    const config = modelConfigWithBinding(model, {
+      ...base,
+      allowEmptyThinkingSignature: value,
+    });
+    expect(config.compat).toEqual({ supportsStrictTools: true, allowEmptySignature: value });
+  });
+});

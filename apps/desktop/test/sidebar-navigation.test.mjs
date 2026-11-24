@@ -142,7 +142,7 @@ test("sidebar shows a bounded Recent session list before retained projects", () 
   assert.match(standaloneSessions, /t\("nav\.recentSessions"\)/);
   assert.match(standaloneSessions, /data-action="new-standalone-session"/);
   assert.match(standaloneSessions, /createSession\(\{ projectPath: null \}\)/);
-  assert.match(standaloneSessions, /renderSessionRows\(visibleRecentSessions, \{ global: true \}\)/);
+  assert.match(standaloneSessions, /renderSessionRows\(visibleRecentSessions, \{ global: true, recent: true \}\)/);
   assert.match(standaloneSessions, /data-action="recent-sessions-load-more"/);
   assert.ok(
     sidebarSource.indexOf('data-sidebar-session-section="temporary"') <
@@ -155,6 +155,32 @@ test("sidebar shows a bounded Recent session list before retained projects", () 
     /\.sidebar-session-group-body\.standalone\s*\{[^}]*max-height:\s*291px;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/,
   );
   assert.doesNotMatch(sidebarSource, /data-sidebar-project-group="temporary"/);
+});
+
+test("Recent project labels keep their width ahead of long session titles", () => {
+  const recentRows = sidebarSource.match(
+    /renderSessionRows\(visibleRecentSessions, \{[^}]*\}\)/,
+  )?.[0] ?? "";
+  const rowClass = sidebarSource.match(
+    /className=\{`thread-item \$\{active[\s\S]*?\n        data-sidebar-session-row/,
+  )?.[0] ?? "";
+  const projectLabel = sidebarSource.match(
+    /<span\s+className="thread-item-project"\s+title=\{options\?\.recent && normalizedProjectPath \? owningProject : undefined\}/,
+  )?.[0] ?? "";
+
+  assert.match(recentRows, /recent:\s*true/);
+  assert.match(rowClass, /options\?\.recent && normalizedProjectPath/);
+  assert.match(projectLabel, /title=\{options\?\.recent && normalizedProjectPath \? owningProject : undefined\}/);
+  assert.match(
+    globalStyles,
+    /\.thread-item\.recent-project-session \.thread-item-project\s*\{[^}]*flex:\s*0 0 auto;/,
+  );
+  assert.match(
+    sidebarSource,
+    /renderSessionRows\(pinnedSessions, \{ global: true \}\)/,
+    "pinned rows keep their existing presentation path",
+  );
+  assert.doesNotMatch(recentRows, /temporary:\s*false/);
 });
 
 test("sidebar project and session lists stay coordinated with the global type scale", () => {

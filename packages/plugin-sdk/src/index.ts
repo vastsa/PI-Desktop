@@ -761,6 +761,8 @@ export type PluginProviderModelContrib = {
   defaultThinkingLevel?: string;
   /** Chat Completions reasoning_effort support; omit to use host compatibility defaults. */
   supportsReasoningEffort?: boolean;
+  /** Whether Anthropic Messages requests can replay unsigned thinking blocks. */
+  allowEmptyThinkingSignature?: boolean;
 };
 
 /**
@@ -2347,6 +2349,12 @@ export function validateContributions(
       }
       if (model.supportsReasoningEffort !== undefined && typeof model.supportsReasoningEffort !== "boolean") {
         return `provider "${provider.id}" model ${modelId} supportsReasoningEffort must be a boolean`;
+      }
+      if (
+        model.allowEmptyThinkingSignature !== undefined &&
+        typeof model.allowEmptyThinkingSignature !== "boolean"
+      ) {
+        return `provider "${provider.id}" model ${modelId} allowEmptyThinkingSignature must be a boolean`;
       }
     }
   }

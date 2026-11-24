@@ -390,6 +390,8 @@ type PluginProviderModelContrib = {
  defaultThinkingLevel?: string;
  /** Chat Completions reasoning_effort support; omit to use host compatibility defaults. */
  supportsReasoningEffort?: boolean;
+ /** Preserve unsigned reasoning blocks when the Anthropic endpoint accepts them. */
+ allowEmptyThinkingSignature?: boolean;
 };
 ```
 To materialize these fields, the Host trims entries, drops unknown canonical
@@ -405,6 +407,10 @@ accepted and dropped during normalization.
 It overrides the host's Chat Completions compatibility default for whether to
 send `reasoning_effort`; omission preserves that default. Non-boolean values
 are rejected. `thinkingLevels` alone does not declare wire-protocol support.
+
+`allowEmptyThinkingSignature` is an optional boolean copied into the model
+binding. It is only used when constructing Anthropic Messages requests;
+omitting it preserves the adapter default. Non-boolean values are rejected.
 
 ## 5. permissions enum
 

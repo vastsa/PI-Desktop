@@ -1624,6 +1624,15 @@ backgroundTasks methods remain outside the model proxy.
 | backgroundJobs.wait | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
 | backgroundJobs.stop | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
 
+For a local parent Agent, the runtime can send `yieldAfterInitialWait: true`
+on a `tools.execute` Bash request when no later tool in the same batch is
+waiting behind it. If the process is still running at the 10s wait boundary,
+Host can return a `running` background-job snapshot without an `exitCode`.
+The snapshot also contains `backgroundTaskId` and `commandShellId`. The
+existing `backgroundJobs.*` methods observe and stop the same process. The
+original command timeout still applies, and a timeout after handoff appears
+as a failed job with the timeout diagnostic in its stderr tail.
+
 Each method requires an existing local Agent-mode session. Foreign and missing
 job IDs both return NOT_FOUND. Invalid parameters return INVALID_PARAMS; a
 contract-mode session returns PERMISSION_DENIED. Calls never rebind an existing

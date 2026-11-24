@@ -92,6 +92,8 @@ export class DelegationChainRegistry {
     /** `providerId/modelId` key that resolved, so a resume can re-resolve it. */
     latestModelKey?: string;
     resumedFrom?: DelegationChain;
+    policy?: DelegationChain["policy"];
+    latestModel?: DelegationChain["latestModel"];
   }): DelegationChain {
     const existing = options.resumedFrom
       ? this.chains.get(options.resumedFrom.delegateSessionId)
@@ -105,6 +107,8 @@ export class DelegationChainRegistry {
           latestObjective: options.objective || existing.latestObjective,
           latestModelId: options.latestModelId ?? existing.latestModelId,
           latestModelKey: options.latestModelKey ?? existing.latestModelKey,
+          policy: options.policy ?? existing.policy,
+          latestModel: options.latestModel ?? existing.latestModel,
           latestStatus: "running",
           lastActivityAt: Date.now(),
         }
@@ -120,6 +124,8 @@ export class DelegationChainRegistry {
           latestObjective: options.objective,
           latestModelId: options.latestModelId,
           latestModelKey: options.latestModelKey,
+          policy: options.policy,
+          latestModel: options.latestModel,
           latestStatus: "running",
           lastActivityAt: Date.now(),
         };
@@ -149,7 +155,7 @@ export class DelegationChainRegistry {
   /** Record the binding the running delegate switched to (fallback models). */
   retarget(
     delegateSessionId: string,
-    binding: { modelKey?: string; modelId: string },
+    binding: { modelKey?: string; modelId: string; selection?: DelegationChain["latestModel"] },
   ): void {
     const chain = this.chains.get(delegateSessionId);
     if (!chain) return;
@@ -157,6 +163,7 @@ export class DelegationChainRegistry {
       ...chain,
       ...(binding.modelKey ? { latestModelKey: binding.modelKey } : {}),
       latestModelId: binding.modelId,
+      ...(binding.selection ? { latestModel: binding.selection } : {}),
       lastActivityAt: Date.now(),
     });
   }
@@ -186,6 +193,7 @@ export class DelegationChainRegistry {
     for (const chain of this.chains.values()) {
       const latest = chain.latestDelegationId;
       if (!latest) continue;
+      if (chain.incompleteSnapshot) continue;
       if (options.runningDelegationIds.has(latest)) continue;
       if (chain.latestStatus && !RESUMABLE_STATUSES.has(chain.latestStatus)) {
         continue;
