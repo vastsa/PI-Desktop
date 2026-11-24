@@ -199,8 +199,8 @@ test("the composer hook wires the pre-warm and leaves the cache to the source mo
   );
   assert.match(
     source,
-    /prewarmComposerCommands\(workspaceKey\)/,
-    "the hook must seed the source while the app starts",
+    /prewarmComposerCommands\(workspaceKey, agentMode\)/,
+    "the hook must seed the source for the composing mode while the app starts",
   );
   assert.doesNotMatch(
     source,

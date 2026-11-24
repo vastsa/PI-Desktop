@@ -1,4 +1,5 @@
 use super::{read_open_file, FragmentReadError};
+use crate::windows_relative as native;
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
@@ -6,12 +7,9 @@ use std::os::windows::io::AsRawHandle;
 use std::path::{Component, Path, PathBuf, Prefix};
 use windows_sys::Win32::Storage::FileSystem::{
     GetFileType, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
-    FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
-    FILE_TYPE_DISK, SYNCHRONIZE,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_READ_DATA,
+    FILE_SHARE_READ, FILE_TYPE_DISK, SYNCHRONIZE,
 };
-
-#[path = "windows_native.rs"]
-mod native;
 
 pub(super) fn read_fragment(
     data_dir: &Path,
@@ -53,7 +51,7 @@ fn read_fragment_impl(
     // reparse data even while read pins are held. Never reopen an absolute
     // child path; RootDirectory binds the leaf to the actual session object.
     let session = pins.last().ok_or(FragmentReadError::NotFound)?;
-    let leaf = native::open_child(session, OsStr::new(file_name), false)?;
+    let leaf = open_child(session, OsStr::new(file_name), false, FILE_READ_DATA)?;
     validate_entry(&leaf, false)?;
     let result = read_open_file(leaf);
     drop(pins);
@@ -62,10 +60,28 @@ fn read_fragment_impl(
 
 fn pin_directory(pins: &mut Vec<File>, name: &OsStr) -> Result<(), FragmentReadError> {
     let parent = pins.last().ok_or(FragmentReadError::NotFound)?;
-    let child = native::open_child(parent, name, true)?;
+    let child = open_child(parent, name, true, FILE_LIST_DIRECTORY)?;
     validate_entry(&child, true)?;
     pins.push(child);
     Ok(())
+}
+
+fn open_child(
+    parent: &File,
+    name: &OsStr,
+    directory: bool,
+    access: u32,
+) -> Result<File, FragmentReadError> {
+    native::open_child(
+        parent,
+        name,
+        directory,
+        access | FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ,
+        native::OPEN,
+        true,
+    )
+    .map_err(|_| FragmentReadError::NotFound)
 }
 
 // The sole absolute open is the trusted canonical drive/share root, not any

@@ -15,8 +15,12 @@ import {
   type SkillMarketFailureKind,
 } from "../skill-market-scan";
 import type { IpcRegistrar } from "./types";
+import { isModeRunOpen, modePermissionFor, type ModeRunResult } from "@pi-desktop/shared";
+import { currentModeBundle, sessionSubagents } from "../runtime/mode-subagents";
+import type { ModeCatalogService } from "../runtime/mode-catalog";
 
 export type SkillsIpcDependencies = {
+  modeCatalog?: ModeCatalogService;
   registrar: IpcRegistrar;
   getHost: () => HostProcess | null;
   optionalWorkspaceRoot: () => Promise<string | null>;
@@ -37,6 +41,7 @@ export function registerSkillsIpc({
   registrar,
   getHost,
   optionalWorkspaceRoot,
+  modeCatalog,
   activeUserSubagentDocuments,
   disabledBuiltinSubagents,
   disabledBuiltinSkills,
@@ -350,16 +355,34 @@ export function registerSkillsIpc({
    * page can keep its row and let the user turn it back on; `subagents` is the
    * delegation catalog and never lists one.
    */
-  handle(IPC.invoke.subagentCatalog, async () => {
-    const projectPath = (await optionalWorkspaceRoot()) ?? undefined;
+  handle(IPC.invoke.subagentCatalog, async (query?: { sessionId?: string; mode: string }) => {
+    let projectPath = (await optionalWorkspaceRoot()) ?? undefined;
+    let mode = query?.mode;
+    if (query?.sessionId) {
+      const detail = await host?.call<{ session?: { mode?: string; projectPath?: string } }>("session.get", { id: query.sessionId, messageLimit: 1 });
+      if (!detail?.session) throw new Error("Session is unavailable");
+      mode = detail.session.mode ?? "agent";
+      projectPath = detail.session.projectPath;
+    }
+    const bundle = mode && modeCatalog ? await currentModeBundle(modeCatalog, mode) : undefined;
+    if (mode && mode !== "agent") {
+      const definition = bundle && await modeCatalog?.definition(mode);
+      const result = definition?.stages.length && query?.sessionId
+        ? await host?.call<ModeRunResult>("modes.get", { sessionId: query.sessionId }) : undefined;
+      const stageId = result?.run && result.run.modeId === mode && isModeRunOpen(result.run.state)
+        ? result.run.stageId : definition?.stages[0]?.id;
+      if (!definition || modePermissionFor(definition, stageId) !== "agent") {
+        return { subagents: [], builtins: [], diagnostics: [], projectPath: projectPath ?? null };
+      }
+    }
     const disabled = await disabledBuiltinSubagents();
-    const { definitions, builtins, diagnostics } = await loadSubagentDefinitions(
+    const { definitions, builtins, diagnostics } = await sessionSubagents(bundle, async () => loadSubagentDefinitions(
       projectPath,
       {
         userDocuments: await activeUserSubagentDocuments(projectPath),
         disabledBuiltins: disabled,
       },
-    );
+    ), mode ?? "agent");
     const off = new Set(disabled);
     return {
       subagents: definitions,
