@@ -101,7 +101,7 @@
 }
 
 .thread-item.active {
-  background: var(--ds-bg-active);
+  background: color-mix(in oklab, var(--ds-accent) 24%, transparent);
 }
 
 .sidebar-session-groups {
@@ -369,13 +369,9 @@
 }
 
 /* Multi-select highlight: visually distinct from the single active row. */
-.thread-item.selected {
+.thread-item.selected:not(.active) {
   background: color-mix(in oklab, var(--ds-accent) 12%, transparent);
   color: var(--ds-text-primary);
-}
-
-.thread-item.selected.active {
-  background: var(--ds-bg-active);
 }
 
 

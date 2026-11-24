@@ -1,7 +1,7 @@
 import { app, BrowserWindow, screen, type Rectangle } from "electron";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { IPC, type LiveCallView, type LiveVoiceWidgetAction } from "@pi-desktop/shared";
+import { APP_NAME, IPC, type LiveCallView, type LiveVoiceWidgetAction } from "@pi-desktop/shared";
 import { getModuleDirectory } from "../module-path";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 
@@ -137,7 +137,7 @@ export function createLiveVoiceWidget(input: {
     const promise = (async () => {
       const created = new BrowserWindow({
         ...initialBounds(),
-        title: "PI-Desktop Live Voice",
+        title: `${APP_NAME} Live Voice`,
         show: false,
         frame: false,
         transparent: true,

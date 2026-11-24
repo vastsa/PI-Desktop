@@ -1,4 +1,5 @@
 import { app, BrowserWindow, crashReporter, Menu, safeStorage } from "electron";
+import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { createScheduledRunner } from "../runtime/scheduled-runner";
 import { onConfirmedQuit } from "./confirmed-quit";
 import {
@@ -224,10 +225,12 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
     const storedBehavior = readCloseBehavior(dataDir);
     if (storedBehavior) state.closeBehavior = storedBehavior;
     createTray();
+    const aboutTagline = catalogs[resolveLocale(app.getLocale())].settings.aboutTagline;
     app.setAboutPanelOptions({
       applicationName: APP_NAME,
       applicationVersion: APP_VERSION,
       version: APP_VERSION,
+      credits: aboutTagline,
     });
     installApplicationMenu({
       locale: app.getLocale(),

@@ -562,5 +562,6 @@ jobs:
           # Windows NSIS and Linux AppImage; macOS and Windows ZIP remain
           # manual-delivery by product policy).
           files: dist/*
+          body: "Pie Code · 内网 AI 编程工作台"
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}

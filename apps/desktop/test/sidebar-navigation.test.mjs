@@ -432,7 +432,7 @@ test("sidebar rows share one hover surface and workspace context never paints se
     globalStyles,
     /\.thread-item:hover,\s*\.thread-item.active,\s*\.project-group > \.sidebar-session-group-header:hover\s*\{[^}]*background:\s*var\(--ds-bg-hover\);/,
   );
-  assert.match(globalStyles, /\.thread-item.active\s*\{[^}]*background:\s*var\(--ds-bg-active\);/);
+  assert.match(globalStyles, /\.thread-item.active\s*\{[^}]*background:\s*color-mix\(in oklab, var\(--ds-accent\)/);
   assert.match(globalStyles, /\.sidebar-session-group-title\s*\{[^}]*background:\s*transparent;[^}]*color:\s*inherit;/);
   assert.doesNotMatch(globalStyles, /\.project-group\.active/);
   assert.doesNotMatch(globalStyles, /\.sidebar-session-group-title\.project-toggle:hover/);

@@ -1,10 +1,10 @@
 {
   "name": "@pi-desktop/desktop",
   "version": "0.23.0",
-  "desktopName": "pi-desktop.desktop",
+  "desktopName": "pie-code.desktop",
   "private": true,
-  "description": "PI-Desktop Electron application",
-  "homepage": "https://github.com/vastsa/PI-Desktop",
+  "description": "Pie Code — 内网 AI 编程工作台",
+  "homepage": "https://github.com/w4yne00/Pie-Code",
   "author": {
     "name": "vastsa",
     "email": "hhxk666@gmail.com"
@@ -84,19 +84,21 @@
     "zustand": "^5.0.15"
   },
   "build": {
-    "appId": "net.aiuo.pi-desktop",
-    "productName": "PI-Desktop",
+    "appId": "io.github.w4yne00.piecode",
+    "productName": "Pie Code",
     "directories": {
       "output": "release"
     },
     "publish": [
       {
         "provider": "github",
-        "owner": "vastsa",
-        "repo": "PI-Desktop"
+        "owner": "w4yne00",
+        "repo": "Pie-Code"
       }
     ],
     "extraMetadata": {
+      "name": "pie-code",
+      "productName": "Pie Code",
       "piDistribution": "installed"
     },
     "files": [
@@ -129,7 +131,7 @@
     ],
     "extraResources": [
       {
-        "from": "build/icon.png",
+        "from": "build/linux-icons/512x512.png",
         "to": "tray-icon.png"
       },
       {
@@ -212,7 +214,7 @@
       ]
     },
     "win": {
-      "executableName": "PI-Desktop",
+      "executableName": "Pie Code",
       "artifactName": "PI-Desktop-Portable-${version}.${ext}",
       "target": [
         {
@@ -253,15 +255,15 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "PI-Desktop",
+      "shortcutName": "Pie Code",
       "artifactName": "PI-Desktop-Setup-${version}.${ext}"
     },
     "portable": {
       "artifactName": "PI-Desktop-Portable-${version}.${ext}"
     },
     "deb": {
-      "packageName": "pi-desktop",
-      "artifactName": "pi-desktop_${version}_${arch}.${ext}",
+      "packageName": "pie-code",
+      "artifactName": "pie-code_${version}_${arch}.${ext}",
       "depends": [
         "libc6 (>= 2.31)",
         "libgtk-3-0",
@@ -278,17 +280,17 @@
       ]
     },
     "rpm": {
-      "packageName": "pi-desktop",
-      "artifactName": "pi-desktop-${version}-${arch}.${ext}",
+      "packageName": "pie-code",
+      "artifactName": "pie-code-${version}-${arch}.${ext}",
       "fpm": [
         "--rpm-rpmbuild-define",
         "_build_id_links none"
       ]
     },
     "linux": {
-      "executableName": "pi-desktop",
+      "executableName": "pie-code",
       "syncDesktopName": true,
-      "artifactName": "PI-Desktop-${version}-linux-${arch}.${ext}",
+      "artifactName": "Pie-Code-${version}-linux-${arch}.${ext}",
       "target": [
         {
           "target": "AppImage"
@@ -301,7 +303,7 @@
         }
       ],
       "category": "Development",
-      "icon": "build/icon.png",
+      "icon": "build/linux-icons",
       "extraResources": [
         {
           "from": "../../target/release/pi-desktop-host-core",

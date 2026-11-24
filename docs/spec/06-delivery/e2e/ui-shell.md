@@ -252,16 +252,15 @@
   native focus reveal, hit targets, and open/close user paths in
   `node scripts/e2e-work-panel-launcher-overflow.mjs`; full UI scenario Draft
 
-## E2E-060b: Neutral gray accent across chrome
+## E2E-060b: Pie Code accent across chrome
 
 - **Preconditions**: App running in dark and light themes; plugins page and a
   chat with markdown links/blockquotes available.
 - **Steps**: 1) Inspect focus rings, primary buttons, toggles, selected
   session ring, plugin market primary CTAs. 2) Open an assistant answer with
   links and a blockquote. 3) Switch theme and re-check.
-- **Expected**: No blue brand accent remains. Interactive accent, markdown
-  links/rules, and plugin primary actions resolve through the neutral gray
-  accent tokens (`white/gray` dark, dark-ink light). The plugins
+- **Expected**: Interactive accent, markdown links/rules, and plugin primary
+  actions use coral in dark mode and deeper coral in light mode. The plugins
   installed/market UI (tabs, search, cards, permission modal, and primary /
   secondary buttons) uses only `--ds-*` tokens with no blue-slate fallbacks in
   either theme; button surfaces and ink remain visible in dark mode. Semantic
@@ -592,10 +591,8 @@
   Windows/Linux render the canonical 20px logo beside the 15px shell name; the
   complete brand has a localized Home accessible name, visible hover/focus
   feedback, and returns the main pane to chat without clearing the active
-  conversation or workspace. The logo itself is theme-aware: light mode shows
-  `src/assets/brand/logo-light.png`,
-  dark mode shows `src/assets/brand/logo-dark.png`, swapping live with
-  `data-theme` (no reload).
+  conversation or workspace. Both themes use the same Pie Code mark from
+  `src/assets/brand/logo.png`.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md`
 - **Acceptance**: Quality
@@ -869,7 +866,7 @@
 - **Acceptance**: A (app startup), Quality
 - **Milestone**: M5
 
-## E2E-099: Brand logo follows the active theme
+## E2E-099: Brand and mascot stay legible across themes
 - **Status**: Draft
 - **Priority**: P3
 - **Covers**: Quality / US-UI shell polish
@@ -883,9 +880,9 @@
   4. Re-inspect the same surfaces without reloading.
   5. Switch back to light and re-inspect.
 - **Expected**:
-  - Light and dark mode render `src/assets/brand/logo-light.png` /
-    `src/assets/brand/logo-dark.png`
-    live in the sidebar and startup splash without a window reload.
+  - Both themes render the Pie Code logo from `src/assets/brand/logo.png` in
+    the sidebar and startup splash. Primary buttons, selected items, and
+    keyboard focus use the coral accent with enough contrast for each theme.
   - The empty-home hero renders the 100px eight-frame mascot GIF for the
     active theme (`home-mascot-light.gif` / `home-mascot-dark.gif`) with a
     short idle hold and a looping wave. Switching theme swaps the pair live

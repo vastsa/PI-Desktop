@@ -1,6 +1,6 @@
 import { app, BrowserWindow, screen } from "electron";
 import { join } from "node:path";
-import { IPC, type ComputerCursorEvent, type ComputerRect } from "@pi-desktop/shared";
+import { APP_NAME, IPC, type ComputerCursorEvent, type ComputerRect } from "@pi-desktop/shared";
 import { getModuleDirectory } from "../module-path";
 import { suppressLinuxFramelessSystemMenu } from "../frameless-system-menu";
 
@@ -88,7 +88,7 @@ export function createComputerCursorOverlay(input: {
       try {
         const created = new BrowserWindow({
           ...overlayBounds(bounds),
-          title: "PI-Desktop Computer Use",
+          title: `${APP_NAME} Computer Use`,
           show: false,
           frame: false,
           transparent: true,

@@ -283,6 +283,20 @@ fn a_renamed_self_process_is_still_refused() {
 }
 
 #[test]
+fn other_pie_code_processes_are_also_refused() {
+    let desktop = FakeDesktop::new(vec![
+        target(1234, "pie code helper", "Pie Code Helper", "helper"),
+        target(1235, "pie-code", "Pie Code", "packaged"),
+        target(1236, "io.github.w4yne00.piecode", "Pie Code", "bundle"),
+    ]);
+    let listed = policy::list_targets(&desktop, &Denylist::default()).expect("targets");
+    assert_eq!(listed.len(), 3);
+    assert!(listed
+        .iter()
+        .all(|item| item.refused_reason == Some(super::TargetRefusal::SelfTarget)));
+}
+
+#[test]
 fn built_in_credential_surfaces_cannot_be_allowlisted() {
     let desktop = FakeDesktop::new(vec![target(
         31,

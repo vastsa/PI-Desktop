@@ -141,7 +141,7 @@ test("updater gates delivery mode by platform and delivery policy", () => {
   assert.match(updaterSource, /autoUpdater\.on\("error"/);
   assert.match(
     updaterSource,
-    /github\.com\/vastsa\/PI-Desktop\/releases/,
+    /github\.com\/w4yne00\/Pie-Code\/releases/,
     "releases fallback URL",
   );
   assert.match(
@@ -257,8 +257,8 @@ test("packaging publishes an electron-updater feed for GitHub Releases", async (
   const pkg = JSON.parse(pkgSource);
   assert.ok(pkg.dependencies["electron-updater"], "electron-updater dependency");
   assert.equal(pkg.build.publish[0].provider, "github");
-  assert.equal(pkg.build.publish[0].owner, "vastsa");
-  assert.equal(pkg.build.publish[0].repo, "PI-Desktop");
+  assert.equal(pkg.build.publish[0].owner, "w4yne00");
+  assert.equal(pkg.build.publish[0].repo, "Pie-Code");
   const windowsUpdateConfigResource = pkg.build.win.extraResources.find(
     ({ from }) => from === "resources/app-update.yml",
   );
@@ -282,8 +282,9 @@ test("packaging publishes an electron-updater feed for GitHub Releases", async (
     provider: pkg.build.publish[0].provider,
     owner: pkg.build.publish[0].owner,
     repo: pkg.build.publish[0].repo,
-    updaterCacheDirName: `${pkg.name.replaceAll("/", "")}-updater`,
+    updaterCacheDirName: "pie-code-updater",
   });
+  assert.equal(pkg.build.extraMetadata.name, "pie-code");
   const macTargets = pkg.build.mac.target.map((entry) => entry.target);
   assert.ok(macTargets.includes("zip"), "mac zip target (Squirrel.Mac feed)");
   // electron-builder must never self-publish (implicit tag publishing would
@@ -296,7 +297,7 @@ test("packaging publishes an electron-updater feed for GitHub Releases", async (
     );
   }
   assert.match(pkg.scripts.dist, /build-desktop-release\.mjs/);
-  assert.equal(pkg.build.linux.executableName, "pi-desktop");
+  assert.equal(pkg.build.linux.executableName, "pie-code");
   const linuxTargets = pkg.build.linux.target.map((entry) => entry.target);
   assert.deepEqual(
     linuxTargets,
@@ -304,12 +305,12 @@ test("packaging publishes an electron-updater feed for GitHub Releases", async (
     "Linux release targets",
   );
   // Scoped package name is not a valid deb/rpm package or file name.
-  assert.equal(pkg.build.deb.packageName, "pi-desktop");
-  assert.equal(pkg.build.rpm.packageName, "pi-desktop");
+  assert.equal(pkg.build.deb.packageName, "pie-code");
+  assert.equal(pkg.build.rpm.packageName, "pie-code");
   assert.ok(!pkg.build.deb.artifactName.includes("${name}"), "deb artifactName");
   assert.equal(
     pkg.build.rpm.artifactName,
-    "pi-desktop-${version}-${arch}.${ext}",
+    "pie-code-${version}-${arch}.${ext}",
     "rpm artifactName",
   );
   assert.deepEqual(

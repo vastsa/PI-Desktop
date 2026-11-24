@@ -10,7 +10,6 @@
   background: var(--ds-bg-elevated-primary);
   box-shadow: var(--ds-shadow-composer);
   border: 0;
-  outline: 0;
 }
 
 :root[data-theme="dark"] .composer-input::placeholder,

@@ -1,7 +1,7 @@
 /** Real CSS cascade probe; fixture classes use the built app's complete stylesheet. */
 // Built-in sRGB paint; the settings rail shares the sidebar's opaque fallback.
-const DEFAULT_RGBA = {"light":{"rail":[243,243,243,255],"search":[255,255,255,255],"active":[224,224,225,255],"knob":[255,255,255,255],"composer":[255,255,255,255],"pluginSearch":[243,243,243,255],"capabilitySearch":[243,243,243,255],"pluginFocus":[255,255,255,255],"capabilityFocus":[255,255,255,255],"scrim":[25,29,32,71],"modalVeil":[25,28,31,82],"toolRow":[51,51,51,5],"toolRowPlain":[51,51,51,5],"toolRowError":[51,51,51,5],"codeHead":[28,28,28,9],"mermaidCanvas":[255,255,255,255],"thinkingCode":[240,240,240,255],"sendDisabled":[142,142,144,255],"kbd":[26,26,26,20]},"dark":{"rail":[0,0,0,255],"search":[33,33,33,255],"active":[255,255,255,26],"knob":[24,24,24,255],"composer":[33,33,33,245],"pluginSearch":[255,255,255,13],"capabilitySearch":[255,255,255,13],"pluginFocus":[255,255,255,18],"capabilityFocus":[255,255,255,18],"scrim":[0,0,0,115],"modalVeil":[24,24,24,199],"toolRow":[255,255,255,9],"toolRowPlain":[0,0,0,0],"toolRowError":[255,99,99,18],"codeHead":[255,255,255,10],"mermaidCanvas":[35,35,35,255],"thinkingCode":[255,255,255,11],"sendDisabled":[255,255,255,46],"kbd":[255,255,255,20]}};
-const DEFAULT_SHADOWS = {"light":{"knob":"rgba(0, 0, 0, 0.22) 0px 1px 2px 0px","composer":"rgba(0, 0, 0, 0.04) 0px 3px 7.5px 0px, rgba(0, 0, 0, 0.05) 0px 0px 20px 0px","pluginFocus":"oklab(0.22559 -0.00131416 -0.00642684 / 0.35) 0px 0px 0px 1px","capabilityFocus":"oklab(0.22559 -0.00131416 -0.00642684 / 0.35) 0px 0px 0px 1px"},"dark":{"knob":"rgba(0, 0, 0, 0.16) 0px 1px 2px 0px","composer":"rgba(0, 0, 0, 0.04) 0px 3px 7.5px 0px, rgba(0, 0, 0, 0.05) 0px 0px 20px 0px","pluginFocus":"oklab(0.999994 0.0000455678 0.0000200868 / 0.45) 0px 0px 0px 1px","capabilityFocus":"oklab(0.999994 0.0000455678 0.0000200868 / 0.45) 0px 0px 0px 1px"}};
+const DEFAULT_RGBA = {"light":{"rail":[243,243,243,255],"search":[255,255,255,255],"active":[151,72,54,71],"knob":[255,255,255,255],"composer":[255,255,255,255],"pluginSearch":[243,243,243,255],"capabilitySearch":[243,243,243,255],"pluginFocus":[255,255,255,255],"capabilityFocus":[255,255,255,255],"scrim":[25,29,32,71],"modalVeil":[25,28,31,82],"toolRow":[51,51,51,5],"toolRowPlain":[51,51,51,5],"toolRowError":[51,51,51,5],"codeHead":[28,28,28,9],"mermaidCanvas":[255,255,255,255],"thinkingCode":[240,240,240,255],"sendDisabled":[142,142,144,255],"kbd":[26,26,26,20]},"dark":{"rail":[0,0,0,255],"search":[33,33,33,255],"active":[233,140,119,71],"knob":[24,24,24,255],"composer":[33,33,33,245],"pluginSearch":[255,255,255,13],"capabilitySearch":[255,255,255,13],"pluginFocus":[255,255,255,18],"capabilityFocus":[255,255,255,18],"scrim":[0,0,0,115],"modalVeil":[24,24,24,199],"toolRow":[255,255,255,9],"toolRowPlain":[0,0,0,0],"toolRowError":[255,99,99,18],"codeHead":[255,255,255,10],"mermaidCanvas":[35,35,35,255],"thinkingCode":[255,255,255,11],"sendDisabled":[255,255,255,46],"kbd":[255,255,255,20]}};
+const DEFAULT_SHADOWS = {"light":{"knob":"rgba(0, 0, 0, 0.22) 0px 1px 2px 0px","composer":"rgba(0, 0, 0, 0.04) 0px 3px 7.5px 0px, rgba(0, 0, 0, 0.05) 0px 0px 20px 0px","pluginFocus":"oklab(0.499344 0.0922367 0.063583 / 0.35) 0px 0px 0px 1px","capabilityFocus":"oklab(0.499344 0.0922367 0.063583 / 0.35) 0px 0px 0px 1px"},"dark":{"knob":"rgba(0, 0, 0, 0.16) 0px 1px 2px 0px","composer":"rgba(0, 0, 0, 0.04) 0px 3px 7.5px 0px, rgba(0, 0, 0, 0.05) 0px 0px 20px 0px","pluginFocus":"oklab(0.732089 0.0977899 0.0637163 / 0.45) 0px 0px 0px 1px","capabilityFocus":"oklab(0.732089 0.0977899 0.0637163 / 0.45) 0px 0px 0px 1px"}};
 /**
  * Surface entries are `[selector, token]` for a surface the token fills,
  * `[selector, token, "ink"]` when the token paints the element's text colour, or
@@ -86,6 +86,16 @@ function rgba(color) {
   context.fillRect(0, 0, 1, 1);
   return [...context.getImageData(0, 0, 1, 1).data];
 }
+function contrast(a, b) {
+  const linear = (byte) => {
+    const value = byte / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = ([r, g, b]) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  const light = Math.max(luminance(a), luminance(b));
+  const dark = Math.min(luminance(a), luminance(b));
+  return (light + 0.05) / (dark + 0.05);
+}
 async function settle() {
   await document.fonts.ready;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -149,6 +159,28 @@ globalThis.themeSurfacesProbe = async (theme, custom) => {
     for (const [id, value] of Object.entries(values)) {
       if (String(value.rgba) !== String(DEFAULT_RGBA[theme][id])) failures.push(`${id} changed built-in paint`);
       if (value.shadow !== (DEFAULT_SHADOWS[theme][id] ?? "none")) failures.push(`${id} changed built-in shadow`);
+    }
+    const primary = document.querySelector(".btn-primary");
+    primary.focus();
+    const style = getComputedStyle(primary);
+    const coral = theme === "light" ? "#984835" : "#e88c78";
+    if (String(rgba(style.backgroundColor)) !== String(rgba(coral)) ||
+        contrast(rgba(style.color), rgba(style.backgroundColor)) < 4.5) {
+      failures.push("primary action lacks its readable coral fill");
+    }
+    const surface = getComputedStyle(document.body).backgroundColor;
+    if (!primary.matches(":focus-visible") || style.outlineStyle === "none" ||
+        String(rgba(style.outlineColor)) !== String(rgba(coral)) ||
+        contrast(rgba(style.outlineColor), rgba(surface)) < 3) {
+      failures.push("primary action lacks its visible coral keyboard focus");
+    }
+    const activeSession = values.activeSession = sample(".thread-item.active");
+    const [r, g, b, alpha] = activeSession.rgba;
+    if (r <= g || r <= b || alpha < 50) failures.push("active session lacks its coral selection");
+    document.querySelector(".composer-input").focus();
+    const composer = getComputedStyle(document.querySelector(".composer-shell"));
+    if (composer.outlineStyle === "none" || String(rgba(composer.outlineColor)) !== String(rgba(coral))) {
+      failures.push("composer lacks its visible coral keyboard focus");
     }
   }
   return { ok: failures.length === 0, theme, custom, values, failures,

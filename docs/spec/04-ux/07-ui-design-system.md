@@ -266,7 +266,7 @@ token rather than introducing a decorative palette:
 
 | State | Semantic color | Shape / motion | Meaning |
 |---|---|---|---|
-| Selected | neutral accent | static outlined ring | current conversation |
+| Selected | coral accent | static outlined ring and tinted row | current conversation |
 | In progress | warning orange | filled dot; two breathing cycles, then steady | agent is producing or executing |
 | Completed | success green | check mark | latest unread task turn completed |
 | Failed | error red | circled alert mark | latest unread task turn failed |
@@ -1319,7 +1319,7 @@ Implementation: `components/ui.tsx → SettingsToggle`.
 | CSS class | `.settings-toggle` / `.settings-toggle.on` |
 | Role | `role="switch"` with `aria-checked` |
 | Variants | default, `busy` (`.is-busy`, `aria-busy`, disabled) |
-| Background | neutral accent when on (not green); theme-specific override in `theme-overrides.css` |
+| Background | coral accent when on; theme-specific override in `theme-overrides.css` |
 
 Every boolean on/off control in Settings and editor sheets **must** use
 `SettingsToggle`. Inline `<button role="switch">` with manual class

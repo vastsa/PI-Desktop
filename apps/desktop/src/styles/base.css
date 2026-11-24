@@ -107,7 +107,7 @@ textarea:disabled {
 }
 
 :focus-visible {
-  outline: 1.5px solid color-mix(in oklab, var(--ds-accent) 80%, transparent);
+  outline: 1.5px solid var(--ds-focus);
   outline-offset: 2px;
 }
 

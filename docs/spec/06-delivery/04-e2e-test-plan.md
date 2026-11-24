@@ -362,7 +362,8 @@ Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
 rather than the A–H criteria; their gold source is the capture suite.
 
 The release artifact paths are covered by E2E-192, E2E-192a, E2E-196a,
-E2E-196b, E2E-196c, and E2E-200 (Quality, M6+).
+E2E-196b, E2E-196c, and E2E-200 (Quality, M6+). Kylin installation identity
+and profile isolation are covered by E2E-PIE-003 (Quality, M6+).
 
 ---
 

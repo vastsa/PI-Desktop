@@ -120,6 +120,7 @@ export function ReleaseNotesDialog({
         <header className="release-notes-header">
           <div className="release-notes-heading">
             <h2 id="release-notes-title">{t("updates.releaseNotes")}</h2>
+            <p>{t("settings.aboutTagline")}</p>
             <p id="release-notes-summary">
               {entries
                 ? t("updates.releaseCount", { count: entries.length })

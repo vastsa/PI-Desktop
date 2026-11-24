@@ -76,6 +76,9 @@ impl Denylist {
 /// Our own bundle identifiers. `own_pid` is the real check; these catch helper
 /// processes that run under a different pid but still draw our windows.
 const SELF_APP_KEYS: &[&str] = &[
+    "pie code",
+    "pie-code",
+    "io.github.w4yne00.piecode",
     "pi-desktop",
     "pi desktop",
     "com.pi-desktop",

@@ -221,7 +221,7 @@
  * four clusters, "where am I" has to survive a glance (D684).
  */
 .settings-nav-item.active {
-  background: color-mix(in oklab, var(--ds-accent) 12%, var(--ds-settings-nav-active));
+  background: var(--ds-settings-nav-active);
   color: var(--ds-text-primary);
 }
 
@@ -1641,6 +1641,11 @@
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
   line-height: var(--leading-body);
+}
+
+.settings-about-hero-subtitle {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
 }
 
 .settings-about-hero-meta {

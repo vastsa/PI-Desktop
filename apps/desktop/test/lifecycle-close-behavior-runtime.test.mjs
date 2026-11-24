@@ -134,12 +134,12 @@ test("renderer choices drive close and quit while unavailable renderers use nati
     fallbackRequest.payload.requestId,
   );
   const nativeAsk = globalThis.__nativeDialogOptions.at(-1);
-  assert.equal(nativeAsk.title, "Keep PI-Desktop running in the background?");
+  assert.equal(nativeAsk.title, "Keep Pie Code running in the background?");
   assert.equal(nativeAsk.message.startsWith("When you close the window"), true);
 
   globalThis.__nativeDialogResponses.push(0);
   assert.equal(await runtime.confirmQuitDialog(), false);
   const nativeQuit = globalThis.__nativeDialogOptions.at(-1);
-  assert.equal(nativeQuit.title, "Quit PI-Desktop?");
+  assert.equal(nativeQuit.title, "Quit Pie Code?");
   assert.notEqual(nativeQuit.message, nativeQuit.title);
 });

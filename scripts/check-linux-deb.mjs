@@ -26,6 +26,15 @@ for (const [key, expected] of Object.entries({
 })) {
   if (fields[key] !== expected) throw new Error(`Expected ${key} ${expected}, got ${fields[key]}`);
 }
+if (arch === "arm64" && path.basename(deb) !== `pie-code_${pkg.version}_arm64.deb`) {
+  throw new Error(`Unexpected ARM64 package filename: ${path.basename(deb)}`);
+}
+for (const relation of ["Conflicts", "Breaks", "Replaces", "Provides"]) {
+  const value = inspect("dpkg-deb", ["-f", deb, relation]);
+  if (/(?:^|,\s*)pi-desktop(?:\s|:|,|$)/.test(value)) {
+    throw new Error(`${relation} must not claim the upstream pi-desktop package`);
+  }
+}
 const depends = new Set(fields.Depends?.split(/,\s*/));
 for (const entry of pkg.build.deb.depends) {
   if (!depends.has(entry)) throw new Error(`Missing Debian dependency: ${entry}`);
@@ -34,9 +43,26 @@ for (const entry of pkg.build.deb.depends) {
 const root = mkdtempSync(path.join(tmpdir(), "pi-linux-deb-"));
 try {
   execFileSync("dpkg-deb", ["-x", deb, root], { stdio: "inherit" });
-  const app = path.join(root, "opt/PI-Desktop");
-  const required = new Set(["pi-desktop", "resources/bin/pi-desktop-host-core"]);
+  const { productName, linux: { executableName } } = pkg.build;
+  const app = path.join(root, "opt", productName);
+  const required = new Set([executableName, "resources/bin/pi-desktop-host-core"]);
   if (!existsSync(path.join(app, "resources/app.asar"))) throw new Error("Missing app.asar");
+  const desktopFile = readFileSync(path.join(root, "usr/share/applications", pkg.desktopName), "utf8");
+  for (const line of [
+    `Name=${productName}`,
+    `Exec="/opt/${productName}/${executableName}" %U`,
+    `Icon=${executableName}`,
+    `StartupWMClass=${executableName}`,
+  ]) {
+    if (!desktopFile.split(/\r?\n/).includes(line)) throw new Error(`Missing desktop entry: ${line}`);
+  }
+  for (const size of [16, 24, 32, 512]) {
+    const icon = path.join(root, "usr/share/icons/hicolor", `${size}x${size}`, "apps", `${executableName}.png`);
+    const png = readFileSync(icon);
+    if (png.readUInt32BE(16) !== size || png.readUInt32BE(20) !== size) {
+      throw new Error(`Invalid launcher icon size: ${icon}`);
+    }
+  }
 
   const header = Buffer.alloc(20);
   const floor = formatGlibcVersion(MIN_LINUX_GLIBC);

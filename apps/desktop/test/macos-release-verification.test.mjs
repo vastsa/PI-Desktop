@@ -24,7 +24,7 @@ const NOTARY_ENV = {
 };
 
 async function writeSignedAppFixture(release) {
-  const app = join(release, "mac-arm64", "PI-Desktop.app");
+  const app = join(release, "mac-arm64", "Pie Code.app");
   const hostCore = join(app, "Contents", "Resources", "bin", "pi-desktop-host-core");
   const dmg = join(release, "PI-Desktop-0.14.2-arm64.dmg");
   await mkdir(join(app, "Contents", "Resources", "bin"), { recursive: true });

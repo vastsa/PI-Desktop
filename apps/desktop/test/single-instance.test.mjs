@@ -161,6 +161,13 @@ test("explicit profile overrides still skip installation locking", { timeout: 60
   assert.deepEqual(value.storageCalls, [[override, true]]);
 });
 
+test("an installed Pie Code launch locks and starts storage under its own identity", { timeout: 60_000 }, async (t) => {
+  const value = await launchInstallation(t, {});
+  assert.deepEqual(value.calls.slice(0, 2), [["name", "Pie Code"], ["lock"]]);
+  assert.equal(value.installation.defaultDataDir.endsWith("/.pie-code"), true);
+  assert.deepEqual(value.storageCalls, [[value.installation.defaultDataDir, false]]);
+});
+
 test("a duplicate launch never initializes storage or imports the full runtime", { timeout: 60_000 }, async (t) => {
   const value = await launchInstallation(t, { ownsLock: false });
   assert.equal(value.installation.hasSingleInstanceLock, false);
@@ -175,6 +182,6 @@ test("development installation applies its separate profile before requesting th
   const pathIndex = value.calls.findIndex(([kind, path]) => kind === "path" && path === "userData");
   const lockIndex = value.calls.findIndex(([kind]) => kind === "lock");
   assert.ok(pathIndex > 0 && pathIndex < lockIndex);
-  assert.equal(value.calls[pathIndex][2].endsWith("PI-Desktop Dev"), true);
-  assert.equal(value.installation.defaultDataDir.endsWith(".pi-desktop-dev"), true);
+  assert.equal(value.calls[pathIndex][2].endsWith("Pie Code Dev"), true);
+  assert.equal(value.installation.defaultDataDir.endsWith(".pie-code-dev"), true);
 });
