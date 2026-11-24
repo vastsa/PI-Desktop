@@ -118,7 +118,7 @@ ipcMain.handle("pi-desktop/composer/readClipboardDirectories", async (event) => 
       ? paths.map(source => pathToFileURL(source).href).join("\\r\\n") : "") };
     const data = await readComposerClipboardDirectories(clipboard,
       selected => rememberComposerPickerSelection(selected, event.sender.id),
-      () => nativeClipboardPaths(clipboard, "linux"));
+      () => paths);
     return { ok: true, data };
   }
   if (!directoryPastePending) return { ok: true, data: null };
