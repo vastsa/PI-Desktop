@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../product-features.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -752,7 +753,7 @@ export function AgentMcpPage() {
                 onClick={() => setImportOpen((current) => !current)}
               />
               {addButton}
-              {marketButton}
+              {desktopFeatures.onlineServices && marketButton}
             </>
           }
         />

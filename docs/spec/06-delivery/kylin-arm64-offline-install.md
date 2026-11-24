@@ -30,3 +30,9 @@ provides. A Debian 11 smoke test cannot establish Kylin desktop behavior.
    shows a known file from its tree. Save the result with the candidate
    commit, package filename, and target OS image. Do not mark the candidate
    qualified if any step has not run.
+
+For Pie Code, check the same package identity and architecture when replacing
+an existing installation. Quit the app and install the newer internally
+distributed package with `sudo dpkg -i ./<newer-package>.deb`. Restart and
+verify the version, existing settings, and saved sessions. The app does not
+check GitHub or download its own update.

@@ -2080,6 +2080,7 @@ sklm: {
     "defaultUpdated": "Standard-AI-Anbieter aktualisiert",
     "providerRemoved": "AI-Anbieter entfernt",
     "application": "Anwendung",
+    "offlineUpdateInstructions": "Beenden Sie die App und installieren Sie das neuere Paket aus Ihrer internen Softwareverteilung. Projekte und Einstellungen bleiben erhalten.",
     "aboutVersion": "Version {{version}}",
     "logs": "Protokolle",
     "openLogs": "Protokolle öffnen",

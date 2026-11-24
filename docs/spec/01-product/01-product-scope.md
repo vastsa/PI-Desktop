@@ -12,6 +12,12 @@ It combines:
 - user-extensible plugins
 - standalone MCP servers, Skills, and Subagents
 
+The Pie Code edition is an offline coding workbench. It keeps local projects,
+sessions, Agent, Plan, Goal, and manually configured model and MCP services.
+Voice, scheduled tasks, and desktop control are not offered in the first
+edition. Scheduled jobs from imported data do not run, and stored settings
+for hidden features remain intact.
+
 ## 2. Target users
 
 ### Primary

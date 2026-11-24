@@ -930,6 +930,9 @@ with only Host API controlled. Running-turn configuration remains queued.
 
 ## E2E-066: Provider model catalog survives restart and offline refresh
 
+Catalog refresh in steps 7–8 applies to upstream PI-Desktop. For Pie Code,
+use the [offline workbench scenario](release-and-platform.md#e2e-pie-code-offline-workbench).
+
 - **Preconditions**: A saved provider matches a models.dev provider/API URL and
   has at least two catalog models; a deterministic fixture can make
   `https://models.dev/api.json` unavailable and can also make a provider

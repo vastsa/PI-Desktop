@@ -97,6 +97,24 @@ function responseFor(body, status = 200) {
   });
 }
 
+test("a bundled-only catalog keeps its model metadata without contacting models.dev", async () => {
+  const requests = [];
+  const catalog = new ModelsDevCatalog({
+    catalogPath: fileURLToPath(new URL("../resources/models.dev/api.json", import.meta.url)),
+    allowRemoteRefresh: false,
+    fetchImpl: async (url) => {
+      requests.push(url);
+      return responseFor(catalogFixture);
+    },
+  });
+
+  assert.equal(await catalog.ensureLoaded(), true);
+  assert.equal(await catalog.refresh(), false);
+  assert.equal(catalog.getStatus().source, "bundled");
+  assert.ok(catalog.getStatus().modelCount > 0);
+  assert.deepEqual(requests, []);
+});
+
 async function loadFixtureCatalog(t, fixture = catalogFixture) {
   const dir = await mkdtemp(join(tmpdir(), "pi-models-dev-cache-"));
   t.after(() => rm(dir, { recursive: true, force: true }));

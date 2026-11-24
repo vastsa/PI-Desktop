@@ -93,6 +93,7 @@ export type ProviderSetupDialogProps = {
   onSaved: (provider: ProviderPublic, models: ModelBinding[], imageModelIds?: string[]) => void | Promise<void>;
   /** Vendors a new row can sign in to instead of pasting a key. */
   vendors?: OAuthVendor[] | null;
+  showOnlineServices?: boolean;
   /** Leaves this dialog for the vendor's browser sign-in. */
   onPickSubscription?: (vendor: OAuthVendor) => void;
   /** Opens straight on this service; Jev has no preset tile to land on. */
@@ -113,6 +114,7 @@ export function ProviderSetupDialog({
   onSaved,
   imageModelIds,
   vendors,
+  showOnlineServices = true,
   onPickSubscription,
   initialService,
   onJevConfigured,
@@ -492,9 +494,11 @@ export function ProviderSetupDialog({
           apiStyle={resolvedApiStyle}
           disabled={saving}
           onApply={(suggestion) => {
-            const preset = NAMED_ENDPOINT_PRESETS.find((item) =>
-              item.baseUrl === suggestion.baseUrl && item.apiStyle === suggestion.apiStyle,
-            );
+            const preset = showOnlineServices
+              ? NAMED_ENDPOINT_PRESETS.find((item) =>
+                  item.baseUrl === suggestion.baseUrl && item.apiStyle === suggestion.apiStyle,
+                )
+              : undefined;
             setService(preset?.id ?? CUSTOM_SERVICE);
             setBaseUrl(suggestion.baseUrl);
             setApiStyle(suggestion.apiStyle);
@@ -581,7 +585,8 @@ export function ProviderSetupDialog({
         current={service}
         onPickService={pickService}
         onPickSubscription={editing ? undefined : onPickSubscription}
-        showClassifiers={!editing}
+        showNamedServices={showOnlineServices}
+        showClassifiers={showOnlineServices && !editing}
         pluginProviders={editing ? [] : pluginProviderOptions}
         onPickPluginProvider={editing ? undefined : onPickPluginProvider}
       />

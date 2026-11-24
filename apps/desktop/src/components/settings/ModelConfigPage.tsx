@@ -7,6 +7,7 @@
  * vendor-account editor and `deleteOauthAccount`, never the provider CRUD.
  *
  */
+import { desktopFeatures } from "../../../product-features.ts";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -139,7 +140,7 @@ export function ModelConfigPage() {
     closeLogin,
     removeAccount,
     saveAccount,
-  } = useVendorAccounts();
+  } = useVendorAccounts(desktopFeatures.onlineServices);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -557,31 +558,35 @@ export function ModelConfigPage() {
               })
             : t("settings.catalogStatusUnknown")}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={refreshingCatalog}
-          onClick={() => void refreshCatalog()}
-        >
-          <span className="model-config-btn-inner">
-            <IconConfig size={13} />
-            <span>
-              {refreshingCatalog
-                ? t("settings.refreshingModelCatalog")
-                : t("settings.refreshModelCatalog")}
+        {desktopFeatures.onlineServices && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={refreshingCatalog}
+            onClick={() => void refreshCatalog()}
+          >
+            <span className="model-config-btn-inner">
+              <IconConfig size={13} />
+              <span>
+                {refreshingCatalog
+                  ? t("settings.refreshingModelCatalog")
+                  : t("settings.refreshModelCatalog")}
+              </span>
             </span>
-          </span>
-        </Button>
+          </Button>
+        )}
       </div>
 
-      <JevSettingsCard
-        settings={settings}
-        onConfigure={() => {
-          setJevSetup(true);
-          setSetupFor("");
-        }}
-        statusRevision={jevStatusRevision}
-      />
+      {desktopFeatures.onlineServices && (
+        <JevSettingsCard
+          settings={settings}
+          onConfigure={() => {
+            setJevSetup(true);
+            setSetupFor("");
+          }}
+          statusRevision={jevStatusRevision}
+        />
+      )}
 
       {imageGenerationCandidates.length > 0 ? (
         <section className="settings-card-block">
@@ -627,6 +632,7 @@ export function ModelConfigPage() {
             setJevStatusRevision((revision) => revision + 1);
           }}
           vendors={vendors}
+          showOnlineServices={desktopFeatures.onlineServices}
           onPickSubscription={(vendor) => {
             setSetupFor(null);
             setCopyDraft(null);

@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../product-features.ts";
 import {
   useCallback,
   useEffect,
@@ -518,7 +519,7 @@ export function PluginLauncher() {
         ? t("pluginLauncher.scanningApps")
         : t("pluginLauncher.empty");
 
-  const marketAction = (
+  const marketAction = desktopFeatures.onlineServices ? (
     <button
       type="button"
       className="plugin-launcher-empty-action"
@@ -526,7 +527,7 @@ export function PluginLauncher() {
     >
       {t("pluginLauncher.openPluginMarket")}
     </button>
-  );
+  ) : null;
 
   const recentActions: LauncherAction[] = [];
   if (recentSection.total > recentSection.tiles.length || expanded) {

@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../product-features.ts";
 import { Button, TooltipButton, cx } from "../../components/ui";
 import {
   IconCircleAlert,
@@ -96,7 +97,7 @@ export function InstalledPluginsPanel({
                     {group.rows.map((plugin) => {
                       const broken = group.id === "attention";
                       const menuOpen = rowMenu === plugin.id;
-                      const update = plugin.updateAvailable;
+                      const update = desktopFeatures.onlineServices ? plugin.updateAvailable : undefined;
                       /**
                        * The card's one call to action: an available update, or
                        * opening the plugin's own panel. A disabled plugin has
@@ -265,25 +266,27 @@ export function InstalledPluginsPanel({
                                       {t("plugins.reload")}
                                     </button>
                                   ) : null}
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => {
-                                      setRowMenu(null);
-                                      void run(async () => {
-                                        await api.setPluginAutoUpdate(
-                                          plugin.id,
-                                          !plugin.autoUpdate,
-                                        );
-                                        await refreshPlugins();
-                                      });
-                                    }}
-                                  >
-                                    <IconCloudDown size={14} />
-                                    {plugin.autoUpdate
-                                      ? t("plugins.disableAutoUpdate")
-                                      : t("plugins.enableAutoUpdate")}
-                                  </button>
+                                  {desktopFeatures.onlineServices && (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        setRowMenu(null);
+                                        void run(async () => {
+                                          await api.setPluginAutoUpdate(
+                                            plugin.id,
+                                            !plugin.autoUpdate,
+                                          );
+                                          await refreshPlugins();
+                                        });
+                                      }}
+                                    >
+                                      <IconCloudDown size={14} />
+                                      {plugin.autoUpdate
+                                        ? t("plugins.disableAutoUpdate")
+                                        : t("plugins.enableAutoUpdate")}
+                                    </button>
+                                  )}
                                   {/* A bundled plugin belongs to the
                                       application: the host refuses the
                                       removal, so the action is not offered

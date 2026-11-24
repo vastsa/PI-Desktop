@@ -32,7 +32,12 @@ import { initReactI18next } from "react-i18next";
 import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
 import { IPC } from "@pi-desktop/shared";
 import { PluginsPage } from "../../apps/desktop/src/pages/PluginsPage";
+import { desktopFeatures } from "../../apps/desktop/product-features";
+
 import { usePluginBrowseState } from "../../apps/desktop/src/features/plugins/browse-state";
+
+// This isolated fixture exercises the retained upstream marketplace surface.
+desktopFeatures.onlineServices = true;
 
 await i18n.use(initReactI18next).init({ lng: "en", keySeparator: false,
   resources: { en: { translation: flattenCatalog(catalogs.en) } }, interpolation: { escapeValue: false } });

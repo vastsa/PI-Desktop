@@ -8,7 +8,7 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { createInteractionSlice } = await import("../src/stores/slices/interaction-slice.ts");
 const { usePluginBrowseState } = await import("../src/features/plugins/browse-state.ts");
 
-// Execute the actual sidebar Plugin market handler against the real history
+// Execute the actual sidebar Plugins handler against the real history
 // slice. Native rendering is covered by the manual UI journey.
 const source = ts.createSourceFile("SidebarNavigation.tsx",
   readFileSync(new URL("../src/components/SidebarNavigation.tsx", import.meta.url), "utf8"),
@@ -23,11 +23,11 @@ function visit(node) {
   ts.forEachChild(node, visit);
 }
 visit(source);
-assert.equal(handlers.length, 1, "identify the Plugin market handler uniquely");
+assert.equal(handlers.length, 1, "identify the Plugins handler uniquely");
 const clickFooter = new Function("state",
   `const { page, canNavBack, navBack, setPage } = state;
    const onBeforeNavigate = undefined;
-   const openPluginMarket = () => setPage("plugins");
+   const openPlugins = () => setPage("plugins");
    return (${handlers[0]})();`);
 
 function harness(page = "chat") {
@@ -50,7 +50,7 @@ function harness(page = "chat") {
 }
 
 for (const page of ["chat", "scheduled"]) {
-  test(`Plugin market goes back one history entry to ${page}`, () => {
+  test(`Plugins goes back one history entry to ${page}`, () => {
     const h = harness(page);
     h.click();
     assert.equal(h.get().page, "plugins");
@@ -69,7 +69,7 @@ for (const page of ["chat", "scheduled"]) {
   });
 }
 
-test("Plugin market respects the immediate history entry", () => {
+test("Plugins respects the immediate history entry", () => {
   const h = harness("chat");
   h.actions.setPage("scheduled");
   h.click();
@@ -82,7 +82,7 @@ test("Plugin market respects the immediate history entry", () => {
   assert.equal(h.get().page, "scheduled");
 });
 
-test("Plugin market without earlier history falls back to chat", () => {
+test("Plugins without earlier history falls back to chat", () => {
   for (const navStack of [[], [{ page: "plugins" }]]) {
     const h = harness("plugins");
     h.set({ navStack, navIndex: navStack.length - 1 });

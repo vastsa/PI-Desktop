@@ -2050,6 +2050,7 @@ export const ptBR = {
     defaultUpdated: "Provedor de IA padrão atualizado",
     providerRemoved: "Provedor de IA excluído",
     application: "Aplicativo",
+    offlineUpdateInstructions: "Feche o aplicativo e instale o pacote mais recente fornecido pela distribuição interna. Seus projetos e configurações são preservados.",
     aboutVersion: "Versão {{version}}",
     logs: "Logs",
     openLogs: "Abrir logs",

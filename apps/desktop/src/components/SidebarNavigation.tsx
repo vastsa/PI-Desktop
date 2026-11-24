@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../product-features.ts";
 import { sidebarModuleVisible } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { useUpdateState } from "../hooks/use-update-state";
@@ -31,10 +32,10 @@ export function SidebarPrimaryNav({
   const modules = useAppStore((s) => s.settings?.sidebarModules);
   const showNewTask = sidebarModuleVisible(modules, "newTask");
   const showScheduled =
-    scheduledTasksEnabled && sidebarModuleVisible(modules, "scheduled");
+    desktopFeatures.scheduledTasks && scheduledTasksEnabled && sidebarModuleVisible(modules, "scheduled");
   const showPluginMarket = sidebarModuleVisible(modules, "pluginMarket");
-  const openPluginMarket = () => {
-    usePluginBrowseState.getState().setTab("market");
+  const openPlugins = () => {
+    usePluginBrowseState.getState().setTab(desktopFeatures.onlineServices ? "market" : "installed");
     setPage("plugins");
   };
 
@@ -85,11 +86,11 @@ export function SidebarPrimaryNav({
               else setPage("chat");
               return;
             }
-            openPluginMarket();
+            openPlugins();
           }}
         >
           <IconPlug size={15} aria-hidden />
-          <span className="sidebar-primary-label">{t("nav.pluginMarket")}</span>
+          <span className="sidebar-primary-label">{t(desktopFeatures.onlineServices ? "nav.pluginMarket" : "nav.plugins")}</span>
         </button>
       )}
     </nav>
@@ -140,7 +141,9 @@ export function SidebarFooter() {
       </button>
 
       {showBuildVersion && (
-        <TooltipButton
+        !desktopFeatures.onlineServices ? (
+          <span className="footer-build-version" data-nav="build">{buildLabel}</span>
+        ) : <TooltipButton
           type="button"
           className={`footer-build ${updateReady ? "has-update" : ""}`}
           data-nav="build"

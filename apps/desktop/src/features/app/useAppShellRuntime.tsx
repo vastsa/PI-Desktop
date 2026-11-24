@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../product-features.ts";
 import {
   type AppMenuCommand,
   isActiveInProject,
@@ -73,7 +74,7 @@ export function useAppShellRuntime() {
   const abort = useAppStore((s) => s.abort);
   const settings = useAppStore((s) => s.settings);
   useEffect(() => {
-    if (page === "scheduled" && settings?.scheduledTasksEnabled === false) {
+    if (page === "scheduled" && (!desktopFeatures.scheduledTasks || settings?.scheduledTasksEnabled === false)) {
       useAppStore.getState().setPage("chat", { record: false });
     }
   }, [page, settings?.scheduledTasksEnabled]);
@@ -455,9 +456,10 @@ export function useAppShellRuntime() {
             // Sent by the launcher's empty state: land on the marketplace tab
             // of the plugins page instead of the installed list.
             store.setPage("plugins");
-            usePluginBrowseState.getState().setTab("market");
+            usePluginBrowseState.getState().setTab(desktopFeatures.onlineServices ? "market" : "installed");
             break;
           case "checkForUpdates": {
+            if (!desktopFeatures.onlineServices) break;
             const updateState = await api.updatesCheck();
             if (updateState.status === "up-to-date") {
               showToast(t("updates.upToDate"), { variant: "success" });
@@ -913,7 +915,7 @@ export function useAppShellRuntime() {
         return;
       }
       if (shortcut.id === "voiceToggle" || shortcut.id === "voiceCancel") {
-        if (runLiveVoiceShortcut(shortcut.id)) e.preventDefault();
+        if (desktopFeatures.voice && runLiveVoiceShortcut(shortcut.id)) e.preventDefault();
         return;
       }
       e.preventDefault();

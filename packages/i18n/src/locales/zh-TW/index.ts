@@ -2075,6 +2075,7 @@ sklm: {
     defaultUpdated: "預設 AI 服務已更新",
     providerRemoved: "AI 服務已刪除",
     application: "應用",
+    offlineUpdateInstructions: "結束應用程式後，安裝單位內網提供的新版安裝套件。專案和設定會保留。",
     aboutVersion: "版本 {{version}}",
     logs: "日誌",
     openLogs: "開啟日誌",
