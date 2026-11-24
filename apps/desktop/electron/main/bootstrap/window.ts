@@ -1022,17 +1022,19 @@ export async function createWindow({
     if (!maximizedBoundsExceedWorkArea(bounds, workArea)) return;
     window.setBounds(maximizedBoundsForWorkArea(bounds, workArea));
   };
-  // The OS finishes the restore after the event dispatch, overwriting a
-  // synchronous correction, so try now and again once the transition settles.
+  // Native maximize bounds can settle after the event callback. Reconcile
+  // both maximize and restore immediately and once their bounds settle.
   let restoredMaximizeTimer: NodeJS.Timeout | null = null;
-  window.on("restore", () => {
+  const scheduleMaximizedBoundsReconcile = () => {
     reconcileRestoredMaximize();
     if (restoredMaximizeTimer) clearTimeout(restoredMaximizeTimer);
     restoredMaximizeTimer = setTimeout(() => {
       restoredMaximizeTimer = null;
       reconcileRestoredMaximize();
     }, windowBoundsSettleMs);
-  });
+  };
+  window.on("maximize", scheduleMaximizedBoundsReconcile);
+  window.on("restore", scheduleMaximizedBoundsReconcile);
   window.on("resize", observeNativeWorkPanelResize);
   window.on("move", scheduleBoundsCheck);
   window.on("move", noteUserWindowMove);
