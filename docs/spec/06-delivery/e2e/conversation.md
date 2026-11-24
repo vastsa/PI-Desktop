@@ -3333,9 +3333,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   paste a screenshot and a large text selection.
 - **Expected**: Native disk files retain original paths and exact byte sizes;
   removable inline cards show human-readable size. No source contents cross
-  paste IPC or enter scratch/content-addressed snapshots. Small and large disk
-  files use the same reference flow; screenshots and generated text retain their
-  existing scratch/image behavior. Dispatch refreshes size, preserves metadata
+  paste IPC or enter scratch/content-addressed snapshots. Small and large
+  non-image disk files use the same reference flow. Native raster image files
+  within the import bounds (for example a screenshot tool's temporary PNG) are
+  copied into session scratch, attach as image chips and reach vision models as
+  image bytes even after the source is deleted; oversized images and SVGs keep
+  the reference flow. Screenshots and generated text retain their existing
+  scratch/image behavior. Dispatch refreshes size, preserves metadata
   through messages and model history, and clearly rejects unavailable or
   redirected sources. Forged ids/paths, another project and remote contexts are
   refused. Agent reads use normal permissions; referencing an external file does
@@ -3348,7 +3352,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   drives real React hooks, native disk-backed `File` objects, preload IPC,
   selection tokens, reference registration, prompt preparation and Composer
   history. A sparse 64 MiB + 1 byte source and a small file outside the project
-  retain size cards without renderer byte reads or scratch writes. The fixture
+  retain size cards without renderer byte reads or scratch writes, while a
+  native PNG in the same selection is imported to scratch and prepared as inline
+  image data. The fixture
   edits the large source before send and verifies refreshed size in model context.
   A second Electron process recalls the stored metadata and dispatches through
   the persisted reference records. Native clipboard metadata and provider
@@ -3358,6 +3364,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   Restore the saved selection before focusing the original control so selection
   updates cannot steal its final focus. Stale session/project previews restore
   neither focus nor selection (`composer-image-preview-focus.test.mjs`).
+- **Native pasteboard coverage (macOS)**: `pnpm test:e2e:composer-paste-image-file`
+  runs the built Desktop with a real Host, agent sidecar and preload IPC, writes
+  a temporary PNG outside the project to the general pasteboard as a file URL
+  (the PixPin/Finder shape from issue #2529), and pastes with a real paste
+  command. It asserts an image chip, deletes the source before send, then
+  verifies the local vision-capable Chat Completions fixture receives the exact
+  PNG as an `image_url` part with no local file reference context, and that the
+  transcript stores `attachments/<sha256>`. Only the model endpoint is a local
+  fixture. The pasteboard is shared with the desktop session, so the script
+  retries a paste only when Chromium saw an empty pasteboard.
 
 ## E2E-COMPOSER-deep-file-mentions: `@` reaches deep files in a large workspace
 
