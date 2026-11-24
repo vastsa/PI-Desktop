@@ -15,8 +15,8 @@ It combines:
 The Pie Code edition is an offline coding workbench. It keeps local projects,
 sessions, Agent, Plan, Goal, and manually configured model and MCP services.
 Voice, scheduled tasks, and desktop control are not offered in the first
-edition. Scheduled jobs from imported data do not run, and stored settings
-for hidden features remain intact.
+edition. Agent cannot manage scheduled tasks; imported jobs do not run and
+their records and settings remain intact.
 
 ## 2. Target users
 

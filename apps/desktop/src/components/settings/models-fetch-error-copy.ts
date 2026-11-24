@@ -21,6 +21,7 @@ export function modelsFetchErrorText(
   error: string | undefined,
   t: TFunction,
 ): string {
+  if (error === "PROVIDER_ENDPOINT_CHANGED") return t("extensions.mcp.testAfterSave");
   const view = describeModelsFetchError(error);
   let summary: string;
   switch (view.kind) {

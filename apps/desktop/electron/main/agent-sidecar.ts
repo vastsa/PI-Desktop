@@ -80,6 +80,7 @@ export class AgentSidecar extends RuntimeAgentSidecar {
           ...process.env,
           ELECTRON_RUN_AS_NODE: "1",
           ...(!desktopFeatures.onlineServices ? { PI_TELEMETRY: "0", PI_DESKTOP_DISABLE_HOSTED_SEARCH: "1" } : {}),
+          ...(!desktopFeatures.scheduledTasks ? { PI_DESKTOP_DISABLE_SCHEDULED_TASKS: "1" } : {}),
         },
       },
       onStderr: onStderr ?? fallbackStderrLogger,

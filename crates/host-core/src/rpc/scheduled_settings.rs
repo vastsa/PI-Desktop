@@ -1,6 +1,9 @@
 use super::{rpc_err, AppState, JsonRpcError, Value};
 
 pub(super) fn enabled(st: &AppState) -> Result<bool, JsonRpcError> {
+    if std::env::var("PI_DESKTOP_DISABLE_SCHEDULED_TASKS").as_deref() == Ok("1") {
+        return Ok(false);
+    }
     let settings = st
         .db
         .get_setting("app")

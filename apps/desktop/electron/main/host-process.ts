@@ -125,6 +125,7 @@ export class HostProcess extends RuntimeHostProcess {
       env: {
         PI_DESKTOP_ELECTRON_PID: String(process.pid),
         ...(!desktopFeatures.onlineServices ? { PI_DESKTOP_DISABLE_PLUGIN_MARKET: "1" } : {}),
+        ...(!desktopFeatures.scheduledTasks ? { PI_DESKTOP_DISABLE_SCHEDULED_TASKS: "1" } : {}),
         ...(builtinPlugins ? { PI_DESKTOP_BUILTIN_PLUGINS_DIR: builtinPlugins } : {}),
       },
       onStderr: onStderr ?? fallbackStderrLogger,

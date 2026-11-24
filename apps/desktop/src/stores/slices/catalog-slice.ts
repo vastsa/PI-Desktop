@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../product-features.ts";
 import { rememberModelInList, saveRecentModels } from "../../lib/recent-models";
 import type {
   AppNotification,
@@ -13,6 +14,7 @@ import type { StoreAccess } from "./types";
 
 export type CatalogSliceDependencies = StoreAccess & {
   catalogRuntime: CatalogRuntime;
+  allowLiveModelDiscovery?: boolean;
   sessionRuntime: SessionRuntime;
   decorateSessions: (
     sessions: SessionSummary[],
@@ -25,6 +27,7 @@ export function createCatalogSlice({
   get,
   set,
   catalogRuntime,
+  allowLiveModelDiscovery = desktopFeatures.onlineServices,
   sessionRuntime,
   decorateSessions,
   withoutRecordKey,
@@ -119,6 +122,14 @@ export function createCatalogSlice({
           } catch {
             // Continue to live discovery when the local cache is unavailable.
           }
+        }
+
+        // Opening the model picker must not probe every saved provider in Pie Code.
+        if (!allowLiveModelDiscovery) {
+          if (hydrated && generation === catalogRuntime.providerGeneration()) {
+            refreshedProviderModels.add(providerId);
+          }
+          return;
         }
 
         let discovered = false;

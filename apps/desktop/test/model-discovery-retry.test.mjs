@@ -8,13 +8,14 @@ const { api } = await import("../src/lib/api.ts");
 
 // Based on the reproduction in #2232 by yg2224.
 
-function harness(models = []) {
+function harness(models = [], allowLiveModelDiscovery = true) {
   let state = { providerModels: { provider: models } };
   const catalogRuntime = createCatalogRuntime();
   const slice = createCatalogSlice({
     get: () => state,
     set: patch => { state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) }; },
     catalogRuntime,
+    allowLiveModelDiscovery,
   });
   Object.assign(state, slice);
   return { slice, catalogRuntime, state: () => state };
@@ -23,6 +24,15 @@ function harness(models = []) {
 function liveCalls(mock) {
   return mock.mock.calls.filter(call => call.arguments[0]?.source === "refresh").length;
 }
+
+test("opening an offline model picker only loads saved models", async t => {
+  const cached = [{ modelId: "cached" }];
+  const h = harness([], false);
+  const listing = t.mock.method(api, "listProviderModels", async () => ({ models: cached, source: "cache" }));
+  await h.slice.loadProviderModels("provider");
+  assert.deepEqual(h.state().providerModels.provider, cached);
+  assert.deepEqual(listing.mock.calls.map(call => call.arguments[0].source), ["cache"]);
+});
 
 for (const cached of [[], [{ modelId: "cached" }]]) {
   test(`a failed live discovery is retried after its backoff (cached=${cached.length})`, async t => {

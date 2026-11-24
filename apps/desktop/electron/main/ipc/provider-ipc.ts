@@ -3,11 +3,13 @@ import {
   ErrorCodes,
   inferEndpointProfile,
   normalizeApiStyle,
+  parseEndpointInput,
   type ModelBinding,
   type ModelInfo,
   type ProviderReorderInput,
   type OAuthRespondInput,
 } from "@pi-desktop/shared";
+import { desktopFeatures } from "../../../product-features.ts";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import { probeProviderEndpoint } from "../model-discovery";
 import {
@@ -358,8 +360,13 @@ export function registerProviderIpc({
       const provider = req.providerId
         ? providers.find((p) => p.id === req.providerId)
         : undefined;
-      if (provider) modelsDevCatalog.configureAccount(provider);
       const baseUrl = (req.baseUrl ?? provider?.baseUrl ?? "").trim();
+      // A draft origin is not authorized to receive the saved key or headers.
+      if (!desktopFeatures.onlineServices && provider && req.baseUrl && req.source !== "cache" &&
+        parseEndpointInput(baseUrl)?.origin !== parseEndpointInput(provider.baseUrl ?? "")?.origin) {
+        return { models: [], source: "fallback" as const, error: "PROVIDER_ENDPOINT_CHANGED" };
+      }
+      if (provider) modelsDevCatalog.configureAccount(provider);
       const apiStyle = req.apiStyle ?? provider?.apiStyle ?? "chat_completions";
       /*
         Static endpoint resolution, the same layer the settings dialog uses:

@@ -55,19 +55,6 @@ import {
 } from "./provider-endpoint-guidance";
 import { ProviderEndpointGuidance } from "./ProviderEndpointGuidance";
 
-function serviceIdFor(provider?: ProviderPublic | null): string {
-  if (!provider) return "";
-  return providerSetupPreset(provider)?.id ?? CUSTOM_SERVICE;
-}
-
-function initialName(provider?: ProviderPublic | null): string {
-  return provider?.name ?? providerSetupPreset(provider)?.name ?? "";
-}
-
-function initialBaseUrl(provider?: ProviderPublic | null): string {
-  return providerSetupPreset(provider)?.baseUrl ?? provider?.baseUrl ?? "";
-}
-
 /**
  * Which service the dialog opens on: the caller's own choice first (Jev has no
  * preset and no row), then a copied draft's format, then the edited row's.
@@ -76,9 +63,11 @@ function initialServiceId(
   initialService: string | null | undefined,
   initialDraft: ProviderCopyDraft | null | undefined,
   provider: ProviderPublic | null | undefined,
+  showOnlineServices: boolean,
 ): string {
+  if (!showOnlineServices) return provider || initialDraft ? CUSTOM_SERVICE : "";
   if (initialService) return initialService;
-  if (!initialDraft) return serviceIdFor(provider);
+  if (!initialDraft) return provider ? providerSetupPreset(provider)?.id ?? CUSTOM_SERVICE : "";
   return initialDraft.apiStyle === OPENCODE_GO_API_STYLE
     ? NAMED_ENDPOINT_PRESETS.find((preset) => preset.apiStyle === OPENCODE_GO_API_STYLE)?.id ??
         CUSTOM_SERVICE
@@ -127,10 +116,12 @@ export function ProviderSetupDialog({
   const editing = !!provider;
   const apiKeyRef = useRef<HTMLInputElement>(null);
   const [service, setService] = useState(() =>
-    initialServiceId(initialService, initialDraft, provider),
+    initialServiceId(initialService, initialDraft, provider, showOnlineServices),
   );
-  const [name, setName] = useState(() => initialDraft?.name ?? initialName(provider));
-  const [baseUrl, setBaseUrl] = useState(() => initialDraft?.baseUrl ?? initialBaseUrl(provider));
+  const [name, setName] = useState(() => initialDraft?.name ?? provider?.name ?? "");
+  const [baseUrl, setBaseUrl] = useState(() =>
+    initialDraft?.baseUrl ?? providerSetupPreset(provider, showOnlineServices)?.baseUrl ?? provider?.baseUrl ?? "",
+  );
   const [apiKey, setApiKey] = useState("");
   const [clearSavedApiKey, setClearSavedApiKey] = useState(false);
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(() =>
@@ -172,7 +163,9 @@ export function ProviderSetupDialog({
     providerRows,
   );
 
-  const namedPreset = NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service);
+  const namedPreset = showOnlineServices
+    ? NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service)
+    : undefined;
   const named = Boolean(namedPreset);
   const custom = service === CUSTOM_SERVICE;
   const hasSavedApiKey = Boolean(provider?.hasSecret && provider.authKind !== "none" && !clearSavedApiKey);

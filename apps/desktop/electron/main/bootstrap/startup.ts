@@ -194,7 +194,20 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
     // create a window, a tray, or a child process on top of the running app.
     if (!hasSingleInstanceLock) return;
     applyDevelopmentBranding();
-    if (!desktopFeatures.onlineServices) session.defaultSession.setSpellCheckerEnabled(false);
+    if (!desktopFeatures.onlineServices) {
+      // Some Chromium contexts initialize their dictionaries before preferences
+      // can be changed. They must never fall back to the public CDN.
+      if (process.platform !== "darwin") {
+        session.defaultSession.setSpellCheckerDictionaryDownloadURL("file:///pie-code-offline-dictionaries/");
+      }
+      const disableSpellcheck = (created: typeof session.defaultSession) => {
+        if (process.platform !== "darwin") created.setSpellCheckerLanguages([]);
+        created.setSpellCheckerEnabled(false);
+      };
+      // An off preference alone does not clear the Linux dictionary list.
+      app.on("session-created", disableSpellcheck);
+      disableSpellcheck(session.defaultSession);
+    }
 
     // A Chromium-process crash from a previous run left a minidump, and nothing
     // else would ever mention it. Report one durable line per new dump set,

@@ -6,12 +6,50 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { networkInterfaces, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { bindingForCustomModel, IPC } from "../packages/shared/dist/index.js";
 import { assertDesktopBuild, resolveElectronBinary } from "./e2e/boot.mjs";
 import { Host, resolveHostBinary } from "./e2e/host.mjs";
+
+// Check strace output from the whole process tree in a loopback-only Linux
+// network namespace. TCP connects and datagram sends count even if they fail.
+if (process.argv[2] === "--check-egress-trace") {
+  const trace = await readFile(process.argv[3], "utf8");
+  let loopback = 0;
+  let routeChecks = 0;
+  const outside = [];
+  for (const line of trace.split("\n")) {
+    // A connected datagram socket can send using write() without a sockaddr.
+    for (const [, ip] of line.matchAll(/<UDPv6:[^>]*->\[([^\]]+)\]:\d+\]>/g)) {
+      if (!/^(?:(?:::ffff:)?127\.|::1$)/i.test(ip)) outside.push(ip);
+    }
+    const families = line.match(/\bsa_family=AF_INET6?\b/g);
+    if (!families) continue;
+    const addresses = [...line.matchAll(/inet_addr\("([^"]+)"\)|inet_pton\(AF_INET6, "([^"]+)"/g)];
+    assert.equal(addresses.length, families.length, "Unrecognized network address: " + line);
+    for (const [, ipv4, ipv6] of addresses) {
+      const ip = ipv4 ?? ipv6;
+      if (/^(?:(?:::ffff:)?127\.|::1$)/i.test(ip)) loopback++;
+      // Chromium uses UDP connect to inspect the kernel's IPv6 route. It
+      // emits no packet; any send to that address is still treated as egress.
+      else if (ip === "2001:4860:4860::8888" && /\bconnect\(\d+<UDPv6:.*sin6_port=htons\(443\)/.test(line)) {
+        routeChecks++;
+      } else outside.push(ip);
+    }
+  }
+  assert.deepEqual([...new Set(outside)], [], "Non-loopback network attempts");
+  assert.ok(loopback > 0, "Trace did not capture any loopback traffic");
+  console.log(`PASS process-tree network trace: only loopback requests (${routeChecks} IPv6 route checks)`);
+  process.exit(0);
+}
+
+if (process.argv.includes("--require-isolated-network")) {
+  assert.equal(process.platform, "linux", "Network isolation check requires Linux");
+  assert.ok(Object.values(networkInterfaces()).flat().every((address) => address.internal),
+    "Use a network namespace with only loopback enabled");
+}
 
 async function listen(server) {
   server.listen(0, "127.0.0.1");
@@ -36,6 +74,8 @@ const modelRequests = [];
 const blocked = [];
 const marketRequests = [];
 const mcpRequests = [];
+const savedKey = "intranet-fixture-key";
+let savedDiscoveryRequests = 0;
 const probeHost = "pie-code-offline.invalid";
 const provider = createServer(async (req, res) => {
   const json = (body) => {
@@ -61,6 +101,7 @@ const provider = createServer(async (req, res) => {
     return json({ jsonrpc: "2.0", id: message.id, result });
   }
   if (req.url === "/v1/models") {
+    if (req.headers.authorization === "Bearer " + savedKey) savedDiscoveryRequests++;
     modelRequests.push("models");
     return json({ data: [{ id: model }] });
   }
@@ -99,8 +140,10 @@ proxy.on("connect", (req, socket) => {
   socket.end("HTTP/1.1 502 Offline\r\n\r\n");
 });
 
-const { appDir } = assertDesktopBuild();
-const { electronBinary } = resolveElectronBinary();
+const installed = process.env.PI_CODE_E2E_APP_BIN && resolve(process.env.PI_CODE_E2E_APP_BIN);
+const { appDir, electronBinary } = installed
+  ? { appDir: dirname(installed), electronBinary: installed }
+  : { ...assertDesktopBuild(), ...resolveElectronBinary() };
 const hostBinary = resolveHostBinary();
 const scratch = await realpath(await mkdtemp(join(tmpdir(), "pie-code-offline-")));
 const workspace = join(scratch, "project");
@@ -135,24 +178,63 @@ try {
   };
   // Set the fixture proxy through the same settings that boot applies to
   // Chromium. An inherited process proxy alone would miss browser traffic.
+  let legacyProviderId;
+  let savedTaskId;
   const setupHost = new Host(hostBinary, env.PI_DESKTOP_DATA_DIR, {
-    env: { ...env, PI_DESKTOP_DISABLE_PLUGIN_MARKET: "1" }, quiet: true,
+    env: { ...env, PI_DESKTOP_DISABLE_PLUGIN_MARKET: "1", PI_DESKTOP_DISABLE_SCHEDULED_TASKS: "0" }, quiet: true,
   });
   try {
     await setupHost.start();
     await setupHost.call("settings.set", {
       closeBehavior: "quit",
       language: "en",
+      scheduledTasksEnabled: true,
+      defaultPermissionMode: "auto",
       networkProxy: { mode: "custom", url: proxyUrl, bypass: "127.0.0.1,localhost" },
     });
+    const { provider: legacy } = await setupHost.call("providers.create", {
+      name: "Saved intranet provider", vendorKey: "openai", baseUrl: providerUrl + "/v1",
+      authKind: "api_key_and_base_url", apiStyle: "responses", secretValue: savedKey,
+      defaultModelId: model, models: [bindingForCustomModel(model)],
+    });
+    legacyProviderId = legacy.id;
+    await setupHost.call("providers.create", {
+      name: "Previously enabled public provider", vendorKey: "custom",
+      baseUrl: "https://previous-provider.invalid/v1", authKind: "none",
+      apiStyle: "chat_completions", defaultModelId: model, models: [bindingForCustomModel(model)],
+    });
+    const { task } = await setupHost.call("scheduled.create", {
+      title: "Existing schedule", prompt: "Keep this record", cadence: "manual",
+    });
+    savedTaskId = task.id;
   } finally {
     await setupHost.stop();
+  }
+  const offlineHost = new Host(hostBinary, env.PI_DESKTOP_DATA_DIR, {
+    env: { ...env, PI_DESKTOP_DISABLE_PLUGIN_MARKET: "1", PI_DESKTOP_DISABLE_SCHEDULED_TASKS: "1" }, quiet: true,
+  });
+  try {
+    await offlineHost.start();
+    const { tools } = await offlineHost.call("tools.list");
+    assert.ok(tools.every((tool) => !/^ScheduledTask/.test(tool.name)));
+    const { session: savedSession } = await offlineHost.call("session.create", { mode: "agent", projectPath: workspace });
+    const denied = await offlineHost.call("tools.execute", {
+      sessionId: savedSession.id, toolCallId: "offline-schedule", toolName: "ScheduledTaskCreate", mode: "agent",
+      args: { title: "Must not persist", prompt: "No run", cadence: "manual" },
+    });
+    assert.equal(denied.ok, false);
+    assert.equal(denied.errorCode, "INVALID_PARAMS");
+    const { tasks } = await offlineHost.call("scheduled.list");
+    assert.deepEqual(tasks.map((task) => task.id), [savedTaskId]);
+    assert.equal((await offlineHost.call("settings.get")).scheduledTasksEnabled, true);
+  } finally {
+    await offlineHost.stop();
   }
   app = spawn(electronBinary, [
     "--remote-debugging-port=0",
     "--user-data-dir=" + join(scratch, "profile"),
     "--proxy-server=" + proxyUrl,
-    ".",
+    ...(installed ? [] : ["."]),
   ], { cwd: appDir, env, stdio: ["ignore", "pipe", "pipe"] });
   const exited = once(app, "exit");
   for (const stream of [app.stdout, app.stderr]) stream.on("data", (chunk) => { output += chunk; });
@@ -236,6 +318,7 @@ try {
   }, "completed local coding turn");
   const [first, second] = modelRequests.filter((request) => typeof request === "object");
   assert.equal(first.model, manualModel);
+  assert.ok(first.tools.every((tool) => !/^ScheduledTask/i.test(tool.function?.name ?? "")));
   assert.ok(second.messages.some((message) =>
     message.role === "tool" && JSON.stringify(message.content).includes(marker)));
   assert.ok(modelRequests.includes("models"));
@@ -249,12 +332,28 @@ try {
   assert.ok(mcpRequests.includes("tools/list"));
 
   await evaluate("document.querySelector('[data-surface=startup-guide] button[aria-label=Skip]')?.click()");
+  await until(() => evaluate("Boolean(document.querySelector('.composer-model-thinking-chip'))"), "model picker");
+  await evaluate("document.querySelector('.composer-model-thinking-chip').click()");
+  await until(() => evaluate("Boolean(document.querySelector('.composer-model-rail'))"), "open model menu");
   await evaluate("document.querySelector('[data-nav=plugins]').click()");
   await until(() => evaluate("Boolean(document.getElementById('plugins-tab-installed'))"), "installed plugins view");
   assert.equal(await evaluate("Boolean(document.getElementById('plugins-tab-market'))"), false);
   assert.equal(await evaluate("Boolean(document.querySelector('[data-nav=scheduled]'))"), false);
   await evaluate("document.querySelector('[data-nav=settings]').click()");
   await clickText(".settings-nav-item", "Models");
+  await until(() => evaluate(
+    "(() => { const row = Array.from(document.querySelectorAll('.model-provider-list > li'))" +
+    ".find(el => el.textContent.includes('Saved intranet provider')); if (!row) return false; row.click(); return true; })()",
+  ), "open saved intranet provider");
+  await until(() => evaluate(
+    "Array.from(document.querySelectorAll('.provider-setup-fields input')).some(el => el.value === " +
+    JSON.stringify(providerUrl + "/v1") + ")",
+  ), "saved address in provider editor");
+  await until(() => savedDiscoveryRequests > 0, "discovery using the saved key on the intranet fixture");
+  await clickText(".provider-setup-head-actions button", "Save provider");
+  await until(() => evaluate("!document.querySelector('.provider-setup-fields')"), "close saved provider editor");
+  const savedProviders = await invoke(IPC.invoke.providersList);
+  assert.equal(savedProviders.providers.find((entry) => entry.id === legacyProviderId).baseUrl, providerUrl + "/v1");
   await clickText(".settings-content button", "Add provider");
   await until(() => evaluate("Boolean(document.querySelector('[data-service-id=custom]'))"), "custom model service");
   assert.deepEqual(await evaluate(
@@ -272,8 +371,6 @@ try {
   await wire(IPC.invoke.browserNavigate, { url: "https://" + probeHost + "/", sessionId: session.id });
   await until(() => blocked.some((request) => request === probeHost + ":443"), "offline proxy positive control");
   assert.ok(blocked.every((request) => request === probeHost + ":443"), JSON.stringify(blocked));
-  console.log("PASS offline desktop boot, bundled metadata, local model discovery, coding turn and MCP");
-
   socket.close();
   app.kill("SIGTERM");
   await Promise.race([exited, delay(5000, undefined, { ref: false })]);
@@ -293,3 +390,4 @@ try {
   }
   await rm(scratch, { recursive: true, force: true, maxRetries: 3 });
 }
+console.log("PASS offline boot, saved model editing, coding and MCP, and disabled scheduling");

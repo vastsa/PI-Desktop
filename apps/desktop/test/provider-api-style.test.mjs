@@ -55,3 +55,8 @@ test("a named hostname cannot overwrite a manually saved protocol", () => {
   assert.equal(providerSetupPreset(source("chat_completions")), undefined);
 
 });
+
+test("offline provider editing never replaces a saved intranet endpoint with a named preset", () => {
+  const provider = { ...source("responses"), vendorKey: "openai", baseUrl: "https://models.intranet.example/v1" };
+  assert.equal(providerSetupPreset(provider, false)?.baseUrl ?? provider.baseUrl, provider.baseUrl);
+});

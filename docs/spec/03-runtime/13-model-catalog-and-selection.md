@@ -294,7 +294,11 @@ If user selects model tagged without tools while in Agent mode:
 ## 6. Refresh behavior
 
 Remote catalog refresh in this section applies to upstream PI-Desktop.
-Pie Code refreshes service discovery only and keeps its bundled metadata.
+Pie Code keeps its bundled metadata. Its model picker reads cached and
+configured models without probing saved endpoints. Model settings can still
+discover from the configured service. Editing a saved provider keeps its
+address rather than adopting a named preset; a changed origin must be saved
+before discovery can use the provider's credentials.
 
 The bundled models.dev snapshot is the startup baseline. Startup reads no
 remote catalog and uses no ambient credentials. `providers.refreshModelCatalog`
