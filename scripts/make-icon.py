@@ -19,13 +19,35 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "apps" / "desktop" / "build"
 SOURCE = BUILD / "icon_1024.png"
 
 BASE = 1024
+
+
+def _sharp_small_frame(frame: Image.Image, target: int) -> Image.Image:
+    """Downscale to a small ICO size with staged resampling.
+
+    PIL's ICO plugin resizes straight from the 1024px master in one
+    LANCZOS pass. A single >10x reduction drops most pixels on the floor
+    and leaves the 16/32/48px taskbar frames soft and muddy, which reads
+    as a blurry icon under HiDPI scaling. Halving down to just above the
+    target keeps fine edges alive, and a light unsharp mask restores the
+    contrast the small raster loses.
+    """
+    size = frame.size[0]
+    while size > target * 2:
+        size = max(target * 2, size // 2)
+        frame = frame.resize((size, size), Image.LANCZOS)
+    frame = frame.resize((target, target), Image.LANCZOS)
+    if target >= 32:
+        # 16px frames have too few pixels for a contrast boost to help;
+        # sharpening everything above that restores edge definition.
+        return frame.filter(ImageFilter.UnsharpMask(radius=1, percent=80, threshold=2))
+    return frame
 
 
 def main() -> None:
@@ -41,17 +63,26 @@ def main() -> None:
 
     BUILD.mkdir(parents=True, exist_ok=True)
     windows_icon = BUILD / "icon.ico"
-    master.save(
+    ico_sizes = [
+        (16, 16),
+        (32, 32),
+        (48, 48),
+        (64, 64),
+        (128, 128),
+        (256, 256),
+    ]
+    # Pre-render each frame with the staged downscale instead of letting
+    # PIL's ICO plugin resize straight from the 1024px master: the direct
+    # single-pass reduction leaves the small taskbar frames soft, which
+    # reads as a blurry icon under HiDPI scaling (see issue #2050).
+    ico_frames = [_sharp_small_frame(master, w) for (w, _) in ico_sizes]
+    # The ICO base frame must be the largest one; smaller frames are kept
+    # as-is from append_images when their size matches.
+    ico_frames[-1].save(
         windows_icon,
         format="ICO",
-        sizes=[
-            (16, 16),
-            (32, 32),
-            (48, 48),
-            (64, 64),
-            (128, 128),
-            (256, 256),
-        ],
+        append_images=ico_frames[:-1],
+        sizes=ico_sizes,
     )
     package_icon = BUILD / "icon.png"
     master.resize((512, 512), Image.LANCZOS).save(package_icon)
