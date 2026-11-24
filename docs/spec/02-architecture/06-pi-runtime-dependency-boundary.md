@@ -54,6 +54,31 @@ Do not reintroduce imports from removed `pi-agent-core` harness, session,
 compaction, or prompt-template APIs. Keep desktop behavior in the agent-runtime
 boundary and use public `pi-ai` APIs for provider-facing operations.
 
+### Experimental foreground prompt-cache warming
+
+Settings → Agent Behavior exposes a default-off experimental switch. Electron
+authorizes at most one ordinary local Desktop conversation, selected in the
+visible, focused main window. The sidecar captures the last successful real
+request and refreshes it only after the turn has settled. Focus loss, navigation,
+a new turn, a provider or session configuration change, and runtime disposal
+cancel warming. Native Pi sessions retain their SDK lifecycle.
+
+Use the effective request's known TTL and skip a cache that covers the
+30-minute window. An unknown TTL, including for custom endpoints, uses a
+4-minute-30-second interval after a successful request reports cache reads or
+writes. The 30-minute window starts with the last real request, so the fallback
+can issue at most six refreshes. Stale timers are skipped. A failed refresh,
+unreported cache use, or a response mostly billed as uncached input or cache
+write stops warming until another real request.
+
+The sidecar reuses the provider binding and the public Pi cache-warming options
+with continuation and retries disabled. Refresh output stays outside the
+conversation and provider usage follows the existing turn accounting path.
+Requests with hosted search, trusted extension hooks, or per-turn plugin
+context are excluded from replay, as are provider adapters without a bounded
+output option. No transcript, session-data migration, or
+new provider-configuration setting is required.
+
 ## 3. `pi-durable` assessment
 
 `@earendil-works/pi-durable` is a candidate for a later runtime migration, not

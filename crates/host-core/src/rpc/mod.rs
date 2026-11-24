@@ -1233,6 +1233,13 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
+    if object.get("foregroundCacheWarmingEnabled").is_some_and(|value| !value.is_boolean()) {
+        return Err(rpc_err(
+            1002,
+            "foregroundCacheWarmingEnabled must be a boolean",
+            "INVALID_PARAMS",
+        ));
+    }
     if let Some(threshold_value) = object.get("largePasteThreshold") {
         let Some(threshold) = threshold_value.as_i64() else {
             return Err(rpc_err(

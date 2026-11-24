@@ -11,7 +11,7 @@ export type NotificationIpcDependencies = {
   getHost: () => HostProcess | null;
   getMainWindow: () => Electron.BrowserWindow | null;
   getViewingSessionId: () => string | null;
-  setViewingSessionId: (sessionId: string | null) => void;
+  setViewingSessionId: (sessionId: string | null, cacheWarming: boolean) => void;
   sendToRenderer: (channel: string, payload: unknown) => void;
 };
 
@@ -130,12 +130,13 @@ export function registerNotificationIpc({
     return result;
   });
 
-  handle(
+  registrar.handleWithEvent(
     IPC.invoke.notificationSetViewingSession,
-    async (input: { sessionId?: unknown } = {}) => {
+    async (event, input: { sessionId?: unknown; cacheWarming?: unknown } = {}) => {
+      registrar.assertMainWindowSender(event);
       const sessionId =
         typeof input.sessionId === "string" ? input.sessionId.trim() : "";
-      setViewingSessionId(sessionId || null);
+      setViewingSessionId(sessionId || null, input.cacheWarming === true);
       return { ok: true };
     },
   );

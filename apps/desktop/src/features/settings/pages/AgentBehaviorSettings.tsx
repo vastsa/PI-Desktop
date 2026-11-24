@@ -68,6 +68,16 @@ export function AgentBehaviorSettings({
       </SettingsCard>
 
       <SettingsCard title={t("settings.execution")}>
+        <SettingsRow
+          title={t("settings.foregroundCacheWarming")}
+          description={t("settings.foregroundCacheWarmingDesc")}
+        >
+          <SettingsToggle
+            checked={settings.foregroundCacheWarmingEnabled === true}
+            label={t("settings.foregroundCacheWarming")}
+            onChange={() => void saveSettings({ foregroundCacheWarmingEnabled: !settings.foregroundCacheWarmingEnabled })}
+          />
+        </SettingsRow>
         <SettingsRow title={t("settings.backgroundJobContinuation")} description={t("settings.backgroundJobContinuationDesc")}>
           <SettingsToggle
             checked={settings.backgroundJobContinuationEnabled === true}

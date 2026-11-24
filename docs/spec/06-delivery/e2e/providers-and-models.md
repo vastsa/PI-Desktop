@@ -7,6 +7,19 @@ Render the normal Composer toolbar for an active remote session that denies Stop
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Provider setup, credentials, OAuth, model catalogs, wire protocols, usage, and hosted search.
 > Scenario template, gates, and traceability live in the plan.
 
+## E2E-PROVIDER-foreground-cache-warming
+
+- Open two ordinary conversations backed by a synthetic provider that reports
+  cache reads and writes. Complete a normal request and verify warming is off.
+- Enable the experiment, complete a request in the selected conversation, and
+  advance the clock by 4 minutes 30 seconds with an unknown TTL. Verify one
+  refresh on the same route with continuation disabled and no transcript row.
+- Switch conversations, blur the window, and start a new turn. Each ends the
+  old schedule. Returning can resume an unexpired candidate without extending
+  the original 30-minute window. A miss or missing usage stops the schedule.
+- Verify that refresh usage belongs to the original turn and that native Pi,
+  scheduled runs, and routes with an already sufficient TTL are unaffected.
+
 ## E2E-USAGE-explicit-zero-cache
 
 - Complete a controlled Pi request with nonzero input/output and explicit zero

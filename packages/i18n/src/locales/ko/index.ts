@@ -1751,6 +1751,8 @@ sklm: {
     noResults: "일치하는 설정 없음",
     enterToSend: "Enter로 보내기",
     enterToSendDesc: "끔: ⌘/Ctrl+Enter를 눌러 보내세요.",
+    foregroundCacheWarming: "프롬프트 캐시 유지 (실험 기능)",
+    foregroundCacheWarmingDesc: "현재 대화가 화면에 표시되는 동안 가끔 요청을 보내 캐시를 유지합니다. 이 요청은 제공업체의 사용량 한도에 포함됩니다.",
     backgroundJobContinuation: "백그라운드 작업 완료 후 계속",
     backgroundJobContinuationDesc: "요청한 로컬 테스트나 빌드가 끝나면 기존 권한 모드로 대화를 재개합니다. 기본값은 꺼짐입니다. 끄면 대기 중인 재개만 취소되며 프로세스는 계속 실행됩니다.",
     codemode: "Codemode 스크립트",

@@ -8,6 +8,7 @@ import {
   createAssistantMessageEventStream,
   getCurrentTools,
   getCurrentSystemMessage,
+  getCacheWarmingRequestOptions,
   normalizeContext,
   toToolDeclaration,
   type AssistantMessage,
@@ -48,6 +49,7 @@ import { getGlobalDispatcher } from "undici";
 import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
 import { resolveBatchExecutionMode } from "./tool-execution-policy.js";
 import { BatchPlanner } from "./batch-planner.js";
+import { buildProviderModel, createProviderModels } from "./provider-binding.js";
 import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
@@ -808,6 +810,66 @@ function assistantMessage(overrides: {
     content: overrides.content,
   };
 }
+
+describe("foreground cache warming through the normal turn", () => {
+  it("sends the one-token cap over the OpenAI-compatible wire", async () => {
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response("bad request", { status: 400 });
+    });
+    const model = buildProviderModel(provider);
+    const models = createProviderModels(provider, model);
+    await models.streamSimple(model, normalizeContext({
+      messages: [{ role: "user", content: "Synthetic prompt", timestamp: 1 }],
+    }), getCacheWarmingRequestOptions({ fetch }, new AbortController().signal)).result();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].max_completion_tokens ?? requests[0].max_tokens).toBe(1);
+  });
+
+  it("replays the last provider request without adding a turn or a transcript message", async () => {
+    vi.useFakeTimers();
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ thinkingLevel: "off", onEvent });
+    const models = (runtime as unknown as { models: Models }).models;
+    const stream = vi.spyOn(models, "streamSimple").mockImplementation(() => {
+      const result = assistantMessage({ content: [{ type: "text", text: "Synthetic answer" }] }) as AssistantMessage;
+      result.usage.input = 0;
+      result.usage.cacheRead = 2_048;
+      result.usage.totalTokens = 2_049;
+      const events = createAssistantMessageEventStream();
+      queueMicrotask(() => {
+        events.push({ type: "start", partial: result });
+        events.push({ type: "done", reason: "stop", message: result });
+        events.end(result);
+      });
+      return events;
+    });
+    try {
+      runtime.setCacheWarmingForeground(true);
+      await runtime.prompt("Synthetic prompt", "user-1", "turn-1");
+      expect(stream).toHaveBeenCalledTimes(1);
+      onEvent.mockClear();
+      await vi.advanceTimersByTimeAsync(270_000);
+      expect(stream).toHaveBeenCalledTimes(2);
+      expect(stream.mock.calls[1][1]).toEqual(stream.mock.calls[0][1]);
+      expect(stream.mock.calls[1][2]).toMatchObject({
+        maxTokens: 1, disableContinuation: true, maxRetries: 0,
+      });
+      expect(onEvent.mock.calls.map(([event]) => event)).toEqual([
+        expect.objectContaining({ turnId: "turn-1", event: expect.objectContaining({ type: "usage" }) }),
+      ]);
+      runtime.setCacheWarmingForeground(false);
+      runtime.invalidateCacheWarming("local");
+      runtime.setCacheWarmingForeground(true);
+      await vi.advanceTimersByTimeAsync(270_000);
+      expect(stream).toHaveBeenCalledTimes(2);
+    } finally {
+      await runtime.dispose();
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("parallel file batches", () => {
   it("owns the turn during capability negotiation and honors Stop before provider dispatch", async () => {

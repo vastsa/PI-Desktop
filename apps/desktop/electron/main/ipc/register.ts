@@ -68,6 +68,8 @@ export type RegisterIpcDependencies = {
   getBackendRouter?: () => BackendRouter | null;
   getNotificationViewingSessionId: () => string | null;
   setNotificationViewingSessionId: (sessionId: string | null) => void;
+  setCacheWarmingViewingSession: (sessionId: string | null) => void;
+  applyForegroundCacheWarming: (settings?: { foregroundCacheWarmingEnabled?: unknown } | null) => void;
   /** The session on screen, as the shell reported it (plugin `session:activated`). */
   setActivePluginSession: (
     next: { sessionId: string; projectPath: string | null } | null,
@@ -114,6 +116,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getBackendRouter,
     getNotificationViewingSessionId,
     setNotificationViewingSessionId,
+    setCacheWarmingViewingSession,
     setActivePluginSession,
     settleComposerSuggestion,
     getPluginLauncherWindow,
@@ -147,6 +150,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyDeveloperMode,
     applyPreventScreenSleep,
     applyKeepAwakeWhileRunning,
+    applyForegroundCacheWarming,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -284,7 +288,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getHost,
     getMainWindow,
     getViewingSessionId: getNotificationViewingSessionId,
-    setViewingSessionId: setNotificationViewingSessionId,
+    setViewingSessionId: (id, cacheWarming) => {
+      setNotificationViewingSessionId(id);
+      setCacheWarmingViewingSession(cacheWarming ? id : null);
+    },
     sendToRenderer,
   });
   registerSessionIpc({
@@ -319,6 +326,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyDeveloperMode,
     applyPreventScreenSleep,
     applyKeepAwakeWhileRunning,
+    applyForegroundCacheWarming,
     applyUpdatePreference: (preference) => updater.setPreference(preference),
     resolveEffectiveCommandShell,
     liveCallService,
@@ -342,7 +350,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     listRuntimeProviders,
     enrichProviderList,
     bindingForModel,
-    onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
+    onProviderInvalidated: async (providerId) => {
+      await getSidecar()?.call("agent.invalidateCacheWarming", { providerId }).catch(() => undefined);
+      await liveCallService?.invalidateProvider(providerId);
+    },
   });
   registerJevIpc({ registrar, logger });
   registerModesIpc({ registrar, catalog: dependencies.modeServices.catalog, runs: dependencies.modeServices.runs });

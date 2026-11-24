@@ -1743,6 +1743,8 @@ sklm: {
     "noResults": "Aucun paramètre correspondant",
     "enterToSend": "Entrez pour envoyer",
     "enterToSendDesc": "Désactivé : appuyez sur ⌘/Ctrl+Entrée pour envoyer.",
+    foregroundCacheWarming: "Maintenir le cache des invites (expérimental)",
+    foregroundCacheWarmingDesc: "Tant que la conversation est au premier plan, des requêtes occasionnelles maintiennent son cache. Elles consomment le quota du fournisseur.",
     backgroundJobContinuation: "Reprendre après les tâches en arrière-plan",
     backgroundJobContinuationDesc: "Autoriser la reprise d’une conversation locale après les tests ou compilations demandés, avec les permissions actuelles. Désactivé par défaut. La désactivation annule les reprises en attente, sans arrêter les processus.",
     codemode: "Scripts Codemode",

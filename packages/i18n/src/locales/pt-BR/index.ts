@@ -1714,6 +1714,8 @@ export const ptBR = {
     noResults: "Nenhum resultado encontrado",
     enterToSend: "Enter para enviar",
     enterToSendDesc: "Desativado: pressione ⌘/Ctrl+Enter para enviar.",
+    foregroundCacheWarming: "Manter o cache de prompts ativo (experimental)",
+    foregroundCacheWarmingDesc: "Enquanto a conversa estiver em primeiro plano, solicitações ocasionais mantêm seu cache ativo. Essas solicitações consomem a cota do provedor.",
     backgroundJobContinuation: "Continuar após tarefas em segundo plano",
     backgroundJobContinuationDesc: "Permitir retomar a conversa local após os testes ou compilações solicitados, com as permissões atuais. Desativado por padrão. Desativar cancela as continuações pendentes, sem encerrar os processos.",
     codemode: "Scripts do Codemode",
