@@ -2694,8 +2694,11 @@ position and size, and AppKit must be able to resize its edges.
 `node scripts/e2e-window-controls.mjs`
 then covers the built shell: maximized caption regions must compute to no-drag,
 and a double-click must restore through the real preload/IPC and unlock the
-normal caption. `maximized-window-chrome.test.mjs` covers late-query/event races,
-repeated clicks, no-drag controls and unmount cleanup.
+normal caption. Native fullscreen enter/exit must also leave renderer maximize
+state synchronized after the AppKit transition settles, including when the
+native event precedes the final maximize flag. `maximized-window-chrome.test.mjs`
+and `window-state-sync.test.mjs` cover late-query/event races, fullscreen
+resync, repeated clicks, no-drag controls and cleanup.
 Windows covers maximize/restore with the same production guard; Linux keeps
 its compositor-owned geometry. Unit tests cover cancellable edge events and
 listener cleanup (`window-native-behavior.test.mjs`).

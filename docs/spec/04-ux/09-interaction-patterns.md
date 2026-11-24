@@ -135,8 +135,9 @@ recency only breaks ties between equally relevant matches.
   resets this handshake.
 - Frameless minimize, maximize/restore, and close controls remain outside the
   drag region. Maximize state is queried on mount and updated from native
-  window events, so the restore affordance never depends only on optimistic
-  renderer state.
+  maximize/unmaximize events. Fullscreen enter/exit also rechecks native
+  maximize state after the transition settles, so macOS caption dragging and
+  the restore affordance reflect the actual window state.
 - Windows/Linux explicit minimize actions use native minimize and keep the
   taskbar entry. On Windows, clicking the focused window's taskbar button also
   uses native minimize and keeps the taskbar entry; clicking it again
