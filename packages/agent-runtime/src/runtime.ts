@@ -4154,7 +4154,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // Scheduled tasks and computer use belong to the builtin Agent mode
     // itself; the Host refuses them in every other mode.
     if (agentLevel && this.modeState.offersAgentModeOnlyTools()) {
-      tools.push(...Object.keys(scheduledToolParameters));
+      if (process.env.PI_DESKTOP_DISABLE_SCHEDULED_TASKS !== "1") {
+        tools.push(...Object.keys(scheduledToolParameters));
+      }
       if (this.computerUseEnabled) tools.push("Computer");
     }
     const builtins = tools.map(exec);

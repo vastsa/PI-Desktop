@@ -7,6 +7,7 @@
  * presentation and composer input, which are now the Conversation
  * destination.
  */
+import { desktopFeatures } from "../../../../product-features.ts";
 import type { AppSettings, GlobalPermissionMode } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { SegmentedControl, SettingsToggle } from "../../../components/ui";
@@ -78,21 +79,23 @@ export function AgentBehaviorSettings({
             onChange={() => void saveSettings({ infiniteProviderRetry: settings.infiniteProviderRetry !== true })}
           />
         </SettingsRow>
-        <SettingsRow
-          title={t("settings.scheduledTasks")}
-          description={t("settings.scheduledTasksDesc")}
-        >
-          <SettingsToggle
-            checked={settings.scheduledTasksEnabled !== false}
-            label={t("settings.scheduledTasks")}
-            onChange={() => void saveSettings({
-              scheduledTasksEnabled: settings.scheduledTasksEnabled === false,
-            })}
-          />
-        </SettingsRow>
+        {desktopFeatures.scheduledTasks && (
+          <SettingsRow
+            title={t("settings.scheduledTasks")}
+            description={t("settings.scheduledTasksDesc")}
+          >
+            <SettingsToggle
+              checked={settings.scheduledTasksEnabled !== false}
+              label={t("settings.scheduledTasks")}
+              onChange={() => void saveSettings({
+                scheduledTasksEnabled: settings.scheduledTasksEnabled === false,
+              })}
+            />
+          </SettingsRow>
+        )}
       </SettingsCard>
 
-      <ComputerUseSettings t={t} settings={settings} saveSettings={saveSettings} />
+      {desktopFeatures.computerUse && <ComputerUseSettings t={t} settings={settings} saveSettings={saveSettings} />}
     </div>
   );
 }

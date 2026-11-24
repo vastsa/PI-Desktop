@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../../product-features.ts";
 import type { Dispatch, SetStateAction } from "react";
 import type { TFunction } from "i18next";
 import {
@@ -133,8 +134,8 @@ export function ComposerToolbar({
             <IconPlus size={15} aria-hidden="true" />
           </TooltipButton>
         </div>
-        {localToolsAllowed ? <LiveVoiceControls t={t} workSessionId={workSessionId} /> : null}
-        {localToolsAllowed ? (
+        {desktopFeatures.voice && localToolsAllowed ? <LiveVoiceControls t={t} workSessionId={workSessionId} /> : null}
+        {desktopFeatures.computerUse && localToolsAllowed ? (
           <ComputerUseIndicator sessionId={workSessionId ?? null} abort={abort} />
         ) : null}
         <ComposerModePicker

@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../product-features.ts";
 import { useEffect, useRef } from "react";
 import { Button, TooltipButton, cx } from "../components/ui";
 import { IconCloudDown, IconDownload, IconMore, IconPlug } from "../components/icons";
@@ -58,7 +59,7 @@ export function PluginsPage() {
             </div>
           </div>
           <div className="plugins-header-actions">
-            {tab === "market" ? (
+            {desktopFeatures.onlineServices && (tab === "market" ? (
               <Button
                 variant="primary"
                 size="sm"
@@ -72,7 +73,7 @@ export function PluginsPage() {
                 <IconDownload size={14} />
                 {t("plugins.browseMarket")}
               </Button>
-            ) : null}
+            ) : null)}
             <AnchoredMenu
               className="plugins-menu-wrap"
               open={headerMenu}
@@ -128,20 +129,22 @@ export function PluginsPage() {
               {t("plugins.tabInstalled")}
               <span className="plugins-segment-count">{stats.total}</span>
             </button>
-            <button
-              type="button"
-              role="tab"
-              id="plugins-tab-market"
-              aria-selected={tab === "market"}
-              aria-controls="plugins-panel-market"
-              className={cx("plugins-segment-btn", tab === "market" && "active")}
-              onClick={() => setTab("market")}
-            >
-              {t("plugins.tabMarket")}
-              {marketTotal ? (
-                <span className="plugins-segment-count">{marketTotal}</span>
-              ) : null}
-            </button>
+            {desktopFeatures.onlineServices && (
+              <button
+                type="button"
+                role="tab"
+                id="plugins-tab-market"
+                aria-selected={tab === "market"}
+                aria-controls="plugins-panel-market"
+                className={cx("plugins-segment-btn", tab === "market" && "active")}
+                onClick={() => setTab("market")}
+              >
+                {t("plugins.tabMarket")}
+                {marketTotal ? (
+                  <span className="plugins-segment-count">{marketTotal}</span>
+                ) : null}
+              </button>
+            )}
           </div>
           {tab === "installed" ? (
             plugins.length ? (

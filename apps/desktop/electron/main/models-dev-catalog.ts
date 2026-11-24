@@ -131,6 +131,7 @@ export type ModelsDevCatalogStatus = {
 export type ModelsDevCatalogOptions = {
   /** Checked-in catalog or dated release snapshot; never a user-data path. */
   catalogPath: string;
+  allowRemoteRefresh?: boolean;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   now?: () => number;
@@ -1416,6 +1417,7 @@ export class ModelsDevCatalog {
   private readonly timeoutMs: number;
   private readonly now: () => number;
   private readonly catalogPath: string;
+  private readonly allowRemoteRefresh: boolean;
   private localLoadAttempted = false;
   private localLoadPromise: Promise<boolean> | undefined;
   private readonly operationModels: MutableModels;
@@ -1428,6 +1430,7 @@ export class ModelsDevCatalog {
     this.timeoutMs = options.timeoutMs ?? MODELS_DEV_TIMEOUT_MS;
     this.now = options.now ?? (() => Date.now());
     this.catalogPath = options.catalogPath;
+    this.allowRemoteRefresh = options.allowRemoteRefresh ?? true;
     this.operationModels = createModels({
       modelsStore: new InMemoryModelsStore(),
       authContext: { env: async () => undefined, fileExists: async () => false },
@@ -1499,6 +1502,7 @@ export class ModelsDevCatalog {
 
   /** Refresh the in-memory snapshot for the current process; never writes user data. */
   async refresh(): Promise<boolean> {
+    if (!this.allowRemoteRefresh) return false;
     if (this.loadPromise) return this.loadPromise;
     this.loadPromise = (async () => {
       const controller = new AbortController();

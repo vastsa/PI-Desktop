@@ -4,7 +4,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
-test("agent behavior places computer use after the session defaults and execution", async () => {
+test("when available, computer use follows the session defaults and execution", async () => {
   // The destination is Behavior since D684; computer use stays its last card,
   // after what a run starts with and what it may do.
   const source = await readFile(
@@ -17,7 +17,7 @@ test("agent behavior places computer use after the session defaults and executio
   assert.ok(
     source.indexOf('t("settings.execution")') < source.indexOf("<ComputerUseSettings"),
   );
-  assert.match(source, /<ComputerUseSettings[^>]+\/>\s*<\/div>/);
+  assert.match(source, /desktopFeatures\.computerUse && <ComputerUseSettings[^>]+\/>\}\s*<\/div>/);
 });
 
 test("computer use keeps controls and required status without explanatory copy", async (t) => {

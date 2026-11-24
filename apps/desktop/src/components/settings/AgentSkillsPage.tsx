@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../product-features.ts";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -689,7 +690,7 @@ export function AgentSkillsPage() {
                 <IconPlus size={14} />
                 {t("settings.newSkill")}
               </CapabilityButton>
-              {marketButton}
+              {desktopFeatures.onlineServices && marketButton}
             </>
           }
         />

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { desktopChannelEnabled } from "../../../product-features.ts";
 import { dialog, shell, type BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron";
 import { err, ErrorCodes, IPC, ok, type LifecycleDialogChoice, type Result } from "@pi-desktop/shared";
 import type { AgentHostBridge } from "../agent-host-bridge";
@@ -211,8 +212,16 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
 
 
   const ipcHandlers = new Map<string, (...args: any[]) => Promise<any>>();
+  const assertChannelEnabled = (channel: string) => {
+    if (!desktopChannelEnabled(channel)) {
+      throw Object.assign(new Error("This feature is unavailable in Pie Code"), {
+        errorCode: "PERMISSION_DENIED",
+      });
+    }
+  };
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     const handler = async (...args: any[]) => {
+      assertChannelEnabled(channel);
       const result = await fn(...args);
       traySessions.observeInvoke(channel);
       taskbarUnreadBadge.observeInvoke(channel);
@@ -225,6 +234,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     // runs the existing local handler byte-for-byte unchanged.
     ipcMain.handle(channel, async (_event, ...args) =>
       wrap(async () => {
+        assertChannelEnabled(channel);
         const router = getBackendRouter?.();
         if (router) {
           const outcome = await router.route(channel, args);
@@ -239,7 +249,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     fn: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<any>,
   ) => {
     ipcMain.handle(channel, async (event, ...args) =>
-      wrap(() => fn(event, ...args)),
+      wrap(async () => {
+        assertChannelEnabled(channel);
+        return fn(event, ...args);
+      }),
     );
   };
   const assertMainWindowSender = (event: IpcMainInvokeEvent): void => {

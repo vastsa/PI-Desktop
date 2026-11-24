@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { desktopFeatures } from "../../../product-features.ts";
 import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
@@ -732,7 +733,7 @@ export function createSessionLaunchRuntime({
       overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent",
     );
     let jevApiKey: string | undefined;
-    if (mode === "agent" && settings.jevEnabled === true) {
+    if (desktopFeatures.onlineServices && mode === "agent" && settings.jevEnabled === true) {
       try {
         const saved = await runtimeState.host!.call<{ value?: string | null }>(
           "secrets.getForRuntime",
@@ -764,7 +765,7 @@ export function createSessionLaunchRuntime({
         ...(jevApiKey ? { jevApiKey } : {}),
         // A disabled feature is absent from the prompt rather than advertised
         // and refused on every call (ADR 0342 §13).
-        ...(mode === "agent" && settings.computerUse?.enabled === true
+        ...(desktopFeatures.computerUse && mode === "agent" && settings.computerUse?.enabled === true
           ? { computerUseEnabled: true }
           : {}),
         commandShell,

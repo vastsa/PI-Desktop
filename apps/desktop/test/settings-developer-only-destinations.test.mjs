@@ -51,12 +51,12 @@ const settingsPrimitives = readFileSync(
 const identity = (key) => key;
 const developerOnlyIds = SETTINGS_NAV.filter(entry => entry.developerOnly === true).map(entry => entry.id);
 
-test("Live Voice is reachable in every build without developer mode", () => {
+test("Pie Code hides Live Voice from settings navigation and search", () => {
   for (const developerMode of [false, true]) {
     for (const includeDevelopmentOnly of [false, true]) {
-      assert.ok(visibleSettingsNav(developerMode, includeDevelopmentOnly)
+      assert.ok(!visibleSettingsNav(developerMode, includeDevelopmentOnly)
         .some((entry) => entry.id === "voice"));
-      assert.equal(isSettingsDestinationHidden("voice", developerMode, includeDevelopmentOnly), false);
+      assert.equal(isSettingsDestinationHidden("voice", developerMode, includeDevelopmentOnly), true);
       for (const query of [
         "liveVoice.title",
         "liveVoice.enable",
@@ -65,17 +65,11 @@ test("Live Voice is reachable in every build without developer mode", () => {
         "liveVoice.adapters.gemini-live.title",
         "liveVoice.adapters.openai-realtime.title",
       ]) {
-        assert.ok(searchSettings(query, identity, { developerMode, includeDevelopmentOnly })
+        assert.ok(!searchSettings(query, identity, { developerMode, includeDevelopmentOnly })
           .some((hit) => hit.tab === "voice"));
       }
     }
   }
-  // Voice is a regular Preferences destination now: no Experimental badge on
-  // the rail row or the page title.
-  assert.equal(
-    SETTINGS_NAV.find((entry) => entry.id === "voice")?.experimentalBadgeKey,
-    undefined,
-  );
 });
 
 test("Cloud sync is Experimental and available in every build", () => {

@@ -69,7 +69,7 @@ async function claimLoginDefault(providerId: string): Promise<void> {
   });
 }
 
-export function useVendorAccounts() {
+export function useVendorAccounts(enabled = true) {
   const { t } = useTranslation();
   const providers = useAppStore((s) => s.providers);
   const settings = useAppStore((s) => s.settings);
@@ -93,8 +93,8 @@ export function useVendorAccounts() {
   }, []);
 
   useEffect(() => {
-    void loadVendors();
-  }, [loadVendors]);
+    if (enabled) void loadVendors();
+  }, [enabled, loadVendors]);
 
   // Closing the dialog — done, cancelled, or the whole page going away — stops
   // the renderer listening. Cancelling the attempt itself is the dialog's job.

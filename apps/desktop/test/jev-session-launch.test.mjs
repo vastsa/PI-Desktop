@@ -9,7 +9,7 @@ import { repositoryRoot } from "../../../scripts/e2e/boot.mjs";
 const root = repositoryRoot();
 const { build } = createRequire(join(root, "packages/agent-runtime/package.json"))("esbuild");
 
-test("session launch resolves Jev credentials only for opted-in Agent mode", async () => {
+test("Pie Code session launch never reads or forwards a saved Jev key", async () => {
   const temp = await mkdtemp(join(root, "apps/desktop/.jev-launch-test-"));
   const priorHome = process.env.HOME;
   process.env.HOME = temp;
@@ -37,7 +37,6 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
     };
     const keyReads = [];
     const logs = [];
-    let failJevSecretRead = false;
     let disabledSkills = [];
     const host = {
       isAvailable: () => true,
@@ -61,7 +60,6 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
         if (method === "agents.disabledBuiltins") return { disabled: [] };
         if (method === "secrets.getForRuntime") {
           keyReads.push(input);
-          if (failJevSecretRead) throw new Error("private fixture detail");
           return { value: "jev-launch-fixture-key" };
         }
         throw new Error("Unexpected fixture Host method: " + method);
@@ -133,29 +131,10 @@ test("session launch resolves Jev credentials only for opted-in Agent mode", asy
     keyReads.length = 0;
 
     const enabledAgent = await launch("agent", true);
-    assert.equal(enabledAgent.sidecarParams.jevApiKey, "jev-launch-fixture-key");
+    assert.equal("jevApiKey" in enabledAgent.sidecarParams, false);
     assert.equal(enabledAgent.sidecarParams.provider.apiKey, "");
-    assert.deepEqual(keyReads, [{ secretRef: "secret:app:typesafe-jev" }]);
-
-    keyReads.length = 0;
-    const disabledAgent = await launch("agent", false);
-    assert.equal("jevApiKey" in disabledAgent.sidecarParams, false);
     assert.deepEqual(keyReads, []);
-
-    const plan = await launch("plan", true);
-    assert.equal("jevApiKey" in plan.sidecarParams, false);
-    assert.deepEqual(keyReads, []);
-
-    failJevSecretRead = true;
-    const unavailable = await launch("agent", true);
-    assert.equal("jevApiKey" in unavailable.sidecarParams, false);
-    assert.equal(JSON.stringify(logs).includes("private fixture detail"), false);
-    assert.deepEqual(logs, [[
-      "session",
-      "warn",
-      "Jev API key could not be loaded",
-      { sessionId: "session-fixture" },
-    ]]);
+    assert.deepEqual(logs, []);
   } finally {
     if (priorHome === undefined) delete process.env.HOME;
     else process.env.HOME = priorHome;

@@ -14,6 +14,52 @@ const { ModelsDevCatalog } = await import("../electron/main/models-dev-catalog.t
 const { createProviderCatalogRuntime } = await import("../electron/main/runtime/provider-catalog.ts");
 const { bindingForCustomModel, formatTokenCount, IPC } = await import("@pi-desktop/shared");
 
+test("offline discovery does not send a saved provider's credentials to an unsaved origin", async (t) => {
+  const row = {
+    id: "relay", name: "Relay", vendorKey: "openai", enabled: true,
+    authKind: "api_key_and_base_url", apiStyle: "responses",
+    baseUrl: "https://relay.example/v1", headers: { "x-test-auth": "saved-fixture-header" },
+    models: [bindingForCustomModel("manual-id")],
+  };
+  const handlers = new Map();
+  const hostCalls = [];
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return new Response(JSON.stringify({ data: [{ id: "fixture" }] }));
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const catalog = new ModelsDevCatalog({
+    catalogPath: fileURLToPath(new URL("../resources/models.dev/api.json", import.meta.url)),
+    allowRemoteRefresh: false,
+  });
+  registerProviderIpc({
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    getHost: () => ({ call: async (method) => {
+      hostCalls.push(method);
+      if (method === "providers.getSecret") return { value: "saved-fixture-token" };
+      return { models: [] };
+    } }),
+    modelsDevCatalog: catalog, vendorOAuth: {}, logger: { app() {} },
+    enrichProvider: () => row, listRuntimeProviders: async () => [row],
+    enrichProviderList: () => ({}), bindingForModel: () => undefined,
+  });
+  const discover = handlers.get(IPC.invoke.providersListModels);
+  const edited = await discover({
+    providerId: row.id, baseUrl: "https://different.example/v1", headers: row.headers,
+  });
+  assert.equal(edited.error, "PROVIDER_ENDPOINT_CHANGED");
+  assert.deepEqual(edited.models.map(({ modelId }) => modelId), ["manual-id"]);
+  assert.deepEqual(requests, []);
+  assert.deepEqual(hostCalls, []);
+  const saved = await discover({ providerId: row.id, baseUrl: row.baseUrl });
+  assert.equal(saved.models[0].modelId, "fixture");
+  assert.ok(hostCalls.includes("providers.getSecret"));
+  assert.ok(requests.length > 0);
+  assert.ok(requests.every((url) => new URL(url).origin === new URL(row.baseUrl).origin));
+});
+
 // Run the real IPC discovery and settings picker; mock only HTTP and host persistence.
 test("refresh hides unlisted chat choices and preserves editable configured bindings", async (t) => {
   const row = {

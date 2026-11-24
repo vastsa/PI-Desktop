@@ -2100,6 +2100,7 @@ sklm: {
     defaultUpdated: "Default AI provider updated",
     providerRemoved: "AI provider removed",
     application: "Application",
+    offlineUpdateInstructions: "Quit the application, then install the newer package provided by your internal distributor. Your projects and settings are kept.",
     aboutVersion: "Version {{version}}",
     logs: "Logs",
     openLogs: "Open logs",

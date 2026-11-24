@@ -35,8 +35,10 @@ export function needsCustomApiStyleChoice(
   return isAccountOnlyApiStyle(style) && style !== savedStyle;
 }
 
-export function providerSetupPreset(provider?: ProviderPublic | null) {
-  if (!provider || provider.vendorKey === "custom" || isAccountOnlyApiStyle(provider.apiStyle)) return undefined;
+export function providerSetupPreset(provider?: ProviderPublic | null, showOnlineServices = true) {
+  if (!showOnlineServices || !provider || provider.vendorKey === "custom" || isAccountOnlyApiStyle(provider.apiStyle)) {
+    return undefined;
+  }
   const preset = matchNamedPreset({
     vendorKey: provider.vendorKey,
     baseUrl: provider.baseUrl,

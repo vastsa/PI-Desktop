@@ -51,7 +51,7 @@ test("a new service starts on a searchable chooser, not a closed menu (D625)", (
 });
 
 test("subscriptions and API services share the chooser, custom endpoint first", () => {
-  assert.match(chooserSource, /\[customServiceOption\(t\), \.\.\.namedServiceOptions\(t\)\]/);
+  assert.match(chooserSource, /customServiceOption\(t\), \.\.\.\(showNamedServices \? namedServiceOptions\(t\) : \[\]\)/);
   // The custom endpoint is the group's first tile, ahead of every named host.
   const customAt = chooserSource.indexOf("customServiceOption(t)");
   const namedAt = chooserSource.indexOf("namedServiceOptions(t)");
@@ -74,7 +74,7 @@ test("subscriptions and API services share the chooser, custom endpoint first", 
   // only, and it renders its own view instead of the connection form.
   assert.match(chooserSource, /settings\.chooserClassifiers/);
   assert.match(chooserSource, /showClassifiers \? \[jevServiceOption\(t\)\] : \[\]/);
-  assert.match(setupSource, /showClassifiers=\{!editing\}/);
+  assert.match(setupSource, /showClassifiers=\{showOnlineServices && !editing\}/);
   assert.match(setupSource, /const jevService = service === JEV_SERVICE/);
 });
 

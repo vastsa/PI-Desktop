@@ -6,6 +6,7 @@
  * capability checkboxes in one aligned grid. Selectors used to hang off the
  * label rows at different offsets, which read as clutter rather than order.
  */
+import { desktopFeatures } from "../../../product-features.ts";
 import { useTranslation } from "react-i18next";
 import {
   THINKING_LEVELS,
@@ -275,20 +276,22 @@ export function ModelAdvancedSettings({
             />
           ) : null}
           {/* Wire-dependent opt-ins last: they are the ones often disabled. */}
-          <span className="provider-chosen-capability-item">
-            <Checkbox
-              className="provider-chosen-capability"
-              checked={binding.nativeWebSearch === true}
-              disabled={!nativeWebSearchWireCapable}
-              onChange={(event) =>
-                updateBinding(binding.id, {
-                  nativeWebSearch: event.target.checked || undefined,
-                })
-              }
-              label={t("settings.nativeWebSearch")}
-            />
-            <HelpIcon label={nativeWebSearchHint} />
-          </span>
+          {desktopFeatures.onlineServices && (
+            <span className="provider-chosen-capability-item">
+              <Checkbox
+                className="provider-chosen-capability"
+                checked={binding.nativeWebSearch === true}
+                disabled={!nativeWebSearchWireCapable}
+                onChange={(event) =>
+                  updateBinding(binding.id, {
+                    nativeWebSearch: event.target.checked || undefined,
+                  })
+                }
+                label={t("settings.nativeWebSearch")}
+              />
+              <HelpIcon label={nativeWebSearchHint} />
+            </span>
+          )}
           <span className="provider-chosen-capability-item">
             <Checkbox
               className="provider-chosen-capability"

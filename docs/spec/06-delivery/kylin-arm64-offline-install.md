@@ -47,3 +47,29 @@ provides. A Debian 11 smoke test cannot establish Kylin desktop behavior.
    panel. Start a second streaming turn and stop it from the composer. Restart
    the app in the same profile and reopen the first turn and its saved results.
    Verify that no more text appears in the stopped turn after cancellation.
+
+For Pie Code, check the same package identity and architecture when replacing
+an existing installation. Quit the app and install the newer internally
+distributed package with `sudo dpkg -i ./<newer-package>.deb`. Restart and
+verify the version, existing settings, and saved sessions. The app does not
+check GitHub or download its own update.
+
+Run the offline workbench scenario on the installed candidate as a normal
+desktop user in a Linux network namespace with only loopback enabled. Prepare
+Node.js, the scenario sources and built shared package, and `strace` before
+disconnecting. In that namespace, capture socket calls from the desktop and
+all children; a TCP connection or datagram send counts even when it fails.
+Chromium's UDP route lookup does not send a packet and is reported separately:
+
+```sh
+export PI_CODE_E2E_APP_BIN=/opt/PI-Desktop/pi-desktop
+export PI_DESKTOP_HOST_BIN=/opt/PI-Desktop/resources/bin/pi-desktop-host-core
+strace -f -yy -s 0 -e trace=connect,sendto,sendmsg,sendmmsg,write,writev -o /tmp/pie-workbench.trace \
+  node scripts/e2e-pie-code-offline.mjs --require-isolated-network
+node scripts/e2e-pie-code-offline.mjs --check-egress-trace /tmp/pie-workbench.trace
+```
+
+Verify the tracer separately with a direct test connection to the reserved
+address `192.0.2.1` in the same isolated namespace; the trace checker must
+reject it. Record the two results with the actual candidate package. A
+loopback proxy alone can miss direct connections from child processes.

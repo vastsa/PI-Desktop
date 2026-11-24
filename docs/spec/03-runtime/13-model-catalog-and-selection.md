@@ -11,6 +11,13 @@ Therefore:
 3. OpenAI-compatible gateways are first-class
 4. Search is global across enabled providers
 
+On the Pie Code maintenance branch, **Add service** offers custom endpoints
+and locally installed plugin providers. Built-in public endpoint presets,
+subscription sign-in, the Jev classifier, and provider-hosted web search are
+unavailable. The bundled models.dev snapshot is read-only at runtime and is
+renewed with the installation package. A configured service still owns its
+live model list, and a manually entered model ID remains usable.
+
 ## 2. Selection UX
 
 Model configuration is **discovery-first**: the AI service is the authority on
@@ -289,6 +296,13 @@ If user selects model tagged without tools while in Agent mode:
 - do not hard-block (vendor tags may be incomplete)
 
 ## 6. Refresh behavior
+
+Remote catalog refresh in this section applies to upstream PI-Desktop.
+Pie Code keeps its bundled metadata. Its model picker reads cached and
+configured models without probing saved endpoints. Model settings can still
+discover from the configured service. Editing a saved provider keeps its
+address rather than adopting a named preset; a changed origin must be saved
+before discovery can use the provider's credentials.
 
 The bundled models.dev snapshot is the startup baseline. Startup reads no
 remote catalog and uses no ambient credentials. `providers.refreshModelCatalog`

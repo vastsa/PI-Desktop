@@ -6,6 +6,7 @@ import {
   session,
 } from "electron";
 import { join } from "node:path";
+import { desktopFeatures } from "../../product-features.ts";
 import {
   createDefaultLocalAppDeps,
   createLocalAppCatalog,
@@ -251,6 +252,7 @@ const updater = new AppUpdaterController({
   send: sendToRenderer,
   currentVersion: APP_VERSION,
   isPackaged: !isDevelopmentBuild,
+  enabled: desktopFeatures.onlineServices,
   getLocale: () => mainState.updaterLocale,
   readUpdateSettings: async () => {
     const host = getHost();
@@ -278,6 +280,7 @@ const updater = new AppUpdaterController({
  * resolved request auth.
  */
 const modelsDevCatalog = new ModelsDevCatalog({
+  allowRemoteRefresh: desktopFeatures.onlineServices,
   catalogPath: app.isPackaged
     ? join(process.resourcesPath, "models.dev", "api.json")
     : join(app.getAppPath(), "resources", "models.dev", "api.json"),

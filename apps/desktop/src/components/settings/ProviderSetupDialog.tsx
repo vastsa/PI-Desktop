@@ -55,19 +55,6 @@ import {
 } from "./provider-endpoint-guidance";
 import { ProviderEndpointGuidance } from "./ProviderEndpointGuidance";
 
-function serviceIdFor(provider?: ProviderPublic | null): string {
-  if (!provider) return "";
-  return providerSetupPreset(provider)?.id ?? CUSTOM_SERVICE;
-}
-
-function initialName(provider?: ProviderPublic | null): string {
-  return provider?.name ?? providerSetupPreset(provider)?.name ?? "";
-}
-
-function initialBaseUrl(provider?: ProviderPublic | null): string {
-  return providerSetupPreset(provider)?.baseUrl ?? provider?.baseUrl ?? "";
-}
-
 /**
  * Which service the dialog opens on: the caller's own choice first (Jev has no
  * preset and no row), then a copied draft's format, then the edited row's.
@@ -76,9 +63,11 @@ function initialServiceId(
   initialService: string | null | undefined,
   initialDraft: ProviderCopyDraft | null | undefined,
   provider: ProviderPublic | null | undefined,
+  showOnlineServices: boolean,
 ): string {
+  if (!showOnlineServices) return provider || initialDraft ? CUSTOM_SERVICE : "";
   if (initialService) return initialService;
-  if (!initialDraft) return serviceIdFor(provider);
+  if (!initialDraft) return provider ? providerSetupPreset(provider)?.id ?? CUSTOM_SERVICE : "";
   return initialDraft.apiStyle === OPENCODE_GO_API_STYLE
     ? NAMED_ENDPOINT_PRESETS.find((preset) => preset.apiStyle === OPENCODE_GO_API_STYLE)?.id ??
         CUSTOM_SERVICE
@@ -93,6 +82,7 @@ export type ProviderSetupDialogProps = {
   onSaved: (provider: ProviderPublic, models: ModelBinding[], imageModelIds?: string[]) => void | Promise<void>;
   /** Vendors a new row can sign in to instead of pasting a key. */
   vendors?: OAuthVendor[] | null;
+  showOnlineServices?: boolean;
   /** Leaves this dialog for the vendor's browser sign-in. */
   onPickSubscription?: (vendor: OAuthVendor) => void;
   /** Opens straight on this service; Jev has no preset tile to land on. */
@@ -113,6 +103,7 @@ export function ProviderSetupDialog({
   onSaved,
   imageModelIds,
   vendors,
+  showOnlineServices = true,
   onPickSubscription,
   initialService,
   onJevConfigured,
@@ -125,10 +116,12 @@ export function ProviderSetupDialog({
   const editing = !!provider;
   const apiKeyRef = useRef<HTMLInputElement>(null);
   const [service, setService] = useState(() =>
-    initialServiceId(initialService, initialDraft, provider),
+    initialServiceId(initialService, initialDraft, provider, showOnlineServices),
   );
-  const [name, setName] = useState(() => initialDraft?.name ?? initialName(provider));
-  const [baseUrl, setBaseUrl] = useState(() => initialDraft?.baseUrl ?? initialBaseUrl(provider));
+  const [name, setName] = useState(() => initialDraft?.name ?? provider?.name ?? "");
+  const [baseUrl, setBaseUrl] = useState(() =>
+    initialDraft?.baseUrl ?? providerSetupPreset(provider, showOnlineServices)?.baseUrl ?? provider?.baseUrl ?? "",
+  );
   const [apiKey, setApiKey] = useState("");
   const [clearSavedApiKey, setClearSavedApiKey] = useState(false);
   const [apiStyle, setApiStyle] = useState<CatalogApiStyle>(() =>
@@ -170,7 +163,9 @@ export function ProviderSetupDialog({
     providerRows,
   );
 
-  const namedPreset = NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service);
+  const namedPreset = showOnlineServices
+    ? NAMED_ENDPOINT_PRESETS.find((preset) => preset.id === service)
+    : undefined;
   const named = Boolean(namedPreset);
   const custom = service === CUSTOM_SERVICE;
   const hasSavedApiKey = Boolean(provider?.hasSecret && provider.authKind !== "none" && !clearSavedApiKey);
@@ -493,9 +488,11 @@ export function ProviderSetupDialog({
           apiStyle={resolvedApiStyle}
           disabled={saving}
           onApply={(suggestion) => {
-            const preset = NAMED_ENDPOINT_PRESETS.find((item) =>
-              item.baseUrl === suggestion.baseUrl && item.apiStyle === suggestion.apiStyle,
-            );
+            const preset = showOnlineServices
+              ? NAMED_ENDPOINT_PRESETS.find((item) =>
+                  item.baseUrl === suggestion.baseUrl && item.apiStyle === suggestion.apiStyle,
+                )
+              : undefined;
             setService(preset?.id ?? CUSTOM_SERVICE);
             setBaseUrl(suggestion.baseUrl);
             setApiStyle(suggestion.apiStyle);
@@ -582,7 +579,8 @@ export function ProviderSetupDialog({
         current={service}
         onPickService={pickService}
         onPickSubscription={editing ? undefined : onPickSubscription}
-        showClassifiers={!editing}
+        showNamedServices={showOnlineServices}
+        showClassifiers={showOnlineServices && !editing}
         pluginProviders={editing ? [] : pluginProviderOptions}
         onPickPluginProvider={editing ? undefined : onPickPluginProvider}
       />

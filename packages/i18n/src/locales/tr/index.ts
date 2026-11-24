@@ -2090,6 +2090,7 @@ sklm: {
     defaultUpdated: "Varsayılan AI servisi güncellendi",
     providerRemoved: "AI servisi kaldırıldı",
     application: "Uygulama",
+    offlineUpdateInstructions: "Uygulamadan çıkın ve kurum içi dağıtıcınızın sağladığı daha yeni paketi yükleyin. Projeleriniz ve ayarlarınız korunur.",
     aboutVersion: "Sürüm {{version}}",
     logs: "Günlükler",
     openLogs: "Günlükleri aç",

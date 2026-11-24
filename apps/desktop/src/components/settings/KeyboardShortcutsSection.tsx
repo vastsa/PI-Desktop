@@ -1,5 +1,6 @@
 import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { desktopFeatures } from "../../../product-features.ts";
 import {
   KEYBOARD_SHORTCUTS,
   defaultKeybinding,
@@ -63,6 +64,10 @@ function Keybinding({
   );
 }
 
+const visibleShortcuts = KEYBOARD_SHORTCUTS.filter((shortcut) =>
+  desktopFeatures.voice || (shortcut.id !== "voiceToggle" && shortcut.id !== "voiceCancel"),
+);
+
 export function KeyboardShortcutsSection({ settings, platform, saveSettings }: Props) {
   const { t } = useTranslation();
   const [recordingId, setRecordingId] = useState<KeyboardShortcutId | null>(null);
@@ -75,7 +80,7 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
     () =>
       GROUP_ORDER.map((group) => ({
         group,
-        shortcuts: KEYBOARD_SHORTCUTS.filter((shortcut) => shortcut.group === group),
+        shortcuts: visibleShortcuts.filter((shortcut) => shortcut.group === group),
       })),
     [],
   );
@@ -96,7 +101,7 @@ export function KeyboardShortcutsSection({ settings, platform, saveSettings }: P
     } else {
       next[shortcut.id] = binding;
     }
-    const conflict = KEYBOARD_SHORTCUTS.find(
+    const conflict = visibleShortcuts.find(
       (candidate) =>
         candidate.id !== shortcut.id &&
         keybindingsConflict(

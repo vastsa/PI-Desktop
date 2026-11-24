@@ -2080,6 +2080,7 @@ sklm: {
     "defaultUpdated": "Fournisseur d'IA par défaut mis à jour",
     "providerRemoved": "Fournisseur d'IA supprimé",
     "application": "Application",
+    "offlineUpdateInstructions": "Quittez l’application, puis installez le paquet plus récent fourni par votre service interne. Vos projets et paramètres sont conservés.",
     "aboutVersion": "Version {{version}}",
     "logs": "Journaux",
     "openLogs": "Ouvrir les journaux",

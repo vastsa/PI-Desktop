@@ -2080,6 +2080,7 @@ sklm: {
     "defaultUpdated": "Proveedor de IA predeterminado actualizado",
     "providerRemoved": "Proveedor de IA eliminado",
     "application": "Aplicación",
+    "offlineUpdateInstructions": "Cierra la aplicación e instala el paquete más reciente de tu distribuidor interno. Se conservarán tus proyectos y ajustes.",
     "aboutVersion": "Versión {{version}}",
     "logs": "Registros",
     "openLogs": "Abrir registros",

@@ -57,7 +57,9 @@ impl PluginManager {
             locale: "en".into(),
         };
         let _ = mgr.ensure_dirs();
-        let _ = mgr.ensure_default_catalog();
+        if std::env::var("PI_DESKTOP_DISABLE_PLUGIN_MARKET").as_deref() != Ok("1") {
+            let _ = mgr.ensure_default_catalog();
+        }
         let _ = mgr.reload_from_disk();
         let _ = mgr.sync_builtin(builtin_plugins_dir().as_deref());
         mgr

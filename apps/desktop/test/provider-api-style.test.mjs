@@ -56,6 +56,12 @@ test("a named hostname cannot overwrite a manually saved protocol", () => {
 
 });
 
+test("offline provider editing hides named presets even for an exact endpoint match", () => {
+  const provider = { ...source("responses"), vendorKey: "openai", baseUrl: "https://api.openai.com/v1" };
+  assert.equal(providerSetupPreset(provider)?.id, "openai");
+  assert.equal(providerSetupPreset(provider, false), undefined);
+});
+
 test("editing a provider with an old vendor label keeps its local endpoint", () => {
   assert.equal(providerSetupPreset({
     ...source("responses"),

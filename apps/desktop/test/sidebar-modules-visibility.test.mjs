@@ -84,7 +84,6 @@ test("settings sidebar modules hide and restore each sidebar module", async () =
       );
     const markers = {
       newTask: 'data-nav="new-task"',
-      scheduled: 'data-nav="scheduled"',
       pluginMarket: 'data-nav="plugins"',
       pinnedSessions: 'data-sidebar-session-section="pinned"',
       sessions: 'data-sidebar-session-section="temporary"',
@@ -103,7 +102,7 @@ test("settings sidebar modules hide and restore each sidebar module", async () =
       [...html.matchAll(/data-sidebar-session-row="([^"]+)"/g)].map((match) => match[1]);
     const toggle = (html, label) =>
       html.match(new RegExp(`<button[^>]*role="switch"[^>]*aria-label="${label}"[^>]*>`))?.[0] ?? "";
-    const label = (id) => catalogs.en.settings.sidebarModule[id];
+    const label = (id) => id === "pluginMarket" ? catalogs.en.nav.plugins : catalogs.en.settings.sidebarModule[id];
 
     // Default: every module renders and every switch is on.
     const defaults = renderSidebar({});
@@ -151,10 +150,10 @@ test("settings sidebar modules hide and restore each sidebar module", async () =
     // Recent still lists project sessions, so they stay reachable.
     assert.deepEqual(rows(noProjects).filter((id) => id === "project-row"), ["project-row"]);
 
-    // Scheduled stays off while scheduled tasks are disabled, and its switch says so.
-    const scheduledOff = { scheduledTasksEnabled: false };
-    assert.ok(!renderSidebar(scheduledOff).includes(markers.scheduled));
-    assert.match(toggle(renderSettings(scheduledOff), label("scheduled")), /disabled=""/);
+    // A stored setting cannot bring a feature excluded from this edition back.
+    const scheduledOn = { scheduledTasksEnabled: true, sidebarModules: { scheduled: true } };
+    assert.ok(!renderSidebar(scheduledOn).includes('data-nav="scheduled"'));
+    assert.equal(toggle(renderSettings(scheduledOn), label("scheduled")), "");
   } finally {
     await server.close();
     globalThis.document = previousDocument;

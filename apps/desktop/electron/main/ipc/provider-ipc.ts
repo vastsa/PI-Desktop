@@ -5,11 +5,13 @@ import {
   canonicalEndpointUrl,
   inferEndpointProfile,
   normalizeApiStyle,
+  parseEndpointInput,
   type ModelBinding,
   type ModelInfo,
   type ProviderReorderInput,
   type OAuthRespondInput,
 } from "@pi-desktop/shared";
+import { desktopFeatures } from "../../../product-features.ts";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import { probeProviderEndpoint } from "../model-discovery";
 import {
@@ -361,8 +363,11 @@ export function registerProviderIpc({
       const provider = req.providerId
         ? providers.find((p) => p.id === req.providerId)
         : undefined;
-      if (provider) modelsDevCatalog.configureAccount(provider);
       const baseUrl = (req.baseUrl ?? provider?.baseUrl ?? "").trim();
+      // A draft origin is not authorized to receive the saved key or headers.
+      const needsSavedEndpoint = !desktopFeatures.onlineServices && provider && req.baseUrl && req.source !== "cache" &&
+        parseEndpointInput(baseUrl)?.origin !== parseEndpointInput(provider.baseUrl ?? "")?.origin;
+      if (provider) modelsDevCatalog.configureAccount(provider);
       const apiStyle = req.apiStyle ?? provider?.apiStyle ?? "chat_completions";
       /*
         Static endpoint resolution, the same layer the settings dialog uses:
@@ -407,7 +412,7 @@ export function registerProviderIpc({
       // Cache hydration must stay fast; the renderer already requests a live
       // refresh after it has painted the cached list. Live requests load the
       // shared models.dev snapshot once; cache reads use only local files.
-      if (req.source === "cache") {
+      if (req.source === "cache" || needsSavedEndpoint) {
         await modelsDevCatalog.loadLocal();
       } else {
         await modelsDevCatalog.ensureLoaded();
@@ -528,6 +533,18 @@ export function registerProviderIpc({
           );
         return [...discovered, ...extra];
       };
+
+      const configuredFallback = () => {
+        const fallbackModelId = provider?.models?.[0]?.id ?? provider?.defaultModelId;
+        const fallback = fallbackModelId
+          ? [decorate({ modelId: fallbackModelId, displayName: fallbackModelId })]
+          : [];
+        return withConfiguredBindings(fallback);
+      };
+
+      if (needsSavedEndpoint) {
+        return { models: configuredFallback(), source: "fallback" as const, error: "PROVIDER_ENDPOINT_CHANGED" };
+      }
 
       const cacheForCurrentProvider = async (models: unknown[], complete: boolean) => {
         if (!provider || req.source === "cache") return;
@@ -736,11 +753,7 @@ export function registerProviderIpc({
 
       // Last resort: the provider's configured model, so pickers stay usable
       // for gateways without a /models endpoint.
-      const fallbackModelId = provider?.models?.[0]?.id ?? provider?.defaultModelId;
-      const fallback = fallbackModelId
-        ? [decorate({ modelId: fallbackModelId, displayName: fallbackModelId })]
-        : [];
-      return { models: withConfiguredBindings(fallback), source: "fallback", ...resolution, error: discoveryError };
+      return { models: configuredFallback(), source: "fallback", ...resolution, error: discoveryError };
     },
   );
 
