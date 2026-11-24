@@ -87,7 +87,7 @@ test("the visible chat session suppresses durable task notifications", () => {
   assert.match(mainSource, /"did-start-loading"[\s\S]*windowState\.notificationViewingSessionId = null/);
   assert.match(mainSource, /"render-process-gone"[\s\S]*windowState\.notificationViewingSessionId = null/);
   assert.match(appSource, /page === "chat" \? activeSessionId \?\? null : null/);
-  assert.match(appSource, /setNotificationViewingSession\(viewingSessionId\)/);
+  assert.match(shellRuntimeSource, /setNotificationViewingSession\(viewingSessionId, !settingsOpen\)/);
 });
 
 test("restoring the focused chat acknowledges its session outcome", () => {
