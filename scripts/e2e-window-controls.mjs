@@ -386,14 +386,14 @@ try {
   await evaluate(`(() => {
     window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ = false;
     const off = window.piDesktop.on('pi-desktop/window/event/fullscreen', payload => {
-      if (payload.fullScreen) return;
+      if (payload.fullScreen !== false) return;
       window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ = true;
       off();
     });
   })()`);
   await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
   await waitFor(() => evaluate(`window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ === true`), "native leave-full-screen event");
-  await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.fullScreen)`), "leave native fullscreen");
+  await waitFor(() => evaluate(`document.documentElement.dataset.fullscreen === 'false'`), "shell leaves native fullscreen");
   await settle();
   if (process.platform !== "darwin") {
     await click(".window-control-btn:nth-child(2)");
@@ -403,7 +403,7 @@ try {
     await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.maximized)`), "native window restored");
   } else {
     await evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'toggleMaximize'})`);
-    await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && s.data.maximized && !s.data.fullScreen)`), "macOS window zoomed outside fullscreen");
+    await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && s.data.maximized && document.documentElement.dataset.fullscreen === 'false')`), "macOS window zoomed outside fullscreen");
     await settle();
     const draggable = await evaluate(`(() => {
       for (let y = 8; y < 46; y += 8) for (let x = 180; x < innerWidth - 40; x += 32) {
