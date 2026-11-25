@@ -41,7 +41,8 @@ test("every read, index and caret path counts the placeholder as nothing", () =>
 test("the placeholder is re-synced after every commit and never rewritten into text", () => {
   assert.match(editor, /export function syncTailPlaceholder\(el: HTMLElement\): void \{/);
   assert.match(editor, /if \(el\.lastChild !== placeholder\) el\.appendChild\(placeholder\);/);
-  assert.match(editor, /for \(const placeholder of placeholders\) placeholder\.remove\(\);/);
+  // The final layout node may anchor native undo after a Backspace.
+  assert.match(editor, /if \(placeholder !== el\.lastChild\) placeholder\.remove\(\);/);
   assert.match(draft, /if \(element\) syncTailPlaceholder\(element\);/);
   // Mutating a text node's value is what moved the caret off the tail (#2555).
   assert.doesNotMatch(editor, /nodeValue = /);
@@ -65,4 +66,3 @@ test("the end-of-draft break is one native edit, so undo takes both nodes", () =
   // that refuses insertHTML.
   assert.ok(draft.indexOf("execCommand") < draft.indexOf("range.insertNode"));
 });
-

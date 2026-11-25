@@ -30,6 +30,13 @@ export function installComposerDeletionGuard(
       onInsertLineBreak();
       return;
     }
+    // In the middle of a draft Chromium's paragraph command creates DIVs,
+    // whose boundaries are not draft offsets. Use the native, undoable LF edit.
+    if (onInsertLineBreak && event.inputType === "insertParagraph" && event.cancelable) {
+      event.preventDefault();
+      editor.ownerDocument.execCommand("insertLineBreak");
+      return;
+    }
     if (!event.inputType.startsWith("delete")) return;
     const range = event.getTargetRanges()[0];
     if (!range || !editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return;

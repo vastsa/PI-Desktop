@@ -5,6 +5,8 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Zeilenumbrüche im Eingabefeld erzeugen keine zusätzlichen Leerzeilen oder unsichtbaren Zeichen mehr. Rückgängig stellt eine gelöschte leere Schlusszeile wieder her.",
+      "Im /-Menü ausgewählte Skills erscheinen als einzelne Chips im Eingabefeld.",
       "Bearbeite integrierte Rollen und Skills in den Moduseinstellungen, organisiere private Agent-Rollen und begrenze delegierte Aufgaben auf benötigte Werkzeuge und Dateien.",
       "Verfolge aktive Subagenten optional über dem Composer und stoppe einzelne oder alle, ohne den koordinierenden Agenten anzuhalten.",
       "Lang laufende Bash-Befehle geben nach einer ersten Wartezeit die Kontrolle zurück und laufen im Hintergrund weiter; optional melden sie Ergebnisse und setzen eine untätige Unterhaltung fort.",

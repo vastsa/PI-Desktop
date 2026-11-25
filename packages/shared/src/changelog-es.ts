@@ -5,6 +5,8 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Los saltos de línea ya no añaden líneas ni caracteres invisibles de más. Deshacer restaura la última línea vacía eliminada.",
+      "Las habilidades seleccionadas en el menú / aparecen como etiquetas individuales en el editor.",
       "Edita los roles y las habilidades incluidos en los ajustes de Modos, organiza roles privados de agente y limita las tareas delegadas a las herramientas y archivos necesarios.",
       "Sigue opcionalmente a los subagentes activos sobre el Composer y detén uno o todos sin detener al agente coordinador.",
       "Los comandos Bash de larga duración devuelven el control tras una espera inicial y siguen en segundo plano; opcionalmente informan del resultado y reanudan una conversación inactiva.",

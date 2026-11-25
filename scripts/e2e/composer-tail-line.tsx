@@ -26,15 +26,13 @@ type Snapshot = {
 declare global {
   var composerTailState: () => Promise<Snapshot>;
   var composerTailReset: (text: string) => Promise<void>;
-  var composerTailCaret: (index: number) => Promise<void>;
-  var composerTailClickLine: (line: number) => Promise<Snapshot & { clickLine: number | null }>;
+  var composerTailLinePoint: (line: number) => { x: number; y: number };
 }
 
 const noop = () => {};
 const t = ((key: string) => key) as unknown as TFunction;
 const i18n = createInstance();
 let draftValue = "";
-let draftCaret: (index: number) => void = noop;
 
 function Fixture() {
   const draft = useComposerDraft({
@@ -60,7 +58,6 @@ function Fixture() {
     invalidateComposerTransforms: noop,
   });
   draftValue = draft.value;
-  draftCaret = (index: number) => draft.applyEditorDraft(draft.value, [], index);
   globalThis.composerTailReset = async (text: string) => {
     draft.setComposing(false);
     draft.applyEditorDraft(text, [], text.length);
@@ -122,6 +119,10 @@ function describe(value: string): Snapshot {
     const code = char.codePointAt(0) ?? 0;
     if (INVISIBLE.has(code)) invisibleChars.push(`U+${code.toString(16)}`);
   }
+  const selection = window.getSelection();
+  if (!selection?.rangeCount || !selection.isCollapsed || !element.contains(selection.anchorNode)) {
+    throw new Error("Expected a collapsed native selection inside the composer");
+  }
   return {
     value,
     dom: element.innerHTML,
@@ -136,36 +137,11 @@ globalThis.composerTailState = async () => {
   return describe(draftValue);
 };
 
-globalThis.composerTailCaret = async (index: number) => {
-  draftCaret(index);
-  await frames(2);
-};
-
-globalThis.composerTailClickLine = async (line: number) => {
+globalThis.composerTailLinePoint = (line: number) => {
   const element = editor();
   const rect = element.getBoundingClientRect();
-  const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight) || 1;
-  element.focus();
-  await frames(1);
-  const range = document.caretRangeFromPoint(
-    Math.round(rect.left + 40),
-    Math.round(rect.top + lineHeight * (line - 0.5)),
-  );
-  let clickLine: number | null = null;
-  if (range) {
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    clickLine = editorSelectionRange(element).start;
-  }
-  await frames(1);
-  return { ...describe(draftValue), clickLine };
+  const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+  return { x: rect.right - 4, y: rect.top + lineHeight * (line - 0.5) };
 };
 
-createRoot(document.getElementById("root") as HTMLElement).render(
-  <div className="composer-input-wrap">
-    <div className="composer-input-stage">
-      <Fixture />
-    </div>
-  </div>,
-);
+createRoot(document.getElementById("root") as HTMLElement).render(<Fixture />);

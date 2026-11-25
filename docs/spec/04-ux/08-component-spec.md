@@ -3777,8 +3777,8 @@ Anatomy:
   not support Desktop-managed MCP selections. Existing command aliases win
   collisions. See `docs/adr/composer-mcp-invocations.md`.
 - Active Skill commands use `/skill:<id>` for builtin, plugin, and user Skills.
-  Completion inserts this explicit prefix; sending resolves it to the unchanged
-  Skill ID. Unprefixed names are not Skill aliases; existing app commands and
+  Completion displays the Skill as a chip; sending resolves its explicit slash
+  token to the unchanged Skill ID. Unprefixed names are not Skill aliases; existing app commands and
   prompt templates keep their names. Saved Skill mentions remain unchanged.
 - A whitespace-delimited `/` later in the draft offers active Skills only.
   Completion replaces only the token under the cursor, so several Skills and
@@ -3821,7 +3821,9 @@ Anatomy:
   each mention. Skill and agent mentions combine; a leading template or app
   command is not rewritten. Stop restores the typed `command`, never the
   rewritten `content`.
-- Accepting commands and directories inserts text (`/name ` / `@dir/`);
+- Accepting a Skill inserts an atomic inline chip with its catalog title and an
+  editable space for arguments; it serializes to `/skill:<id>`, not a file.
+  Accepting other commands and directories inserts text (`/name ` / `@dir/`);
   accepting a completed file inserts the inline chip rather than deleting the
   trigger. Immediately
   before dispatch, ordinary references serialize in stable order after the
@@ -4820,12 +4822,12 @@ index and caret path counts it as zero characters. The placeholder carries no
 text, so it cannot be selected, copied or typed, never merges into a neighbouring
 text node, and the draft string and its indices are unchanged; the end-of-draft
 caret sits before the placeholder, on the empty line, and the placeholder is
-removed as soon as the line holds text. The editor owns only the end-of-draft
-break: Chromium would add the break plus a placeholder newline there, so a native
-`insertLineBreak` or `insertParagraph` at the draft end is prevented and one
-native edit inserts the real break together with the placeholder, which keeps undo
-and redo covering both in a single step. A break anywhere else stays native, and a
-middle empty line keeps its existing behavior.
+inert after ordinary text. A terminal placeholder can remain as the browser's
+undo anchor: undoing Backspace restores both the empty line and its caret.
+At the draft end a single native edit inserts the real break and the layout
+placeholder, so undo and redo cover both. Elsewhere Shift+Enter stays native;
+plain Enter in multiline mode uses the same native line-break command instead
+of introducing block wrappers with different caret offsets.
 
 ### Dialog long-text containment
 
