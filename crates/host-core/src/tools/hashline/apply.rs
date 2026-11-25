@@ -485,7 +485,9 @@ pub fn apply_edit(
     if tag.len() != 4 || !tag.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(ToolError::new(
             "EDIT_TAG_REQUIRED",
-            "tag must be 4 hexadecimal digits from the latest Read, Grep, Write, or Edit result",
+            format!(
+                "tag must be 4 hexadecimal digits from the latest Read, Grep, Write, or Edit result; got {tag:?}"
+            ),
         ));
     }
     let expected = tag.to_uppercase();
