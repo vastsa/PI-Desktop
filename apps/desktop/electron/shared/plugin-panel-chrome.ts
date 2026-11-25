@@ -50,6 +50,7 @@ export const PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX = "--pi-plugin-panel-locale=";
  */
 export const PLUGIN_PANEL_EMBEDDED_ARGUMENT = "--pi-plugin-panel-embedded=1";
 export const PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT = "--pi-plugin-panel-composer-file-lines=1";
+export const PLUGIN_PANEL_COMPOSER_FILE_DRAG_CHANNEL = "pi-plugin-panel-composer-file-drag";
 
 /**
  * Marks a plugin surface as a floating widget: a transparent, frameless window

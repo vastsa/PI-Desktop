@@ -1,5 +1,6 @@
 export const FILE_LINES_CLIPBOARD_TYPE = "application/x-pi-desktop-file-lines";
 export const FILE_LINES_ADD_CHANNEL = "composer.addFileLines";
+export const COMPOSER_FILE_DRAG_TYPE = "application/x-pi-desktop-composer-file";
 export const MAX_FILE_LINE_REFERENCES = 4;
 export const MAX_FILE_LINE_NUMBER = 2_147_483_647;
 // Match the Host Read line budget; oversized selections retain plain-text paste.

@@ -1,4 +1,4 @@
-import { dialog, globalShortcut, shell, type BrowserWindow } from "electron";
+import { dialog, globalShortcut, ipcMain, shell, type BrowserWindow } from "electron";
 import { join } from "node:path";
 import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
 import { createPluginWorkspaceReader } from "../remote/plugin-workspace-files";
@@ -70,7 +70,9 @@ import { createPluginModelContext } from "../runtime/plugin-model-context";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
 
-import { addFileLinesFromView } from "../file-line-reference";
+import { addFileLinesFromView, type FileManagerComposerContext } from "../file-line-reference";
+import { createFileManagerComposerDrag } from "../file-manager-composer-drag";
+import { PLUGIN_PANEL_COMPOSER_FILE_DRAG_CHANNEL } from "../../shared/plugin-panel-chrome";
 
 export type PluginServicesDependencies = {
   dataDir: string;
@@ -140,11 +142,25 @@ export function createPluginServices({
   const isHostUnavailable = (error: unknown): boolean =>
     (error as { errorCode?: string } | null | undefined)?.errorCode ===
     ErrorCodes.HOST_UNAVAILABLE;
+  const fileManagerComposerContext: FileManagerComposerContext = {
+    get plugins() { return plugins; },
+    get pluginViews() { return pluginViews; },
+    get pluginSession() { return pluginSession; },
+    pluginActiveInProject,
+    getHost,
+    getWorkspacePath,
+  };
+  const fileManagerComposerDrag = createFileManagerComposerDrag(fileManagerComposerContext, dataDir);
+  ipcMain.on(PLUGIN_PANEL_COMPOSER_FILE_DRAG_CHANNEL, (event, payload: unknown) => {
+    event.returnValue = !event.sender.isDestroyed() && event.senderFrame === event.sender.mainFrame
+      ? fileManagerComposerDrag.begin(event.sender.id, payload)
+      : null;
+  });
   const pluginPanels = new PluginPanelHost(
     async (pluginId, channel, payload, context) => {
       if (channel !== FILE_LINES_ADD_CHANNEL) return plugins.invokePanelBridge(pluginId, channel, payload, context);
       return addFileLinesFromView(pluginId, context?.senderId, payload, {
-        plugins, pluginViews, pluginSession, pluginActiveInProject, getHost, getWorkspacePath,
+        ...fileManagerComposerContext,
         publish: (selection) => sendToRenderer(IPC.event.composerFileLines, selection),
       });
     },
@@ -876,6 +892,7 @@ export function createPluginServices({
     browserHost,
     pluginSession,
     composerSuggestion,
+    dropPluginFile: fileManagerComposerDrag.drop,
     speech,
   };
 }

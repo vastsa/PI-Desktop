@@ -7,7 +7,7 @@ import {
   type DragEvent as ReactDragEvent,
 } from "react";
 import type { TFunction } from "i18next";
-import { FILE_LINES_CLIPBOARD_TYPE, MAX_FILE_LINE_REFERENCES, parseFileLineReference, parseSessionLinks, sessionLinkSpans, type FileLineReference } from "@pi-desktop/shared";
+import { COMPOSER_FILE_DRAG_TYPE, FILE_LINES_CLIPBOARD_TYPE, MAX_FILE_LINE_REFERENCES, parseFileLineReference, parseSessionLinks, sessionLinkSpans, type FileLineReference } from "@pi-desktop/shared";
 import { materializeDraftSession, useAppStore } from "../../../../stores/app-store";
 import { api } from "../../../../lib/api";
 import {
@@ -19,6 +19,7 @@ import {
 import {
   composerDropItems,
   hasComposerFileDrag,
+  hasComposerReferenceDrag,
   type ComposerDropItem,
 } from "../../../../lib/composer-drop";
 import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
@@ -91,6 +92,8 @@ export function useComposerAttachments({
   const [dropTargetActive, setDropTargetActive] = useState(false);
   const [droppedDirectories, setDroppedDirectories] = useState<ComposerDropItem[]>([]);
   const isInputBlocked = inputBlocked || pasting || !attachmentsAllowed;
+  const pluginDropTarget = useRef({ activeSessionId, draftKey, isInputBlocked });
+  pluginDropTarget.current = { activeSessionId, draftKey, isInputBlocked };
 
   const snapshotReferences = (sourceSessionId: string) =>
     draft.snapshotReferences(sourceSessionId);
@@ -523,14 +526,45 @@ export function useComposerAttachments({
     }
   };
 
+  const attachPluginFile = async (dragToken: string) => {
+    const editor = draft.ref.current;
+    const projectPath = useAppStore.getState().activeProjectPath;
+    if (!activeSessionId || !editor || !projectPath || !dragToken) return;
+    const isCurrent = () => {
+      const state = useAppStore.getState();
+      const target = pluginDropTarget.current;
+      return draft.ref.current === editor && target.activeSessionId === activeSessionId &&
+        target.draftKey === draftKey && !target.isInputBlocked &&
+        state.activeSessionId === activeSessionId && state.activeProjectPath === projectPath;
+    };
+    if (!isCurrent()) return;
+    try {
+      const file = await api.dropPluginFile(activeSessionId, dragToken);
+      if (!file || !isCurrent()) return;
+      const caret = editorSelectionRange(editor).end;
+      const source = readEditorValue(editor);
+      const token = nextChipToken();
+      const text = source.slice(0, caret) + token + source.slice(caret);
+      const references = [
+        ...snapshotReferences(activeSessionId).map(item => createFileReference(item.path, item.name, activeSessionId, item)),
+        createFileReference(file.path, file.name, activeSessionId, { ...file, token }),
+      ];
+      writeComposerDraft(draftKey, { text, fileReferences: references.map(draftFileReference) }, projectPath);
+      draft.applyEditorDraft(text, references, caret + token.length);
+      editor.focus();
+    } catch (error) {
+      if (isCurrent()) showErrorToast(error);
+    }
+  };
+
   const onComposerDragEnter = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!hasComposerFileDrag(event.dataTransfer)) return;
+    if (!hasComposerReferenceDrag(event.dataTransfer) && !hasComposerFileDrag(event.dataTransfer)) return;
     event.preventDefault();
     setDropTargetActive(true);
   };
 
   const onComposerDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!hasComposerFileDrag(event.dataTransfer)) return;
+    if (!hasComposerReferenceDrag(event.dataTransfer) && !hasComposerFileDrag(event.dataTransfer)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
   };
@@ -560,6 +594,14 @@ export function useComposerAttachments({
   };
 
   const onComposerDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (hasComposerReferenceDrag(event.dataTransfer)) {
+      event.preventDefault();
+      setDropTargetActive(false);
+      if (!isInputBlocked && event.nativeEvent.isTrusted) {
+        void attachPluginFile(event.dataTransfer.getData(COMPOSER_FILE_DRAG_TYPE));
+      }
+      return;
+    }
     if (!hasComposerFileDrag(event.dataTransfer)) return;
     event.preventDefault();
     setDropTargetActive(false);

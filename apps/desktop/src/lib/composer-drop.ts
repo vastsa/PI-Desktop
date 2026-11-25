@@ -1,3 +1,5 @@
+import { COMPOSER_FILE_DRAG_TYPE } from "@pi-desktop/shared/file-line-reference";
+
 /**
  * Normalize native file-system drops before the Composer decides whether to
  * materialize bytes or keep a directory as a literal path reference.
@@ -24,6 +26,10 @@ export function hasComposerFileDrag(data: DataTransfer): boolean {
     data.files.length > 0 ||
     Array.from(data.items).some((item) => item.kind === "file")
   );
+}
+
+export function hasComposerReferenceDrag(data: Pick<DataTransfer, "types">): boolean {
+  return data.types.includes(COMPOSER_FILE_DRAG_TYPE);
 }
 
 /**

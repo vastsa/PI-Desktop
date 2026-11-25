@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /** Installed File Manager + production Desktop/Host/sidecar; only the provider is synthetic. */
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { assertDesktopBuild, resolveElectronBinary } from "./e2e/boot.mjs";
 import { Host, resolveHostBinary } from "./e2e/host.mjs";
 import { createSession } from "./e2e/session.mjs";
@@ -19,8 +21,11 @@ const { _electron } = qa("playwright");
 assertDesktopBuild(root);
 const scratch = await realpath(await mkdtemp(join(tmpdir(), "pi-installed-file-lines-")));
 const dataDir = join(scratch, "data");
+const home = join(scratch, "home");
 const project = join(scratch, "project");
 const source = join(project, "sample.txt");
+const testFileDrag = process.env.PI_FILE_MANAGER_TEST_NATIVE_DRAG === "1";
+const run = promisify(execFile);
 const requests = [];
 const errors = [];
 const checks = [];
@@ -28,6 +33,11 @@ let application;
 let shell;
 let plugin;
 let passed = false;
+const systemEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+  /^(PATH|PATHEXT|SystemRoot|WINDIR|ComSpec|SystemDrive|TEMP|TMP|TMPDIR|LANG|LC_.*|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_RUNTIME_DIR|DBUS_SESSION_BUS_ADDRESS)$/i.test(key)));
+const isolatedEnv = { ...systemEnv, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, ".config"),
+  APPDATA: join(home, "roaming"), LOCALAPPDATA: join(home, "local"),
+  PI_DESKTOP_AGENTS_DIR: join(scratch, "agents"), PI_CODING_AGENT_DIR: join(scratch, "agent") };
 const stage = (name) => console.log(`FILE_LINES_STAGE ${name}`);
 const stopApplication = async () => {
   const running = application;
@@ -57,10 +67,11 @@ const provider = createServer(async (request, response) => {
 
 try {
   await mkdir(project);
+  await mkdir(home);
   await writeFile(source, "saved first line\nsaved second line\n");
   await new Promise((done, reject) => { provider.once("error", reject); provider.listen(0, "127.0.0.1", done); });
   const hostBin = resolveHostBinary();
-  const host = new Host(hostBin, dataDir, { quiet: true, env: { PI_DESKTOP_AGENTS_DIR: join(scratch, "agents") } });
+  const host = new Host(hostBin, dataDir, { quiet: true, env: isolatedEnv });
   let sessionId;
   await host.start();
   try {
@@ -85,10 +96,8 @@ try {
   } finally { await host.stop(); }
   stage("installed");
 
-  const env = { ...process.env, PI_DESKTOP_DATA_DIR: dataDir, PI_DESKTOP_HOST_BIN: hostBin,
-    PI_DESKTOP_AGENTS_DIR: join(scratch, "agents"),
-    PI_CODING_AGENT_DIR: join(scratch, "agent"), ELECTRON_RENDERER_URL: "", PI_DESKTOP_START_MAXIMIZED: "0" };
-  delete env.ELECTRON_RUN_AS_NODE;
+  const env = { ...isolatedEnv, PI_DESKTOP_DATA_DIR: dataDir, PI_DESKTOP_HOST_BIN: hostBin,
+    ELECTRON_RENDERER_URL: "", PI_DESKTOP_START_MAXIMIZED: "0" };
   const launch = async () => {
     application = await _electron.launch({ executablePath: resolveElectronBinary(root).electronBinary,
       args: [`--user-data-dir=${join(scratch, "profile")}`, "."], cwd: join(root, "apps/desktop"), env });
@@ -106,15 +115,20 @@ try {
     shell.setDefaultTimeout(20_000);
     shell.on("pageerror", (error) => errors.push(String(error)));
     await shell.waitForFunction(() => typeof window.__PI_DESKTOP__?.selectSession === "function");
+    assert.equal(await shell.evaluate(() => typeof window.piDesktop?.invoke), "function", "sandboxed preload must be available");
+    await shell.evaluate(() => window.__PI_DESKTOP__.skipStartupOverlays());
     await shell.locator(".app-shell:not(.app-shell-boot):not(.is-booting)").waitFor();
-    const sessionRow = shell.locator(`[data-sidebar-session-row="${sessionId}"]`);
+    const sessionRow = shell.locator(`[data-sidebar-session-row="${sessionId}"]`).first();
     await sessionRow.getByText("Installed line references", { exact: true }).click();
     await sessionRow.locator('[aria-current="page"]').waitFor();
     await shell.locator('.composer-input[contenteditable="true"]').waitFor();
   };
   await launch();
   stage("desktop-ready");
-  await shell.evaluate(async ({ sessionId, source }) => {
+  if (testFileDrag) {
+    await shell.getByRole("button", { name: /^Toggle side panel/ }).first().click();
+    await shell.locator(".work-panel-launcher").getByRole("button", { name: "File Manager", exact: true }).click();
+  } else await shell.evaluate(async ({ sessionId, source }) => {
     const { invoke, channels } = window.piDesktop;
     for (const [channel, input] of [
       [channels.invoke.pluginViewOpen, { pluginId: "pi.file-manager", viewId: "manager", sessionId, location: source }],
@@ -133,9 +147,79 @@ try {
   plugin.setDefaultTimeout(20_000);
   plugin.on("pageerror", (error) => errors.push(String(error)));
   assert(plugin.url().includes("plugins/installed/"), "view must come from the installed package");
+  const row = plugin.locator('[role="treeitem"][data-path="sample.txt"]');
+  if (testFileDrag) await row.click();
   const editor = plugin.locator(".cm-content");
   await editor.getByText("saved first line", { exact: true }).waitFor();
   assert.equal(await plugin.evaluate(() => window.pluginBridge.capabilities.composerFileLines), true);
+  if (testFileDrag) {
+    assert.equal(process.platform, "darwin", "the native drag fixture requires macOS");
+    assert.equal(await plugin.evaluate(() => typeof window.pluginBridge.startComposerFileDrag), "function");
+    const nativeDrag = join(scratch, "macos-file-drag");
+    await run("swiftc", [join(root, "scripts/e2e/macos-file-drag.swift"), "-o", nativeDrag]);
+    const input = shell.locator('.composer-input[contenteditable="true"]');
+    await input.fill("Keep this draft.");
+    const chip = shell.locator(".composer-chip").filter({ hasText: /^sample\.txt/ });
+    await plugin.evaluate(() => {
+      window.fixtureDragEvents = { dragstart: 0, dragend: 0 };
+      for (const name of ["dragstart", "dragend"]) window.addEventListener(name, (event) => {
+        if (event.isTrusted && event.dataTransfer.types.includes("application/x-pi-desktop-composer-file")) {
+          window.fixtureDragEvents[name]++;
+        }
+      });
+    });
+    let gestures = 0;
+    const nativeGesture = async (target, action = "drop") => {
+      const from = await row.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return [box.left + Math.min(60, box.width / 2), box.top + box.height / 2];
+      });
+      const to = await target.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return [box.left + Math.min(60, box.width / 2), box.top + box.height / 2];
+      });
+      const bounds = await application.evaluate(({ app, BrowserWindow }) => {
+        app.focus({ steal: true });
+        const window = BrowserWindow.getAllWindows().find((item) => item.webContents.getURL().includes("out/renderer"));
+        const panel = window.contentView.children.find((item) => item.webContents?.getURL().includes("pi.file-manager"));
+        return { window: window.getContentBounds(), view: panel.getBounds() };
+      });
+      await run(nativeDrag, [application.process().pid,
+        bounds.window.x + bounds.view.x + from[0], bounds.window.y + bounds.view.y + from[1],
+        bounds.window.x + to[0], bounds.window.y + to[1], action].map(String));
+      await plugin.waitForFunction((count) => window.fixtureDragEvents.dragend === count, ++gestures);
+      assert.equal(await plugin.evaluate(() => window.fixtureDragEvents.dragstart), gestures);
+    };
+    const capture = async (name) => {
+      const directory = process.env.PI_FILE_MANAGER_DRAG_EVIDENCE_DIR;
+      if (!directory) return;
+      await mkdir(directory, { recursive: true });
+      // Capture both live views from the actual app window before cropping.
+      const windowId = await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().find((item) => item.webContents.getURL().includes("out/renderer")).getMediaSourceId());
+      await run("/usr/sbin/screencapture", ["-x", "-l", windowId.split(":")[1], join(directory, `${name}.png`)]);
+    };
+    await capture("before");
+    await nativeGesture(input);
+    await chip.waitFor();
+    assert.equal(await chip.count(), 1);
+    assert.match(await input.innerText(), /Keep this draft/);
+    assert.equal(requests.length, 0);
+    assert.equal(await readFile(source, "utf8"), "saved first line\nsaved second line\n");
+    await capture("after");
+    if (process.env.PI_FILE_MANAGER_DRAG_EVIDENCE_DIR) {
+      await shell.locator(".composer-shell").screenshot({ path: join(process.env.PI_FILE_MANAGER_DRAG_EVIDENCE_DIR, "composer.png") });
+    }
+    await chip.locator(".composer-chip-remove").click();
+    assert.equal(await chip.count(), 0);
+    await nativeGesture(shell.locator(`[data-sidebar-session-row="${sessionId}"]`).first());
+    assert.equal(await chip.count(), 0, "dropping outside the Composer must not add a chip");
+    await nativeGesture(input, "cancel");
+    assert.equal(await chip.count(), 0, "Escape must cancel the drag");
+    await input.fill("");
+    checks.push("native cross-view drop adds one removable whole-file draft card, while Escape and an outside drop add none");
+    stage("native-file-drop");
+  }
   await editor.click();
   await plugin.keyboard.press("ControlOrMeta+a");
   await editor.click({ button: "right" });

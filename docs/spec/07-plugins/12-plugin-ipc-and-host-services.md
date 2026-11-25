@@ -160,6 +160,14 @@ matching workspace, and a path contained by a local folder of the selected
 session's project. The action inserts a draft reference. Sending the draft
 uses normal tool permissions.
 
+The same eligible docked File Manager view also receives
+`pluginBridge.startComposerFileDrag({ workspace, path })`. Preload accepts it
+during a trusted native `dragstart` and writes an opaque token to the drag's
+data transfer. A drop handled by the Composer's main frame consumes that token
+once. Main rechecks the visible view, live registry version, project and
+session, and admits only regular files contained in the local project. This
+adds the standard metadata-only whole-file card to the active draft.
+
 ## 4.1 Events (host → plugin process)
 
 The broker also pushes one-way frames down to a plugin's `utilityProcess`:

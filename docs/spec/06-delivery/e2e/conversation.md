@@ -34,6 +34,19 @@ Click the production Composer Stop button for a Native Pi source. Let abort succ
 
 ## E2E-FILE-LINES — File Manager selections in Composer
 
+For a compatible File Manager, drag a regular file from its tree to the real
+Composer across the two Electron web contents. Check that one removable file
+card appears without sending or copying bytes, existing draft text survives,
+and the source file remains in place. Cancel with Escape and drop outside the
+Composer. Neither action may add a card. Repeat on a local secondary project
+folder and verify native OS file drops and local tree moves still work.
+
+On macOS, set `PI_FILE_MANAGER_TEST_NATIVE_DRAG=1` for the installed-package
+journey below. It uses the real side-panel launcher and native mouse input;
+the isolated fixture must be foregrounded and allowed to post events.
+`PI_FILE_MANAGER_DRAG_EVIDENCE_DIR` optionally captures the window before
+and after the drop and the resulting Composer card.
+
 Install the File Manager normally. In a temporary local project, open a source
 file with two distinct lines and select both. Verify **Add to chat** adds one
 removable `gpt.py (85:86)` chip
