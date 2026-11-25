@@ -263,6 +263,14 @@ checkpoint of every running session is flushed and `session.endTurn` is asked
 to `recoverInflight`, so the streamed text becomes the turn's `aborted` row
 instead of vanishing with the process.
 
+On an unexpected sidecar exit, Electron Main cancels the affected sessions'
+extension prompts and plugin tools. After checkpoint recovery it records the
+classified error as an assistant transcript row and publishes a terminal
+renderer event for each turn that still owns its session. Foreground and
+background sessions clear their running state and settle live tool rows.
+Agent Host closes the turn as interrupted with the same error code before
+queued work can resume.
+
 Minimizing the main window is a resident-shell action, not an application
 shutdown. On Windows/Linux, explicit application minimize actions use the
 native taskbar transition and keep the process alive; clicking the Windows

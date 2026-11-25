@@ -666,15 +666,19 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   ten seconds before its first tool call.
 - **Steps**: 1) Send a prompt and let the reply stream for ~5 s. 2) Quit the
   app (Cmd+Q / tray Quit) mid-stream, relaunch, and open the session. 3) Repeat
-  the send, then kill the agent sidecar process mid-stream and observe the
-  transcript. 4) Repeat the send, press Stop mid-stream, then reopen the
+  the send, then kill the agent sidecar process mid-stream or during a tool
+  call. Repeat with the session in the background and reselect it. 4) Repeat
+  the send, press Stop mid-stream, then reopen the
   session from the sidebar and inspect `sessions/<id>.jsonl` and
   `sessions/<id>.inflight.json`. 5) Repeat the send and let it finish normally.
 - **Expected**: 2) The session shows the user prompt followed by the streamed
   text up to at most 1.5 s before the quit, as an `aborted` assistant row under
   an `aborted` turn; nothing earlier in the session is missing or truncated. 3)
-  The streaming row settles to `aborted` in place with its text, the same row
-  is present after a reload, and no `.inflight.json` remains. 4) The partial
+  The streaming row settles to `aborted` in place with its text. The session
+  timer, running badge, and tool spinner stop, and a localized crash error
+  appears. The recovered reply and one crash card remain after a reload, and
+  no `.inflight.json` remains. A follow-up prompt can run on the restarted
+  sidecar. 4) The partial
   reply is visible immediately after Stop and after reopening; the transcript
   file was not rewritten (its earlier lines are byte-identical) and the
   checkpoint file is gone once the aborted final row landed. 5) The completed

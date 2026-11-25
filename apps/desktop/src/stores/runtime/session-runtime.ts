@@ -12,6 +12,7 @@ import {
   mergeLiveSessionMessages,
   projectMessageEnd,
   removeLiveSessionMessage,
+  settleTranscriptAfterError,
   upsertLiveSessionMessage,
 } from "../../lib/session-transcript";
 import { getSessionMessageSnapshot, getSessionToolMessagePositions } from "../../lib/session-transcript-updates";
@@ -359,6 +360,8 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
           : upsertLiveSessionMessage(current, completed);
         break;
       }
+      case "error":
+        return settleTranscriptAfterError(current, event.error.code === "TURN_ABORTED");
       default:
         return current;
     }
@@ -381,6 +384,9 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
       next,
       sessionHistoryCache.get(sessionId) ?? state.sessionHistory[sessionId],
     );
+    if (envelope.event.type === "error" && state.retainedTranscripts[sessionId]) {
+      set((current) => recordPaneTranscript(current, sessionId, next));
+    }
   }
 
   function queueWorkspaceAlignment<T>(task: () => Promise<T>): Promise<T> {

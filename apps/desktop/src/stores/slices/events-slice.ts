@@ -4,6 +4,7 @@ import {
   dedupeSessionMessages,
   projectMessageEnd,
   reconcilePersistedUserMessage,
+  settleTranscriptAfterError,
   upsertLiveSessionMessage,
 } from "../../lib/session-transcript";
 import {
@@ -706,34 +707,7 @@ export function createEventsSlice({
             const hasErrorMessage =
               last?.role === "assistant" &&
               (last.status === "error" || last.isError === true);
-            const messages: UiMessage[] = state.messages
-              .filter(
-                (message) =>
-                  !(
-                    message.role === "assistant" &&
-                    message.status === "aborted" &&
-                    !message.content.trim() &&
-                    !(message.thinking || "").trim()
-                  ),
-              )
-              .map((message) =>
-                message.role === "tool" && message.toolStatus === "running"
-                  ? {
-                      ...message,
-                      toolStatus: "error" as const,
-                      status: "error" as const,
-                      isError: true,
-                    }
-                  : message.role === "assistant" &&
-                      message.status === "streaming"
-                    ? {
-                        ...message,
-                        status: aborted
-                          ? ("aborted" as const)
-                          : ("error" as const),
-                      }
-                    : message,
-              );
+            const messages = settleTranscriptAfterError(state.messages, aborted);
             return {
               isRunning: false,
               error: null,

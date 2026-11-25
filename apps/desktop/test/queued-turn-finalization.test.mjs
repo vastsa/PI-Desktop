@@ -40,6 +40,8 @@ function fixture({ onTurnEnded } = {}) {
   const prompts = [];
   const writes = [];
   const announcements = [];
+  const rendererEvents = [];
+  const persistedEvents = [];
   let quitting = false;
 
   const coordination = createSessionCoordination({
@@ -111,7 +113,9 @@ function fixture({ onTurnEnded } = {}) {
     runtimeState: { host, agentHostBridge: bridge },
     planState: { approvedExecutionDrain: null },
     logger: { app() {} },
-    sendToRenderer() {},
+    sendToRenderer(channel, envelope) {
+      if (channel === IPC.event.agentMessage) rendererEvents.push(envelope);
+    },
     coordination,
     scheduledRunsBySession: new Map(),
     activeToolCalls: new Map(),
@@ -125,7 +129,10 @@ function fixture({ onTurnEnded } = {}) {
     inFlightExecutionFinishes: new Set(),
     pendingExecutionFinishes: new Map(),
     announceTurnEnded: (payload) => announcements.push(payload),
-    emitAgentEvent() {},
+    emitAgentEvent(envelope) {
+      rendererEvents.push(envelope);
+    },
+    persistAgentEvent: (envelope) => persistedEvents.push(envelope),
     acquireSessionOperation: coordination.acquireSessionOperation,
     resolveAgentRuntimeLaunch: async () => {
       throw new Error("not used by this fixture");
@@ -182,6 +189,8 @@ function fixture({ onTurnEnded } = {}) {
     persistedQueue,
     prompts,
     announcements,
+    rendererEvents,
+    persistedEvents,
     writes,
     finish,
     finishTurn: planRuntime.finishTurn,
@@ -190,6 +199,56 @@ function fixture({ onTurnEnded } = {}) {
     },
   };
 }
+
+for (const errorCode of ["AGENT_SIDECAR_CRASHED", "AGENT_SIDECAR_OOM"]) {
+  test(`a crashed turn publishes its recovered reply and one ${errorCode} card before releasing the queue`, async () => {
+    const f = fixture();
+    await f.bridge.queue.push({ sessionId: SESSION, content: "follow-up" });
+    const error = { code: errorCode, message: "Agent sidecar exited unexpectedly" };
+    const options = { turnId: FIRST_TURN, recoverInflight: true, interruptionError: error };
+    const pending = f.finishTurn(SESSION, "aborted", errorCode, options);
+    assert.equal(f.finishTurn(SESSION, "aborted", errorCode, options), pending);
+    await setImmediate();
+    assert.deepEqual(f.rendererEvents, []);
+    assert.deepEqual(f.prompts, []);
+    f.writes[0].resolve({
+      ok: true,
+      recovered: {
+        id: "partial", role: "assistant", content: "Partial reply",
+        createdAt: "2026-11-25T00:00:00Z", status: "aborted",
+      },
+    });
+    await pending;
+    await setImmediate();
+    assert.deepEqual(f.rendererEvents.map(({ event }) => event.type), [
+      "message_end", "message_end", "error",
+    ]);
+    assert.equal(f.rendererEvents[0].event.message.id, "partial");
+    assert.equal(f.rendererEvents[1].event.message.error.code, errorCode);
+    assert.deepEqual(f.persistedEvents, [f.rendererEvents[1]]);
+    assert.deepEqual(f.rendererEvents[2].event.error, error);
+    assert(f.rendererEvents.every(({ turnId }) => turnId === FIRST_TURN));
+    const interrupted = f.bridge.agentHost.getTurn(FIRST_TURN);
+    assert.equal(interrupted.status, "interrupted");
+    assert.equal(interrupted.error?.code, errorCode);
+    assert.deepEqual(f.prompts.map(({ content }) => content), ["follow-up"]);
+  });
+}
+
+test("a crashed turn does not publish a live error after its session moved on", async () => {
+  const f = fixture();
+  const error = { code: "AGENT_SIDECAR_CRASHED", message: "Agent sidecar exited unexpectedly" };
+  const pending = f.finishTurn(SESSION, "aborted", error.code, {
+    turnId: FIRST_TURN, recoverInflight: true, interruptionError: error,
+  });
+  await setImmediate();
+  f.activeTurns.set(SESSION, "successor");
+  f.writes[0].resolve({ ok: true });
+  await pending;
+  assert.deepEqual(f.rendererEvents, []);
+  assert.deepEqual(f.persistedEvents, []);
+  assert.equal(f.activeTurns.get(SESSION), "successor");
+});
 
 for (const status of ["completed", "error", "aborted"]) {
   test(`queued prompts resume once, in FIFO order, after ${status} turn finalization`, async () => {

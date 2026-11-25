@@ -1,4 +1,5 @@
-import { ErrorCodes, IPC, type AgentEventEnvelope, type AppNotification, type MessageUsage, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
+import { randomUUID } from "node:crypto";
+import { ErrorCodes, IPC, type AgentEventEnvelope, type AppError, type AppNotification, type MessageUsage, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
 import { executionFromResponse, executionListFromResponse, planExecutionFromUnknown } from "@pi-desktop/host-runtime";
 import type { RuntimeState } from "./context";
 import type {
@@ -17,6 +18,7 @@ export type FinishTurnOptions = {
   turnId: string;
   createNotification?: boolean;
   recoverInflight?: boolean;
+  interruptionError?: AppError;
 };
 
 /**
@@ -62,6 +64,7 @@ export type PlanRuntimeDependencies = {
    */
   announceTurnEnded: (payload: TurnEndedPayload) => void;
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
+  persistAgentEvent: (envelope: AgentEventEnvelope) => void;
   acquireSessionOperation: (sessionId: string) => Promise<() => void>;
   resolveAgentRuntimeLaunch: (...args: any[]) => Promise<any>;
   isQuitting: () => boolean;
@@ -92,6 +95,7 @@ export function createPlanRuntime({
   pendingExecutionFinishes,
   announceTurnEnded,
   emitAgentEvent,
+  persistAgentEvent,
   acquireSessionOperation,
   resolveAgentRuntimeLaunch,
   isQuitting,
@@ -128,14 +132,22 @@ function hostTurnStatus(
 }
 
 /**
- * The error a settled failing turn carries into Agent Host. The terminal event
- * owns the real message; this path only runs when that event never landed, so the
- * code the settlement recorded is the best available description.
+ * The error carried by Agent Host settlement when a runtime terminal event
+ * could not deliver it.
  */
 function hostTurnError(
   reason: TurnEndReason,
   errorCode: string | undefined,
+  interruptionError: AppError | undefined,
 ): { code: string; message: string; retriable: boolean; traceId: string } | undefined {
+  if (interruptionError) {
+    return {
+      code: interruptionError.code,
+      message: interruptionError.message,
+      retriable: interruptionError.retriable ?? false,
+      traceId: interruptionError.traceId ?? "",
+    };
+  }
   if (reason !== "error") return undefined;
   const code = errorCode ?? "TURN_ERROR";
   return { code, message: code, retriable: false, traceId: "" };
@@ -199,6 +211,7 @@ function finishTurn(
     options.createNotification ??
     (!wasPlanSubmission && shouldCreateTaskNotification(id));
   const recoverInflight = options.recoverInflight === true;
+  const interruptionError = options.interruptionError;
 
   const runFinalization = async (): Promise<void> => {
     try {
@@ -240,6 +253,34 @@ function finishTurn(
             data: String(e),
           });
         }
+      }
+
+      if (interruptionError && !isQuitting() && isActiveTurn(id, turnId)) {
+        const ts = Date.now();
+        const identity = { sessionId: id, turnId, ts };
+        const messageEnd: AgentEventEnvelope = {
+          ...identity,
+          event: {
+            type: "message_end",
+            message: {
+              id: randomUUID(),
+              role: "assistant",
+              content: "",
+              createdAt: new Date(ts).toISOString(),
+              status: "error",
+              isError: true,
+              error: interruptionError,
+            },
+          },
+        };
+        persistAgentEvent(messageEnd);
+        emitAgentEvent(messageEnd);
+        // The renderer needs its terminal error event. Agent Host gets the
+        // interrupted outcome from endTurn after the finalization claim clears.
+        sendToRenderer(IPC.event.agentMessage, {
+          ...identity,
+          event: { type: "error", error: interruptionError },
+        } satisfies AgentEventEnvelope);
       }
 
       if (runId && runtimeState.host) {
@@ -317,7 +358,7 @@ function finishTurn(
         id,
         turnId,
         hostTurnStatus(reason),
-        hostTurnError(reason, errorCode),
+        hostTurnError(reason, errorCode, interruptionError),
       );
       runtimeState.agentHostBridge?.agentHost.kick(id);
     }

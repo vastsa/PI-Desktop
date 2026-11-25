@@ -24,6 +24,11 @@ function harness(messages, background = []) {
     retainedSessionIds: ["active", "background"],
     retainedTranscripts: { active: messages, background },
     runningSessions: { active: true, background: true },
+    agentStatuses: { active: { currentTurnId: "other-turn" }, background: { currentTurnId: "crashed-turn" } },
+    pendingPermissions: {},
+    pendingAsks: {},
+    askDrafts: {},
+    latestTurnResults: {},
     sessionHistory: {},
   };
   const access = {
@@ -40,7 +45,13 @@ function harness(messages, background = []) {
   runtime = createSessionRuntime(access);
   runtime.cacheSessionTranscript("active", messages);
   runtime.cacheSessionTranscript("background", background);
-  Object.assign(state, createEventsSlice({ ...access, runtime }));
+  Object.assign(state, createEventsSlice({
+    ...access, runtime,
+    withoutRecordKey: (record, key) => Object.fromEntries(
+      Object.entries(record).filter(([entry]) => entry !== key),
+    ),
+    flushPendingSessionConfiguration: async () => {},
+  }));
   return { ...access, runtime, writes: () => writes };
 }
 
@@ -116,6 +127,36 @@ test("background deltas update only their cache and leave active and retained ar
   assert.equal(cached.at(-1).content, "delta");
   assert.equal(getSessionMessageSnapshot(cached).owner, getSessionMessageSnapshot(background).owner);
 }));
+
+test("a background crash settles its retained tool row and keeps the recovered reply and error card", () => {
+  const active = [message("other")];
+  const h = harness(active, [
+    message("partial", { status: "streaming" }),
+    message("tool", { role: "tool", status: "streaming", toolStatus: "running" }),
+  ]);
+  const error = { code: "AGENT_SIDECAR_CRASHED", message: "Agent sidecar exited unexpectedly" };
+  const send = (event) => h.get().handleAgentEvent({
+    sessionId: "background", turnId: "crashed-turn", ts: 1, event,
+  });
+  send({ type: "message_end", message: message("partial", { status: "aborted" }) });
+  send({ type: "message_end", message: message("error", { content: "", status: "error", error }) });
+  send({ type: "error", error });
+
+  const state = h.get();
+  const retained = state.retainedTranscripts.background;
+  assert.equal(state.runningSessions.background, false);
+  assert.equal(state.agentStatuses.background, undefined);
+  assert.equal(state.runningSessions.active, true);
+  assert.equal(state.messages, active);
+  assert.deepEqual(retained.map(({ id, status }) => ({ id, status })), [
+    { id: "partial", status: "aborted" },
+    { id: "tool", status: "error" },
+    { id: "error", status: "error" },
+  ]);
+  assert.equal(retained[1].toolStatus, "error");
+  assert.equal(retained[2].error.code, error.code);
+  assert.equal(h.runtime.sessionTranscriptCache.get("background"), retained);
+});
 
 test("active and background duplicate inputs apply deltas to the last value at the first position", () => withFrames((flush) => {
   const duplicates = () => [message("live", { content: "old" }), message("middle"), message("live", { content: "latest" })];
