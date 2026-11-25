@@ -25,7 +25,14 @@ const execFileAsync = promisify(execFile);
 const { appDir } = assertDesktopBuild(root);
 const { electronBinary } = resolveElectronBinary(root);
 const binary = resolveHostBinary();
-const temp = await mkdtemp(join(tmpdir(), "pi-window-controls-"));
+const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR || tmpdir(), "pi-window-controls-"));
+const isolatedEnv = {
+  HOME: join(temp, "home"), USERPROFILE: join(temp, "home"),
+  XDG_CONFIG_HOME: join(temp, "home/.config"),
+  PI_CODING_AGENT_DIR: join(temp, "home/.pi/agent"),
+  PI_DESKTOP_AGENTS_DIR: join(temp, "home/agents"),
+};
+await mkdir(isolatedEnv.HOME, { recursive: true });
 const port = Number(process.env.PI_DESKTOP_CHROME_CDP_PORT || 9347);
 const pending = new Map();
 let sequence = 0;
@@ -108,6 +115,64 @@ async function checkControls(label) {
   assert.ok(ok, label);
 }
 
+async function checkConversationActionSpacing() {
+  const platform = await evaluate("document.documentElement.dataset.platform");
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 807, height: 567, deviceScaleFactor: 1, mobile: false,
+  });
+  await send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "no-preference" }],
+  });
+  await evaluate(`document.documentElement.dataset.platform = "win32";
+    window.__PI_TOPBAR_FRAMES__ = {};
+    document.addEventListener("animationstart", function samplePanel(event) {
+      if (!["work-panel-in", "work-panel-out"].includes(event.animationName)) return;
+      const panel = event.target;
+      if (!panel.matches(".work-panel")) return;
+      const animation = panel.getAnimations().find(a => a.animationName === event.animationName);
+      const actions = document.querySelector(".ct-actions");
+      const toggle = document.querySelector(".app-work-panel-toggle");
+      const buttons = [...actions.querySelectorAll(".ct-icon-btn")];
+      const { duration } = animation.effect.getComputedTiming();
+      const originalTime = animation.currentTime;
+      const frames = [];
+      for (let step = 0; step <= 20; step++) {
+        animation.currentTime = duration * step / 20;
+        const gap = toggle.getBoundingClientRect().left - actions.getBoundingClientRect().right;
+        const reachable = buttons.every(button => {
+          const rect = button.getBoundingClientRect();
+          const y = rect.top + rect.height / 2;
+          return [rect.left + 1, rect.right - 1].every(x =>
+            button.contains(document.elementFromPoint(x, y)));
+        });
+        frames.push({ step, gap, reachable });
+      }
+      animation.currentTime = originalTime;
+      window.__PI_TOPBAR_FRAMES__[event.animationName] = frames;
+      if (event.animationName === "work-panel-out") {
+        document.removeEventListener("animationstart", samplePanel);
+      }
+    });`);
+  try {
+    await settle();
+    for (const direction of ["in", "out"]) {
+      const name = JSON.stringify(`work-panel-${direction}`);
+      await click(".app-work-panel-toggle", false);
+      await waitFor(() => evaluate(`!!window.__PI_TOPBAR_FRAMES__[${name}]`), `sample ${name}`);
+      const frames = await evaluate(`window.__PI_TOPBAR_FRAMES__[${name}]`);
+      const failures = frames.filter(frame => frame.gap < 8 || !frame.reachable);
+      assert.equal(failures.length, 0, `807×567 win32 ${name}: ${JSON.stringify(failures)}`);
+      await settle();
+    }
+    await waitFor(() => evaluate(`!document.querySelector(".work-panel")`), "spacing test panel closed");
+    console.log("PASS conversation actions are reachable throughout both work-panel animations (807×567 win32 CSS)");
+  } finally {
+    await send("Emulation.clearDeviceMetricsOverride");
+    await send("Emulation.setEmulatedMedia", { features: [] });
+    await evaluate(`document.documentElement.dataset.platform = ${JSON.stringify(platform)};`);
+  }
+}
+
 async function checkWindowsRoundedCorners(
   label,
   rounded = true,
@@ -130,7 +195,7 @@ async function checkWindowsRoundedCorners(
         probeError = undefined;
         if (corners.windowsBuild >= 22000) {
           return corners.cornerMode === "dwm-native" &&
-            corners.innerCornerOwned === true && corners.thickFrameStyle === false &&
+            corners.innerCornerOwned === true && corners.thickFrameStyle === true &&
             corners.nativeHitSampleCount > 0;
         }
         return corners.topLeftCutout === rounded && corners.topRightCutout === rounded &&
@@ -154,7 +219,7 @@ async function checkWindowsRoundedCorners(
     ], [rounded, rounded, rounded, rounded], label);
   }
   assert.equal(corners.innerCornerOwned, true, label);
-  assert.equal(corners.thickFrameStyle, false, label);
+  assert.equal(corners.thickFrameStyle, true, label);
   if (corners.windowsBuild < 22000) {
     assert.equal(corners.gridMismatches, 0, `${label}: native corner hit grid`);
   }
@@ -230,7 +295,7 @@ try {
   }));
   await writeFile(join(radiusPluginPath, "main.js"), "// E2E theme fixture.\n");
   await writeFile(join(radiusPluginPath, "theme.css"), ":root[data-theme=\"dark\"] { --ds-bg-primary: #181818; }\n");
-  const host = new Host(binary, join(temp, "data"));
+  const host = new Host(binary, join(temp, "data"), { env: isolatedEnv });
   let sessionId;
   try {
     await host.start();
@@ -240,7 +305,7 @@ try {
   } finally {
     await host.stop();
   }
-  const env = { ...process.env, PI_DESKTOP_DATA_DIR: join(temp, "data"),
+  const env = { ...process.env, ...isolatedEnv, PI_DESKTOP_DATA_DIR: join(temp, "data"),
     PI_DESKTOP_HOST_BIN: binary, PI_DESKTOP_START_MAXIMIZED: "0",
     PI_DESKTOP_MCP_CONTROL: "0", ELECTRON_RENDERER_URL: "" };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -268,11 +333,16 @@ try {
     else entry.resolve(message.result);
   };
   await waitFor(() => evaluate(`!!document.querySelector('.main-pane') && !document.querySelector('.startup-splash')`), "ready shell");
+  await evaluate("window.__PI_DESKTOP__.skipStartupOverlays()");
+  const restored = await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'restoreMainWindow'})`);
+  assert.equal(restored.ok, true, "restore the fixture window");
+  await waitFor(() => evaluate(`document.visibilityState === 'visible'`), "visible fixture window");
   await evaluate(`window.__PI_DESKTOP__.selectSession(${JSON.stringify(sessionId)})`);
   await waitFor(() => evaluate(`document.querySelector('.app-work-panel-toggle')?.disabled === false`), "active session");
   await settle();
   await checkControls("panel closed");
-    await checkWindowsRoundedCorners("normal window corner behavior");
+  await checkConversationActionSpacing();
+  await checkWindowsRoundedCorners("normal window corner behavior");
   await checkNativeWindowResizes(["left-min", "bottom-min"]);
   await click(".app-work-panel-toggle");
   await waitFor(() => evaluate(`!!document.querySelector('.work-panel')`), "panel opened");
@@ -313,8 +383,17 @@ try {
     assert.equal(JSON.parse(stdout.trim()).appCoversTaskbar, true, `fullscreen covers the taskbar: ${stdout.trim()}`);
     console.log("PASS fullscreen covers the taskbar");
   }
+  await evaluate(`(() => {
+    window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ = false;
+    const off = window.piDesktop.on('pi-desktop/window/event/fullscreen', payload => {
+      if (payload.fullScreen) return;
+      window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ = true;
+      off();
+    });
+  })()`);
   await evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'toggleFullScreen'})`);
-  await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/menu/nativeAction', {action:'restoreMainWindow'}).then(s => s.ok && !s.data.fullScreen)`), "leave native fullscreen");
+  await waitFor(() => evaluate(`window.__PI_WINDOW_E2E_LEFT_FULLSCREEN__ === true`), "native leave-full-screen event");
+  await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.fullScreen)`), "leave native fullscreen");
   await settle();
   if (process.platform !== "darwin") {
     await click(".window-control-btn:nth-child(2)");
@@ -322,16 +401,38 @@ try {
     await checkControls("native window maximized with panel open");
     await click(".window-control-btn:nth-child(2)");
     await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.maximized)`), "native window restored");
+  } else {
+    await evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'toggleMaximize'})`);
+    await waitFor(() => evaluate(`document.documentElement.dataset.windowMaximized === 'true'`), "macOS maximized caption lock");
+    await settle();
+    const point = await evaluate(`(() => {
+      for (let y = 8; y < 46; y += 8) for (let x = 180; x < innerWidth - 40; x += 32) {
+        const el = document.elementFromPoint(x, y);
+        if (!el) continue;
+        const style = getComputedStyle(el);
+        if (style.getPropertyValue('--window-drag-region').trim() !== 'drag') continue;
+        if (style.getPropertyValue('-webkit-app-region').trim() !== 'no-drag') throw new Error('Maximized caption is still natively draggable');
+        return { x, y };
+      }
+      throw new Error('No visible caption region');
+    })()`);
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+    for (const clickCount of [1, 2]) for (const type of ["mousePressed", "mouseReleased"]) {
+      await send("Input.dispatchMouseEvent", { type, ...point, button: "left", clickCount });
+    }
+    await waitFor(() => evaluate(`window.piDesktop.invoke('pi-desktop/window/control', {action:'getState'}).then(s => s.ok && !s.data.maximized)`), "macOS caption double-click restore");
+    await waitFor(() => evaluate(`document.documentElement.dataset.windowMaximized === 'false'`), "macOS normal caption unlock");
+    console.log("PASS macOS maximized caption cannot drag and double-click restores through real IPC");
   }
   await click(".app-work-panel-toggle");
   await waitFor(() => evaluate(`!document.querySelector('.work-panel')`), "panel closed again");
   await checkControls("panel closed again");
   await evaluate(`window.__PI_DESKTOP__.setPage('settings')`);
-  await waitFor(() => evaluate(`!!document.querySelector('.settings-mode')`), "settings opened");
+  await waitFor(() => evaluate(`!!document.querySelector('[data-surface="settings-dialog"]')`), "settings opened");
   await settle();
-  await checkControls("settings route");
-  await evaluate(`window.__PI_DESKTOP__.setPage('chat')`);
-  await settle();
+  await checkControls("settings dialog");
+  await click('[data-nav="close-settings"]');
+  await waitFor(() => evaluate(`!document.querySelector('[data-surface="settings-dialog"]')`), "settings closed");
   await click(".app-work-panel-toggle");
   await settle();
   await checkControls("panel reopened after settings");
@@ -402,9 +503,11 @@ try {
 } finally {
   socket?.close();
   for (const entry of pending.values()) clearTimeout(entry.timer);
-  if (child && child.exitCode === null) {
+  if (child && child.exitCode === null && child.signalCode === null) {
     const exited = once(child, "exit");
     child.kill();
+    await Promise.race([exited, delay(5000)]);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     await exited;
   }
   await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

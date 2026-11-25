@@ -57,6 +57,11 @@ export type OneShotCompleteOptions = {
   emptyErrorMessage?: string;
   /** Conversation id forwarded to OpenCode as `x-opencode-session`. */
   sessionId?: string;
+  /**
+   * Observe each physical attempt's identified usage as it is reported, so a
+   * caller can write the ledger even when a later attempt fails.
+   */
+  onUsage?: (usage: MessageUsage) => void;
 };
 
 export type OneShotCompleteResult = {
@@ -148,7 +153,10 @@ export async function completeOneShot(
     sessionOptions,
     (retryOptions) => accountModelStream(model, () => streamSimple(model, context, retryOptions), {
       providerId: provider.id, nativeCost: provider.modelConfig?.nativeCost,
-      onUsage: attemptUsage => { usage = addUsage(usage, attemptUsage); },
+      onUsage: attemptUsage => {
+        usage = addUsage(usage, attemptUsage);
+        options.onUsage?.(attemptUsage);
+      },
     }),
     {
       claim: (error, phase) => {

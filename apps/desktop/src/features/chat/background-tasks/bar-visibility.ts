@@ -69,7 +69,7 @@ export function observeTasks(
     dismissed.size !== state.dismissed.size;
 
   for (const task of tasks) {
-    if (task.state === "running") {
+    if (task.state === "running" || task.continuation === "pending") {
       if (!seenRunning.has(task.id)) {
         seenRunning.add(task.id);
         changed = true;
@@ -100,7 +100,7 @@ export function selectVisibleTasks(
 ): BackgroundTaskSummary[] {
   return tasks.filter((task) => {
     if (state.dismissed.has(task.id)) return false;
-    if (task.state === "running") return true;
+    if (task.state === "running" || task.continuation === "pending") return true;
     // Reading the log of a finished command must not be interrupted by the
     // grace window expiring underneath it.
     if (task.id === pinnedId) return true;
@@ -122,7 +122,7 @@ export function nextExpiryAt(
 ): number | null {
   let earliest: number | null = null;
   for (const task of selectVisibleTasks(state, tasks, now, pinnedId)) {
-    if (task.id === pinnedId) continue;
+    if (task.id === pinnedId || task.continuation === "pending") continue;
     const ended = state.endedAt.get(task.id);
     if (ended === undefined) continue;
     const expiry = ended + ENDED_VISIBLE_MS;
@@ -145,10 +145,10 @@ export function nextExpiryAt(
  */
 export function dismissTask(
   state: BarVisibility,
-  task: Pick<BackgroundTaskSummary, "id" | "state"> | null,
+  task: Pick<BackgroundTaskSummary, "id" | "state" | "continuation"> | null,
 ): BarVisibility {
   if (!task) return state;
-  if (task.state === "running") return state;
+  if (task.state === "running" || task.continuation === "pending") return state;
   if (state.dismissed.has(task.id)) return state;
   const dismissed = new Set(state.dismissed);
   dismissed.add(task.id);
@@ -156,6 +156,6 @@ export function dismissTask(
 }
 
 /** Whether the row may offer removal; the same rule `dismissTask` enforces. */
-export function canDismiss(state: BarVisibility, task: Pick<BackgroundTaskSummary, "id" | "state">): boolean {
-  return task.state !== "running" && !state.dismissed.has(task.id);
+export function canDismiss(state: BarVisibility, task: Pick<BackgroundTaskSummary, "id" | "state" | "continuation">): boolean {
+  return task.state !== "running" && task.continuation !== "pending" && !state.dismissed.has(task.id);
 }

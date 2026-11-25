@@ -1,0 +1,115 @@
+name: Windows native snap acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/windows-native-snap.yml'
+      - 'scripts/e2e-window-snap.mjs'
+      - 'scripts/e2e/run-window-snap.ps1'
+      - 'scripts/e2e/probe-window-snap.cs'
+      - 'scripts/e2e/fixtures/window-snap/**'
+      - 'apps/desktop/electron/main/window-*.ts'
+      - 'crates/host-core/src/rpc/window_*.rs'
+  pull_request:
+    paths:
+      - '.github/workflows/windows-native-snap.yml'
+      - 'scripts/e2e-window-snap.mjs'
+      - 'scripts/e2e/run-window-snap.ps1'
+      - 'scripts/e2e/probe-window-snap.cs'
+      - 'scripts/e2e/fixtures/window-snap/**'
+      - 'apps/desktop/electron/main/window-*.ts'
+      - 'crates/host-core/src/rpc/window_*.rs'
+
+permissions:
+  contents: read
+
+jobs:
+  native-snap:
+    name: Interactive baseline / candidate / frame pixels
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Initialize evidence before building
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/native-snap-evidence" | Out-Null
+          @{ revision = (git rev-parse HEAD); startedAt = [DateTime]::UtcNow.ToString('o'); sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/native-snap-evidence/job.json"
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build workspace fixture dependencies
+        run: pnpm build:js
+      - name: Verify preserved original-head evidence
+        run: node --test apps/desktop/test/window-native-snap-evidence.test.mjs
+      - name: Install pinned Electron
+        run: pnpm --filter @pi-desktop/desktop exec install-electron
+      - name: Build native Host
+        shell: pwsh
+        run: |
+          cargo build -p host-core --locked 2>&1 | Tee-Object "$env:RUNNER_TEMP/native-snap-evidence/build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Configure the ephemeral desktop for native minimum sizes
+        shell: pwsh
+        run: |
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class SnapDisplay {
+            [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]
+            public struct Mode {
+              [MarshalAs(UnmanagedType.ByValTStr,SizeConst=32)] public string device;
+              public ushort spec,driver,size,extra; public uint fields;
+              public int x,y; public uint orientation,fixedOutput;
+              public short color,duplex,yResolution,tt,collate;
+              [MarshalAs(UnmanagedType.ByValTStr,SizeConst=32)] public string form;
+              public ushort logPixels;
+              public uint bpp,width,height,flags,frequency,icmMethod,icmIntent,media,dither,reserved1,reserved2,panningWidth,panningHeight;
+            }
+            [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern bool EnumDisplaySettings(string device,int index,ref Mode mode);
+            [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int ChangeDisplaySettings(ref Mode mode,uint flags);
+            static Mode Current() {
+              var mode=new Mode();mode.size=(ushort)Marshal.SizeOf(typeof(Mode));
+              if(!EnumDisplaySettings(null,-1,ref mode))throw new Exception("Cannot read the CI desktop mode");
+              return mode;
+            }
+            public static string Configure() {
+              var before=Current();var mode=before;
+              if(mode.width<1920 || mode.height<1080 || mode.bpp!=32) {
+                mode.width=1920;mode.height=1080;mode.bpp=32;mode.fields=0x1C0000;
+                int tested=ChangeDisplaySettings(ref mode,2);
+                if(tested!=0)throw new Exception("CI desktop rejects 1920x1080x32: "+tested);
+                int changed=ChangeDisplaySettings(ref mode,0);
+                if(changed!=0)throw new Exception("CI desktop mode change failed: "+changed);
+              }
+              var after=Current();
+              if(after.width<1920 || after.height<1080 || after.bpp!=32)throw new Exception("CI desktop did not reach the required mode");
+              return "before="+before.width+"x"+before.height+"x"+before.bpp+" after="+after.width+"x"+after.height+"x"+after.bpp;
+            }
+          }
+          '@
+          [SnapDisplay]::Configure() | Tee-Object "$env:RUNNER_TEMP/native-snap-evidence/display.log"
+      - name: Run interactive native acceptance
+        shell: pwsh
+        run: |
+          node scripts/e2e-window-snap.mjs --matrix --artifacts "$env:RUNNER_TEMP/native-snap-evidence/native" 2>&1 | Tee-Object "$env:RUNNER_TEMP/native-snap-evidence/acceptance.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain native results, logs, screenshots and replay sources
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-snap-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-snap-evidence
+          if-no-files-found: error
+          retention-days: 30

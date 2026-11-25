@@ -27,6 +27,7 @@
 .mode-run-summary {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
@@ -49,9 +50,24 @@
   white-space: nowrap;
 }
 
-.mode-run-rounds {
+.mode-run-metrics {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.mode-run-rounds,
+.mode-run-elapsed {
+  min-width: 0;
+  max-width: 100%;
   color: var(--ds-text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.mode-run-elapsed {
+  overflow-wrap: anywhere;
 }
 
 .mode-run-error {
@@ -64,7 +80,9 @@
 
 .mode-run-actions {
   display: flex;
-  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
@@ -249,6 +267,47 @@
   white-space: pre;
 }
 
+/* --- Grouped tabs inside the settings content area (issue #2544) ---------- */
+
+.modes-settings-tabs {
+  padding: 8px 12px;
+}
+
+.modes-settings-tab-field,
+.modes-settings-tab-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.modes-settings-tab-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.modes-settings-fallbacks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.modes-settings-fallback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modes-settings-fallback > :first-child,
+.modes-settings-fallback > :nth-child(2) {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .modes-settings-validation {
   display: flex;
   flex-direction: column;
@@ -292,23 +351,4 @@
   flex-direction: column;
   gap: 2px;
   padding: 8px 12px;
-}
-
-/* Settings → Agent behavior: Goal default budget. */
-.settings-goal-budget {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.settings-goal-budget-field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ds-text-muted);
-  font-size: var(--text-xs-plus);
-}
-
-.settings-goal-budget-input {
-  width: 96px;
 }

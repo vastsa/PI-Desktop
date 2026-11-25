@@ -1,0 +1,50 @@
+# Triage configuration for the `pi` action.
+#
+# Every new issue is labelled automatically, and linked to an existing issue when
+# it looks like the same problem. The run posts no comment unless it finds a
+# duplicate.
+#
+# Two rules cannot be configured away: `labels.type.options` must contain `bug`,
+# and `duplicate.label` must name an existing label. Every label listed here must
+# already exist on the repository — check with:
+#   bun run scripts/check-triage-config.ts --config .github/pi-triage.yml --repo <owner>/<repo>
+
+labels:
+  # Exactly one is applied.
+  type:
+    required: true
+    options:
+      - { name: bug, description: 功能损坏、报错、崩溃 }
+      - { name: enhancement, description: 新功能或体验改进 }
+      - { name: documentation, description: 文档缺失或错误 }
+      - { name: question, description: 使用疑问 }
+      - { name: performance, description: 速度慢、内存高、资源占用异常 }
+      - { name: security, description: 安全漏洞或敏感信息风险 }
+
+  # Exactly one is applied.
+  priority:
+    required: true
+    options:
+      - { name: P0, description: 数据丢失/崩溃/安全漏洞/功能完全不可用 }
+      - { name: P1, description: 核心功能受损，存在绕行方案 }
+      - { name: P2, description: 一般缺陷或体验问题，不影响主流程 }
+      - { name: P3, description: 建议、优化、边缘场景 }
+
+  # At most one is applied.
+  state:
+    required: false
+    options:
+      - { name: needs-info, description: 缺少复现步骤、环境或版本信息 }
+
+duplicate:
+  label: duplicate
+  confidence: 0.8
+  candidates: 8
+  include_comments: true
+  comment:
+    on_new_issue: |
+      疑似与 #{{number}}（{{state}}）重复：{{reason}}
+
+      如果确实是同一个问题，请到 #{{number}} 继续讨论并关闭本 issue。
+    on_original: |
+      该问题被再次提起：#{{new_number}}（{{date}}）。

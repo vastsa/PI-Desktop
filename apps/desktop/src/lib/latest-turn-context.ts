@@ -61,8 +61,19 @@ export function latestTurnContextInspector(
       break;
     }
   }
-  const latestUsage = latestUsageMessage?.usage;
-  if (!latestUsage) return undefined;
+  if (!latestUsageMessage?.usage) return undefined;
+  const latestUsage = latestUsageMessage.usage;
+  const snapshot = getSessionMessageSnapshot(messages);
+  // Failed or stopped replies can report usage without entering model history.
+  // Their UI row then follows the checkpoint anchor even if /compact ran later.
+  if (!usagePredatesCompaction && compaction?.createdAt) {
+    const reply = latestUsageMessage;
+    const failedOrStopped = reply.status === "error" || reply.status === "aborted" ||
+      reply.isError || reply.error;
+    usagePredatesCompaction = reply.role === "assistant" && Boolean(failedOrStopped) &&
+      snapshot.positions.has(compaction.throughMessageId) &&
+      Date.parse(reply.createdAt) < Date.parse(compaction.createdAt);
+  }
   const compactedContextTokens = usagePredatesCompaction
     ? compaction?.contextTokens
     : undefined;
@@ -100,7 +111,7 @@ export function latestTurnContextInspector(
     responseOutputEstimated: latestTurn?.responseOutputEstimated ?? false,
     ...(compactedContextTokens !== undefined ? { compactedContextTokens } : {}),
   };
-  const owner = getSessionMessageSnapshot(messages).owner;
+  const { owner } = snapshot;
   const previous = inspectors.get(owner);
   if (previous && previous.usage === result.usage &&
     sameUsage(previous.turnUsage, result.turnUsage) &&

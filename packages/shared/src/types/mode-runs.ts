@@ -14,10 +14,10 @@ export type ModeRunState =
   | "stopped";
 
 /** Why a `waiting` run waits. */
-export type ModeRunWaitReason = "approval" | "retries" | "turn_end" | "error";
+export type ModeRunWaitReason = "approval" | "retries" | "turn_end" | "error" | "blocked";
 
-/** Who started the turn that holds the claim. `host` turns run at most
- * `accept-edits`; `user` and `approval` turns keep the session permission. */
+/** Builtin Goal keeps the session permission; other `host` turns run at most
+ * `accept-edits`. User and approval turns keep the session permission. */
 export type ModeTurnOrigin = "user" | "approval" | "host";
 
 export const MODE_RUN_OPEN_STATES: readonly ModeRunState[] = ["running", "waiting", "paused", "budget_exhausted"];
@@ -25,6 +25,14 @@ export const MODE_RUN_OPEN_STATES: readonly ModeRunState[] = ["running", "waitin
 export function isModeRunOpen(state: ModeRunState): boolean {
   return MODE_RUN_OPEN_STATES.includes(state);
 }
+
+/** Model-submitted evidence, not an independent verification of its truth. */
+export type ModeCompletionReport = {
+  status: "completed" | "blocked";
+  outcomes: Array<{ criterion: string; outcome: "met" | "unmet" | "unverified"; evidence: string }>;
+  remainingWork: string[];
+  blockerReason?: string;
+};
 
 export type ModeRun = {
   id: string;
@@ -38,11 +46,17 @@ export type ModeRun = {
   waitReason?: ModeRunWaitReason;
   /** Last gate or turn failure shown to the user. */
   lastError?: string;
+  /** Last submitted stage report; exit gates still decide successful completion. */
+  completionReport?: ModeCompletionReport;
   revision: number;
   activeTurnId?: string;
   activeOrigin?: ModeTurnOrigin;
   roundsCompleted: number;
   tokensUsed: number;
+  /** Accumulated active time; legacy hosts may omit it. */
+  elapsedMs?: number;
+  /** Epoch milliseconds of the current active interval, absent while frozen. */
+  activeSinceMs?: number;
   maxTurns: number | null;
   maxTokens: number | null;
   /** Workspace-relative artifact paths resolved for this run. */
@@ -125,8 +139,13 @@ export type ModeCatalogEntry = {
   source: "builtin" | "user";
   staged: boolean;
   available: boolean;
-  /** A user document with a builtin id is reported, not loaded. */
+  /** A user document outside a builtin's folder that claims its id; reported, not loaded. */
   reserved?: boolean;
+  /**
+   * A builtin with an override document at `filePath`. The override is in
+   * effect unless the catalog reports errors for that file.
+   */
+  customized?: boolean;
   filePath?: string;
 };
 
@@ -137,6 +156,10 @@ export type ModeCatalog = {
   directory: string;
 };
 
+/**
+ * `builtin` marks a builtin id. Its `source` is the override document when
+ * `filePath` is set, and the shipped definition otherwise.
+ */
 export type ModeDocumentReadResult = { id: string; source: string; filePath?: string; builtin: boolean };
 
 export type ModeDocumentValidation = {
@@ -146,5 +169,58 @@ export type ModeDocumentValidation = {
 };
 
 export type ModeDocumentWriteRequest = { id: string; source: string };
+
+/**
+ * `mode.yaml` bundle surface (issue #2544).
+ *
+ * A mode directory with `mode.yaml` is one copyable unit: the map names the
+ * mode's prompt document and its private subagent documents by relative path.
+ * Electron main reads them; the renderer only ever sees texts keyed by the
+ * relative reference the map declared, so it can never address a file outside
+ * the mode directory.
+ */
+export type ModeBundleContents = {
+  /** `mode.yaml` text. */
+  source: string;
+  /** Text of the document `promptFile` names. */
+  prompt: string;
+  /** Private subagent documents keyed by their relative reference. */
+  agents: Record<string, string>;
+};
+
+/** A whole bundle write: nothing is written unless every reference resolves. */
+export type ModeBundleWriteRequest = ModeBundleContents & { id: string };
+
+/** Copy a mode directory; a bundle copy keeps valid relative references. */
+export type ModeCopyRequest = { fromId: string; toId: string };
+
+/**
+ * The only mode-level fields the settings page edits in place. Both live in
+ * `mode.yaml`; neither changes a running delegation.
+ */
+export type ModeBundleSettingsRequest = {
+  id: string;
+  includeGlobalSubagents?: boolean;
+  /** Local skill ids switched off for this mode only. */
+  disabledSkills?: string[];
+};
+
+/** One private skill as Settings lists it: read-only identity plus its switch. */
+export type ModeSkillSummary = { id: string; name: string; enabled: boolean };
+
+/**
+ * `modesSkills`: the mode's own `skills/` folder and what the host found in it.
+ * `exists: false` means the folder has not been created yet; the page offers to
+ * create it by opening it.
+ */
+export type ModeSkillsResult = {
+  modeId: string;
+  directory: string;
+  exists: boolean;
+  skills: ModeSkillSummary[];
+};
+
+/** `modesSkillsOpen`: the folder that was handed to the OS file manager. */
+export type ModeSkillsOpenResult = { directory: string };
 
 export type ModesChangedEvent = { sessionId: string; run: ModeRun | null };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import {
   allowInsecureUserEndpoints,
@@ -922,8 +922,8 @@ export function SkillMarketPanel({
       {/* The settings shell carries a transform, which would turn the
           overlay's `position: fixed` into shell-relative positioning — portal
           both sheets to <body> so they always cover the window. */}
-      {installSheet && createPortal(installSheet, document.body)}
-      {sourcesSheet && createPortal(sourcesSheet, document.body)}
+      {installSheet && portalToBody(installSheet)}
+      {sourcesSheet && portalToBody(sourcesSheet)}
     </div>
   );
 

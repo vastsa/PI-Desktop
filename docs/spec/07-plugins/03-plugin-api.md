@@ -250,6 +250,29 @@ pi.events.on("session:turnEnded", async (event) => {
 });
 ```
 
+For grouped offers, check `await pi.app.getCapabilities?.()` for
+`composerSuggestionCandidates`. Both new calls use the same `composer.suggest`
+grant. Probe before generating so an inactive, nonempty, or stale Composer
+does not consume a completion. The probe never returns draft text.
+
+```js
+pi.events.on("session:turnEnded", async ({ sessionId, turnId, reason }) => {
+  if (reason !== "completed") return;
+  const target = await pi.composer.getSuggestionTarget({ sessionId, turnId });
+  if (!target) return;
+  const candidates = await writeFollowUps(sessionId); // one call, up to 3 lines
+  if (candidates.length) await pi.composer.suggestCandidates({ target, candidates });
+});
+```
+
+The opaque target belongs to the plugin, session, turn, and Composer revision.
+Revisiting the session or clearing text after an edit cannot restore an old
+target. Up to three folded, bounded, distinct candidates share one slot and
+lifetime; a newer offer replaces the group. With more than one candidate,
+arrow buttons or Up/Down cycle it. Autocomplete and IME keep key ownership;
+Tab fills only the selected text and Escape dismisses the group. A single
+candidate does not take the history keys. Candidates cannot send messages.
+
 ### speech (`speech.adapter.register`)
 ```ts
 pi.speech.registerAdapter(adapter: {
@@ -1011,10 +1034,22 @@ invocation. The broker injects `pluginId`, source `sessionId`, source `turnId`,
 and an invocation identity; plugin arguments cannot supply or override those
 values. A user-facing plugin panel may use `cancel` with its own plugin
 identity, but cannot use that path to send or spawn work. The host enforces
-the source permission ceiling, Agent-mode target, inbox and worker limits,
-idempotency, and bounded autonomous hops. A requested completion callback is
-a host-owned `completion` message linked to the source delivery and is created
-at most once after the actual target turn settles.
+the source permission ceiling, Agent-mode target, inbox bound, idempotency, and
+bounded autonomous hops, and refuses a worker that tries to create a further
+worker. How many workers run at once is the calling plugin's own policy: the
+host records creator provenance and does not impose a fixed concurrency ceiling.
+A requested completion callback is a host-owned `completion` message linked to
+the source delivery and is created at most once after the actual target turn
+settles, including a delivery fenced as `interrupted` by an application restart.
+A completion receipt is promoted in the target session's turn queue, so a busy
+target runs it at the next turn boundary ahead of input the user queued earlier
+(ADR 0265); it is never injected into another session's running turn. Its content
+is a readable report — a `Sub-session report` line, then `Session:`, `Status:`,
+`Delivery:`, a `Report:` section with the worker's final text, and `Error:` when
+the run failed — not an encoded envelope. A `send` may ask for the same treatment
+with `delivery: "immediate"`; the default `queue` appends behind whatever the
+target already queued.
+
 The callback is session data, not a new user authorization, and completion
 messages do not trigger another callback.
 
@@ -1207,10 +1242,37 @@ pi.net.fetch(input: {
  headers?: Record<string, string>
  body?: string
  timeoutMs?: number
+ responseType?: "text" | "base64"
+ maxResponseBytes?: number
  redirect?: "follow" | "error" | "manual"
-}): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
+}): Promise<{
+ status: number
+ headers: Record<string, string>
+ bodyText: string
+ bodyBase64?: string
+ contentType?: string
+ byteLength?: number
+}>
 ```
 
+`responseType` defaults to `text` and preserves the existing bodyText response.
+`responseType: "base64"` reads the response body as bounded bytes and returns
+canonical standard Base64 in `bodyBase64`, with `contentType` and `byteLength`.
+The host enforces a maximum of 16 MiB and accepts a smaller positive integer in
+`maxResponseBytes`. A response over the limit fails with
+`RESPONSE_TOO_LARGE`; no partial bytes are returned. Binary response mode is
+intended for bounded media downloads and does not grant filesystem access.
+
+Before using the redirect option or binary mode on a potentially older host,
+query
+`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[]; binaryResponseBody?: true; maxResponseBodyBytes?: number }>`
+and require the desired redirect mode, or `binaryResponseBody` plus a
+sufficient `maxResponseBodyBytes`. This read-only query needs no network
+permission and performs no network I/O. A missing method, rejected query,
+absent mode, or absent binary capability means unsupported: do not send the
+request. Older hosts may silently ignore unknown fetch options, so passing
+`redirect` or `responseType` alone is **not** capability detection.
+No same-origin-only mode is introduced by this change.
 
 `redirect` is optional: omitted or `follow` preserves the existing policy (up to
 five followed 3xx responses with Location, relative to the current URL, each
@@ -1229,22 +1291,13 @@ transport. Every followed hop still passes the existing permission/egress
 checks; these modes grant no additional network access. Policy refusals are
 audited without response bodies or headers.
 
-Before using the option on a potentially older host, query
-`pi.net.getCapabilities(): Promise<{ fetchRedirectModes: ("follow" | "error" | "manual")[] }>` and require
-the desired mode. This read-only query needs no network permission and performs
-no network I/O. A missing method, rejected query, or absent mode means
-unsupported: do not send the request. Older hosts may silently ignore unknown
-fetch options, so passing `redirect` alone is **not** capability detection.
-Current source implements this query; older hosts may not advertise it.
-No same-origin-only mode is introduced by this change.
-
-`fetch` answers with the upstream response unchanged — `status`, `headers`, and
-`bodyText` — so a `429` is data your plugin can read, `Retry-After` included,
-rather than an error the host hides. The host does not retry, throttle, or
-re-issue the request: retry and backoff after a `429` are your plugin's own
-policy, and the response headers are the only backoff signal you get. A failed
-call (`status >= 400`) is audited as `ok: false`, together with the
-`retryAfter` it advertised when the response states one (§7).
+`fetch` answers with the upstream response unchanged — `status`, `headers`,
+and either text or bounded Base64 body data — so a `429` is data your plugin can
+read, `Retry-After` included, rather than an error the host hides. The host does
+not retry, throttle, or re-issue the request: retry and backoff after a `429`
+are your plugin's own policy, and the response headers are the only backoff
+signal you get. A failed call (`status >= 400`) is audited as `ok: false`,
+together with the `retryAfter` it advertised when the response states one (§7).
 
 ```ts
 pi.net.websocket.connect(input: {
@@ -1524,6 +1577,23 @@ Delivered today:
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`, sent after
   a successful `session.configure` that changes provider, model, or thinking
   level.
+- `session:turnStarted` — `{ sessionId, turnId }`, after the host opens a
+  durable turn and before the agent is dispatched. It is a turn lifecycle
+  event, not a signal that the user sent a message or that a model was called.
+- `session:userMessagePersisted` — `{ sessionId, turnId, messageId }`, only
+  after the user submission that opens a managed turn is first durably inserted.
+  Queued input counts only when accepted for a new turn and saved; steering,
+  scheduled or automation inputs, collaboration and mode notices, imports,
+  plugin writes, replays, and updates of existing rows do not generate it.
+  Native Pi sessions do not use these managed-session events.
+
+  Both new events require `session.observe`, only reach the plugin process,
+  and obey its activation scope against the event session's project, not the
+  visible workspace. Neither delivers text, attachments, draft, transcript,
+  tokens, or tool data. Delivery is best effort without replay. On older hosts
+  `pi.app.getCapabilities()` may be absent; on supporting hosts
+  `sessionUserMessagePersisted` is true for callers granted `session.observe`.
+  `session:turnEnded` is unchanged.
 - `session:turnEnded` — payload is
   `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error" }`,
   sent once per host turn at the end of its teardown, after the durable
@@ -1557,6 +1627,31 @@ Delivered today:
 A throwing handler is logged and does not affect other listeners or the plugin.
 
 Planned events: none.
+
+### Per-turn model context (`agent.modelContext`)
+
+With `contributes.modelContext: true` and the `agent.modelContext` grant, an
+enabled, in-scope plugin may export:
+
+```ts
+export async function onModelContext(
+  input: { sessionId: string; turnId: string; projectId?: string; modelKey?: string },
+  context: { signal: AbortSignal },
+): Promise<{ text: string } | void> { /* ... */ }
+```
+
+The managed session's first model request freezes the contributions for that
+durable turn. Up to eight eligible plugins are asked in parallel; each answer
+has a 250 ms deadline and is limited to 4,096 UTF-8 bytes. Empty, malformed,
+failed, and late answers are ignored. The abort signal is cooperative. Later
+steps and retries reuse the same snapshot, excluding contributions whose
+permission, process, or project scope is no longer valid. Plugins do not see
+prompts, messages, file paths, drafts, or tool output through this hook.
+
+The model receives a tagged, lower-trust reference text block on the outgoing
+user message only. The system instructions, durable transcript, renderer, and
+subagents are unchanged. The hook does not run for `pi.agent.complete`, native
+Pi sessions, standalone requests, or compaction summaries.
 
 ## 6. Panel bridge API
 
@@ -1677,6 +1772,12 @@ Delivered today:
   receives it) — payload is `{ path: string }`, the location the host asked this
   view to show. A view created with a location already carried it in its entry
   URL; this event delivers a later one.
+- `view:selection` — payload is `{ sessionId: string; text: string }`. A view
+  with `acceptsTranscriptSelection: true` receives this only when the user
+  selects its item in the transcript menu. Register the listener in the
+  view's initial script. The host waits for the document to load, discards
+  a pending excerpt if the user has switched sessions, and delivers each
+  accepted click to that view only. The text is under 64 KiB in UTF-8.
 - `session:turnEnded` — the same payload as the plugin-process event in §5,
   sent when a host turn reaches a terminal state.
 - `session:activated` — the same payload as the plugin-process event in §5, sent

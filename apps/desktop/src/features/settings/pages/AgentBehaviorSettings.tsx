@@ -12,7 +12,6 @@ import { useTranslation } from "react-i18next";
 import { SegmentedControl, SettingsToggle } from "../../../components/ui";
 import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
 import { ComputerUseSettings } from "../computer-use/ComputerUseSettings";
-import { GoalBudgetSettingsRow } from "../../modes/GoalBudgetSettingsRow";
 import { CommandShellRow, SettingsCard, SettingsRow } from "../primitives";
 
 export function AgentBehaviorSettings({
@@ -42,7 +41,6 @@ export function AgentBehaviorSettings({
             role="group"
           />
         </SettingsRow>
-        <GoalBudgetSettingsRow settings={settings} saveSettings={saveSettings} />
         <SettingsRow
           title={t("settings.permissionMode")}
           description={t("settings.permissionModeDesc")}
@@ -70,6 +68,20 @@ export function AgentBehaviorSettings({
       </SettingsCard>
 
       <SettingsCard title={t("settings.execution")}>
+        <SettingsRow title={t("settings.backgroundJobContinuation")} description={t("settings.backgroundJobContinuationDesc")}>
+          <SettingsToggle
+            checked={settings.backgroundJobContinuationEnabled === true}
+            label={t("settings.backgroundJobContinuation")}
+            onChange={() => void saveSettings({ backgroundJobContinuationEnabled: settings.backgroundJobContinuationEnabled !== true })}
+          />
+        </SettingsRow>
+        <SettingsRow title={t("settings.codemode")} description={t("settings.codemodeDesc")}>
+          <SettingsToggle
+            checked={settings.codemodeEnabled === true}
+            label={t("settings.codemode")}
+            onChange={() => void saveSettings({ codemodeEnabled: settings.codemodeEnabled !== true })}
+          />
+        </SettingsRow>
         <SettingsRow
           title={t("settings.infiniteProviderRetry")}
           description={t("settings.infiniteProviderRetryDesc")}

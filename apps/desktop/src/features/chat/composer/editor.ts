@@ -4,6 +4,7 @@ import {
 } from "@pi-desktop/shared";
 import type { ComposerPluginPart } from "../../../lib/composer-smart-stop";
 import type { ComposerFileReference } from "./model";
+import { fileLineLabel, type FileLineRange } from "@pi-desktop/shared";
 
 export { type ComposerFileReference } from "./model";
 
@@ -44,6 +45,7 @@ export function createFileReference(
     kind?: "image" | "file" | "session" | "directory" | "agent";
     mimeType?: string;
     token?: string;
+    lineRange?: FileLineRange;
     plugin?: ComposerPluginPart;
   },
 ): ComposerFileReference {
@@ -64,6 +66,7 @@ export function createFileReference(
     ...(metadata?.localReference ? { localReference: metadata.localReference } : {}),
     ...(metadata?.mimeType ? { mimeType: metadata.mimeType } : {}),
     ...(metadata?.token ? { token: metadata.token } : {}),
+    ...(metadata?.lineRange ? { lineRange: metadata.lineRange } : {}),
     ...(metadata?.plugin ? { plugin: metadata.plugin } : {}),
   };
 }
@@ -97,9 +100,45 @@ function isChipElement(node: Node): boolean {
   );
 }
 
+/**
+ * Zero-width space that keeps an empty last line caretable. Chromium gives an
+ * empty line a box but no caret box, so a caret left after the final break
+ * resolves to the line above (#2433). A trailing `<br>` adds the box but also a
+ * second caret position below it, which reads as an extra line. A zero-width
+ * space gives the line a real caret and nothing else.
+ *
+ * Chromium can merge the marker into the neighbouring text node, so every read,
+ * index and caret path strips the character instead of looking for a node.
+ */
+const TAIL_MARKER = "\u200B";
+
+function stripTailMarkers(text: string): string {
+  return text.includes(TAIL_MARKER) ? text.replaceAll(TAIL_MARKER, "") : text;
+}
+
+/** Draft-string length of a text node once its markers are stripped. */
+function markedTextLength(text: string): number {
+  return stripTailMarkers(text).length;
+}
+
+/** Draft offset inside a text node → DOM offset, which sits before a marker. */
+function offsetForDraftIndex(text: string, index: number): number {
+  if (!text.includes(TAIL_MARKER)) return index;
+  let seen = 0;
+  for (let offset = 0; offset < text.length; offset += 1) {
+    if (seen === index) return offset;
+    if (text[offset] !== TAIL_MARKER) seen += 1;
+  }
+  return text.length;
+}
+
+/** Paint the marker for a value whose last line is empty. */
+function paintTailMarker(el: HTMLElement, value: string): void {
+  if (value.endsWith("\n")) el.appendChild(document.createTextNode(TAIL_MARKER));
+}
 /** Rendered length of a node in draft-string characters (chip = 1 char). */
 function editorNodeLength(node: Node): number {
-  if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue ?? "").length;
+  if (node.nodeType === Node.TEXT_NODE) return markedTextLength(node.nodeValue ?? "");
   if (isChipElement(node)) return 1;
   if (node.nodeType === Node.ELEMENT_NODE) {
     const element = node as HTMLElement;
@@ -116,7 +155,7 @@ export function readEditorValue(el: HTMLElement): string {
   let out = "";
   const walk = (node: Node, blockStart: boolean): void => {
     if (node.nodeType === Node.TEXT_NODE) {
-      out += node.nodeValue ?? "";
+      out += stripTailMarkers(node.nodeValue ?? "");
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
@@ -161,7 +200,7 @@ export function editorIndexAt(
     const walk = (parent: DocumentFragment | HTMLElement): void => {
       for (const child of Array.from(parent.childNodes)) {
         if (child.nodeType === Node.TEXT_NODE) {
-          total += (child.nodeValue ?? "").length;
+          total += markedTextLength(child.nodeValue ?? "");
         } else if (isChipElement(child) || (child as HTMLElement).tagName === "BR") {
           total += 1;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
@@ -204,7 +243,10 @@ function editorCaretPoint(el: HTMLElement, target: number): { node: Node; offset
       const length = editorNodeLength(child);
       if (child.nodeType === Node.TEXT_NODE) {
         if (point === null && remaining <= length) {
-          point = { node: child, offset: remaining };
+          // A marker merged into this text node owns the empty line's caret: the
+          // caret named by the end index sits right before it, where Chromium
+          // has a box.
+          point = { node: child, offset: offsetForDraftIndex(child.nodeValue ?? "", remaining) };
           return true;
         }
         remaining -= length;
@@ -221,7 +263,8 @@ function editorCaretPoint(el: HTMLElement, target: number): { node: Node; offset
     return false;
   };
   descend(el);
-  return point ?? { node: el, offset: el.childNodes.length };
+  if (point) return point;
+  return { node: el, offset: el.childNodes.length };
 }
 
 export function setEditorCaret(el: HTMLElement, index: number): void {
@@ -237,6 +280,40 @@ export function setEditorCaret(el: HTMLElement, index: number): void {
   range.collapse(true);
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+/**
+ * Keep the empty last line laid out *and* caretable. Chromium gives an empty
+ * line a box but no caret box, so a caret left after the final break resolves to
+ * the line above and the next keystroke lands there (#2433). A trailing break
+ * adds a box but also a second caret position below it, which reads as an extra
+ * line; a zero-width space gives the line a real caret and nothing else.
+ * Every read, index and caret path strips the character, so the draft string and
+ * its indices are unchanged.
+ */
+export function syncTailMarker(el: HTMLElement): void {
+  const value = readEditorValue(el);
+  const last = el.lastChild;
+  const lastText = last && last.nodeType === Node.TEXT_NODE ? (last as Text) : null;
+  if (value.endsWith("\n")) {
+    // Chromium merges typed text into the marker's node, so the marker is kept as
+    // a trailing character rather than a node that must stay separate.
+    if (lastText) {
+      if (!(lastText.nodeValue ?? "").endsWith(TAIL_MARKER)) {
+        lastText.nodeValue = `${lastText.nodeValue ?? ""}${TAIL_MARKER}`;
+      }
+    } else {
+      el.appendChild(document.createTextNode(TAIL_MARKER));
+    }
+  } else if (lastText && (lastText.nodeValue ?? "").includes(TAIL_MARKER)) {
+    lastText.nodeValue = stripTailMarkers(lastText.nodeValue ?? "");
+  }
+  // A caret that sits on the empty last line is named by draft index so it lands
+  // on the marker instead of after the final break.
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return;
+  if (!el.contains(selection.anchorNode)) return;
+  if (editorSelectionRange(el).start === value.length) setEditorCaret(el, value.length);
 }
 
 /** One glyph per file family on attachment chips, as inline SVG strings. */
@@ -269,6 +346,7 @@ function chipIconKey(reference: ComposerFileReference): string {
   if (reference.kind === "session") return "session";
   if (reference.kind === "agent") return "agent";
   if (reference.kind === "directory") return "dir";
+  if (reference.lineRange) return "file";
   const mime = reference.mimeType ?? "";
   if (reference.kind === "image" || mime.startsWith("image/")) return "image";
   const name = reference.name;
@@ -287,7 +365,7 @@ function chipSvg(key: string, size = 13): string {
 }
 
 export function isEditableTextReference(reference: ComposerFileReference): boolean {
-  if (reference.localReference) return false;
+  if (reference.localReference || reference.lineRange) return false;
   if (isPluginMark(reference) || reference.kind === "directory" || reference.kind === "agent") return false;
   return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
 }
@@ -330,7 +408,8 @@ function buildChipElement(
         ? () => onOpenSession(token)
         : undefined;
   chip.setAttribute("role", activate ? "button" : "listitem");
-  chip.setAttribute("aria-label", `${reference.name} — ${origin}`);
+  const label = reference.lineRange ? fileLineLabel(reference.name, reference.lineRange) : reference.name;
+  chip.setAttribute("aria-label", `${label} — ${origin}`);
   if (activate) {
     chip.tabIndex = 0;
     // Only a text reference expands into editable text; an image chip opens
@@ -356,7 +435,7 @@ function buildChipElement(
 
   const nameSpan = document.createElement("span");
   nameSpan.className = "composer-chip-name";
-  nameSpan.textContent = reference.name;
+  nameSpan.textContent = label;
   if (reference.localReference && reference.size !== undefined) {
     const unit = Math.min(3, Math.floor(Math.log2(Math.max(1, reference.size)) / 10));
     const size = reference.size / 1024 ** unit;
@@ -438,6 +517,7 @@ export function paintEditorValue(
     // Chromium needs at least one node for reliable caret placement.
     el.appendChild(document.createTextNode(""));
   }
+  paintTailMarker(el, value);
 }
 
 export function clipboardFiles(data: DataTransfer): File[] {

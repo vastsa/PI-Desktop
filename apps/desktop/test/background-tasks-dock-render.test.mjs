@@ -68,6 +68,7 @@ async function withDockRender(run) {
         : undefined;
       Object.assign(useAppStore.getInitialState(), {
         sessionTodos: snapshot ? { [sessionId]: snapshot } : {},
+        runningSessions: fixture.sessionRunning ? { [sessionId]: true } : {},
       });
       Object.assign(useModesStore.getInitialState(), {
         runs: fixture.run ? { [sessionId]: { sessionId, ...fixture.run } } : {},
@@ -123,6 +124,25 @@ test("the container counts the rows it can render", async () => {
       /pnpm dev t-old/,
       "a row the container may not render must not appear",
     );
+  });
+});
+
+test("an expanded task shows the complete multiline command above its output", async () => {
+  await withDockRender(({ render }) => {
+    const command = `# ${"long-argument-".repeat(100)}\n  sleep 60 # end of command`;
+    const running = { ...task("t-running", "running"), command };
+    const fixture = { tasks: [running], sessionTasks: [running], collapsed: false };
+    assert.doesNotMatch(render(fixture), /class="task-command-detail"/);
+
+    const html = render({
+      ...fixture,
+      expandedId: running.id,
+      output: { id: running.id, stdout: "", stderr: "", truncated: false },
+    });
+    const detail = html.match(/<code class="task-command-detail">([\s\S]*?)<\/code>/);
+    assert.equal(detail?.[1], command);
+    const output = html.indexOf('<pre class="task-output">—</pre>');
+    assert.ok(output > html.indexOf(detail[0]), "the command appears above its empty output");
   });
 });
 
@@ -193,3 +213,47 @@ for (const activeTab of ["todo", "tasks"]) {
     });
   });
 }
+
+test("the working step sweeps only while its session runs, so an idle window stops repainting", async () => {
+  await withDockRender(({ render }) => {
+    // A run that ends early (abort, error, a model that never closes its step)
+    // leaves an in_progress todo behind. The shimmer is an infinite animation,
+    // so tying it to the todo status alone would keep an idle window
+    // submitting frames forever (#1064).
+    const todos = [
+      { content: "done step", status: "completed", priority: "low" },
+      { content: "working step", status: "in_progress", priority: "high" },
+    ];
+    const shimmers = (html) => (html.match(/todo-dock-shimmer/g) ?? []).length;
+    for (const collapsed of [true, false]) {
+      const base = { tasks: [], sessionTasks: [], todos, collapsed, activeTab: "todo" };
+      const idle = render({ ...base, sessionRunning: false });
+      assert.match(idle, /working step/, "the step stays visible while idle");
+      assert.equal(shimmers(idle), 0, `no sweep on an idle session (collapsed=${collapsed})`);
+      assert.equal(
+        shimmers(render({ ...base, sessionRunning: true })),
+        1,
+        `one sweep while the session runs (collapsed=${collapsed})`,
+      );
+    }
+  });
+});
+
+
+test("task actions distinguish stopping, dismissing, and cancelling continuation", async () => {
+  await withDockRender(({ render }) => {
+    for (const state of ["running", "exited", "failed", "stopped"]) {
+      for (const continuation of [undefined, "pending", "cancelled"]) {
+        const row = { ...task("actions", state), continuation };
+        const html = render({ tasks: [row], sessionTasks: [row] });
+        const context = `${state}, continuation=${continuation}`;
+        assert.equal(/>Stop<\/button>/.test(html), state === "running", context);
+        assert.equal(/>Dismiss<\/button>/.test(html), state !== "running" && continuation !== "pending", context);
+        assert.equal(/>Cancel continuation<\/button>/.test(html), continuation === "pending", context);
+        if (state !== "running" && continuation === "pending") {
+          assert.match(html, /Waiting to resume/, context);
+        }
+      }
+    }
+  });
+});

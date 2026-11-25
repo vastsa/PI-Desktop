@@ -7,7 +7,7 @@
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { JsonObject, JsonValue, Usage } from "@earendil-works/pi-ai";
-import type { MessageUsage, UsageProvenance } from "@pi-desktop/shared";
+import { responsesTextPhase, type AssistantProviderReplay, type MessageUsage, type UsageProvenance } from "@pi-desktop/shared";
 
 export function nowIso(): string {
   return new Date().toISOString();
@@ -85,8 +85,8 @@ export function usageFromPi(
   return {
     inputTokens,
     outputTokens,
-    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
-    ...(cacheWriteTokens > 0 ? { cacheWriteTokens } : {}),
+    ...(Number.isFinite(usage.cacheRead) && usage.cacheRead >= 0 ? { cacheReadTokens } : {}),
+    ...(Number.isFinite(usage.cacheWrite) && usage.cacheWrite >= 0 ? { cacheWriteTokens } : {}),
     ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
     totalTokens,
     usageOrigin: "pi",
@@ -118,11 +118,25 @@ export function usageToPi(usage: MessageUsage | undefined): AccountedPiUsage {
   };
 }
 
+/** Only the transcript needs the signed original; report and recovery callers consume `text`. */
+export type CommentaryTranscript = { text: string; replay: AssistantProviderReplay };
+
+/** Appends to the trailing text block need only a delta. A different partition needs one snapshot. */
+export function sameCommentaryBoundaries(previous?: CommentaryTranscript, next?: CommentaryTranscript): boolean {
+  if (!previous || !next) return previous === next;
+  const before = previous.replay.blocks;
+  const after = next.replay.blocks;
+  return before.length === after.length && before.every((block, i) =>
+    block.signature === after[i].signature && (i === before.length - 1 || block.length === after[i].length));
+}
+
 export type AssistantContent = {
   text: string;
   thinking: string;
   hasText: boolean;
   hasThinking: boolean;
+  hasFinalAnswer?: true;
+  transcript?: CommentaryTranscript;
 };
 
 /** Flatten a pi-ai assistant content array into visible text and reasoning. */
@@ -138,16 +152,25 @@ export function assistantContent(content: unknown): AssistantContent {
   let thinking = "";
   let hasText = false;
   let hasThinking = false;
-  for (const part of content) {
-    if (!part || typeof part !== "object") continue;
-    const block = part as {
-      type?: string;
-      text?: string;
-      thinking?: string;
-    };
+  let hasFinalAnswer = false;
+  let transcript: CommentaryTranscript | undefined;
+  for (const block of content) {
+    if (!isRecord(block)) continue;
     if (block.type === "text" && typeof block.text === "string") {
       hasText = true;
-      text += block.text;
+      const phase = responsesTextPhase(block.textSignature);
+      if (phase === "commentary" && !transcript) {
+        transcript = { text, replay: { version: 1, blocks: text ? [{ type: "text", length: text.length }] : [] } };
+      }
+      if (transcript) {
+        transcript.text += block.text;
+        transcript.replay.blocks.push({
+          type: "text", length: block.text.length,
+          ...(phase && typeof block.textSignature === "string" ? { signature: block.textSignature } : {}),
+        });
+      }
+      if (phase !== "commentary") text += block.text;
+      if (phase === "final_answer" && block.text.length) hasFinalAnswer = true;
     } else if (block.type === "thinking") {
       hasThinking = true;
       if (typeof block.thinking === "string") {
@@ -158,7 +181,11 @@ export function assistantContent(content: unknown): AssistantContent {
       }
     }
   }
-  return { text, thinking, hasText, hasThinking };
+  return {
+    text, thinking, hasText, hasThinking,
+    ...(hasFinalAnswer ? { hasFinalAnswer: true } : {}),
+    ...(transcript ? { transcript } : {}),
+  };
 }
 
 /**

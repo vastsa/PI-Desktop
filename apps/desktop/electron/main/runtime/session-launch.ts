@@ -1,23 +1,6 @@
 import { join } from "node:path";
-import {
-  GEN_UI_DIRECTORY_NAME,
-  ErrorCodes as SharedErrorCodes,
-  isActiveInProject,
-  isCommandShellCatalog,
-  JEV_API_KEY_SECRET_REF,
-  imageGenerationBindings,
-  isImageGenerationModel,
-  normalizeMode,
-  trustedExtensionAgentKeyFromProviderId,
-  type CommandShellCatalog,
-  type McpServerRecord,
-  type ModelBinding,
-  type Mode,
-  type Risk,
-  type SessionThinkingLevel,
-  type UserSkillRecord,
-  type UserSubagentRecord,
-} from "@pi-desktop/shared";
+import { isDeepStrictEqual } from "node:util";
+import { sessionSubagents } from "./mode-subagents";
 import {
   capabilitiesFromModelConfig,
   clampThinkingLevel,
@@ -27,23 +10,45 @@ import {
   modelConfigWithBinding,
   optionalProviderHeaders,
   resolveSubagentProviders,
-  visionFromModelConfig,
   type UserSubagentDocument,
+  visionFromModelConfig,
 } from "@pi-desktop/agent-runtime";
+import {
+  type CommandShellCatalog,
+  GEN_UI_DIRECTORY_NAME,
+  imageGenerationBindings,
+  isActiveInProject,
+  isCommandShellCatalog,
+  isImageOnlyChatModel,
+  JEV_API_KEY_SECRET_REF,
+  type McpServerRecord,
+  type Mode,
+  type ModeDefinition,
+  type ModelBinding,
+  type ModelInfo,
+  modelWireIdsEqual,
+  normalizeMode,
+  type Risk,
+  type SessionThinkingLevel,
+  ErrorCodes as SharedErrorCodes,
+  trustedExtensionAgentKeyFromProviderId,
+  type UserSkillRecord,
+  type UserSubagentRecord,
+} from "@pi-desktop/shared";
+import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
 import { builtinSkills, effectiveDisabledBuiltinSkills, VISUALIZE_SKILL_ID } from "../builtin-skills";
-import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
+import type { Logger } from "../logger";
 import {
   catalogModelConfigFor,
   type ModelsDevCatalog,
 } from "../models-dev-catalog";
-import type { Logger } from "../logger";
+import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import type { PluginRuntime } from "../plugin-runtime";
+import { loadRemoteWorkspaceInstructions } from "../remote/remote-workspace-instructions.js";
+import type { LoadedSkillDocument } from "../skill-document";
 import type { UserMcpRuntime } from "../user-mcp";
 import type { RuntimeState } from "./context";
 import type { RuntimeProvider } from "./provider-catalog";
-import type { LoadedSkillDocument } from "../skill-document";
-import { getActiveRemoteHostsBoot } from "../bootstrap/remote-hosts";
-import { loadRemoteWorkspaceInstructions } from "../remote/remote-workspace-instructions.js";
 
 const ErrorCodes = {
   ...SharedErrorCodes,
@@ -63,6 +68,13 @@ export type SessionLaunchRuntimeDependencies = {
   vendorOAuth: VendorOAuth;
   modelsDevCatalog: ModelsDevCatalog;
   getWorkspacePath: () => string | null;
+  getModeBundle?: (mode: string) => Promise<ModeDefinition["bundle"]>;
+  /** The mode's private skills, advertised to the model under scoped ids. */
+  getModeSkills?: (mode: string) => Promise<Array<{
+    id: string;
+    name: string;
+    description?: string;
+  }>>;
   pluginActiveInProject: (
     pluginId: string,
     projectPath: string | null | undefined,
@@ -92,6 +104,8 @@ export function createSessionLaunchRuntime({
   vendorOAuth,
   modelsDevCatalog,
   getWorkspacePath,
+  getModeBundle,
+  getModeSkills,
   pluginActiveInProject,
   bindingForModel,
   effectiveSubagentModelConfig,
@@ -322,6 +336,28 @@ export function createSessionLaunchRuntime({
     return root;
   }
 
+  async function discoveredContextWindow(provider: RuntimeProvider, modelId: string): Promise<number | undefined> {
+    try {
+      const { models } = await runtimeState.host!.call<{
+        models: (Pick<ModelInfo, "modelId" | "discoveryState"> & { reportedContextWindow?: number })[];
+      }>("providers.listModels", {
+        providerId: provider.id,
+        endpoint: { baseUrl: provider.baseUrl ?? "", apiStyle: provider.apiStyle ?? "" },
+      });
+      const window = models.find((model) =>
+        model.discoveryState === "published" && modelWireIdsEqual(model.modelId, modelId),
+      )?.reportedContextWindow;
+      return typeof window === "number" && Number.isSafeInteger(window) && window > 0
+        ? window
+        : undefined;
+    } catch (error) {
+      if (!isHostUnavailable(error)) {
+        logger.app("provider", "warn", "model discovery cache read failed", { data: String(error) });
+      }
+      return undefined;
+    }
+  }
+
   async function resolveAgentRuntimeLaunch(
     sessionId: string,
     session: any,
@@ -402,15 +438,6 @@ export function createSessionLaunchRuntime({
         errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
       });
     }
-    if (isImageGenerationModel(
-      imageGenerationBindings(settings.imageGenerationModels, settings.imageGeneration),
-      provider.id,
-      modelId,
-    )) {
-      throw Object.assign(new Error("The image model cannot be used for conversation; select a chat model"), {
-        errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
-      });
-    }
     // The authenticated collection owns a vendor account's available model IDs
     // and wire endpoint. models.dev owns metadata; one account can span multiple
     // wire APIs and gateway catalogs.
@@ -443,9 +470,35 @@ export function createSessionLaunchRuntime({
     // row that would undo it (#2120). The subagent path and enrichProvider
     // already apply the binding; the main session was the one path that
     // dropped it. Without a stored binding the catalog answer stands.
-    const modelConfig = storedModel
+    const boundModelConfig = storedModel
       ? modelConfigWithBinding(catalogModelConfig, storedModel)
       : catalogModelConfig;
+    // The saved endpoint can serve a different window from the published model.
+    // Follow its discovered value for catalog-owned bindings, like the inspector.
+    const discoveredWindow = !isVendorAccount && storedModel?.contextWindowSource === "catalog"
+      ? await discoveredContextWindow(provider, modelId)
+      : undefined;
+    const modelConfig = discoveredWindow === undefined ? boundModelConfig : {
+      ...boundModelConfig,
+      contextWindow: discoveredWindow,
+      catalogContextWindow: discoveredWindow,
+      limit: { ...boundModelConfig.limit, context: discoveredWindow },
+    };
+    // Only a pure image-generation endpoint is rejected: a model the user
+    // marked for image generation that also supports conversation keeps its
+    // chat eligibility (#2253). The catalog row (or a catalog miss on a custom
+    // provider) owns the modalities answer; an unknown custom model stays
+    // chat-eligible.
+    if (isImageOnlyChatModel(
+      imageGenerationBindings(settings.imageGenerationModels, settings.imageGeneration),
+      provider.id,
+      modelId,
+      modelConfig,
+    )) {
+      throw Object.assign(new Error("The image model cannot be used for conversation; select a chat model"), {
+        errorCode: ErrorCodes.MODEL_NOT_CONFIGURED,
+      });
+    }
     const thinkingCapabilities = capabilitiesFromModelConfig(modelConfig);
     const thinkingLevel = clampThinkingLevel(
       thinkingCapabilities,
@@ -553,6 +606,11 @@ export function createSessionLaunchRuntime({
       await disabledBuiltinSkills(),
       settings.inlineVisualizations === true,
     );
+    // A mode-private skill is scoped by the session's mode: its id carries the
+    // mode prefix, so a same-named global or plugin skill stays a different
+    // entry and a disabled or moved document is simply absent (issue #2544 §3).
+    const mode = normalizeMode(overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent");
+    const modeSkillEntries = await getModeSkills?.(mode).catch(() => []) ?? [];
     const pluginSkills = [
       ...builtinSkills({
         workspacePath: projectPath,
@@ -573,17 +631,30 @@ export function createSessionLaunchRuntime({
         name: skill.name,
         description: skill.description,
       })),
+      ...modeSkillEntries,
     ];
     // Subagents (ADR 0062): definitions are re-read per launch so editing
     // `~/.agents/subagents` or the registry takes effect on the next prompt, and every
     // pinned model is resolved here because credentials and the models.dev catalog
     // live on this side. The user's own definitions (D202) are scope-filtered like the
     // skills above; a delegate the model can see is one it will try to call.
-    const subagentCatalog = await loadSubagentDefinitions(localInstructionRoot, {
-      userDocuments: await activeUserSubagentDocuments(projectPath),
-      // A switched-off builtin is dropped from what this prompt may delegate to.
-      disabledBuiltins: await disabledBuiltinSubagents(),
-    });
+    const bundle = await getModeBundle?.(mode);
+    const catalogFor = (policy: ModeDefinition["bundle"], root: string | undefined, id: string) =>
+      sessionSubagents(policy, async () => loadSubagentDefinitions(root, {
+        userDocuments: await activeUserSubagentDocuments(root),
+        disabledBuiltins: await disabledBuiltinSubagents(),
+      }), id);
+    const subagentCatalog = await catalogFor(bundle, projectPath, mode);
+    if (getModeBundle) {
+      runtimeState.sidecar?.setRoleValidator(async (sessionId, expectedMode, role) => {
+        const detail = await runtimeState.host?.call<{ session?: { mode?: string; projectPath?: string } }>(
+          "session.get", { id: sessionId, messageLimit: 1 },
+        );
+        if (!detail?.session || normalizeMode(detail.session.mode) !== expectedMode) return false;
+        const current = await catalogFor(await getModeBundle(expectedMode), detail.session.projectPath, expectedMode);
+        return current.definitions.some(candidate => isDeepStrictEqual(candidate, role));
+      });
+    }
     const subagentBindings = await resolveSubagentProviders({
       definitions: subagentCatalog.definitions,
       providers: providers.providers,
@@ -722,9 +793,6 @@ export function createSessionLaunchRuntime({
             : [],
         ),
     );
-    const mode = normalizeMode(
-      overrides.mode ?? session.mode ?? settings.defaultMode ?? "agent",
-    );
     let jevApiKey: string | undefined;
     if (mode === "agent" && settings.jevEnabled === true) {
       try {
@@ -748,10 +816,12 @@ export function createSessionLaunchRuntime({
       workspaceRoot,
       sidecarParams: {
         sessionId,
+        pluginModelContextEnabled: true,
         mode,
         ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
         thinkingLevel,
         infiniteProviderRetry: settings.infiniteProviderRetry === true,
+        backgroundJobContinuationEnabled: settings.backgroundJobContinuationEnabled === true && mode === "agent",
         // The session `/fast` switch only reaches a model the user allowed it
         // for in model settings (ADR 0334).
         fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,
@@ -760,6 +830,10 @@ export function createSessionLaunchRuntime({
         // and refused on every call (ADR 0342 §13).
         ...(mode === "agent" && settings.computerUse?.enabled === true
           ? { computerUseEnabled: true }
+          : {}),
+        // Codemode is opt-in and Agent-only (ADR codemode-sandbox-boundary).
+        ...(mode === "agent" && settings.codemodeEnabled === true
+          ? { codemodeEnabled: true }
           : {}),
         commandShell,
         scratchDir: join(dataDir, "scratch", sessionId),

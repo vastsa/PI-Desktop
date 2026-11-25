@@ -1,0 +1,820 @@
+<!-- status: implemented -->
+<!-- status: implemented -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>host-api · session</title>
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#161616; --surface-2:#1b1b1b; --line:#2a2a2a; --line-2:#353535;
+    --text:#ededed; --text-2:#b0b0b0; --muted:#7d7d7d; --faint:#5c5c5c;
+    --ok:#40c977; --ok-bg:rgba(64,201,119,.10);
+    --warn:#ff8549; --warn-bg:rgba(255,133,73,.10);
+    --error:#ff6764; --error-bg:rgba(255,103,100,.10);
+    --host:#4c8dff; --plugin:#c27aff; --slot:#ff8549;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6}
+  a{color:inherit} code,kbd{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  pre{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:12px 14px;border-radius:10px;overflow:auto;color:var(--text-2);white-space:pre-wrap}
+  .plan-nav{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:10px 28px;background:#0c0c0c;border-bottom:1px solid var(--line);font-size:13px}
+  .plan-nav a{color:var(--text-2);text-decoration:none;padding:3px 8px;border-radius:6px}
+  .plan-nav a:hover{background:var(--surface);color:var(--text)}
+  .plan-nav a[aria-current="page"]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .plan-nav .sep{color:var(--faint);padding:0 2px} .plan-nav .spacer{flex:1}
+  .top{border-bottom:1px solid var(--line);padding:26px 28px 20px;background:linear-gradient(180deg,#141414,#0e0e0e)}
+  .top h1{margin:0 0 6px;font-size:21px} .top p{margin:0;color:var(--text-2);max-width:76ch}
+  .top .meta{margin-top:8px;color:var(--faint);font-size:12.5px}
+  main{max-width:1080px;margin:0 auto;padding:26px 28px 80px}
+  section{margin:0 0 36px}
+  section>h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:16.5px}
+  section>h2 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+  section>.lead{margin:0 0 14px;color:var(--text-2);max-width:82ch}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.id{font-family:var(--mono);font-size:12.5px;color:var(--text-2)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .pill.has{color:var(--ok);background:var(--ok-bg)}
+  .pill.warn{color:var(--warn);background:var(--warn-bg)}
+  .pill.perm{color:var(--host);background:rgba(76,141,255,.12)}
+  .callout{margin:12px 0;padding:12px 14px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-2);color:var(--text-2);font-size:13px}
+  .callout.warn{border-left-color:var(--warn)}
+  .callout b{color:var(--text)}
+  ul,ol{margin:0 0 12px;padding-left:1.35em;color:var(--text-2)}
+  li{margin:0 0 4px} li b{color:var(--text)}
+
+  article.api{margin:0 0 56px;padding-top:8px;border-top:1px solid var(--line)}
+  article.api>h2{display:flex;align-items:center;gap:10px;margin:18px 0 4px;font-size:19px}
+  article.api>.meta{margin:0 0 18px;color:var(--faint);font-size:12.5px}
+  section>h3{display:flex;align-items:baseline;gap:10px;margin:0 0 8px;font-size:15.5px}
+  section>h3 .n{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px}
+</style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+<nav class="plan-nav">
+  <a href="../index.html">plugin-plan</a><span class="sep">/</span><a href="index.html">host-api</a><span class="sep">/</span><a href="session.html" aria-current="page">session</a>
+  <span class="spacer"></span>
+  <a href="#session.delete">delete</a>
+  <a href="#session.get">get</a>
+  <a href="#session.getLlmContext">getLlmContext</a>
+  <a href="#session.import">import</a>
+  <a href="#session.importBatch">importBatch</a>
+  <a href="#session.list">list</a>
+  <a href="#session.listMessages">listMessages</a>
+  <a href="#session.rename">rename</a>
+</nav>
+<header class="top">
+  <h1>host-api · session</h1>
+  <p>命名空间 <code>session</code> · 8 条。每条 API 一节：接口约定、数据怎么走、出错、不提供什么、相关条目、典型场景、已拍板。</p>
+  <div class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></div>
+</header>
+<main>
+<article class="api" id="session.delete">
+<h2><code>session.delete</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.session.delete(input: { sessionId: string; mode?: "trash" | "purge" }): Promise&lt;{ deleted: boolean }&gt;</pre>
+  <p class="lead">删除一条本插件导入的会话；<code>mode</code> 区分回收与彻底清除。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>是</td><td>本插件拥有的会话 id。</td></tr>
+      <tr><td class="id">mode</td><td class="id">"trash" | "purge"</td><td>否</td><td><code>trash</code>=回收（可恢复策略见宿主），<code>purge</code>=彻底清除、不可恢复。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">deleted</td><td class="id">boolean</td><td>是否删除成功。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "sessionId": "imp_9f3a2c", "mode": "purge" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{ "deleted": true }</pre>
+  <div class="callout"><b>一句话边界。</b>只能删本插件的会话；<code>purge</code> 不可恢复，回收策略以宿主实现为准。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件提交 <code>sessionId</code>（可加 <code>mode</code>）。</li>
+    <li><b>校验：</b>归属检查（<code>session.delete.own</code>）与 id 存在性。</li>
+    <li><b>执行：</b>按 <code>mode</code> 回收或清除该会话数据。</li>
+    <li><b>返回：</b><code>{ deleted }</code>。</li>
+  </ol>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>无 <code>session.delete.own</code> 或会话不属于本插件</td><td>调用失败，数据不动</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>sessionId 不存在</td><td>调用失败</td><td><code>NOT_FOUND</code></td></tr>
+      <tr><td>删除频率超限</td><td>调用失败</td><td><code>RATE_LIMITED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能删其他插件会话。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="session.html#session.rename"><code>host-api/session.rename</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>清理数据</b></td><td>用户删除不再需要的导入会话。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li><code>mode</code> 区分回收与清除。</li></ul>
+</section>
+</article>
+<article class="api" id="session.get">
+<h2><code>session.get</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.session.get(input: { sessionId: string }): Promise&lt;PluginSessionGetResult&gt;</pre>
+  <p class="lead">读取一条本插件会话的元数据（标题、来源、项目/模型绑定、消息数），不含消息正文。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>是</td><td>本插件拥有的会话 id。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>会话 id。</td></tr>
+      <tr><td class="id">title</td><td class="id">string</td><td>当前标题。</td></tr>
+      <tr><td class="id">source</td><td class="id">string</td><td>导入来源 namespace。</td></tr>
+      <tr><td class="id">externalId</td><td class="id">string</td><td>来源系统内的原始 id。</td></tr>
+      <tr><td class="id">originKind</td><td class="id">"imported" | "created"</td><td>导入会话或宿主内创建。</td></tr>
+      <tr><td class="id">projectId</td><td class="id">number | null</td><td>绑定的宿主项目 id，未绑定为 null。</td></tr>
+      <tr><td class="id">projectPath</td><td class="id">string | null</td><td>绑定的项目路径，未绑定为 null。</td></tr>
+      <tr><td class="id">modelId</td><td class="id">string | null</td><td>当前绑定模型 id。</td></tr>
+      <tr><td class="id">providerId</td><td class="id">string | null</td><td>当前绑定提供商 id。</td></tr>
+      <tr><td class="id">history</td><td class="id">对象</td><td>导入时的绑定快照：history.projectPath / history.modelId / history.providerId，均可为 null。</td></tr>
+      <tr><td class="id">messageCount</td><td class="id">number</td><td>会话内消息条数。</td></tr>
+      <tr><td class="id">createdAt</td><td class="id">string</td><td>会话创建时间（ISO）。</td></tr>
+      <tr><td class="id">updatedAt</td><td class="id">string</td><td>最近更新时间（ISO）。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "sessionId": "imp_9f3a2c" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "sessionId": "imp_9f3a2c",
+  "title": "React 迁移讨论",
+  "source": "wechat-export",
+  "externalId": "wx-2026-0212-01",
+  "originKind": "imported",
+  "projectId": 3,
+  "projectPath": "C:\\work\\shop",
+  "modelId": "claude-sonnet-4-5",
+  "providerId": "anthropic",
+  "history": { "projectPath": null, "modelId": "claude-sonnet-4-5", "providerId": "anthropic" },
+  "messageCount": 42,
+  "createdAt": "2026-02-12T08:30:00.000Z",
+  "updatedAt": "2026-02-14T21:05:00.000Z"
+}</pre>
+  <div class="callout"><b>一句话边界。</b>只给元数据，不返回消息正文；要读消息用 session.listMessages。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件带着 <code>sessionId</code> 发起请求。</li>
+    <li><b>校验：</b>宿主做归属检查——会话必须属于本插件声明的 <code>sessionSources</code>，否则拒绝。</li>
+    <li><b>读取：</b>宿主取会话行、绑定历史快照与消息计数。</li>
+    <li><b>返回：</b>一次性返回 <code>PluginSessionGetResult</code>，不含消息正文。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td><code>{ sessionId }</code> 查询请求。</td></tr>
+      <tr><td>宿主 → 插件</td><td>会话元数据 <code>PluginSessionGetResult</code>。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>会话不属于本插件（source 隔离）</td><td>调用失败，无数据返回</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>sessionId 不存在</td><td>调用失败</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不返回消息正文（用 listMessages）。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="session.html#session.listMessages"><code>host-api/session.listMessages</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>会话详情页</b></td><td>点开一条导入会话看模型与项目绑定。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>无额外拍板。</li></ul>
+</section>
+</article>
+<article class="api" id="session.getLlmContext">
+<h2><code>session.getLlmContext</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.session.getLlmContext(): Promise&lt;PluginLlmContext&gt;</pre>
+  <p class="lead">读取当前进行中工具会话的 LLM 上下文投影（消息、模型、截断标记）。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <p class="lead">无入参。</p>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>当前工具会话 id。</td></tr>
+      <tr><td class="id">modelKey</td><td class="id">string | null</td><td>当前模型键（providerId/modelId 形态），可为 null。</td></tr>
+      <tr><td class="id">thinkingLevel</td><td class="id">string</td><td>当前思考档位，可缺省。</td></tr>
+      <tr><td class="id">messages</td><td class="id">PluginLlmMessage[]</td><td>投影后的消息。数组元素结构：role（"user"|"assistant"|"tool"|"system"）、content、toolName?。</td></tr>
+      <tr><td class="id">truncated</td><td class="id">boolean</td><td>投影是否被压缩截断。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>// 无入参</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "sessionId": "tool_7d21",
+  "modelKey": "anthropic/claude-sonnet-4-5",
+  "thinkingLevel": "medium",
+  "messages": [
+    { "role": "user", "content": "重构 src/db.rs 的连接池" },
+    { "role": "assistant", "content": "先看当前实现……" }
+  ],
+  "truncated": false
+}</pre>
+  <div class="callout"><b>一句话边界。</b>只读当前进行中的工具会话投影；不能按任意 sessionId 读历史全文，也不能写回。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件无参发起。</li>
+    <li><b>定位：</b>宿主找当前进行中的工具会话；没有即 INVALID_ARGUMENT。</li>
+    <li><b>投影：</b>生成压缩投影（D019 / D336），剥离插件自身的工具调用，不吐 subagent 轨道。</li>
+    <li><b>返回：</b><code>PluginLlmContext</code>；<code>truncated: true</code> 表示内容被压缩过。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>无参读取请求。</td></tr>
+      <tr><td>宿主 → 插件</td><td>当前会话上下文投影 <code>PluginLlmContext</code>。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>调用未被授权</td><td>调用失败</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>没有进行中的工具会话</td><td>调用失败</td><td><code>INVALID_ARGUMENT</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能按任意 sessionId 读历史全文；不能覆盖写回。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：投影剥离自身工具调用，不吐 subagent 轨道。已接受代价：只能读进行中工具会话。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="agent.html#agent.complete"><code>host-api/agent.complete</code></a></li>
+    <li><code>runtime/session-context/</code> — 全量上下文读契约（规划中）</li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">读指定会话上下文、压缩写回仍是缺口。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>上下文插件</b></td><td>读当前对话做本地检索增强。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>仅限进行中工具会话；投影可能截断。</li></ul>
+</section>
+<section>
+  <h3><span class="n">9</span>建议（未拍板）</h3>
+  <ul><li><code>getContext</code> / <code>applyCompaction</code> / <code>getModel</code> 为规划中的会话数据契约（<code>runtime/session-context/</code> 等），尚未实现。</li></ul>
+</section>
+</article>
+<article class="api" id="session.import">
+<h2><code>session.import</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.session.import(input: PluginSessionImportInput): Promise&lt;PluginSessionImportResult&gt;</pre>
+  <p class="lead">把一条外部会话写入宿主持久化为插件拥有的会话；<code>source</code> 必须是清单已声明的命名空间。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">source</td><td class="id">string</td><td>是</td><td>来源 namespace，必须是 manifest <code>contributes.sessionSources</code> 里声明过的 id。</td></tr>
+      <tr><td class="id">externalId</td><td class="id">string</td><td>是</td><td>来源系统内的唯一 id；重复导入同一 (source, externalId) 会被跳过。</td></tr>
+      <tr><td class="id">title</td><td class="id">string</td><td>是</td><td>会话标题。</td></tr>
+      <tr><td class="id">projectId</td><td class="id">number | null</td><td>否</td><td>显式绑定宿主项目（由 <code>pi.project.create</code> 创建）；缺省不绑定。</td></tr>
+      <tr><td class="id">projectPath</td><td class="id">string | null</td><td>否</td><td>项目路径信息，可空。</td></tr>
+      <tr><td class="id">modelId</td><td class="id">string | null</td><td>否</td><td>绑定模型 id，可空。</td></tr>
+      <tr><td class="id">providerId</td><td class="id">string | null</td><td>否</td><td>绑定提供商 id，可空。</td></tr>
+      <tr><td class="id">createdAt</td><td class="id">string</td><td>是</td><td>原始会话创建时间（ISO）。</td></tr>
+      <tr><td class="id">updatedAt</td><td class="id">string</td><td>是</td><td>原始会话更新时间（ISO）。</td></tr>
+      <tr><td class="id">messages</td><td class="id">PluginSessionMessage[]</td><td>是</td><td>消息数组。元素按角色：user / assistant（content + createdAt，assistant 可带 modelId / providerId）；tool（content + toolName + toolCallId + toolStatus，可带 toolArgs / toolResult）。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>宿主会话 id（新建或已存在）。</td></tr>
+      <tr><td class="id">imported</td><td class="id">boolean</td><td>本次是否真正写入。</td></tr>
+      <tr><td class="id">skipped</td><td class="id">boolean</td><td>是否因已导入过而跳过。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{
+  "source": "wechat-export",
+  "externalId": "wx-2026-0212-01",
+  "title": "React 迁移讨论",
+  "projectId": 3,
+  "createdAt": "2026-02-12T08:30:00.000Z",
+  "updatedAt": "2026-02-14T21:05:00.000Z",
+  "messages": [
+    { "role": "user", "content": "帮我看看这个报错", "createdAt": "2026-02-12T08:30:00.000Z" },
+    { "role": "assistant", "content": "是依赖版本冲突，先升级 vite。", "createdAt": "2026-02-12T08:30:07.000Z", "modelId": "claude-sonnet-4-5", "providerId": "anthropic" }
+  ]
+}</pre>
+  <p><b>输出样例</b></p>
+  <pre>{ "sessionId": "imp_9f3a2c", "imported": true, "skipped": false }</pre>
+  <div class="callout"><b>一句话边界。</b>只能写入自己声明过的 <code>source</code>；越权来源会被宿主拒绝，且导入受大小与频率限制。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件提交完整会话（元数据 + 消息数组）。</li>
+    <li><b>校验：</b><code>source</code> 必须在清单 <code>sessionSources</code> 声明内；消息结构、大小与频率限制不满足即失败。</li>
+    <li><b>执行：</b>宿主把会话与消息持久化，归属记为本插件 <code>source</code>。</li>
+    <li><b>返回：</b><code>sessionId</code> 与 <code>imported</code> / <code>skipped</code> 结果。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>一条完整外部会话（PluginSessionImportInput）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>导入结果 <code>{ sessionId, imported, skipped }</code>。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td><code>source</code> 未声明或越权</td><td>调用失败，不写入</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>入参结构非法（缺字段 / 消息格式错）</td><td>调用失败，不写入</td><td><code>INVALID_ARGUMENT</code></td></tr>
+      <tr><td>超出单次导入大小限制</td><td>调用失败，不写入</td><td><code>LIMIT_EXCEEDED</code></td></tr>
+      <tr><td>导入频率超限</td><td>调用失败，不写入</td><td><code>RATE_LIMITED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能伪造其他 <code>source</code>；不能跳过声明列表。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：source 越权导入被拒。已接受代价：导入有大小与频率限制。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="session.html#session.importBatch"><code>host-api/session.importBatch</code></a></li>
+    <li><a href="project.html#project.create"><code>host-api/project.create</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>导入聊天记录</b></td><td>把外部 IM 历史拉进可检索会话。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>只接受声明来源；显式 <code>projectId</code> 才绑定项目。</li></ul>
+</section>
+</article>
+<article class="api" id="session.importBatch">
+<h2><code>session.importBatch</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.session.importBatch(input: PluginSessionBatchImportInput): Promise&lt;PluginSessionBatchImportResult&gt;</pre>
+  <p class="lead">一批导入同一 <code>source</code> 的多条外部会话，逐条返回结果并给出计数。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">source</td><td class="id">string</td><td>是</td><td>整批共用的来源 namespace，须在清单 <code>sessionSources</code> 声明。</td></tr>
+      <tr><td class="id">sessions</td><td class="id">Array&lt;Omit&lt;PluginSessionImportInput, "source"&gt;&gt;</td><td>是</td><td>会话数组；元素结构同 <code>pi.session.import</code> 入参去掉 <code>source</code>。</td></tr>
+      <tr><td class="id">mode</td><td class="id">"skip" | "fail"</td><td>否</td><td>单条失败策略：<code>skip</code> 跳过该条继续，<code>fail</code> 整批失败。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">results</td><td class="id">数组</td><td>逐条结果。数组元素结构：externalId、sessionId（失败为 null）、status（"imported"|"skipped"|"failed"）、errorCode?、errorMessage?。</td></tr>
+      <tr><td class="id">imported</td><td class="id">number</td><td>成功导入条数。</td></tr>
+      <tr><td class="id">skipped</td><td class="id">number</td><td>跳过条数。</td></tr>
+      <tr><td class="id">failed</td><td class="id">number</td><td>失败条数。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{
+  "source": "wechat-export",
+  "mode": "skip",
+  "sessions": [
+    {
+      "externalId": "wx-2026-0212-01",
+      "title": "React 迁移讨论",
+      "createdAt": "2026-02-12T08:30:00.000Z",
+      "updatedAt": "2026-02-14T21:05:00.000Z",
+      "messages": [ { "role": "user", "content": "帮我看看这个报错", "createdAt": "2026-02-12T08:30:00.000Z" } ]
+    }
+  ]
+}</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "results": [
+    { "externalId": "wx-2026-0212-01", "sessionId": "imp_9f3a2c", "status": "imported" },
+    { "externalId": "wx-2026-0212-02", "sessionId": null, "status": "failed", "errorCode": "INVALID_ARGUMENT", "errorMessage": "消息格式非法" }
+  ],
+  "imported": 1,
+  "skipped": 0,
+  "failed": 1
+}</pre>
+  <div class="callout"><b>一句话边界。</b>没有事务回滚：<code>mode: "fail"</code> 中止后，已导入的条目仍然保留。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件提交 <code>source</code> + 会话数组 + <code>mode</code>。</li>
+    <li><b>校验：</b><code>source</code> 必须已声明；整体入参非法直接失败（码同 import）。</li>
+    <li><b>执行：</b>逐条走 <code>session.import</code> 的校验与持久化；单条失败按 <code>mode</code> 决定跳过或中止。</li>
+    <li><b>返回：</b>逐条 <code>status</code>（失败条带 errorCode / errorMessage）与 imported / skipped / failed 计数。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>一批外部会话（共用 source）与失败策略。</td></tr>
+      <tr><td>宿主 → 插件</td><td>逐条结果数组与三个计数。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td><code>source</code> 未声明或越权</td><td>调用失败，不写入</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>入参结构非法</td><td>调用失败，不写入</td><td><code>INVALID_ARGUMENT</code></td></tr>
+      <tr><td>超出大小限制</td><td>调用失败，不写入</td><td><code>LIMIT_EXCEEDED</code></td></tr>
+      <tr><td>频率超限</td><td>调用失败，不写入</td><td><code>RATE_LIMITED</code></td></tr>
+      <tr><td>单条失败（按 <code>mode</code> 跳过或中止）</td><td>该条 <code>results[].status = "failed"</code>，带 errorCode / errorMessage</td><td>—（记入 <code>results[].errorCode</code>）</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不是事务回滚；<code>mode: skip</code> 会留下已导入的部分。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="session.html#session.import"><code>host-api/session.import</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>整包迁移</b></td><td>一次性导入导出包里的几十条会话。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li><code>mode</code> 控制单条失败策略。</li></ul>
+</section>
+</article>
+<article class="api" id="session.list">
+<h2><code>session.list</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.session.list(input?: { limit?: number; cursor?: string; source?: string; updatedAfter?: string }): Promise&lt;PluginSessionListResult&gt;</pre>
+  <p class="lead">分页列出本插件导入的会话元数据，按 <code>source</code> 隔离。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">limit</td><td class="id">number</td><td>否</td><td>单页条数上限。</td></tr>
+      <tr><td class="id">cursor</td><td class="id">string</td><td>否</td><td>上一页返回的 <code>nextCursor</code>，用于取下一页。</td></tr>
+      <tr><td class="id">source</td><td class="id">string</td><td>否</td><td>按来源 namespace 过滤，只能是本插件声明过的 <code>sessionSources</code>。</td></tr>
+      <tr><td class="id">updatedAfter</td><td class="id">string</td><td>否</td><td>只返回该时间点之后更新的会话。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">items</td><td class="id">PluginSessionListItem[]</td><td>本页会话。数组元素结构：sessionId、title、source、externalId、projectId（number|null）、messageCount、originKind（"imported"|"created"）、bound.workspace、bound.model、createdAt、updatedAt。</td></tr>
+      <tr><td class="id">nextCursor</td><td class="id">string</td><td>还有下一页时出现，原样传回 <code>cursor</code> 续读；否则缺省。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "limit": 20, "source": "wechat-export" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "items": [
+    {
+      "sessionId": "imp_9f3a2c",
+      "title": "React 迁移讨论",
+      "source": "wechat-export",
+      "externalId": "wx-2026-0212-01",
+      "projectId": 3,
+      "messageCount": 42,
+      "originKind": "imported",
+      "bound": { "workspace": true, "model": true },
+      "createdAt": "2026-02-12T08:30:00.000Z",
+      "updatedAt": "2026-02-14T21:05:00.000Z"
+    }
+  ],
+  "nextCursor": "eyJ1IjoiMjAyNi0wMi0xNCJ9"
+}</pre>
+  <div class="callout"><b>一句话边界。</b>只能列本插件 <code>source</code> 拥有的会话；宿主自建会话与其他插件会话不可见。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件可带 <code>limit</code> / <code>cursor</code> / <code>source</code> / <code>updatedAfter</code>。</li>
+    <li><b>校验：</b>无 <code>session.read.own</code> 权限或 <code>source</code> 未在清单声明即拒绝。</li>
+    <li><b>执行：</b>宿主按本插件 <code>source</code> 过滤后分页取会话行。</li>
+    <li><b>返回：</b><code>items</code> + <code>nextCursor</code>；用游标循环直到缺省。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>过滤与分页参数（limit / cursor / source / updatedAfter）。</td></tr>
+      <tr><td>宿主 → 插件</td><td>会话元数据页 <code>{ items, nextCursor? }</code>。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>无 <code>session.read.own</code> 或 <code>source</code> 未声明</td><td>调用失败，无数据返回</td><td><code>PERMISSION_DENIED</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能列其他插件会话。</p>
+  <div class="callout"><b>宿主保证 / 已接受代价：</b>宿主保证：跨插件不可见。已接受代价：看不到宿主自建会话。</div>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="session.html#session.get"><code>host-api/session.get</code></a></li>
+    <li><a href="session.html#session.listMessages"><code>host-api/session.listMessages</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>导入历史列表</b></td><td>面板展示本插件导入过哪些会话。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>所有权按 <code>source</code> 隔离。</li></ul>
+</section>
+</article>
+<article class="api" id="session.listMessages">
+<h2><code>session.listMessages</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.session.listMessages(input: { sessionId: string; limit?: number; cursor?: string; order?: "asc" | "desc"; contentLimit?: number }): Promise&lt;PluginSessionMessageListResult&gt;</pre>
+  <p class="lead">分页读取一条本插件会话的消息（角色、正文、工具调用），支持正/倒序与单条正文截断。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>是</td><td>本插件拥有的会话 id。</td></tr>
+      <tr><td class="id">limit</td><td class="id">number</td><td>否</td><td>单页消息条数上限。</td></tr>
+      <tr><td class="id">cursor</td><td class="id">string</td><td>否</td><td>上一页返回的 <code>nextCursor</code>。</td></tr>
+      <tr><td class="id">order</td><td class="id">"asc" | "desc"</td><td>否</td><td>按时间正序或倒序。</td></tr>
+      <tr><td class="id">contentLimit</td><td class="id">number</td><td>否</td><td>单条正文最大长度，超出部分被截断。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">items</td><td class="id">PluginSessionMessageResult[]</td><td>本页消息。数组元素结构：id、role（"user"|"assistant"|"tool"）、content、contentTruncated?（true=正文被截断）、createdAt、origin（恒为 "external"）、tool?（仅 tool 消息：{ name, callId, status: "success"|"error", args?, result? }）。</td></tr>
+      <tr><td class="id">nextCursor</td><td class="id">string</td><td>还有下一页时出现；否则缺省。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "sessionId": "imp_9f3a2c", "limit": 50, "order": "asc", "contentLimit": 2000 }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{
+  "items": [
+    { "id": "m_01", "role": "user", "content": "帮我看看这个报错", "createdAt": "2026-02-12T08:30:00.000Z", "origin": "external" },
+    { "id": "m_02", "role": "assistant", "content": "看起来是依赖版本冲突，先升级……", "contentTruncated": true, "createdAt": "2026-02-12T08:30:07.000Z", "origin": "external" }
+  ],
+  "nextCursor": "bTFfMDI"
+}</pre>
+  <div class="callout"><b>一句话边界。</b>只能读本插件会话；<code>contentLimit</code> 会截断正文，截断时以 <code>contentTruncated</code> 标记。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件带 <code>sessionId</code>（可加 limit / cursor / order / contentLimit）。</li>
+    <li><b>校验：</b>会话归属本插件、参数合法，否则 PERMISSION_DENIED / NOT_FOUND / INVALID_ARGUMENT。</li>
+    <li><b>执行：</b>宿主按游标分页取消息，正文按 <code>contentLimit</code> 截断并打标。</li>
+    <li><b>返回：</b><code>items</code> + <code>nextCursor</code>，按 <code>order</code> 排序。</li>
+  </ol>
+  <table>
+    <thead><tr><th>方向</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>插件 → 宿主</td><td>会话 id 与分页/排序/截断参数。</td></tr>
+      <tr><td>宿主 → 插件</td><td>消息页 <code>{ items, nextCursor? }</code>。</td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>会话不属于本插件</td><td>调用失败</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>sessionId 不存在</td><td>调用失败</td><td><code>NOT_FOUND</code></td></tr>
+      <tr><td>分页/排序参数非法</td><td>调用失败</td><td><code>INVALID_ARGUMENT</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能读其他插件会话；<code>contentLimit</code> 可能截断正文。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="session.html#session.get"><code>host-api/session.get</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>回放对话</b></td><td>把导入的聊天按时间轴画出来。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>支持 <code>order</code> 与 <code>contentLimit</code>。</li></ul>
+</section>
+</article>
+<article class="api" id="session.rename">
+<h2><code>session.rename</code><span class="pill has">implemented</span></h2>
+<p class="meta">status: <b>implemented</b> · 事实源 <code>packages/plugin-sdk/src/index.ts</code> · <code>PluginHostApi</code></p>
+<section>
+  <h3><span class="n">1</span>接口约定</h3>
+  <pre class="sig">pi.session.rename(input: { sessionId: string; title: string }): Promise&lt;{ updated: boolean }&gt;</pre>
+  <p class="lead">改一条本插件会话的标题，持久生效。权限：<span class="pill perm">—</span>。</p>
+  <p><b>入参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">sessionId</td><td class="id">string</td><td>是</td><td>本插件拥有的会话 id。</td></tr>
+      <tr><td class="id">title</td><td class="id">string</td><td>是</td><td>新标题。</td></tr>
+    </tbody>
+  </table>
+  <p><b>出参</b></p>
+  <table>
+    <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td class="id">updated</td><td class="id">boolean</td><td>标题是否更新成功。</td></tr>
+    </tbody>
+  </table>
+  <p><b>输入样例</b></p>
+  <pre>{ "sessionId": "imp_9f3a2c", "title": "0212 React 迁移" }</pre>
+  <p><b>输出样例</b></p>
+  <pre>{ "updated": true }</pre>
+  <div class="callout"><b>一句话边界。</b>只能改本插件会话的标题；宿主会话与其他插件的会话不可改。</div>
+</section>
+<section>
+  <h3><span class="n">2</span>数据怎么走</h3>
+  <ol>
+    <li><b>调用：</b>插件提交 <code>sessionId</code> + 新 <code>title</code>。</li>
+    <li><b>校验：</b>宿主检查会话归属（本插件 <code>source</code>）与 id 存在性。</li>
+    <li><b>执行：</b>持久化新标题，list 与 get 结果随之更新。</li>
+    <li><b>返回：</b><code>{ updated }</code>。</li>
+  </ol>
+</section>
+<section>
+  <h3><span class="n">3</span>出错怎么办</h3>
+  <table>
+    <thead><tr><th>情况</th><th>结果</th><th>码</th></tr></thead>
+    <tbody>
+      <tr><td>会话不属于本插件</td><td>调用失败，标题不变</td><td><code>PERMISSION_DENIED</code></td></tr>
+      <tr><td>sessionId 不存在</td><td>调用失败</td><td><code>NOT_FOUND</code></td></tr>
+    </tbody>
+  </table>
+</section>
+<section>
+  <h3><span class="n">4</span>不提供什么</h3>
+  <p class="lead">不能改其他插件/宿主会话。</p>
+</section>
+<section>
+  <h3><span class="n">5</span>相关条目</h3>
+  <ul>
+    <li><a href="session.html#session.delete"><code>host-api/session.delete</code></a></li>
+  </ul>
+</section>
+<section>
+  <h3><span class="n">6</span>还没定的事</h3>
+  <p class="lead">无。</p>
+</section>
+<section>
+  <h3><span class="n">7</span>典型场景</h3>
+  <table><thead><tr><th>场景</th><th>插件做什么</th></tr></thead><tbody>
+<tr><td><b>整理标题</b></td><td>导入后把默认标题改成日期+主题。</td></tr>
+  </tbody></table>
+</section>
+<section>
+  <h3><span class="n">8</span>已拍板</h3>
+  <ul><li>无额外拍板。</li></ul>
+</section>
+</article>
+</main>
+</body>
+</html>

@@ -286,7 +286,21 @@ type ToolBudgetHealth = {
   are removed, a `primary` outside `folders` is rejected, roots owned by
   another non-legacy group are rejected, and a root with existing chats cannot
   be detached. Removed roots are retained as suppressed historical paths rather
-  than reappearing as standalone legacy groups.
+  than reappearing as standalone legacy groups. When the old root no longer
+  exists on disk, replacing the only root of a legacy or stored single-root
+  group instead relocates its existing project row: the canonical path and
+  path-scoped memory move while the project id, chats, scheduled tasks, and
+  group id remain stable. An empty shadow row at the new path is absorbed; a
+  target with its own chats, tasks, or memory is rejected, and every database
+  change rolls back together on failure. If the old root still exists, the
+  replacement is an ordinary swap and nothing is relocated. The two-step repair
+  (first save the replacement next to the missing root, then save with only
+  the replacement) relocates the same way when exactly one removed root is
+  missing on disk and owns chats, tasks, or memory and the remaining root's
+  project owns none; otherwise removed roots detach as described above. When
+  the active workspace's project is relocated, the host moves the workspace to
+  the new path exactly as `workspace.set` does (hashline anchors are dropped
+  and `currentProjectId` follows).
 - `project.group.memory.get/set({ groupId, entries })` — reads or normalizes
   shared group memory using the existing 32 KiB entry limit.
 - `project.group.instructions.get/set({ groupId, content })` — reads or stores
@@ -420,7 +434,11 @@ to later refresh and inference; the vendor picker does not collect them.
   project and returns `{ session }` carrying the canonical project path. It
   upserts the project row and updates only `sessions.project_id` and
   `updated_at`; transcript, revisions, artifacts, notifications, and scratch
-  data stay with the session. Blank ids or paths are `INVALID_PARAMS`, an
+  data stay with the session. An explicit `projectPath: null` moves the
+  session out of its project into the temporary group (`project_id` becomes
+  `NULL`, `projectPath` is omitted from the summary); older hosts reject it as
+  `INVALID_PARAMS`. Blank ids, a missing key, or blank paths are
+  `INVALID_PARAMS`, an
   unknown session is `NOT_FOUND`, and a session with a running turn is
   `CONFLICT` so a live agent never switches instruction roots mid-turn.
   An isolated session is refused with `WORKTREE_MOVE_UNSUPPORTED`.
@@ -819,6 +837,10 @@ against a live host, and replaying one after the final row would be wrong.
 ### Marketplace
 - `market.refresh` — fetch and cache the catalog from the configured URL
 - `market.search` / `market.getDetail`
+- `market.browse` — one page of the marketplace from the plugin center's
+  `/api/v1/catalog/search`, fetched off the state lock and cached for 60 s;
+  falls back to paging the local snapshot (`source: "local"`, with
+  `fallbackReason`) instead of failing
 - `market.install` — download, verify (`PLUGIN_INTEGRITY`,
   `PLUGIN_MARKET_*`), and install one catalog release
 - `market.checkUpdates` / `market.applyUpdates`
@@ -841,6 +863,10 @@ against a live host, and replaying one after the final row would be wrong.
   `complete` (default false). Model rows expose optional `discoveryState`
   (`published` / `unlisted`); omission is unknown. Only complete, nonempty
   snapshots reconcile missing discovered rows, without changing configuration.
+  An optional `endpoint` (`baseUrl`, `apiStyle`) guards the read or write
+  against the current saved provider under the Host lock. A mismatch returns
+  no cached models and performs no write. The optional `reportedContextWindow`
+  records capacity from the endpoint response independently of display metadata.
   See provider-config schema for the conservative refresh and consumer rules.
 - `providers.testConnection`
 
@@ -1215,7 +1241,8 @@ explicit permission mode and atomically commits the `plan_approvals` row to
 `status = approved`, assigns `execution_id`, sets `execution_state = queued`,
 sets `sessions.mode = agent`, and stores the selected
 `sessions.permission_mode`; that selection is not written into app settings
-as the next approval default. Ask remains the product default. The same Agent then receives a new provider
+as the next approval default. The renderer defaults approval to the owning
+Session's effective permission, with Ask as the final fallback. The same Agent then receives a new provider
 request with Agent tools.
 
 `reject` records `rejected` and leaves the session in its contract mode (Plan or
@@ -1597,6 +1624,15 @@ backgroundTasks methods remain outside the model proxy.
 | backgroundJobs.wait | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
 | backgroundJobs.stop | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
 
+For a local parent Agent, the runtime can send `yieldAfterInitialWait: true`
+on a `tools.execute` Bash request when no later tool in the same batch is
+waiting behind it. If the process is still running at the 10s wait boundary,
+Host can return a `running` background-job snapshot without an `exitCode`.
+The snapshot also contains `backgroundTaskId` and `commandShellId`. The
+existing `backgroundJobs.*` methods observe and stop the same process. The
+original command timeout still applies, and a timeout after handoff appears
+as a failed job with the timeout diagnostic in its stderr tail.
+
 Each method requires an existing local Agent-mode session. Foreign and missing
 job IDs both return NOT_FOUND. Invalid parameters return INVALID_PARAMS; a
 contract-mode session returns PERMISSION_DENIED. Calls never rebind an existing
@@ -1630,8 +1666,10 @@ ADR `mode-definitions` adds the following Host methods. Parameters use camelCase
 | --- | --- | --- |
 | `modes.get` | `sessionId` | `{ run }`, null when no open run exists |
 | `modes.start` | `sessionId, input, turnId` | `{ claimed, run, enteredStage, definition }` |
+| `modes.startGoal` | `sessionId, input, turnId, modeSnapshot` | claim result for an explicit builtin Goal, independent of the input mode; the Host validates the Goal snapshot and rejects a second open run |
+| `modes.resetGoalInput` | `sessionId` | `{ ok: true }`; compare-and-reset only a Goal input preference to Agent, preserving the run, permission/model fields and any newer non-Goal mode |
 | `modes.claimTurn` | `sessionId, runId, expectedRevision, turnId, origin` | claim result; origins: user, approval, host |
-| `modes.completeStage` | `sessionId, runId, turnId, summary, artifacts?, input?` | failed, run, awaiting_approval, advanced, goto, blocked or finished outcome; `MODE_INPUT_CHANGED` when `input` (the input the turn was claimed with) differs from the run's current input |
+| `modes.completeStage` | `sessionId, runId, turnId, summary, artifacts?, input?, report?` | failed, run, awaiting_approval, advanced, goto, blocked or finished outcome; `MODE_INPUT_CHANGED` when `input` (the input the turn was claimed with) differs from the run's current input |
 | `modes.gateResult` | `sessionId, runId, turnId, gateIndex, toolCallId` | next stage outcome |
 | `modes.settleTurn` | `sessionId, runId, turnId, tokens, outcome, error?` | `{ run, continue }` |
 | `modes.control` | `sessionId, runId, expectedRevision, action` | `{ run, continue }`; pause, resume, stop or remove. Stop and remove both end the run; Electron main interrupts the active turn only for stop |
@@ -1648,3 +1686,49 @@ uses the `pi-desktop/modes/*` IPC channels and never writes SQLite directly.
 pending Bash gate command. The Host records the exit code; a model-supplied
 verdict cannot pass a command gate. Stage completion may write only declared
 artifacts within the workspace. Staged runs reject remote workspaces.
+
+Of the mode RPCs, only `modes.completeStage` and `modes.gateResult` traverse the
+model-directed sidecar proxy. Start, settlement, controls and budget/input edits
+remain host/user operations. Both completion methods retain Host ownership and
+live-claim checks; a report never authorizes a paused or stopped claim.
+
+Optional `report` is `{ status: "completed" | "blocked", outcomes:
+[{ criterion, outcome: "met" | "unmet" | "unverified", evidence }],
+remainingWork: string[], blockerReason?: string }`. Unknown report/outcome fields
+are rejected. Outcomes number 1–64, with unique trimmed nonblank criteria (4 KiB
+each) and nonblank evidence (16 KiB each). Remaining work has at most 64 nonblank
+4 KiB items; a supplied blocker reason is nonblank and at most 16 KiB. Total
+serialized report size is at most 256 KiB. All sizes count UTF-8 bytes.
+`completed` requires all outcomes met, no remaining work and no blocker reason;
+the existing exit gates must still pass. `blocked` requires a blocker reason and
+unfinished/unverified work, persists `completionReport`, sets `waiting/blocked`
+and returns a blocked outcome without evaluating success gates. Settlement does
+not continue it. The report validates model evidence structure, not its truth.
+Legacy calls without a report and saved definition snapshots remain valid.
+A call with a report must include the claim's frozen `input`; a missing or
+changed input is rejected with `MODE_INPUT_CHANGED` before artifact writes.
+
+An unavailable completion RPC, broken transport or malformed Host outcome ends
+the run turn with `MODE_COMPLETE_STAGE_FAILED`, not a normal completed turn.
+There is no automatic transport retry; error settlement waits for user recovery.
+Argument/artifact validation and ordinary failed exit checks remain correctable.
+
+Run snapshots add `elapsedMs` (checkpointed active milliseconds) and optional
+`activeSinceMs` (epoch milliseconds of the Running interval). Absent legacy
+fields display zero, not `now - createdAt`. Other states and startup recovery
+have no active interval.
+
+Desktop prompt/queue requests accept optional boolean `startGoal`. Main validates
+explicit input; the existing durable queue retains that choice through dispatch
+and restoration. A replacement is accepted before stopping the old Goal; mode
+settlement completes before queue release. This field never authorizes Host
+continuation. Only the in-process trusted origin and Host claim can do so.
+
+`session.get` adds display-only message `turnId` from the authoritative message
+index, including bounded windows. Root turns remain separate without synthetic
+user messages; this metadata is not an execution credential.
+
+
+### Background continuation control plane
+
+Main-only methods: `backgroundContinuations.list {}` returns ready `{id, sessionId}` entries in job start order; `claim {sessionId,id,turnId}` atomically starts one intent and returns the original bounded BackgroundJobSnapshot; `consume {sessionId,id}` records terminal tool-result receipt; `cancel {id? ,sessionId?,turnId?}` withdraws matching pending entries (id or sessionId required); `fail {sessionId,id}` records failed dispatch. None is in the model-side proxy allowlist. Only Bash `notifyOnExit: true` creates an intent, with a live source turn, enabled setting and local parent Agent identity. `backgroundTasks.list` adds optional `continuation: pending|started|consumed|cancelled|failed`. Settings writes that disable continuation revoke pending entries atomically. No persisted database schema changes are needed.

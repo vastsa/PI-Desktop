@@ -5,30 +5,20 @@
 
 ## Context
 
-PI-Desktop needs desktop distribution, local permission control, session UI, and system integration capabilities. The main candidate options are Electron and Tauri.
+PI-Desktop needs desktop distribution, local permission control, session UI, and
+system integration. The candidates were Electron and Tauri.
 
 ## Decision
 
-Adopt **Electron** as the desktop shell.
-
-## Rationale
-
-1. Close to the technical path of the already-researched ChatGPT Desktop / WorkBuddy, making it easier to draw on their engineering experience
-2. Smoother fit between the Node ecosystem and pi's TypeScript runtime
-3. More mature native modules, debugging toolchain, and packaging resources
-4. The team's current roadmap clearly prefers Electron
+Adopt **Electron**: it continues the researched ChatGPT Desktop / WorkBuddy path,
+fits pi's TypeScript runtime in the Node ecosystem, has maturer native modules and
+packaging tooling, and matches the roadmap.
 
 ## Consequences
 
-### Positive
-- Fast development speed
-- The agent runtime can be placed directly on the main/node side
-- Later integration of pty, sqlite, and auto-update is more conventional
-
-### Negative
-- Heavier bundle size and memory footprint relative to Tauri
-- Requires strict enforcement of the Electron security baseline
+Fast development and conventional pty, sqlite, and auto-update integration, at the
+cost of a heavier bundle and a strictly enforced security baseline.
 
 ## Alternatives
 
-- Tauri 2: lighter, but inconsistent with the current roadmap; dropped as the MVP baseline
+- Tauri 2: lighter, but off the current roadmap; dropped as the MVP baseline.

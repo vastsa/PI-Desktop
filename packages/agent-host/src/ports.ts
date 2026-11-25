@@ -39,11 +39,16 @@ export interface HostRpcPort {
  */
 export const TRUSTED_MODE_ORIGIN: unique symbol = Symbol("pi-desktop.modeOrigin");
 export type TrustedModeOrigin = "host" | "approval";
+/** Main-only identity: serialized input cannot request an automatic turn. */
+export const TRUSTED_BACKGROUND_CONTINUATION: unique symbol = Symbol("pi-desktop.backgroundContinuation");
+export type TrustedBackgroundContinuation = { id: string; host: object };
 
 export type TurnStartRequest = {
   [TRUSTED_MODE_ORIGIN]?: TrustedModeOrigin;
+  [TRUSTED_BACKGROUND_CONTINUATION]?: TrustedBackgroundContinuation;
   sessionId: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288); the runtime mints one otherwise. */
   userMessageId?: string;
@@ -90,6 +95,7 @@ export type QueuedTurnRecord = {
   sessionId: string;
   principalSubject: string;
   content: string;
+  startGoal?: boolean;
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288). */
   userMessageId?: string;

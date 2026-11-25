@@ -181,6 +181,18 @@ truncated tool calls retain their existing behavior.
    conversation dropped before any read, and the runtime quotes it to the model
    as one `<session_reference name="…" session="…">` block ahead of the user's
    own words
+   A validated File Manager `lineRange` travels as file attachment metadata.
+   Inclusive line numbers are positive 32-bit signed integers and each range
+   spans at most 4,000 lines, matching the Host Read line budget. Unsupported
+   clipboard selections retain plain-text paste rather than changing the range.
+   Main and runtime reject malformed references or more than four references
+   with `INVALID_ARGUMENT` before any prefetch; neither silently drops a chip.
+   The runtime executes one workspace-only Read per distinct range through
+   the normal tool hooks and quotes its bounded result as file context for
+   the provider turn. Permission blocks and read failures use a separate
+   `file_reference_error` block with a `blocked` or `failed` status. The
+   prefetch runs outside assistant tool batches and creates no tool transcript
+   row. Restoring the reference preserves its path and range metadata.
 7. snapshot the effective shell ID and dialect for the turn
 8. start pi turn with the resolved session configuration and effective
    thinking level; HTTP 429 setup and stream failures use the runtime-owned
@@ -231,8 +243,9 @@ the provider message in both phases, so a generic 429 body still enters the
 429 budget while known non-retryable classifications remain terminal. Explicit
 billing/account exhaustion (including `insufficient_quota`, spend-limit
 codes, Zhipu/Z.ai usage-limit code `1308`, Anthropic "credit balance is too
-low", and DashScope `Arrearage` / "access denied … account is in good
-standing") is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
+low", DashScope `Arrearage` / "access denied … account is in good
+standing", and Volcengine Ark `AccountOverdueError` / `overdue balance`)
+is terminal `PROVIDER_ERROR` even with HTTP 429. The main session and
 builtin subagents use the same controller and policy.
 
 429 retries are silent at the transcript lifecycle: no intermediate assistant
@@ -491,6 +504,10 @@ The complete visible transcript and the model context are separate views of
 the same session. A durable checkpoint summarizes older model context while
 the renderer continues to show every original user, assistant, and tool row.
 
+Responses text explicitly marked `commentary` is progress, not a subagent
+report, one-shot result, or final answer. Signed transcript rows retain the
+provider's original text for replay. Unmarked text is treated as before.
+
 When restoring a checkpoint, tool-call reconstruction respects its
 `throughMessageId` boundary. A surviving tool row must not attach its call to
 an assistant that the checkpoint removes. Legacy checkpoints can cut through
@@ -579,6 +596,10 @@ decides what a *successful* checkpoint leaves behind:
   retention limit below; if that message crosses the limit it is truncated
   rather than dropped (`[checkpoint truncated: this message crossed the
   retained context budget]`).
+  When the summary is nonempty and there is no reasoning to replay, the model
+  receives the retained request before the checkpoint and any newer messages
+  after it. The checkpoint describes the current state of the original goal
+  (issue #2512). Reasoning replay stays between the summary and the user tail.
 - A `completed_turn` checkpoint is created at a terminal turn boundary, before
   a new user prompt, or for manual compaction. It carries no naked historical
   user messages. The summary is authoritative for completed work, and the next
@@ -586,6 +607,7 @@ decides what a *successful* checkpoint leaves behind:
 - A retained-tail fallback carries its recent window in both modes, because the
   alternative is an empty context; the mode still decides whether it has to
   keep the active task's user message as well.
+  Its recovery notice precedes that window even if only the user message fits.
 - The `fresh_window` family remains the deliberate no-summary exception from
   ADR 0064 and always carries an empty tail.
 
@@ -622,12 +644,17 @@ and testable.
 
 **Model-facing surface.** `new_context` takes no parameters and starts a new
 context window at the next turn boundary; it never clears or resets environment
-state. Two budget reminders are appended to the current turn's system prompt,
-each at most once per checkpoint window and reset when a checkpoint is
+state. Two budget reminders are appended to the tail of the current turn's
+request, each at most once per checkpoint window and reset when a checkpoint is
 installed: one when the remaining budget falls to
 `clamp(hardLimit * 0.15, 8k, 32k)`, asking the model to start closing out, and
 one at 2,000 tokens remaining, telling it to write down whatever must survive.
-Neither reminder is persisted or shown in the transcript.
+A reminder never rewrites the request prefix (issue #2458): where the model
+keeps mid-conversation system messages in place it is a `context_budget` system
+section that expires at the next checkpoint; elsewhere, because pi-ai folds
+every system update into the leading system message, it is a request-only user
+message that is neither persisted nor carried into the next run. Neither
+reminder is shown in the transcript.
 
 The hard boundary is the model context window minus request headroom. Automatic
 compaction starts at 90% of `hardLimit`; this deterministic margin is not
@@ -668,6 +695,12 @@ gateway's total that omits cached input from delaying compaction, while keeping
 the total-based guard when bucket details are incomplete. Billing totals remain
 unchanged.
 
+Pi usage conversion retains explicitly supplied finite, nonnegative cache-read
+and cache-write counts, including zero, through physical-request observation,
+history replay and operation deduplication. Missing or invalid cache counts
+remain absent, so consumers can distinguish a known zero from unavailable
+usage. Previously stored missing fields are not backfilled as zero.
+
 The calibration still measures the two errors separately — per-character bias
 as a scale-free ratio over the guessed tail, and an unanchored residual as a
 ratio only for observations taken at a comparable scale (0.5×–2× of the
@@ -701,7 +734,9 @@ request. The automatic summary request retries transient provider failures
 under a bounded pi-ai retry policy (3 retries, 2s/4s/8s backoff, cancelled by
 Stop); deterministic failures such as quota or auth return at once. The
 preflight guard sizes the prompt pi actually serializes — tool results already
-capped — rather than the raw messages, and when that prompt still exceeds the
+capped — rather than the raw messages, with the CJK correction the output-cap
+estimator carries (Han, kana, and Hangul run ~1 token per character, not the
+1/3.5 the chars-per-token baseline bills), and when that prompt still exceeds the
 window it tries exactly one reduced input (tool results cut to a short prefix,
 thinking dropped, no message removed). If even that input does not fit, the range
 is split into contiguous chunks that each do: at most 16 requests, each carrying
@@ -717,9 +752,16 @@ The complete transcript remains durable and visible, while the next model
 request receives only that recovery checkpoint and applicable tail. The
 lifecycle event marks this as `fallback: "retained_tail"`, and the checkpoint's
 mark carries the same `fallback`, so the renderer shows a warning and labels
-the transcript row as a failed summary rather than a false success. If the
-fallback cannot be prepared, persisted, or kept below the safe budget, the user
-row and an assistant error remain durable and no provider request starts.
+the transcript row as a failed summary rather than a false success. The window
+is sized from the local estimate while installation re-estimates with the
+calibrated one, so a window the calibrated estimate still puts at or above the
+safe budget is halved and retried, down to 1/128 of its first size, before the
+recovery gives up (issue #2494). If the fallback cannot be prepared, persisted,
+or kept below the safe budget, the user row and an assistant error remain
+durable and no provider request starts. That `CONTEXT_COMPACTION_FAILED` error
+is classified as local (`details.origin: "local"`), so it carries no stream
+timings or HTTP status from an earlier request, and its message names the
+checkpoint failure that caused it.
 Provider-reported context overflow is the last recovery layer: omit the failed
 assistant from model context, compact once, and retry once. A second overflow
 remains terminal and is reported as `CONTEXT_TOO_LARGE`: the error classifier
@@ -1030,11 +1072,11 @@ not override the parent session by default: they follow `auto` completely
 their normal approval behavior. An explicit builtin or user scope remains an
 intentional override.
 
-**Tools (ADR 0089).** Task requires a non-empty subagent catalog. The three
-job controls are always declared and belong to the Agent core set rather than
-the on-demand catalog of §7.1. Execution of all four is restricted to Agent mode:
+**Tools (ADR 0089).** Task requires a non-empty effective role catalog. Its
+job controls belong to the core set, not the on-demand catalog of §7.1.
+Execution requires an agent-level mode or stage:
 
-- `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
+- `Task(agent, task, description?, model?, resume?, userRequest?, scope?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
   whose tools are all unavailable each return a tool error explaining the
   failure rather than throwing), starts the delegate **in the background**, and
@@ -1068,12 +1110,28 @@ the on-demand catalog of §7.1. Execution of all four is restricted to Agent mod
   The Task definition catalog displays each default model and treats omitting
   or repeating that key as keeping the default. See
   [ADR subagent-model-opt-in](../../adr/subagent-model-opt-in.md).
+  For a YAML mode bundle, the private role list is the entire default catalog.
+  Explicit global inclusion adds only active, project-authorized definitions;
+  private names win. A role pin is not a dispatcher permission: switching away
+  from a private role's primary pin requires explicit approval for that task,
+  in addition to model availability. Each fallback may select its own thinking
+  level. Neither the bundle nor a task can change the parent session model.
   When a model key is not pre-resolved, the runtime asks Electron main to resolve it
   on-demand via the `provider.resolveSubagentModel` RPC. The started `Task`
   result details record the effective `modelId` and resolved `thinkingLevel`
   used for that run. The level is resolved after inheritance and target-model
   capability clamping; `omit` records that no provider thinking override was
   sent.
+  When the user names an expert, `userRequest` contains only the original words
+  addressed to that expert. `task` supplies the coordinator's separate context.
+  A quote does not grant permission. A new task may set `scope.write` to a list
+  of workspace paths. Omission preserves existing access, an empty list denies
+  all writes, and opaque tools are withheld when their writes cannot be checked.
+  A resume cannot change the original role, model selection or write boundary.
+- `TaskSend(delegationId, instruction)` queues a correction for the same running
+  child in this conversation. `TaskList` and `TaskWait` distinguish queued,
+  delivered at a child boundary, and undelivered at cancellation or settlement.
+  Sending a correction never replaces the role, its model, or its permissions.
 - `TaskWait(delegationIds?, mode?, minCompleted?, timeoutSeconds?)` — converges
   on running delegations (defaults to all of them) and returns their reports;
   `mode: "any"` with `minCompleted` converges as soon as the first N settle.
@@ -2080,8 +2138,8 @@ observation has not arrived, it returns the job reference with
 `snapshotAvailable: false` and no process state. Transcript rows identify
 explicit Bash targets and include background commands in mixed job lists.
 
-Bash is still owned by Host and does not auto-deliver completion or keep the
-parent turn open. Delegation report delivery and resumability retain their
+Bash is still owned by Host and does not keep the parent turn open. Completion
+is not auto-delivered by default; the opt-in continuation contract below is separate. Delegation report delivery and resumability retain their
 existing lifecycle. Runtime capability probing is connection-scoped; older
 Hosts and remote workspaces explicitly report Bash controls unavailable,
 while delegation controls remain usable. Transport and Host failures propagate.
@@ -2089,3 +2147,29 @@ while delegation controls remain usable. Transport and Host failures propagate.
 ### Shared prefix and scratch identity (#1926)
 
 The base runtime system section keeps shell dialect, scratch-variable syntax and temporary-file policy stable across sessions. The exact scratch directory is appended after project/memory context rather than embedded twice in the leading runtime rules. Bash tool descriptions retain their exact path guidance. This preserves a shared system-text prefix, without promising provider cache hits or changing history reconstruction.
+
+
+### Opt-in background completion continuation (#2143)
+
+`backgroundJobContinuationEnabled` defaults to false, including absent legacy settings.
+When enabled, local parent Agent Bash exposes optional `notifyOnExit` alongside
+`runInBackground`. The assistant may register follow-up for finite tests/builds;
+this is not another human approval. Existing session tool permissions still apply.
+Servers/watchers keep ordinary background behavior unless a continuation is explicitly
+registered. Remote, native-pi, delegated and contract-mode execution are out of scope.
+
+Host retains the original result while pending (at most 64 intents per Host). Both
+process exit/output drain and successful completion of the originating turn are
+required. Main uses trusted in-process identity through AgentHost admission; active
+work and queued user input win. Before dispatch Host atomically checks the intent,
+setting, source turn and destination turn, then marks it started. Results enter the
+transcript/context as a TaskWait tool result, not as a new user instruction. Output
+remains untrusted data and does not grant additional authority.
+
+A terminal TaskWait/TaskStop result observed by Main consumes pending delivery;
+raw RPC reads, UI log reads and timeouts do not. Failed acknowledgement suppresses
+local dispatch while it is retried. Stop, source-turn cancellation, session loss,
+leaving Agent mode, explicit cancellation and disabling the setting withdraw pending
+continuation. Withdrawal does not kill the process. Started turns are not interrupted
+by disabling the setting. Failed/ambiguous dispatch is not automatically retried;
+the original result remains available via TaskWait. Intent lives only with the Host.

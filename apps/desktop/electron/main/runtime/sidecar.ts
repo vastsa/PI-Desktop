@@ -34,11 +34,13 @@ import { currentSystemProxyRelayUrl } from "../network-proxy";
 
 export type SidecarRuntimeDependencies = {
   runtimeState: RuntimeState;
+  observeBackgroundResult?: (event: AgentEventEnvelope) => void;
   steeringReplies: Set<string>;
   logger: Logger;
   sendToRenderer: (channel: string, payload: unknown) => void;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
   activeTurns: Map<string, string>;
+  readPluginModelContext?: (params: Record<string, unknown>) => Promise<unknown>;
   approvedExecutionIdsBySession: Map<string, string>;
   claimedExecutionSessions: Map<string, string>;
   inflightCheckpointer: InflightCheckpointer;
@@ -66,6 +68,12 @@ export type SidecarRuntimeDependencies = {
     projectPath: string | null,
   ) => Promise<LoadedSkillDocument | null>;
   activeUserSkills: (projectPath: string | undefined) => Promise<any[]>;
+  /**
+   * Load a mode-private skill for the `Skill` tool. `null` means "not a mode
+   * skill"; a stale selection (mode switched, skill disabled or moved) throws so
+   * the model cannot fall back to a same-named global skill (issue #2544 §3).
+   */
+  loadModeSkillBody?: (id: string, sessionId: string) => Promise<LoadedSkillDocument | null>;
   disabledBuiltinSkills: () => Promise<string[]>;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   currentNetworkProxy: () => any;
@@ -77,11 +85,13 @@ export type SidecarRuntimeDependencies = {
 
 export function createSidecarRuntime({
   runtimeState,
+  observeBackgroundResult,
   steeringReplies,
   logger,
   sendToRenderer,
   persistAgentEvent,
   activeTurns,
+  readPluginModelContext,
   approvedExecutionIdsBySession,
   claimedExecutionSessions,
   inflightCheckpointer,
@@ -101,6 +111,7 @@ export function createSidecarRuntime({
   sessionProjects,
   loadUserSkillBody,
   activeUserSkills,
+  loadModeSkillBody,
   disabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
@@ -203,7 +214,9 @@ export function createSidecarRuntime({
       return;
     }
     if (method === "agent.event") {
+      if (runtimeState.sidecar !== s) return;
       const envelope = params as AgentEventEnvelope;
+      observeBackgroundResult?.(envelope);
       const event = envelope.event;
       if (event.type === "tool_start") {
         activeToolCalls.set(toolKey(envelope.sessionId, event.toolCallId), {
@@ -373,8 +386,12 @@ export function createSidecarRuntime({
 
   const s = new AgentSidecar((text) => logger.child("agent", text));
   wireSidecar(s);
+  if (readPluginModelContext) {
+    s.setPluginModelContextReader((params) => runtimeState.sidecar === s && !isQuitting()
+      ? readPluginModelContext(params) : Promise.resolve([]));
+  }
   // The directory a session's file tools work in: its isolated worktree
-  // (ADR 0329), resolved by host-core from its own registry, or its project.
+  // (ADR 0329), project, or host-owned scratch directory (ADR 0124).
   const sessionFileRoot = async (sessionId: string): Promise<string | null> => {
     const host = runtimeState.host;
     if (!host) return null;
@@ -385,7 +402,11 @@ export function createSidecarRuntime({
       const location = await host.call<{ path?: string }>("worktree.location", { sessionId });
       return location.path?.trim() || null;
     }
-    return res?.session?.projectPath?.trim() || null;
+    if (!res?.session) return null;
+    const projectPath = res.session.projectPath?.trim();
+    if (projectPath) return projectPath;
+    const scratch = await host.call<{ path: string }>("session.getScratchPath", { sessionId });
+    return scratch.path?.trim() || null;
   };
   s.setProjectInstructionResolver(async ({ sessionId, projectPath, path }) => {
     // The root is registered by Electron main from the host-owned session
@@ -653,10 +674,15 @@ export function createSidecarRuntime({
     const projectPath = sessionProjects.get(sessionId) ?? null;
     try {
       await assertBuiltinSkillEnabled(id, disabledBuiltinSkills);
+      // A mode-private id resolves against the session's *current* mode, so a
+      // selection made before a disable, a move or a mode switch is refused
+      // here instead of loading another document (issue #2544 §3).
+      const modeSkill = await loadModeSkillBody?.(id, sessionId);
       // Bundled skills answer first; they are not owned by any plugin. A user
       // skill is looked up next, and only then a plugin's — the ids cannot
       // collide, since a plugin skill id always carries a `<pluginId>/` prefix.
       const skill: LoadedSkillDocument =
+        modeSkill ??
         loadBuiltinSkillBody(id) ??
         (await loadUserSkillBody(id, projectPath)) ??
         plugins.loadSkillBody(id);
@@ -685,13 +711,7 @@ export function createSidecarRuntime({
   // Plugin authoring (D171): scaffold, validate and package a plugin without
   // leaving the session. Paths stay inside the open workspace.
   registerPluginDevTools(s, {
-    resolveWorkspace: async (sessionId) => {
-      try {
-        return await sessionFileRoot(sessionId);
-      } catch {
-        return null;
-      }
-    },
+    resolveWorkspace: sessionFileRoot,
     registerDevPlugin: async (path) => {
       if (!runtimeState.host) throw new Error("host unavailable");
       const loaded = await runtimeState.host.call<{ plugin?: { permissions?: string[] } }>(

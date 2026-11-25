@@ -5,7 +5,11 @@
  * session). The sheet lists the same configured, runnable models as the
  * Composer rather than asking the user to type that string.
  */
-import { modelWireIdsEqual as sameComposerModelId, type ProviderPublic } from "@pi-desktop/shared";
+import {
+  modelWireIdsEqual as sameComposerModelId,
+  type ModelInfo,
+  type ProviderPublic,
+} from "@pi-desktop/shared";
 import { defaultModelOptions } from "./default-model";
 
 export type SubagentModelChoice = {
@@ -100,6 +104,8 @@ export function pinMatchesChoice(pin: string, choice: SubagentModelChoice): bool
 export function subagentModelDisplay(
   pin: string,
   providers: readonly ProviderPublic[],
+  imageGeneration?: import("@pi-desktop/shared").ImageGenerationBindings | null,
+  discovered?: Record<string, readonly ModelInfo[] | undefined>,
 ): { providerId: string; providerName: string; modelId: string; status: "available" | "disabled" | "unavailable" } | null {
   const parts = subagentModelPinParts(pin);
   if (!parts) return null;
@@ -113,7 +119,7 @@ export function subagentModelDisplay(
   // identify another account just because only that account has the binding.
   if (matches.length !== 1) return null;
   const provider = matches[0];
-  const model = defaultModelOptions([provider]).find((option) =>
+  const model = defaultModelOptions([provider], imageGeneration, discovered).find((option) =>
     sameComposerModelId(parts.modelId, option.modelId));
   if (!model) return null;
   return {
@@ -155,12 +161,16 @@ function uniqueProviderPart(
 /** Configured models the sheet can pin, in provider order, with unambiguous pins. */
 export function subagentModelChoices(
   providers: readonly ProviderPublic[],
+  imageGeneration?: import("@pi-desktop/shared").ImageGenerationBindings | null,
+  discovered?: Record<string, readonly ModelInfo[] | undefined>,
 ): SubagentModelChoice[] {
   const runnableProviders = providers.filter(isSubagentModelProvider);
   const seen = new Set<string>();
   const choices: SubagentModelChoice[] = [];
   for (const { provider, modelId } of defaultModelOptions(
     runnableProviders,
+    imageGeneration,
+    discovered,
   )) {
     const value = `${uniqueProviderPart(provider, runnableProviders)}/${modelId}`;
     if (seen.has(value.toLowerCase())) continue;

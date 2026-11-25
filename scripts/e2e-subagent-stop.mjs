@@ -11,7 +11,7 @@ import { resolveHostBinary } from "./e2e/host.mjs";
 
 const root = repositoryRoot();
 const show = process.argv.includes("--show");
-const scratch = await mkdtemp(join(tmpdir(), "pi-subagent-stop-"));
+const scratch = await mkdtemp(join(process.env.PI_SCRATCH_DIR || tmpdir(), "pi-subagent-stop-"));
 const workspace = join(scratch, "workspace");
 await mkdir(workspace);
 await mkdir(join(scratch, "home"));
@@ -49,7 +49,13 @@ const server = createServer(async (req, res) => {
       res.write(": coordinator still working\n\n");
       return;
     }
-    const calls = body.tools?.some(tool => tool.function?.name === "Task")
+    const offered = name => body.tools?.some(tool => tool.function?.name === name);
+    const needTodo = !tools.some(message => message.tool_call_id === "fixture_todo");
+    const calls = needTodo
+      ? offered("TodoWrite")
+        ? [{ id: "fixture_todo", name: "TodoWrite", arguments: { todos: [{ content: "Inspect fixture workers", status: "in_progress" }] } }]
+        : [{ id: "discover_todo", name: "ToolSearch", arguments: { query: "TodoWrite" } }]
+      : body.tools?.some(tool => tool.function?.name === "Task")
       ? ["A", "B"].map(label => ({ id: `task_${label}`, name: "Task", arguments: { agent: "explorer", task: `Fixture worker ${label}`, description: `Worker ${label}` } }))
       : [{ id: "discover", name: "ToolSearch", arguments: { query: "Task" } }];
     delta({ role: "assistant", tool_calls: calls.map((call, index) => ({ index, id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) });
@@ -122,12 +128,27 @@ async function connect(port, type) {
   } };
 }
 const ports = [await freePort(), await freePort()];
-const env = { ...process.env, HOME: join(scratch, "home"), PI_DESKTOP_DATA_DIR: join(scratch, "data"), PI_DESKTOP_HOST_BIN: resolveHostBinary(), PI_DESKTOP_PLAN_UI_PROBE: "1", PI_DESKTOP_TEST_API_KEY: "local-fixture", PI_DESKTOP_TEST_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`, PI_DESKTOP_TEST_MODEL: "deepseek-flash", ELECTRON_RENDERER_URL: "", PI_DESKTOP_START_MAXIMIZED: "0" };
+const home = join(scratch, "home");
+// Do not pass a running Desktop's plugin paths, model credentials or control endpoints to the fixture.
+const systemEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+  /^(PATH|PATHEXT|SystemRoot|WINDIR|ComSpec|SystemDrive|TEMP|TMP|TMPDIR|LANG|LC_.*|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_RUNTIME_DIR|DBUS_SESSION_BUS_ADDRESS)$/i.test(key)));
+const env = { ...systemEnv, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, ".config"),
+  PI_CODING_AGENT_DIR: join(home, ".pi", "agent"), PI_DESKTOP_AGENTS_DIR: join(home, ".agents"), PI_DESKTOP_DATA_DIR: join(scratch, "data"), PI_DESKTOP_HOST_BIN: resolveHostBinary(), PI_DESKTOP_PLAN_UI_PROBE: "1", PI_DESKTOP_TEST_API_KEY: "local-fixture", PI_DESKTOP_TEST_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`, PI_DESKTOP_TEST_MODEL: "deepseek-flash", ELECTRON_RENDERER_URL: "", PI_DESKTOP_START_MAXIMIZED: "0" };
+if (process.platform === "win32") {
+  env.USERPROFILE = env.HOME;
+  env.APPDATA = join(scratch, "roaming");
+  env.LOCALAPPDATA = join(scratch, "local");
+}
 delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(resolveElectronBinary(root).electronBinary, [`--remote-debugging-port=${ports[0]}`, `--inspect=${ports[1]}`, `--user-data-dir=${join(scratch, "profile")}`, "."], { cwd: join(root, "apps/desktop"), env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+const launch = () => spawn(resolveElectronBinary(root).electronBinary, [`--remote-debugging-port=${ports[0]}`, `--inspect=${ports[1]}`, `--user-data-dir=${join(scratch, "profile")}`, "."], { cwd: join(root, "apps/desktop"), env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
 let output = "";
-child.stdout.on("data", chunk => { output += chunk; });
-child.stderr.on("data", chunk => { output += chunk; });
+function start() {
+  const child = launch();
+  child.stdout.on("data", chunk => { output += chunk; });
+  child.stderr.on("data", chunk => { output += chunk; });
+  return child;
+}
+let child = start();
 let main, page;
 try {
   main = await connect(ports[1], "node");
@@ -143,6 +164,12 @@ try {
   const setup = await main.evaluate(`globalThis.__PI_DESKTOP_PLAN_UI_PROBE({operation:'liveSetup',workspace:${JSON.stringify(workspace)}})`);
   assert.equal(setup.ok, true, JSON.stringify(setup));
   const invoke = (key, ...input) => page.evaluate(`piDesktop.invoke(piDesktop.channels.invoke[${JSON.stringify(key)}],...${JSON.stringify(input)})`);
+  const mcp = await invoke("mcpList", { projectPath: workspace });
+  assert.ok(mcp.ok && mcp.data.servers.length === 0, "fixture must not load user MCP servers");
+  const agents = await invoke("subagentList");
+  assert.ok(agents.ok && agents.data.subagents.length === 0, "fixture must not load user agent definitions");
+  await page.evaluate("window.__PI_DESKTOP__.skipStartupOverlays()");
+  assert.equal((await invoke("settingsSet", { transcriptDisplayMode: "command-first" })).ok, true);
   assert.equal((await invoke("providersUpdate", { id: setup.providerId, models: [{ id: setup.modelId, contextWindow: 128000, maxTokens: 8192, thinkingLevels: ["off", "medium"], defaultThinkingLevel: "medium" }] })).ok, true);
   assert.equal((await invoke("sessionConfigure", setup.sessionId, { mode: "agent", providerId: setup.providerId, modelId: setup.modelId, thinkingLevel: "medium" })).ok, true);
   await invoke("sessionRename", setup.sessionId, "Subagent stop controls · local fixture");
@@ -150,10 +177,81 @@ try {
   assert.equal((await invoke("agentPrompt", { sessionId: setup.sessionId, content: "Start two fixture workers for the stop controls demo." })).ok, true);
   await until(() => workers.size === 2 && parents.size > 0, "two real delegates and coordinator");
   const buttons = () => page.evaluate(`Array.from(document.querySelectorAll('.subagent-topology-node-actions .subagent-stop-button')).map(b=>({text:b.textContent,disabled:b.disabled}))`);
-  await until(async () => (await buttons()).length === 2, "two stop buttons");
-  await page.evaluate(`document.querySelector('.subagent-topology-node-header').click()`);
+  await until(async () => (await buttons()).length === 2, "two stop buttons").catch(async error => {
+    throw new Error(`${error.message}\nFixture UI: ${await page.evaluate('document.body.innerText.slice(-2200)')}`);
+  });
+  const bar = '.composer-shell > .subagent-bar:first-child';
+  const barVisible = () => page.evaluate(`!!document.querySelector(${JSON.stringify(bar)})`);
+  assert.equal(await barVisible(), false, "transcript-only is the default");
+  const capture = async name => {
+    const dir = process.env.PI_SUBAGENT_SCREENSHOT_DIR;
+    if (!dir) return;
+    await mkdir(dir, { recursive: true });
+    const clip = await page.evaluate(`{ const r = document.querySelector('.composer-dock').getBoundingClientRect(); const y = Math.max(0, r.top - 320); ({ x: r.left, y, width: r.width, height: Math.min(innerHeight, r.bottom) - y, scale: 1 }); }`);
+    const shot = await page.call("Page.captureScreenshot", { format: "png", clip });
+    await writeFile(join(dir, `${name}.png`), Buffer.from(shot.data, "base64"));
+  };
+  await page.evaluate(`window.__PI_DESKTOP__.setThemeAttr('light')`);
+  await capture("transcript-light");
+  const settings = await invoke("settingsGet");
+  assert.equal(settings.ok, true);
+  const setStyle = async subagentStyle => {
+    const result = await invoke("settingsSet", { subagentStyle });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal((await invoke("settingsGet")).data.subagentStyle, subagentStyle);
+  };
+  const taskIds = await page.evaluate(`Array.from(document.querySelectorAll('.subagent-topology-node'), row => row.dataset.messageId)`);
+  assert.equal(taskIds.length, 2);
+  const taskHeaders = taskIds.map(id => `.tool-row[role="region"][data-message-id="${id}"] > .tool-row-head > .tool-row-header`);
+  const assertOrdinaryTasks = async () => {
+    assert.equal(await page.evaluate(`!!document.querySelector('.subagent-topology, .subagent-activity-header')`), false, "bar style must not duplicate inline topology");
+    for (const selector of taskHeaders) assert.ok(await page.evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), "each original Task remains an ordinary tool row");
+  };
+  await setStyle("bar");
+  await until(barVisible, "running delegates gain a composer bar");
+  await assertOrdinaryTasks();
+  const firstHeader = JSON.stringify(taskHeaders[0]);
+  await page.evaluate(`document.querySelector(${firstHeader}).click()`);
+  await until(() => page.evaluate(`document.querySelector(${firstHeader}).getAttribute('aria-expanded') === 'true'`), "ordinary Task expands");
+  const expandedRow = `document.querySelector(${firstHeader}).closest('.tool-row')`;
+  assert.equal(await page.evaluate(`!!${expandedRow}.querySelector('.tool-row-body')`), true, "generic call details remain accessible");
+  assert.equal(await page.evaluate(`!!${expandedRow}.querySelector('.subagent-run')`), false, "ordinary details do not duplicate the worker transcript");
+  await page.evaluate(`document.querySelector(${firstHeader}).click()`);
+  await setStyle("transcript");
+  await until(async () => !await barVisible() && (await buttons()).length === 2, "switching back restores topology instead of the bar");
+  await setStyle("bar");
+  await until(barVisible, "restored presence bar");
+  const other = await invoke("sessionCreate", { title: "Idle fixture", mode: "agent", projectPath: workspace });
+  assert.equal(other.ok, true);
+  const select = id => page.evaluate(`window.__PI_DESKTOP__.selectSession(${JSON.stringify(id)})`);
+  await select(other.data.session.id);
+  await until(async () => !await barVisible(), "idle session does not inherit the active delegates");
+  await select(setup.sessionId);
+  await until(barVisible, "returning to the running session restores its delegates");
+  const dock = '.composer-dock .dock-header-main';
+  await until(() => page.evaluate(`!!document.querySelector('${dock}')`), "fixture task dock");
+  for (const expanded of [true, false]) {
+    await page.evaluate(`{ const b = document.querySelector('${dock}'); if (b.getAttribute('aria-expanded') !== '${expanded}') b.click(); }`);
+    await until(() => page.evaluate(`document.querySelector('${dock}').getAttribute('aria-expanded') === '${expanded}' && document.querySelector('${bar}').getBoundingClientRect().height > 0`), "presence independent of dock disclosure");
+  }
+  const motion = reduce => page.call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: reduce ? "reduce" : "no-preference" }] });
+  const ring = () => page.evaluate(`getComputedStyle(document.querySelector('.presence-avatar[data-status="running"]'), '::before').animationName`);
+  await motion(false);
+  assert.equal(await ring(), "presence-spin");
+  await capture("bar-light-collapsed");
+  await motion(true);
+  assert.equal(await ring(), "none");
+  await page.evaluate(`window.__PI_DESKTOP__.setThemeAttr('dark')`);
+  await page.evaluate(`document.querySelector('.presence-avatar').focus()`);
+  await until(() => page.evaluate(`!!document.querySelector('.presence-card footer button')`), "focus opens delegate card");
+  assert.equal(await page.evaluate(`document.querySelector('.presence-card').closest('.composer-shell') === null`), true);
+  assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.presence-live')).animationName`), "none");
+  await capture("card-dark-reduced-motion");
+  await page.evaluate(`document.querySelector('.presence-card footer button').click()`);
   await until(() => page.evaluate(`!!document.querySelector('.subagent-transcript-composer-controls .stop-btn')`), "detail stop control");
   await until(() => page.evaluate(`document.body.innerText.includes('Partial output from worker A')`), "worker A partial output rendered");
+  await setStyle("transcript");
+  await until(async () => !await barVisible() && (await buttons()).length === 2, "transcript-style node controls");
   const layout = await page.evaluate(`({
     models: [...document.querySelectorAll('.subagent-topology-node-model')].map(e => ({
       text: e.textContent,
@@ -179,6 +277,9 @@ try {
   await until(() => workers.size === 0, "stop-all cancels remaining delegates");
   assert.equal(parents.size, 1, "stop-all preserves coordinator");
   await until(async () => (await buttons()).length === 0, "all terminal controls disappear");
+  await setStyle("bar");
+  assert.equal(await barVisible(), false, "settled delegates do not create a bar");
+  await assertOrdinaryTasks();
   const invalid = await invoke("agentStopSubagents", { sessionId: setup.sessionId, delegationIds: [] });
   assert.equal(invalid.ok, false, "empty selection must not mean stop-all");
   await until(async () => {
@@ -217,6 +318,8 @@ try {
     await page.evaluate(`window.__PI_DESKTOP__.selectSession(${JSON.stringify(demoId)})`);
     await invoke("agentPrompt", { sessionId: demoId, content: "这是本地模拟模型演示：启动两个子智能体，可以分别停止，或停止全部。主智能体继续运行。" });
     await until(() => workers.size === 2 && parents.size > 0, "demo ready");
+    await setStyle("transcript");
+    await until(async () => (await buttons()).length === 2, "demo topology");
     await page.evaluate(`document.querySelector('.subagent-topology-node-header').click()`);
     await until(() => page.evaluate(`!!document.querySelector('.subagent-transcript-composer-controls .stop-btn')`), "demo detail stop control");
     const shot = await page.call("Page.captureScreenshot", { format: "png" });
@@ -224,11 +327,20 @@ try {
     console.log(`DEMO ${JSON.stringify({ scratch, ports, pid: child.pid })}`);
     main.ws.close();
     await new Promise(resolve => child.once("exit", resolve));
+  } else {
+    main.ws.close(); page.ws.close();
+    await terminateChildTree(child);
+    child = start();
+    page = await connect(ports[0], "page");
+    await until(() => page.evaluate("!!window.__PI_DESKTOP__"), "restarted renderer");
+    assert.equal((await invoke("settingsGet")).data.subagentStyle, "bar", "style survives Desktop restart");
+    assert.equal(await barVisible(), false, "saved style does not add an empty row");
+    console.log("PASS session isolation, restart persistence, themes, dock disclosure and reduced motion");
   }
 } finally {
   main?.ws.close(); page?.ws.close();
   await terminateChildTree(child);
   server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));
-  if (!show) await rm(scratch, { recursive: true, force: true });
+  if (!show) await rm(scratch, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 });
 }

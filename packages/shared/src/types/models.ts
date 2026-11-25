@@ -262,6 +262,12 @@ export type ModelBinding = {
    * tier; only Responses wires carry it (`fastModeSupportedOn`).
    */
   fastModeAllowed?: boolean;
+  /**
+   * Whether Anthropic Messages requests may replay thinking blocks without a
+   * signature. Absent preserves the adapter default; explicit false overrides
+   * any published endpoint metadata.
+   */
+  allowEmptyThinkingSignature?: boolean;
 };
 
 export const MODEL_MODALITIES = ["text", "image", "audio", "video", "pdf"] as const;

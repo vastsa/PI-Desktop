@@ -5,6 +5,7 @@ import { createPluginWorkspaceReader } from "../remote/plugin-workspace-files";
 import {
   IPC,
   ErrorCodes,
+  FILE_LINES_ADD_CHANNEL,
   type ActivationScope,
   type AppSettings,
   type BrowserState,
@@ -12,6 +13,8 @@ import {
   type ModelBinding,
   type ShortcutPlatform,
   type ThinkingLevel,
+  type ProjectRecord,
+  normalizeProjectPath,
   type UiMessage,
 } from "@pi-desktop/shared";
 import type {
@@ -19,6 +22,7 @@ import type {
   PluginNativeNotificationInput,
   PluginNativeNotificationResult,
   PluginNotificationPermission,
+  PluginSessionUserMessagePersisted,
 } from "@pi-desktop/plugin-sdk";
 import {
   asPluginThinkingLevel,
@@ -60,9 +64,13 @@ import type { TurnEndedPayload } from "../runtime/session-coordination";
 import type { HostProcess } from "../host-process";
 import { createPluginSessionContext } from "./plugin-session-context";
 import { createPluginProjectLister } from "./plugin-projects";
+import { createPluginSessionProjectResolver } from "./plugin-session-project";
 import { createComposerSuggestionRelay } from "./composer-suggestion";
+import { createPluginModelContext } from "../runtime/plugin-model-context";
 import type { Logger } from "../logger";
 import type { PluginAppearance } from "../../shared/plugin-panel-chrome";
+
+import { addFileLinesFromView } from "../file-line-reference";
 
 export type PluginServicesDependencies = {
   dataDir: string;
@@ -86,6 +94,7 @@ export type PluginServicesDependencies = {
   vendorOAuth: VendorOAuth;
   /** The live turn of one session, read from the host's own turn map. */
   getActiveTurn: (sessionId: string) => string | null;
+  isTurnDispatchable: (sessionId: string, turnId: string) => boolean;
   /**
    * Whether a plugin's contributions apply to the project the window shows.
    * Scope records live in Main, so this is the one lookup that decides.
@@ -123,6 +132,7 @@ export function createPluginServices({
   resolveAgentRuntimeLaunch,
   vendorOAuth,
   getActiveTurn,
+  isTurnDispatchable,
   isPluginActiveInProject,
   pluginActiveInProject,
 }: PluginServicesDependencies) {
@@ -131,8 +141,13 @@ export function createPluginServices({
     (error as { errorCode?: string } | null | undefined)?.errorCode ===
     ErrorCodes.HOST_UNAVAILABLE;
   const pluginPanels = new PluginPanelHost(
-    async (pluginId, channel, payload, context) =>
-      plugins.invokePanelBridge(pluginId, channel, payload, context),
+    async (pluginId, channel, payload, context) => {
+      if (channel !== FILE_LINES_ADD_CHANNEL) return plugins.invokePanelBridge(pluginId, channel, payload, context);
+      return addFileLinesFromView(pluginId, context?.senderId, payload, {
+        plugins, pluginViews, pluginSession, pluginActiveInProject, getHost, getWorkspacePath,
+        publish: (selection) => sendToRenderer(IPC.event.composerFileLines, selection),
+      });
+    },
     // A panel reaching for an undeclared host is the shape an exfiltration
     // attempt takes, so it is logged like a denied API call rather than dropped
     // silently in the network layer.
@@ -581,6 +596,23 @@ export function createPluginServices({
    * can hold sessions on different projects, so this cannot be a single value.
    */
   const sessionProjects = new Map<string, string | null>();
+  const modelContext = createPluginModelContext({
+    isDispatchable: isTurnDispatchable,
+    projectFor: (sessionId) => sessionProjects.get(sessionId),
+    inProject: pluginActiveInProject,
+    providers: (inScope) => plugins.modelContextProviders(inScope),
+    projectId: async (projectPath) => {
+      try {
+        const result = await getHost()?.call<{ projects: ProjectRecord[] }>("projects.list", undefined, 100);
+        const path = normalizeProjectPath(projectPath);
+        const project = result?.projects.find((entry) => normalizeProjectPath(entry.path) === path);
+        return project ? String(project.id) : undefined;
+      } catch {
+        // Project identity is advisory; the independent scope gate still applies.
+        return undefined;
+      }
+    },
+  });
   const emitBrowserState = (state: BrowserState) => {
     sendToRenderer(IPC.event.browserState, state);
   };
@@ -639,7 +671,20 @@ export function createPluginServices({
       });
     }
   };
+  const announceObservedSession = (
+    event: "session:turnStarted" | "session:userMessagePersisted",
+    payload: { sessionId: string; turnId: string; messageId?: string },
+  ): void => {
+    // A missing mapping is not an invitation to use the window's project.
+    if (!sessionProjects.has(payload.sessionId)) return;
+    const projectPath = sessionProjects.get(payload.sessionId);
+    plugins.broadcastEvent(event, [payload], (pluginId) => pluginActiveInProject(pluginId, projectPath));
+  };
+  const observePersistedUserMessage = ({ sessionId, turnId, messageId }: PluginSessionUserMessagePersisted): void => {
+    announceObservedSession("session:userMessagePersisted", { sessionId, turnId, messageId });
+  };
   const announceTurnEnded = (payload: TurnEndedPayload): void => {
+    modelContext.end(payload.sessionId, payload.turnId);
     broadcastSessionEvent("session:turnEnded", payload);
     // The snapshot also carries the running turn, so a surface that subscribes
     // to `session:activated` learns the selected session went idle from the
@@ -748,6 +793,7 @@ export function createPluginServices({
      * runtime has not launched yet, which falls back to the visible workspace.
      */
     getWorkspacePathForSession: (sessionId) => sessionProjects.get(sessionId) ?? null,
+    resolveSessionProjectPath: createPluginSessionProjectResolver(getHost),
     agentExtensionsChanged: () =>
       sendToRenderer(IPC.event.pluginChanged, { reason: "agentExtensions" }),
     /** `pi.session.getActive`: the selected session as the shell shows it. */
@@ -757,6 +803,12 @@ export function createPluginServices({
      * and revealing a view stay inside the project the plugin was activated in.
      */
     isPluginActiveInProject: (pluginId) => isPluginActiveInProject(pluginId),
+    /**
+     * #2377: the project-aware form backs the desktop.control session-read
+     * gate, so a scoped plugin's `session/list` (including the reads a
+     * background service makes) never crosses its activation scope.
+     */
+    pluginActiveInProject,
     /**
      * `pi.ui.revealView`: the runtime validated the view and the session; the
      * shell owns work-panel tabs, so it is the surface that opens the tab.
@@ -775,6 +827,8 @@ export function createPluginServices({
      * composer.
      */
     suggestComposer: (offer) => composerSuggestion.offer(offer),
+    getComposerSuggestionTarget: (pluginId, input) => composerSuggestion.getTarget(pluginId, input),
+    suggestComposerCandidates: (pluginId, input) => composerSuggestion.offerCandidates(pluginId, input),
     /** `pi.composer.clearSuggestion`: drop this plugin's own line. */
     clearComposerSuggestion: (pluginId, sessionId) =>
       composerSuggestion.clearSuggestion(pluginId, sessionId),
@@ -814,6 +868,9 @@ export function createPluginServices({
     sessionProjects,
     emitBrowserState,
     announceTurnEnded,
+    observePersistedUserMessage,
+    readPluginModelContext: modelContext.read,
+    announceObservedSession,
     pluginPanels,
     pluginViews,
     browserHost,

@@ -135,8 +135,9 @@ recency only breaks ties between equally relevant matches.
   resets this handshake.
 - Frameless minimize, maximize/restore, and close controls remain outside the
   drag region. Maximize state is queried on mount and updated from native
-  window events, so the restore affordance never depends only on optimistic
-  renderer state.
+  maximize/unmaximize events. Fullscreen enter/exit also rechecks native
+  maximize state after the transition settles, so macOS caption dragging and
+  the restore affordance reflect the actual window state.
 - Windows/Linux explicit minimize actions use native minimize and keep the
   taskbar entry. On Windows, clicking the focused window's taskbar button also
   uses native minimize and keeps the taskbar entry; clicking it again
@@ -216,9 +217,12 @@ recency only breaks ties between equally relevant matches.
 ### 1.6 Sidebar project and conversation organization
 
 The sidebar is a path-keyed presentation of host-owned projects and sessions.
-The `Sessions` heading appears first and contains path-less conversations plus
-their create and sort controls. Its bounded list keeps standalone work visible
-without consuming the full sidebar. The following `Projects` section heading
+The `Recent` heading appears first and lists the newest conversations across
+the temporary scope and retained projects, plus the temporary-chat create and
+sort controls. Project conversations show both in Recent and in their project
+group, so parallel project work stays visible while groups are folded;
+path-less conversations show only in Recent. Its bounded list opens with seven
+rows and loads ten more per Load more click. The following `Projects` section heading
 exposes the project picker above retained project groups. Several project groups
 may be retained while exactly one workspace supplies the visible shell context.
 
@@ -359,8 +363,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   falls back to latest, and read failures use the existing error notification.
 - New Task is not a cold switch. Creating a session reveals the empty home on
   the first frame (the previous conversation and retained panes clear before
-  `session.create`). Reusing the group's latest empty session commits that empty
-  transcript on the same frame rather than waiting for `session.get`. The
+  `session.create`). Reusing the target group's latest empty session commits
+  that empty transcript on the same frame rather than waiting for
+  `session.get`. The
   durable row is inserted from the `session.create` summary; send and paste wait
   for that in-flight create instead of opening a second slot (ADR 0154).
   Concurrent first-input materializations share the same project-scoped
@@ -381,6 +386,8 @@ may be retained while exactly one workspace supplies the visible shell context.
   the visible workspace. Project-scoped new-session actions pass their target
   path to that same store transaction; sidebar and project-index handlers do
   not perform a second project navigation before session creation or selection.
+  Global New Task actions pass no path, so they clear the visible workspace and
+  resolve only the temporary group.
 - Run state, permission grants, and streamed events are keyed by session id.
   A project/tab switch does not abort a background turn or copy its events into
   the visible transcript. Background message and tool events update that
@@ -555,9 +562,12 @@ may be retained while exactly one workspace supplies the visible shell context.
   body offers Browser or an in-scope plugin view.
 - An artifact trigger atomically creates or reuses its resource, activates it,
   and opens the panel. Background artifacts never open the visible panel.
-- File resources use normalized paths as identity. Browser and plugin views
-  are singletons; repeated triggers preserve resource order and activate the
-  existing resource.
+- File resources use normalized paths as identity. Plugin views are
+  singletons; repeated triggers preserve resource order and activate the
+  existing resource. Browser is the exception: each page has its own tab, so
+  a clicked link opens another Browser tab and selecting Browser in the
+  launcher while one is open adds a blank Browser tab instead of activating
+  the existing page.
 - Once open, the panel header is a `tablist` that scrolls horizontally while a
   tight `+` trigger stays fixed beside it. Each tab owns its active state and
   close button; the active tab is scrolled into view. Clicking `+` creates a
@@ -653,6 +663,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   Info continues to show the available version and the Releases action.
 - `downloaded` remains actionable until Restart to update or normal app quit;
   later scheduled/manual checks do not replace it with `checking`.
+- On Windows, Restart to update reuses the registered NSIS install scope when
+  exactly one exists. An all-users update requests elevation when needed.
+  The installer asks for the scope when it finds no registered install or finds both.
 - A compact update notice appears in the main pane's top-right safe area for
   the one-time manual reminder, in-app `downloading`, or `downloaded`. It stays
   clear of the bottom composer at every supported window size and draft height.
@@ -1360,6 +1373,13 @@ Running turns and pending approvals continue to gate the controls.
 - Editable controls (`input`, `textarea`, `select`, and
   `[contenteditable]`) preserve normal text editing and `Cmd/Ctrl+A/C/V`
   behavior.
+- Editable text controls in the main window expose a native context menu:
+  Undo, Redo, Cut, Copy, Paste, and Select All. Availability follows Electron's
+  edit flags; native role labels use Electron/OS localization. The menu targets
+  the originating window and frame and retains the current text selection.
+- Menu Paste uses the existing paste event path, including composer text and
+  image/file attachments. Read-only controls and renderer-owned context menus
+  retain their existing behavior.
 - Transcript prose, rendered Markdown, code blocks, and tool input/output
   remain text-selectable for inspection and copying.
 - Interactive controls nested inside selectable content remain
@@ -1438,8 +1458,11 @@ Sidebar drag/drop is implemented:
 - The dragged row paints at opacity 0.5 and the eligible project group
   highlights with an accent outline. A session's own project group is not a
   drop target, so a same-project drag never issues a request.
-- Project reassignment is available through the drag/drop interaction only;
-  the session context menu does not contain a project list.
+- Project reassignment is also available from the conversation topbar's
+  project crumb, which can move an idle conversation into another open
+  project or out of any project (`session.moveProject` with `projectPath:
+  null`); the sidebar session context menu does not contain a project list.
+  When the moved conversation is active, the visible workspace follows it.
 - Dropping a folder on the projects list adds it as a project, or switches to
   it when it is already known; duplicate paths resolve to one project row. A
   drop that carries no folder reports why nothing happened.
@@ -1859,11 +1882,12 @@ Project drag/drop follows these patterns:
 
 ### 9.2 Sidebar scrolling
 
-- The standalone Sessions body is capped at five compact rows and scrolls
-  internally when additional sessions exist.
-- Retained project groups occupy the remaining sidebar height and scroll in a
-  separate region. Both regions stay independent from the footer and primary
-  navigation.
+- When Projects is shown, Recent sessions is capped at ten compact rows.
+  Recent and Pinned sessions scroll internally as the sidebar gets shorter,
+  keeping room for a project header and conversation row.
+- Retained project groups scroll in their own region. If the minimum heights
+  overflow the window, the sidebar body scrolls to expose Projects and the
+  Settings footer. Loaded conversations stay loaded when space returns.
 - No horizontal scroll in sidebar
 - Scroll indicators use the platform's subtle overlay treatment without
   changing either region's width. The 6px thumb is transparent at rest and
@@ -1992,3 +2016,46 @@ This does not prevent state changes — it makes them instant.
     the expanded sidebar yields at the threshold and returns when the panel
     closes, and divider cancellation restores the prior panel width
     (ADR 0033 / ADR 0151 / ADR 0238)
+
+
+## Native main-window gestures
+
+- Titlebar double-click and left/right edge tiling remain OS-owned. macOS
+  honors the user's titlebar double-click preference; edge tiling requires
+  macOS 15 or later and enabled system tiling. Linux behavior depends on its
+  compositor/window manager. The renderer must not duplicate native double-click.
+- On transparent Windows 10 main windows, Main observes `SC_MAXIMIZE` and
+  defers the public maximize API until Electron has consumed the otherwise
+  blocked native command. Caption double-click, keyboard and top-edge maximize
+  share this repair. Restore/minimize, opaque Windows 11 windows and fullscreen
+  are untouched; pending work is cancelled when the window closes.
+- The native main-window minimum width is capped to half the current display's
+  work area, with 16 DIP reserved for macOS tile margins. The nominal 800 DIP
+  chat-width contract is unchanged; this exception only relaxes the native
+  window constraint so small/scaled displays can accept side-by-side tiles.
+  The minimum height remains 560 DIP, capped to the work-area height.
+- On Windows a maximized main window rejects manual edge resizing and retains
+  native drag-to-restore. AppKit owns edge resizing and Zoom/Restore on macOS.
+  Both use the same cancellable resize event, so cancelling it would also block
+  restoration of the window's original frame. The macOS shell temporarily disables
+  CSS caption dragging and handles caption double-click as Restore; normal
+  windows retain native double-click behavior. The inherited `--window-drag-region`
+  marker distinguishes caption text from explicit no-drag controls. Do not use
+  `setMovable(false)`: it prevents native double-click restore in parts of the
+  inset titlebar. Native zoom/green controls, fullscreen, and programmatic bounds
+  remain enabled. Linux retains compositor-owned maximized geometry and
+  drag-to-restore.
+- A settled cross-display move refreshes the native minimum without enlarging a
+  window already placed in a narrower tile. Normal bounds persistence and the
+  internal work-panel/chat-width IPC contracts are unchanged.
+
+## Background task details
+
+The task header keeps the command on a single line with an ellipsis when it
+overflows. Expanding the row shows the full, selectable command above the
+output, preserving whitespace and wrapping long lines within the dock. The
+command is visible as soon as the row expands, even when output is empty.
+
+## Background completion continuation
+
+Agent behavior → Execution offers a default-off “Continue after background jobs” switch. Enabling it permits the assistant to arrange follow-up using the current permission mode, without separate per-job approval. The task dock labels running intents “Continue when finished” and finished intents “Waiting to resume”. Pending rows survive expiry and reload and expose “Cancel continuation”; they cannot be dismissed while still pending. Cancellation withdraws only continuation, leaving the process and log accessible. Other states distinguish started, received, cancelled and failed. Completion never switches the active conversation or steals focus.

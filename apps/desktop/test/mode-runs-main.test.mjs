@@ -62,6 +62,8 @@ function fixture({ open = null, claim, settle = { run: null, continue: false }, 
       if (method === "modes.start" || method === "modes.claimTurn") {
         return claim ?? { claimed: true, run: run({ activeTurnId: params.turnId }), enteredStage: method === "modes.start", definition: staged };
       }
+      if (method === "modes.startGoal") return { claimed: true, run: run({ modeId: "goal", activeTurnId: params.turnId }), enteredStage: true, definition: params.modeSnapshot };
+      if (method === "modes.resetGoalInput") return { ok: true };
       if (method === "modes.settleTurn") return settle;
       if (method === "modes.control" || method === "modes.resolve" || method === "modes.update") return settle;
       if (method === "modes.settleReturn") {
@@ -75,6 +77,7 @@ function fixture({ open = null, claim, settle = { run: null, continue: false }, 
     async definition(id) {
       if (catalogModes && !catalogModes.includes(id)) return undefined;
       if (id === "feature") return { ...staged, returnTo: featureReturnTo };
+      if (id === "goal") return { ...staged, id: "goal", source: "builtin" };
       if (id === "review") return { ...staged, id: "review", stages: [] };
       return undefined;
     },
@@ -106,12 +109,19 @@ test("simple custom modes resolve their definition for prompt dispatch", async (
   await assert.rejects(coordinator.definitionForPrompt("missing"), { errorCode: "MODE_NOT_FOUND" });
 });
 
-test("Agent and Plan dispatch use builtin runtime instructions without a snapshot", async () => {
-  const coordinator = createModeRunCoordinator({
-    catalog: { definition: async () => assert.fail("plain modes need no catalog snapshot") },
+test("Agent and Plan dispatch use builtin runtime instructions unless the user overrides them", async () => {
+  const shipped = createModeRunCoordinator({
+    catalog: { definition: async (id) => ({ ...staged, id, stages: [], source: "builtin" }) },
   });
-  assert.equal(await coordinator.definitionForPrompt("agent"), undefined);
-  assert.equal(await coordinator.definitionForPrompt("plan"), undefined);
+  assert.equal(await shipped.definitionForPrompt("agent"), undefined);
+  assert.equal(await shipped.definitionForPrompt("plan"), undefined);
+
+  const override = { ...staged, id: "plan", stages: [], permission: "contract", prompt: "Plan my way.", source: "user" };
+  const customized = createModeRunCoordinator({
+    catalog: { definition: async (id) => (id === "plan" ? override : undefined) },
+  });
+  assert.equal(await customized.definitionForPrompt("plan"), override);
+  assert.equal(await customized.definitionForPrompt("agent"), undefined);
 });
 
 test("a user turn in a simple mode claims nothing", async () => {
@@ -212,7 +222,7 @@ test("settling a claimed turn reports tokens and starts the Host continuation", 
 test("an unclaimed turn settles nothing", async () => {
   const { coordinator, calls } = fixture({ settle: { run: null, continue: true } });
   await coordinator.settleTurn("s1", "unknown", { reason: "completed" });
-  assert.equal(calls.length, 0);
+  assert.equal(calls.some(call => call.method === "modes.settleTurn"), false);
 });
 
 test("stop aborts the claimed turn; approval continues with the approval origin", async () => {
@@ -284,7 +294,8 @@ test("the catalog reads, validates, writes and deletes user modes in its own dir
     assert.equal((await catalog.validate("review", source)).ok, true);
     const invalid = await catalog.validate("review", "---\nname: review\ntools: [Read]\n---\n");
     assert.equal(invalid.ok, false);
-    await assert.rejects(catalog.write("plan", source), { errorCode: "MODE_ID_RESERVED" });
+    // A builtin's folder only accepts that builtin, in its own shape.
+    await assert.rejects(catalog.write("plan", source), { errorCode: "MODE_DEFINITION_INVALID" });
     await assert.rejects(catalog.write("review", "---\nname: review\npermission: auto\n---\n"), { errorCode: "MODE_DEFINITION_INVALID" });
 
     const written = await catalog.write("review", source);
@@ -296,12 +307,33 @@ test("the catalog reads, validates, writes and deletes user modes in its own dir
     assert.equal(await catalog.snapshotFor("plan"), undefined);
     await assert.rejects(catalog.snapshotFor("missing"), { errorCode: "MODE_NOT_FOUND" });
 
-    // A user document that claims a builtin id is reported, never loaded.
+    // Editing a builtin writes its override; deleting it restores the shipped one.
+    const shippedGoal = (await catalog.read("goal")).source;
+    const goal = shippedGoal.replace("maxTurns: 20", "maxTurns: 50");
+    assert.equal((await catalog.validate("goal", goal)).ok, true);
+    const customized = await catalog.write("goal", goal);
+    assert.equal(await readFile(join(dir, "goal", "mode.md"), "utf8"), goal);
+    assert.ok(customized.modes.some((mode) => mode.id === "goal" && mode.source === "builtin" && mode.customized));
+    assert.deepEqual(await catalog.read("goal"), { id: "goal", source: goal, filePath: join(dir, "goal", "mode.md"), builtin: true });
+    assert.equal((await catalog.snapshotFor("goal")).budget.maxTurns, 50);
+    await catalog.remove("goal");
+    assert.deepEqual(await catalog.read("goal"), { id: "goal", source: shippedGoal, builtin: true });
+    assert.equal((await catalog.definition("goal")).source, "builtin");
+    await assert.rejects(catalog.remove("goal"), { errorCode: "MODE_NOT_FOUND" });
+
+    // A broken override is reported and the shipped builtin keeps running.
     await mkdir(join(dir, "goal"), { recursive: true });
     await writeFile(join(dir, "goal", "mode.md"), "---\nname: goal\n---\nmine\n");
     const refreshed = await catalog.refresh();
-    assert.ok(refreshed.modes.some((mode) => mode.id === "goal" && mode.reserved));
+    assert.ok(refreshed.modes.some((mode) => mode.id === "goal" && mode.customized && mode.available));
+    assert.ok(refreshed.diagnostics.some((item) => item.modeId === "goal" && item.errors.length > 0));
     assert.equal((await catalog.definition("goal")).source, "builtin");
+
+    // Outside its own folder a builtin id is still reserved.
+    await mkdir(join(dir, "shadow"), { recursive: true });
+    await writeFile(join(dir, "shadow", "mode.md"), "---\nname: plan\n---\nmine\n");
+    assert.ok((await catalog.refresh()).modes.some((mode) => mode.id === "plan" && mode.reserved));
+    assert.equal(await catalog.snapshotFor("plan"), undefined);
 
     const removed = await catalog.remove("review");
     assert.ok(!removed.modes.some((mode) => mode.id === "review"));
@@ -372,7 +404,8 @@ test("a user mode whose name differs from its directory is read, saved and delet
 
     const removed = await catalog.remove("review");
     assert.ok(!removed.modes.some((mode) => mode.id === "review"));
-    assert.deepEqual(await readdir(dir), []);
+    assert.deepEqual(await readdir(join(dir, "my-review")), ["templates"]);
+    assert.equal(await readFile(join(dir, "my-review", "templates", "notes.md"), "utf8"), "notes\n");
     await assert.rejects(catalog.remove("review"), { errorCode: "MODE_NOT_FOUND" });
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -420,5 +453,37 @@ test("the catalog channel rescans the directory and announces the change (#2203)
     assert.equal(changes.at(-1), rescanned);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a Host Goal continuation claims its snapshot after the input mode returns to Agent", async () => {
+  const goal = run({ modeId: "goal" });
+  const f = fixture({ open: goal, claim: { claimed: true, run: goal, enteredStage: false, definition: { ...staged, id: "goal" } } });
+  const prepared = await f.coordinator.prepareTurn({ sessionId: "s1", turnId: "t2", sessionMode: "agent", content: "continue", origin: "host" });
+  assert.equal(prepared.definition.id, "goal");
+  assert.equal(prepared.modeTurn.runId, "run1");
+  assert.equal(f.calls.at(-1).method, "modes.claimTurn");
+});
+
+test("an explicit second Goal starts a new run instead of claiming the previous one", async () => {
+  const f = fixture({ open: run({ modeId: "goal" }) });
+  await f.coordinator.prepareTurn({ sessionId: "s1", turnId: "new", sessionMode: "agent", content: "second goal", origin: "user", startGoal: true });
+  assert.ok(f.calls.some(call => call.method === "modes.control" && call.params.action === "stop"));
+  assert.ok(f.calls.some(call => call.method === "modes.startGoal" && call.params.input === "second goal"));
+  assert.equal(f.calls.some(call => call.method === "modes.claimTurn"), false);
+});
+
+test("ordinary queued input cannot acquire Goal identity from a later input selection", async () => {
+  const f = fixture({ open: run({ modeId: "goal" }) });
+  assert.equal(await f.coordinator.prepareTurn({ sessionId: "s1", turnId: "plain", sessionMode: "goal", content: "ordinary", origin: "user", startGoal: false }), undefined);
+  assert.equal(f.calls.length, 0);
+});
+
+test("Goal startup validates user intent without granting runtime origin", async () => {
+  const { goalStartRequested } = await import("../electron/main/runtime/goal-start.ts");
+  assert.equal(goalStartRequested({ content: "normal" }), false);
+  assert.equal(goalStartRequested({ content: "objective", startGoal: true }), true);
+  for (const input of [{ content: "x", startGoal: "true" }, { content: " ", startGoal: true }, { content: "中".repeat(40_000), startGoal: true }, { content: "x", startGoal: true, sessionMessageId: "delegated" }]) {
+    assert.throws(() => goalStartRequested(input), { errorCode: "INVALID_ARGUMENT" });
   }
 });

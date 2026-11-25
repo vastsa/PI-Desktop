@@ -38,7 +38,7 @@ impl ToolPolicy {
 /// Everything `tools.execute` needs to authorize one call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Authorization {
-    /// The persisted session mode (audit only).
+    /// Host-resolved execution mode; the input preference may already be Agent.
     pub mode: String,
     pub policy: ToolPolicy,
     /// A Host-started continuation turn holds the session's run claim.
@@ -60,10 +60,10 @@ impl Authorization {
         }
     }
 
-    /// Host-started turns run at most `accept-edits`: nobody is watching a
-    /// continuation the user did not send.
+    /// A builtin Goal keeps the user's session permission across its turns.
+    /// Other unattended staged modes retain their existing permission ceiling.
     pub fn cap_permission_mode(&self, effective: String) -> String {
-        if self.host_turn && effective == "auto" {
+        if self.host_turn && self.mode != "goal" && effective == "auto" {
             "accept-edits".into()
         } else {
             effective
@@ -111,6 +111,19 @@ fn resolve(
     })
 }
 
+/// A claimed builtin Goal remains the execution identity after input reset.
+/// An explicit Plan selection still applies its contract hard deny.
+fn execution_mode(conn: &Connection, session_id: &str, mode: String) -> Result<String> {
+    if mode == "agent" {
+        if let Some(run) = repository::open_run(conn, session_id)? {
+            if run.mode_id == "goal" && run.active_turn_id.is_some() {
+                return Ok(run.mode_id);
+            }
+        }
+    }
+    Ok(mode)
+}
+
 /// Tool policy of a session, or `None` for an unknown session.
 pub fn tool_policy(db: &Database, session_id: &str) -> Result<Option<ToolPolicy>> {
     tool_policy_conn(db.conn(), session_id)
@@ -121,7 +134,11 @@ pub fn tool_policy_conn(conn: &Connection, session_id: &str) -> Result<Option<To
     let Some((mode, hash)) = session_row(conn, session_id)? else {
         return Ok(None);
     };
-    let mode = crate::sessions::normalize_mode(Some(&mode));
+    let mode = execution_mode(
+        conn,
+        session_id,
+        crate::sessions::normalize_mode(Some(&mode)),
+    )?;
     resolve(conn, session_id, &mode, hash.as_deref()).map(Some)
 }
 
@@ -131,7 +148,11 @@ pub fn authorization(db: &Database, session_id: &str) -> Result<Option<Authoriza
     let Some((mode, hash)) = session_row(conn, session_id)? else {
         return Ok(None);
     };
-    let mode = crate::sessions::normalize_mode(Some(&mode));
+    let mode = execution_mode(
+        conn,
+        session_id,
+        crate::sessions::normalize_mode(Some(&mode)),
+    )?;
     let policy = resolve(conn, session_id, &mode, hash.as_deref())?;
     let host_turn = repository::host_turn_active(conn, session_id)?;
     Ok(Some(Authorization {

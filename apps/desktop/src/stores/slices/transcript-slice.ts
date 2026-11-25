@@ -489,8 +489,25 @@ export function createTranscriptSlice({
       if (target?.source === "pi-native" || isRemoteSession(target)) {
         await api.abort(sessionId);
         runtime.submittedComposerDrafts.delete(sessionId);
+        set((current) => ({
+          runningSessions: { ...current.runningSessions, [sessionId]: false },
+          ...(current.activeSessionId === sessionId ? { isRunning: false } : {}),
+        }));
         // Bypass in-flight pre-abort detail reads; request settled source state.
         const detail = await api.getSession(sessionId);
+        // A turn that started while this settled-state read was in flight owns
+        // the transcript now: the composer unlocked at the isRunning clear
+        // above, so the user can already be streaming a new prompt. Its
+        // optimistic rows are newer than any snapshot this read can return,
+        // and forcing isRunning false would mute the new turn's spinner —
+        // leave the newer state alone; the live flow reconciles from here.
+        const stateAfterRead = get();
+        const turnOwnsTranscript =
+          stateAfterRead.runningSessions[sessionId] === true ||
+          runtime.liveSessionTranscripts?.has(sessionId) === true ||
+          (stateAfterRead.activeSessionId === sessionId &&
+            stateAfterRead.isRunning === true);
+        if (turnOwnsTranscript) return;
         const messages = detail.session?.messages;
         if (messages) runtime.cacheSessionTranscript(sessionId, messages);
         set((current) => ({
@@ -578,6 +595,13 @@ export function createTranscriptSlice({
         const fullMessages = await runtime.loadFullSessionMessages(sessionId);
         if (!fullMessages || get().activeSessionId !== sessionId) {
           submittedDraft?.resolveAbort?.(false);
+          if (runtime.submittedComposerDrafts.get(sessionId) === submittedDraft) {
+            runtime.submittedComposerDrafts.delete(sessionId);
+          }
+          set((current) => ({
+            runningSessions: { ...current.runningSessions, [sessionId]: false },
+            isRunning: current.activeSessionId === sessionId ? false : current.isRunning,
+          }));
           return;
         }
         const merged = mergeLiveSessionMessages(fullMessages, get().messages);
@@ -680,7 +704,7 @@ export function createTranscriptSlice({
           current.activeSessionId === sessionId
             ? stoppedRows(current.messages)
             : current.messages,
-        isRunning: false,
+        isRunning: current.activeSessionId === sessionId ? false : current.isRunning,
         runningSessions: { ...current.runningSessions, [sessionId]: false },
       }));
       void flushPendingSessionConfiguration(sessionId);

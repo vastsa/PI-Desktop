@@ -116,7 +116,13 @@ const ESTIMATED_CHARS_PER_IMAGE = 4800;
 // Han, Japanese kana, and Korean Hangul tokenize at ~1 token per character,
 // as do CJK punctuation and full-width forms. The chars/4 baseline charges
 // all of these 0.25.
-function countCjkChars(text: string): number {
+/**
+ * CJK characters (Han, kana, Hangul, full-width forms) tokenize at roughly one
+ * token each. Exposed for estimators outside this module — e.g. the compaction
+ * summary prompt sizer, which sizes serialized prompt text with the chars/3.5
+ * baseline — that need the same CJK definition and correction coefficient.
+ */
+export function countCjkChars(text: string): number {
   let count = 0;
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
@@ -359,12 +365,23 @@ export function requestTranscript(
   model: Pick<Model<Api>, "compat">,
   context: TranscriptContext,
 ): TranscriptContext {
+  return resolveTranscript(context, supportsMidConversationSystemMessages(model));
+}
+
+/**
+ * Whether the adapter keeps later system messages in place. Without it pi-ai
+ * folds every system update into the leading system message, so a system
+ * section added mid-run rewrites the request prefix.
+ */
+export function supportsMidConversationSystemMessages(
+  model: Pick<Model<Api>, "compat">,
+): boolean {
   const compat = model.compat;
-  const midConversation =
+  return (
     compat !== undefined &&
     "supportsMidConvoSystemMessages" in compat &&
-    compat.supportsMidConvoSystemMessages === true;
-  return resolveTranscript(context, midConversation);
+    compat.supportsMidConvoSystemMessages === true
+  );
 }
 
 /**

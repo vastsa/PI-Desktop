@@ -725,6 +725,20 @@
   border-radius: var(--radius-sm);
 }
 
+/* A section heading that lives inside the scrolling group list, used when a
+   second group set follows the first (host project groups). It carries the same
+   label styling and the same 8px section gap as `.sidebar-list-toolbar`, and
+   its 2px side padding lands on the toolbar's 4px label inset once the list's
+   own `px-0.5` is added. */
+.sidebar-list-subheader {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 24px;
+  padding: 8px 2px 0;
+  border-radius: var(--radius-sm);
+}
+
 .sidebar-list-label {
   color: var(--ds-text-muted);
   font-size: var(--text-sm); /* section labels less micro */

@@ -135,8 +135,14 @@ export function withoutDerivedOutputLimit(
  * - DashScope / Bailian (Qwen): "Range of max_tokens should be [1, 8192]"
  *   and "<400> InternalError.Algo.InvalidParameter: Range of max_tokens should be [1, 65536]"
  * - Groq: "`max_tokens` must be less than or equal to `16384`" (backticks optional)
+ * - Perplexity, and the same Anthropic sentence: "`max_tokens` must be at most 128000"
+ *   (backticks optional). "Prompt tokens plus max_tokens must be at most N" names a
+ *   context sum, so a `plus` prefix is not this ceiling.
+ * - MiniMax: "does not support max tokens > 196608 (2013)". The words are
+ *   space-separated. The parenthesized business code is not the ceiling.
  *
- * The same shapes apply to `max_completion_tokens` and `max_output_tokens`.
+ * The same shapes apply to `max_completion_tokens` and `max_output_tokens`,
+ * except the MiniMax sentence, which says `max tokens`.
  * A bracketed range contributes its upper bound. Context-length wording such
  * as "maximum context length is 131072 tokens" is not an output ceiling.
  */
@@ -146,6 +152,10 @@ const OUTPUT_TOKEN_CEILING_PATTERNS = [
   /max_tokens[\s\S]{0,180}?expected a value <=\s*(\d[\d,]*)/i,
   /range of `?max_(?:completion_|output_)?tokens`?(?: is| should be) \[`?\d+`?,\s*`?(\d[\d,]*)`?\]/i,
   /`?max_(?:completion_|output_)?tokens`? must be less than or equal to `?(\d[\d,]*)`?/i,
+  // The lookbehind also covers an optional backtick, so "plus `max_tokens`"
+  // cannot match by starting after that backtick.
+  /(?<!plus\s+`?)`?max_(?:completion_|output_)?tokens`? must be at most `?(\d[\d,]*)`?/i,
+  /does not support max tokens >\s*(\d[\d,]*)/i,
 ];
 
 /** The completion cap named in `message`, when it is one of the shapes above. */
@@ -497,7 +507,7 @@ function setupErrorMessage(
 
 type StreamFactory = (
   options: SimpleStreamOptions,
-) => AssistantMessageEventStream;
+) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
 /**
  * pi-ai returns setup failures as an error event rather than throwing. This
@@ -532,10 +542,11 @@ export function createProviderRetryStream(
         : outputCeiling !== undefined
           ? withClampedOutputLimit(options, outputCeiling)
           : withoutDerivedOutputLimit(options);
-      const inner = createStream({
+      const opened = createStream({
         ...requestOptions,
         maxRetries: 0,
       });
+      const inner = opened instanceof Promise ? await opened : opened;
       let sawStart = false;
       let retry:
         | { error: ClassifiedAgentError; attempt: number }

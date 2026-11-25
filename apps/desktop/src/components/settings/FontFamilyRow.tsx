@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import type { AppSettings } from "@pi-desktop/shared";
 import {
@@ -325,8 +325,7 @@ export function FontFamilyRow({
             <IconChevronDown size={14} />
           </button>
           {open &&
-            typeof document !== "undefined" &&
-            createPortal(
+            portalToBody(
               <div
                 ref={menuRef}
                 className={`settings-font-menu${
@@ -427,7 +426,6 @@ export function FontFamilyRow({
                   </div>
                 )}
               </div>,
-              document.body,
             )}
         </div>
       </div>

@@ -23,6 +23,7 @@ const {
   subagentModelPinParts,
   subagentModelSelectValue,
 } = await import("../src/components/settings/subagent-models.ts");
+const { imageGenerationBindings } = await import("@pi-desktop/shared");
 
 const binding = (id, availableForSubagents = true) => ({
   id,
@@ -334,7 +335,7 @@ test("the editor model field is a configured-only searchable picker with an empt
   // No hand-typed model id: the field never renders a free-text input.
   assert.doesNotMatch(modelField, /<Input/);
   assert.doesNotMatch(modelField, /modelPickCustom/);
-  assert.match(source, /subagentModelChoices\(providers\)/);
+  assert.match(source, /subagentModelChoices\(providers, imageGenerationBindings/);
   assert.match(source, /resetSubagentTemplate\(draft\)/);
 });
 
@@ -368,6 +369,87 @@ test("the shared option-menu styles bound the list height and let it scroll", as
   const menu = styles.match(/\.provider-service-menu \{([^}]*)\}/);
   assert.ok(menu, ".provider-service-menu rule is missing");
   assert.match(menu[1], /max-height:/);
+});
+
+test("model choices recompute when image metadata arrives while the sheet stays open", async () => {
+  // Regression for the maintainer re-review of #2304: the editor's
+  // modelChoices memo read settings.imageGenerationModels and providerModels
+  // through useAppStore.getState() while depending only on [providers]. The
+  // catalog slice swaps providerModels without replacing the providers array,
+  // so image-only metadata that arrived after the sheet opened never
+  // re-filtered the list until it was closed and reopened.
+  const editorSource = await readFile(
+    new URL("../src/components/settings/SubagentEditorSheet.tsx", import.meta.url),
+    "utf8",
+  );
+  const fallbackSource = await readFile(
+    new URL("../src/components/settings/SubagentFallbackModels.tsx", import.meta.url),
+    "utf8",
+  );
+  const start = editorSource.indexOf("const modelChoices = useMemo(");
+  const end = editorSource.indexOf("const modelGroups = useMemo(");
+  assert.ok(start !== -1 && end > start, "modelChoices memo block not found");
+  const memoBlock = editorSource.slice(start, end);
+  // The memo reads every input reactively: no getState() snapshot inside the
+  // block, and the dependency array covers providers, the settings-derived
+  // image bindings, and the discovered catalog.
+  assert.doesNotMatch(memoBlock, /useAppStore\.getState\(\)/);
+  assert.match(
+    memoBlock,
+    /\[providers, imageGenerationBindingsFromSettings, providerModels\]/,
+  );
+  // The settings-derived bindings memo subscribes to the image settings slices.
+  assert.match(
+    editorSource,
+    /\[settings\?\.imageGenerationModels, settings\?\.imageGeneration\]/,
+  );
+  // The fallback rows read the same slices through subscriptions, not snapshots.
+  assert.doesNotMatch(fallbackSource, /useAppStore\.getState\(\)/);
+  assert.match(fallbackSource, /useAppStore\(\(state\) => state\.providerModels\)/);
+
+  // Replay the maintainer's harness: with the providers reference unchanged,
+  // metadata arriving late (unknown -> output:["image"]) must change the memo
+  // result when the reactive inputs change. The memo callback is extracted
+  // verbatim from the component source and re-run against each store state.
+  const arrow = memoBlock.match(/useMemo\(\s*(\(\) => subagentModelChoices[\s\S]*?),\s*\[/);
+  assert.ok(arrow, "memo callback not extractable");
+  const runMemo = (imageGenerationBindingsFromSettings, providerModels) =>
+    new Function(
+      "subagentModelChoices",
+      "providers",
+      "imageGenerationBindingsFromSettings",
+      "providerModels",
+      `return (${arrow[1]})();`,
+    )(subagentModelChoices, providers, imageGenerationBindingsFromSettings, providerModels);
+
+  const lateProvider = provider({
+    id: "p2",
+    name: "My Gateway",
+    vendorKey: "custom",
+    models: [binding("custom-art")],
+  });
+  const providers = [provider(), lateProvider];
+  const settings = {
+    imageGenerationModels: [{ providerId: "p2", modelId: "custom-art" }],
+    imageGeneration: null,
+  };
+  // Metadata unknown: the image-marked custom model stays chat-eligible.
+  const before = runMemo(imageGenerationBindings(settings.imageGenerationModels, null), {});
+  assert.deepEqual(before.map((choice) => choice.value), [
+    "anthropic/claude-haiku-4-5",
+    "anthropic/claude-sonnet-4-6",
+    "My Gateway/custom-art",
+  ]);
+  // Metadata arrives while the sheet stays open: the same providers reference
+  // plus the new providerModels slice must drop the pure image endpoint.
+  const after = runMemo(
+    imageGenerationBindings(settings.imageGenerationModels, null),
+    { p2: [{ modelId: "custom-art", modalities: { output: ["image"] } }] },
+  );
+  assert.deepEqual(after.map((choice) => choice.value), [
+    "anthropic/claude-haiku-4-5",
+    "anthropic/claude-sonnet-4-6",
+  ]);
 });
 
 test("the editor exposes the no-pass thinking option", async () => {

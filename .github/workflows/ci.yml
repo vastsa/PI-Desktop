@@ -53,6 +53,9 @@ jobs:
           ARCHITECTURE_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
         run: node scripts/check-architecture.mjs
 
+      - name: Unit-test the architecture checks
+        run: node --test scripts/architecture-growth.test.mjs
+
       - name: Unit-test the Pi patch checks
         run: node --test scripts/pi-patch-hash.test.mjs
 
@@ -145,7 +148,7 @@ jobs:
       - name: Install virtual display
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes openbox xauth xvfb
+          sudo apt-get install --no-install-recommends --yes openbox xauth x11-utils xvfb
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -168,10 +171,17 @@ jobs:
       - name: Build host-core
         run: cargo build -p host-core --locked
 
-      - name: Run staged mode Host/process E2E
+      - name: Run staged mode and Goal Host/process E2E
         env:
           PI_SCRATCH_DIR: ${{ runner.temp }}
-        run: node scripts/e2e-mode-definitions.mjs
+        run: |
+          pnpm --filter @pi-desktop/agent-runtime bundle
+          node scripts/e2e-mode-definitions.mjs
+          node scripts/e2e-goal-run-repairs.mjs
+          node scripts/e2e-goal-completion.mjs
+
+      - name: Run background completion Host/process E2E
+        run: pnpm test:e2e:background-continuation
 
       - name: Run plugin project enumeration Host/process E2E
         run: pnpm test:e2e:plugin-projects
@@ -182,8 +192,15 @@ jobs:
       - name: Run provider optional client certificate E2E
         run: xvfb-run --auto-servernum pnpm test:e2e:provider-client-certificate
 
+      - name: Run image model settings Electron tests
+        run: |
+          xvfb-run --auto-servernum node --test apps/desktop/test/image-generation-row-empty-state.test.mjs
+          xvfb-run --auto-servernum node scripts/e2e-image-generation-ui.mjs
+
       - name: Run browser capture/resize E2E
-        run: xvfb-run --auto-servernum sh -c 'openbox >/dev/null 2>&1 & exec node scripts/e2e-browser-capture-resize.mjs'
+        run: |
+          node --test scripts/e2e/with-openbox.test.mjs
+          xvfb-run --auto-servernum sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs
 
       - name: Run transcript rendering and disclosure E2E
         run: xvfb-run --auto-servernum sh -c 'node scripts/e2e-transcript-render.mjs && node scripts/e2e-transcript-disclosure-anchor.mjs'
@@ -195,6 +212,8 @@ jobs:
         env:
           DEBUG_E2E: "1"
         run: xvfb-run --auto-servernum pnpm test:e2e:trusted-extensions
+      - name: Run editable context menu interaction test
+        run: xvfb-run --auto-servernum sh -c 'openbox >/dev/null 2>&1 & exec node --test apps/desktop/test/editable-context-menu-user-path.test.mjs'
       - name: Run MCP market owner E2E
         run: xvfb-run --auto-servernum node --test apps/desktop/test/mcp-market-owner-user-path.test.mjs
       - name: Run File Manager theme E2E

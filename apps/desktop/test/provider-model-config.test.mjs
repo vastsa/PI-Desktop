@@ -26,7 +26,11 @@ const setupSource = await read("../src/components/settings/ProviderSetupDialog.t
 const hookSource = await read("../src/components/settings/useProviderModels.ts");
 const pageSource = await read("../src/components/settings/ModelConfigPage.tsx");
 const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
-const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
+// The picker and its per-model Advanced sheet form one surface.
+const pickerSource = [
+  await read("../src/components/settings/ModelSelectionPanes.tsx"),
+  await read("../src/components/settings/ModelAdvancedSettings.tsx"),
+].join("\n");
 const fieldsSource = await read("../src/components/settings/ProviderConnectionFields.tsx");
 const filterSource = await read("../src/components/settings/model-chosen-filter.ts");
 const vendorAccountsSource = await read("../src/components/settings/useVendorAccounts.ts");
@@ -255,7 +259,7 @@ test("model ids are matched case-insensitively across picking and hand entry", (
 
 test("provider edits retain legacy defaults for non-chat consumers", () => {
   assert.match(pageSource, /defaultModelId: firstModelId \?\? ""/);
-  assert.match(pageSource, /settings\.defaultProviderId === saved\.id && firstModelId/);
+  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>/);
   assert.doesNotMatch(pageSource, /setDefaultModel|displayedChatModelId/);
 });
 
@@ -367,8 +371,8 @@ test("adding a service only claims the app default while none resolves", () => {
   // default provider to be runnable (enabled, credentialed, a chat model
   // configured), so a keyless default row cannot block the new provider.
   // Provider readiness and default selection use the same exact chat choices.
-  assert.match(pageSource, /chatModelOptions\(\[currentProvider\], imageGenerationCandidates\)/);
-  assert.match(pageSource, /providerServesChatModels\(provider, imageGenerationCandidates\)/);
+  assert.match(pageSource, /chatModelOptions\(\[currentProvider\], imageGenerationCandidates, providerModels\)/);
+  assert.match(pageSource, /providerServesChatModels\(provider, imageGenerationCandidates, providerModels\)/);
 });
 
 test("a saved image selection never takes the app's image default", () => {
@@ -399,8 +403,7 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
   assert.equal(sameWireId("proxy/model", "model"), false);
   // Image candidates are excluded by the same complete-id membership rule the
   // picker row and the page's own selection check share.
-  assert.ok(pageSource.includes("isImageGenerationPickerCandidate(imageModels, provider.id, id)"));
-  assert.match(pageSource, /!models\.some\(\(model\) => sameWireId\(model\.id, settings\.defaultModelId/);
+  assert.ok(pageSource.includes("isImageGenerationPickerCandidate(candidates, binding.providerId, binding.modelId)"));
   assert.doesNotMatch(pageSource, /modelIdsMatch|isImageGenerationModel/);
   assert.doesNotMatch(setupSource, /modelIdsMatch/);
   assert.doesNotMatch(pickerSource, /modelIdsMatch/);
@@ -414,8 +417,10 @@ test("settings match complete case-normalized wire ids, not proxy suffixes", () 
   assert.match(setupSource, /entry\.toLowerCase\(\) !== id\.toLowerCase\(\)/);
 });
 
-test("new chat default skips an image-only first model", () => {
-  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!selectedImageIds\.some\(\(id\) => sameWireId\(id, model\.id\)\)/);
+test("new chat default skips only a pure image-generation endpoint", () => {
+  // A dual-capability image-marked model is a legitimate chat default (#2253);
+  // only a model no chat route can serve is skipped.
+  assert.match(pageSource, /const firstModelId = models\.find\(\(model\) =>\s*!isImageOnlyChatModel\(\s*imageGenerationCandidates,\s*saved\.id,\s*model\.id,/);
   assert.match(pageSource, /if \(!keepsCurrentDefault && firstModelId\)/);
 });
 

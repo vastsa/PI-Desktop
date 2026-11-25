@@ -48,7 +48,7 @@ export type SubagentRun = {
 };
 
 export type AssistantTurnPart =
-  | { kind: "message"; message: UiMessage }
+  | { kind: "message"; message: UiMessage; sourceMessageId?: string }
   | {
       kind: "activity";
       items: AssistantActivityItem[];
@@ -308,7 +308,13 @@ export function buildTranscriptEntries(
     }
   };
 
+  let previousRootTurnId: string | undefined;
   for (const message of visible) {
+    const rootTurnId = typeof message.turnId === "string" ? message.turnId.trim() : undefined;
+    if (rootTurnId) {
+      if (previousRootTurnId && rootTurnId !== previousRootTurnId) turn = undefined;
+      previousRootTurnId = rootTurnId;
+    }
     appendMessage(message);
     const marks = anchored.get(message.id);
     if (!marks) continue;
@@ -564,12 +570,7 @@ export function assistantTurnResponseOutputIsEstimated(
   );
 }
 
-export function assistantTurnContent(entry: AssistantTurnEntry): string {
-  return assistantTurnMessages(entry)
-    .map((message) => (message.content || "").trim())
-    .filter(Boolean)
-    .join("\n\n");
-}
+export { getAssistantTurnContent as assistantTurnContent } from "./transcript-summary";
 
 export function assistantTurnUsage(
   entry: AssistantTurnEntry,

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalizeContext, type AssistantMessage, type Message } from "@earendil-works/pi-ai";
 import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { buildProviderModel, createProviderModels, type RuntimeProviderConfig } from "./provider-binding.js";
-import { modelConfigFromPi } from "./model-capabilities.js";
+import { genericModelConfig, modelConfigFromPi, modelConfigWithBinding } from "./model-capabilities.js";
 import { classifyProviderError, isTransientProviderRetryCode } from "./provider-retry.js";
 
 function anthropic(id: "claude-haiku-5-5" | "claude-opus-5" = "claude-haiku-5-5"): RuntimeProviderConfig {
@@ -122,5 +122,68 @@ describe("Pi 1.5 adapters through Desktop provider binding", () => {
     });
     expect(error.retriable).toBe(true);
     expect(isTransientProviderRetryCode(error.code)).toBe(true);
+  });
+});
+
+describe("Anthropic unsigned thinking replay", () => {
+  const baseModelConfig = {
+    ...genericModelConfig("relay-model", "https://anthropic-relay.invalid"),
+    reasoning: true,
+  };
+  const replay: Message[] = [
+    { role: "user", content: "First question", timestamp: 1 },
+    {
+      role: "assistant",
+      api: "anthropic-messages",
+      provider: "custom",
+      model: "relay-model",
+      content: [
+        { type: "thinking", thinking: "prior reasoning", thinkingSignature: "" },
+        { type: "text", text: "Prior answer" },
+      ],
+      usage,
+      stopReason: "stop",
+      timestamp: 2,
+    },
+    { role: "user", content: "Second question", timestamp: 3 },
+  ];
+
+  function providerWithBinding(allowEmptyThinkingSignature?: boolean): RuntimeProviderConfig {
+    const modelConfig = modelConfigWithBinding(baseModelConfig, {
+      contextWindow: 128_000,
+      maxTokens: 8_192,
+      thinkingLevels: ["off", "high"],
+      ...(allowEmptyThinkingSignature !== undefined ? { allowEmptyThinkingSignature } : {}),
+    });
+    return {
+      id: "relay-row",
+      name: "Anthropic relay",
+      vendorKey: "custom",
+      modelId: "relay-model",
+      baseUrl: "https://anthropic-relay.invalid",
+      apiKey: "fixture",
+      apiStyle: "anthropic_messages",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "high"],
+      modelConfig,
+    };
+  }
+
+  it("replays unsigned thinking as a thinking block on the next request after opt-in", async () => {
+    const payload = await anthropicRequest(providerWithBinding(true), replay, "high");
+    const assistant = payload.messages.find((message) => message.role === "assistant");
+    expect(assistant?.content).toEqual([
+      { type: "thinking", thinking: "prior reasoning", signature: "" },
+      { type: "text", text: "Prior answer" },
+    ]);
+  });
+
+  it.each([undefined, false])("keeps adapter defaults unchanged without opt-in (%s)", async (value) => {
+    const payload = await anthropicRequest(providerWithBinding(value), replay, "high");
+    const assistant = payload.messages.find((message) => message.role === "assistant");
+    expect(assistant?.content).toEqual([
+      { type: "text", text: "prior reasoning" },
+      { type: "text", text: "Prior answer" },
+    ]);
   });
 });

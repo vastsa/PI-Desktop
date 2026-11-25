@@ -1,0 +1,23 @@
+diff --git a/main.js b/main.js
+index 1ec3817..1911c0c 100644
+--- a/main.js
++++ b/main.js
+@@ -826,6 +826,10 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
+     const timer = setTimeout(() => {
+       timedOut = true;
+       child.kill("SIGKILL");
++      // Inherited pipes can delay close; settle at the deadline instead.
++      finish(reject, fail("GIT_TIMEOUT", "git command timed out"));
++      child.stdout?.destroy?.();
++      child.stderr?.destroy?.();
+     }, timeoutMs);
+ 
+     child.stdout?.on("data", (chunk) => {
+@@ -3055,6 +3059,7 @@ function assertValidName(rawName) {
+   const name = rawName.trim();
+   if (!name || name === "." || name === "..") throw fail("INVALID_NAME", "invalid name");
+   if (/[\\/:*?"<>|\x00-\x1f]/.test(name)) throw fail("INVALID_NAME", "name contains an illegal character");
++  if (name.endsWith(".")) throw fail("INVALID_NAME", "name must not end with a dot");
+   if (WINDOWS_RESERVED.test(name)) throw fail("INVALID_NAME", "name is reserved by the system");
+   if (name.length > 200) throw fail("INVALID_NAME", "name is too long");
+   return name;

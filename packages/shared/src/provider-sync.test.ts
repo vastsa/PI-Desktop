@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isSyncableProvider, parseProviderImportPayload, parseProviderImportSummary, PROVIDER_SYNC_MAX_PROVIDERS } from "./provider-sync.js";
 import type { ProviderPublic } from "./types/providers.js";
 
-const model = { id: "model/a", contextWindow: 120000, maxTokens: 8000, thinkingLevels: ["off", "high"] as const, defaultThinkingLevel: "high", thinkingProtocol: "adaptive", nativeWebSearch: true };
+const model = { id: "model/a", contextWindow: 120000, maxTokens: 8000, thinkingLevels: ["off", "high"] as const, defaultThinkingLevel: "high", thinkingProtocol: "adaptive", nativeWebSearch: true, allowEmptyThinkingSignature: true };
 function payload() {
   return { version: 1, providers: [{ sourceId: "local-1", input: {
     name: "Custom", vendorKey: "custom", type: "openai_compatible", protocol: "openai_compatible",
@@ -17,6 +17,14 @@ describe("provider sync boundary", () => {
     const input = payload();
     Object.assign(input.providers[0]!.input.models[0]!, { supportsReasoningEffort });
     expect(parseProviderImportPayload(input)).toEqual(input);
+  });
+  it("preserves unsigned thinking opt-in and validates explicit opt-out", () => {
+    const input = payload();
+    expect(parseProviderImportPayload(input).providers[0]!.input.models![0]!.allowEmptyThinkingSignature).toBe(true);
+    input.providers[0]!.input.models![0]!.allowEmptyThinkingSignature = false;
+    expect(parseProviderImportPayload(input).providers[0]!.input.models![0]!.allowEmptyThinkingSignature).toBe(false);
+    input.providers[0]!.input.models![0]!.allowEmptyThinkingSignature = "yes" as never;
+    expect(() => parseProviderImportPayload(input)).toThrow("Invalid provider import payload");
   });
   it("preserves current model settings and meaningful zero values", () => {
     const input = payload();

@@ -166,3 +166,47 @@ test("review reads require a running host", async () => {
     message: "host unavailable",
   });
 });
+
+test("browse forwards only the shaped query and returns the host page unchanged", async () => {
+  assert.equal(IPC.invoke.marketBrowse, "pi-desktop/market/browse");
+  assert.equal(IPC_WHITELIST.has(IPC.invoke.marketBrowse), true);
+  const page = { plugins: [], total: 0, page: 1, pageSize: 24, pageCount: 0, source: "remote" };
+  const { invoke, calls } = setup({ "market.browse": page });
+  const answer = await invoke(IPC.invoke.marketBrowse, {
+    query: "todo",
+    category: "Tools",
+    sort: "popular",
+    seed: 42,
+    page: 3,
+    pageSize: 24,
+    extra: "dropped",
+  });
+  assert.equal(answer, page);
+  assert.deepEqual(calls, [
+    {
+      method: "market.browse",
+      params: { query: "todo", category: "Tools", sort: "popular", seed: 42, page: 3, pageSize: 24 },
+    },
+  ]);
+});
+
+test("browse drops malformed fields instead of passing them to the host", async () => {
+  const { invoke, calls } = setup({ "market.browse": {} });
+  await invoke(IPC.invoke.marketBrowse, { query: 7, sort: null, seed: -1, page: 1.5, pageSize: "24" });
+  await invoke(IPC.invoke.marketBrowse);
+  for (const call of calls) {
+    assert.deepEqual(call.params, {
+      query: "",
+      category: "",
+      sort: "",
+      seed: undefined,
+      page: undefined,
+      pageSize: undefined,
+    });
+  }
+});
+
+test("browse without a host rejects instead of answering an empty page", async () => {
+  const { invoke } = setup({}, { host: false });
+  await assert.rejects(() => invoke(IPC.invoke.marketBrowse, {}), /host unavailable/);
+});

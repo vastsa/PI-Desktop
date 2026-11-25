@@ -7,58 +7,41 @@
 
 ## Context
 
-ADR 0062 shipped subagents without a renderer surface. A user could create a
-personal delegate only by placing a Markdown document in an implementation-
-specific location, and the shipped catalog was not visible in Settings. The
-management surface must not write tracked project files or silently introduce a
-project-level source that differs from the runtime contract.
+ADR 0062 shipped subagents without a renderer surface: a personal delegate meant
+placing a Markdown document in an implementation-specific location. The surface must
+not write tracked project files or invent a project-level source that differs from
+the runtime contract.
 
 ## Decision
 
 ### 1. Global documents are the only user-managed subagent source
 
-User-owned definitions are Markdown files in:
-
-```text
-~/.agents/subagents/<id>.md
-```
-
-There is no project-level subagent directory. The application does not scan or
-write `.pi/agents` for capability management. `id == name` remains the model's
-`Task` handle, duplicate names are rejected, and the runtime's global user
-catalog is combined with the builtins without a project capability layer.
+User definitions are `~/.agents/subagents/<id>.md`; there is no project-level
+subagent directory and the application never scans or writes `.pi/agents`.
+`id == name` stays the model's `Task` handle, duplicate names are rejected.
 
 ### 2. Activation is app-local
 
 The document owns prompt metadata (`name`, `description`, `tools`, `model`,
-`thinkingLevel`, and `maxTurns`) but never owns `enabled`. The enabled state is
-stored in `<data>/agent-capabilities/subagents.json`. Scanning the global
-folder removes state for deleted documents, so a missing file never leaves a
-visible pending row or an orphaned override.
+`thinkingLevel`, `maxTurns`) but never `enabled`, which lives in
+`<data>/agent-capabilities/subagents.json`; scanning removes state for deleted
+documents.
 
 ### 3. The Settings page is global-only
 
-Settings > Agent > Subagents is one fixed-height global list. It has no project
-picker, project column, or add/import action in this surface. Each row shows the
-frontmatter summary and a local enable switch; toggling it writes only the
-app-local state file and takes effect on the next runtime catalog load.
-
-Skills and MCP have separate Settings destinations and are not tabs inside
-Extensions. Extensions itself contains only Installed and Marketplace.
+Settings > Agent > Subagents is one fixed-height global list with no project picker
+or import action; each row shows the frontmatter summary and an app-local enable
+switch. Skills and MCP keep separate destinations, and Extensions holds only
+Installed and Marketplace.
 
 ### 4. The runtime remains the source of truth
 
-Electron supplies the global user documents to `loadSubagentDefinitions` on the
-next prompt. The renderer does not reimplement catalog precedence or invent a
-project source. Builtins and malformed documents are handled by the runtime
-loader; the management list is the scanned global user-document list.
+Electron supplies the global documents to `loadSubagentDefinitions` on the next
+prompt; the renderer reimplements no precedence.
 
 ## Consequences
 
-- Personal delegates follow the user across projects without modifying a
-  repository.
-- Teams that need a repository-specific prompt must use the project's normal
-  instruction mechanism; `.pi/agents` is not a capability source.
-- The UI can show and persist local enablement without changing Markdown files.
-- There is no project-scoped subagent toggle, so project precedence applies to
-  Skills and MCP only.
+- Personal delegates follow the user across projects, while teams needing a
+  repository-specific prompt use the project instruction mechanism.
+- Enablement persists outside the Markdown, and project precedence applies to Skills
+  and MCP only.

@@ -2,6 +2,8 @@ import {
   AgentHost,
   RacpError,
   TRUSTED_MODE_ORIGIN,
+  TRUSTED_BACKGROUND_CONTINUATION,
+  type TrustedBackgroundContinuation,
   type TrustedModeOrigin,
   type ApprovalPort,
   type Principal,
@@ -28,6 +30,7 @@ import type {
   RacpPermissionMode,
 } from "@pi-desktop/shared";
 import { IPC, isGlobalPermissionMode } from "@pi-desktop/shared";
+import { backgroundContinuationRequest } from "./runtime/background-continuations";
 import { modeContinuationRequest } from "./runtime/mode-runs";
 
 type IpcInvoke = (channel: string, args: readonly unknown[]) => Promise<unknown>;
@@ -143,6 +146,7 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         const promptRequest = {
           sessionId: request.sessionId,
           content: request.content,
+          ...(request.startGoal === undefined ? {} : { startGoal: request.startGoal }),
           ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
           ...(request.userMessageId ? { messageId: request.userMessageId } : {}),
           ...(request.voiceOrigin ? { voiceOrigin: request.voiceOrigin } : {}),
@@ -152,6 +156,8 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         // The in-process invoke keeps object identity, so the mode run origin
         // reaches the prompt handler without any serializable field.
         const modeOrigin = request[TRUSTED_MODE_ORIGIN];
+        const background = request[TRUSTED_BACKGROUND_CONTINUATION];
+        if (background) backgroundContinuationRequest(promptRequest, background);
         const result = (await options.invoke(options.channels.agentPrompt, [
           modeOrigin ? modeContinuationRequest(promptRequest, modeOrigin) : promptRequest,
         ])) as { accepted?: boolean; turnId: string };
@@ -282,36 +288,45 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
 
   /** The desktop's queue operations, all under the owner principal. */
   const queue = {
-    async push(request: AgentQueuePushRequest): Promise<QueuedTurnSummary> {
-      const result = await forIpc(() =>
-        agentHost.startTurn(DESKTOP_PRINCIPAL, {
-          sessionId: request.sessionId,
-          admission: "queue",
-            ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}),
-          input: {
-            text: request.content,
-            ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
-            ...(request.userMessageId ? { userMessageId: request.userMessageId } : {}),
-            ...(request.voiceOrigin ? { voiceOrigin: request.voiceOrigin } : {}),
-            ...(request.attachments ? { attachments: request.attachments } : {}),
-          },
-          context: { requestId: `desktop-queue-${Date.now().toString(36)}` },
-        }),
-      );
+    async push(request: AgentQueuePushRequest, onGoalAccepted?: () => Promise<void>): Promise<QueuedTurnSummary> {
+      const params = {
+        sessionId: request.sessionId,
+        admission: "queue" as const,
+        ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}),
+        input: {
+          text: request.content,
+          startGoal: request.startGoal === true,
+          ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
+          ...(request.userMessageId ? { userMessageId: request.userMessageId } : {}),
+          ...(request.voiceOrigin ? { voiceOrigin: request.voiceOrigin } : {}),
+          ...(request.attachments ? { attachments: request.attachments } : {}),
+        },
+        context: { requestId: `desktop-queue-${Date.now().toString(36)}` },
+      };
+      const result = await forIpc(() => request.startGoal
+        ? agentHost.enqueueTurn(DESKTOP_PRINCIPAL, params, async () => {
+          try {
+            await onGoalAccepted?.();
+          } catch (error) {
+            // Acceptance is already durable. Keep the queued Goal available;
+            // dispatch rechecks replacement before starting its new run.
+            options.log("warn", "accepted Goal replacement could not interrupt its predecessor", { sessionId: request.sessionId, error: String(error) });
+          }
+        })
+        : agentHost.startTurn(DESKTOP_PRINCIPAL, params));
       const entry = agentHost.queueEntries(request.sessionId).find((candidate) => candidate.turn.id === result.turn.id);
-      return entry
-        ? toQueueSummary(entry)
-        : {
-            id: result.turn.id,
-            sessionId: request.sessionId,
-            content: request.content,
-            ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
-            ...(request.userMessageId ? { userMessageId: request.userMessageId } : {}),
-            ...(request.voiceOrigin ? { voiceOrigin: request.voiceOrigin } : {}),
-            ...(request.attachments ? { attachments: request.attachments } : {}),
-            position: 0,
-            createdAt: new Date().toISOString(),
-          };
+      return entry ? toQueueSummary(entry) : {
+        id: result.turn.id,
+        sessionId: request.sessionId,
+        content: request.content,
+        ...(request.startGoal ? { startGoal: true } : {}),
+        ...(request.sessionMessageId ? { sessionMessageId: request.sessionMessageId } : {}),
+        ...(request.userMessageId ? { userMessageId: request.userMessageId } : {}),
+        ...(request.voiceOrigin ? { voiceOrigin: request.voiceOrigin } : {}),
+        ...(request.attachments ? { attachments: request.attachments } : {}),
+        position: 0,
+        createdAt: new Date().toISOString(),
+      };
     },
     list(sessionId: string): QueuedTurnSummary[] {
       return agentHost.queueEntries(sessionId).map(toQueueSummary);
@@ -348,6 +363,14 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
      * turns. It never queues: a busy session or queued user input wins, and
      * that turn's settlement continues the run.
      */
+    startBackgroundContinuation(sessionId: string, continuation: TrustedBackgroundContinuation) {
+      return agentHost.startTurn(DESKTOP_PRINCIPAL, {
+        [TRUSTED_BACKGROUND_CONTINUATION]: continuation,
+        sessionId, admission: "reject_if_busy",
+        input: { text: "Background job result ready" },
+        context: { requestId: `background-continuation-${continuation.id}` },
+      });
+    },
     startModeContinuation(sessionId: string, origin: TrustedModeOrigin, content: string) {
       return forIpc(() => agentHost.startTurn(DESKTOP_PRINCIPAL, {
         [TRUSTED_MODE_ORIGIN]: origin,

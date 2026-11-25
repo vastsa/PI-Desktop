@@ -5,7 +5,7 @@
 
 本指南提供从空文件夹到经过测试的 `.piplug` 安装包的最短完整路径，介绍 PI-Desktop 当前
 交付的插件运行时。SDK 类型、宿主校验器、运行时分发代码和可执行测试是实现依据。
-当本指南与规格不一致时，以 [`docs/spec/07-plugins`](/zh-CN/spec/07-plugins/README)
+当本指南与规格不一致时，以 [`docs/spec/07-plugins`](/spec/07-plugins/README)
 中的规范性契约为准。
 
 ## 1. 插件可以添加什么
@@ -44,7 +44,7 @@ Electron 窗口中。来自这两种运行环境的调用都经过宿主管理�
 > **信任边界：** 权限模型约束 `pi.*` 宿主 API 和面板桥；它尚不能在操作系统层面隔离
 > 插件入口进程直接使用的原始 Node API。只有信任其来源时才应加载开发插件和第三方包；
 > 应使用宿主 API，而不是通过 Node 直接访问文件或网络。
-> 参见[安全规范](/zh-CN/spec/07-plugins/04-plugin-security)。
+> 参见[安全规范](/spec/07-plugins/04-plugin-security)。
 
 ## 2. 先决条件
 
@@ -206,7 +206,7 @@ module.exports = { onLoad, onUnload };
 声明的 Provider 的登录与刷新。宿主加密保存回调返回的凭据，仅将访问令牌传给模型请求。
 回调还可用 `pi.providers.oauth.prompt` 和 `.notify` 展示宿主渲染的登录步骤。
 `provider.oauth` 是高风险权限；令牌请求出网仍需要 `net.fetch` 和 manifest 声明的网络域名。
-参见 [Plugin API](/zh-CN/spec/07-plugins/03-plugin-api) 的 Provider OAuth 小节。
+参见 [Plugin API](/spec/07-plugins/03-plugin-api) 的 Provider OAuth 小节。
 
 ### `renderer/index.html`
 
@@ -331,7 +331,7 @@ await pi.agent.registerTool({
 只有运行时注册描述符明确提供 `planSafeActions`，且 `args.action` 在该列表中时，才允许在这些
 模式执行。声明应只列只读操作，并与清单保持一致；有 schema action enum 时会校验取值。
 `risk: "low"`、会话授权和 `auto` 都不能代替该声明。
-详见 [API 契约](/zh-CN/spec/07-plugins/03-plugin-api)中的 Agent 小节。
+详见 [API 契约](/spec/07-plugins/03-plugin-api)中的 Agent 小节。
 通过 `context.signal` 处理取消，用 `context.sessionId` / `turnId` 关联发起调用的会话和轮次，
 不能替换成当前可见会话。
 
@@ -452,7 +452,7 @@ HTTP(S) 和 `mailto:` URL。
 
 `pi.projects.list()` 支持项目选择器，无需活动会话或 manifest 权限。条目以十进制的
 `projects.id` 作为 `projectId`，包含未分组项目，始终提供 `primaryPath` 和主路径优先的
-`roots`。Host 停止或不可用时返回 `[]`。参见[项目 API 契约](/zh-CN/spec/07-plugins/03-plugin-api#工作区-fs)。
+`roots`。Host 停止或不可用时返回 `[]`。参见[项目 API 契约](/spec/07-plugins/03-plugin-api#projects-workspace-fs)。
 
 ### 6.5 文件范围
 
@@ -540,7 +540,7 @@ const response = await pi.net.fetch({ url: endpoint, redirect: "error" });
 `error` 在访问 Location 前拒绝所有 3xx，错误为 `REDIRECT_DISALLOWED`。
 `manual` 返回原始状态码、响应头和正文；省略或使用 `follow` 时，保留现有的有界重定向行为，
 逐跳重新校验出网策略。非法模式在 I/O 前拒绝，所有模式都不会扩大网络授权。
-参见[完整契约](/zh-CN/spec/07-plugins/03-plugin-api#网)及仓库中的本地测试插件
+参见[完整契约](/spec/07-plugins/03-plugin-api#net)及仓库中的本地测试插件
 `examples/plugins/fetch-redirect/README.md`。
 
 ### 6.7 主题
@@ -591,7 +591,7 @@ CSS 会经过清理：拒绝 `@import`，`url()` 仅允许 `data:` 或已声明�
 仅在本插件主题选中时生效；切换到其他主题后恢复宿主背景。macOS 默认半透明窗口会忽略该颜色，
 关闭 **Translucent window** 后才应用到不透明窗口。`cornerRadius` 接受 0..24 DIP 整数；
 Windows 11 的 0 表示直角，正数使用系统圆角，macOS 保持原生圆角。
-完整字段见[清单规范](/zh-CN/spec/07-plugins/02-plugin-manifest-schema)。
+完整字段见[清单规范](/spec/07-plugins/02-plugin-manifest-schema)。
 
 
 运行时改主题无需重载：`pi.themes.upsert`、`remove`、`list`、`pi.app.setTheme` 使用 `ui.theme`。
@@ -870,7 +870,7 @@ export function onLoad(pi) {
 
 `examples/plugins/ui-slots-lab` 在每个插槽上都挂了一个样例。
 `packages/plugin-sdk/src/renderer.ts` 里有类型和各插槽的 props，manifest 侧见
-[规格 07-plugins/02 §3.2](spec/07-plugins/02-plugin-manifest-schema.md)。
+[规格 07-plugins/02 §3.2](/spec/07-plugins/02-plugin-manifest-schema)。
 
 ### 6.13 模型 Provider 与 OAuth
 
@@ -959,7 +959,7 @@ module.exports = { onLoad, onUnload };
 `trash` 保留正文和来源，`purge` 删除两者。没有通用消息修改或任意会话重绑定 API。
 自动标题只暴露仍使用默认标题的会话中有长度上限的首条提示词和回复，并通过 `expectedTitle`
 进行比较后更新；用户手动重命名优先。
-用量只含计数和标识，不含正文。载荷与上限见[会话 API 规范](/zh-CN/spec/07-plugins/03-plugin-api)。
+用量只含计数和标识，不含正文。载荷与上限见[会话 API 规范](/spec/07-plugins/03-plugin-api)。
 
 ### 6.15 模型目录与单次补全
 
@@ -1057,8 +1057,9 @@ CDP 使用允许列表，Cookie、存储、目标管理、网络拦截仍拒绝�
 `desktop.control` 通过 `pi.desktop.listOperations()` 与
 `pi.desktop.invoke({ operation, args, confirm? })` 访问审定目录，不开放任意 IPC。
 危险操作同时需要 `confirm: true` 和宿主原生对话框中的用户确认。
+仅 `agent/askTool/resolve` 可选“本次运行内允许”；工具权限、计划检查点、扩展提示与破坏性操作每次都需确认。
 会话协作的 `spawn` / `send` 还要求有效的插件 Agent 工具调用，来源会话与轮次由宿主注入。
-在创建、发消息、取消或删除会话前，请读[桌面控制契约](/zh-CN/spec/07-plugins/03-plugin-api)。
+在创建、发消息、取消或删除会话前，请读[桌面控制契约](/spec/07-plugins/03-plugin-api)。
 
 ## 7. 权限设计
 
@@ -1087,7 +1088,7 @@ CDP 使用允许列表，Cookie、存储、目标管理、网络拦截仍拒绝�
 权限。删除权限在重新加载后生效。
 
 完整的映射和策略位于
-[权限矩阵](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix)。
+[权限矩阵](/spec/07-plugins/13-plugin-permissions-matrix)。
 
 ## 8. 开发和调试
 
@@ -1209,7 +1210,7 @@ SHA-256 并发布该版本，再把目录与安装包同步到
 分发仓库不托管插件源码，向它提交「新增插件源码」的 PR 会被关闭。
 
 签名目前不是信任机制。已实现的基线是安装包 SHA-256 校验和显式权限审核；
-后续路线图见[签名与更新规范](/zh-CN/spec/07-plugins/08-plugin-signing-updates)。
+后续路线图见[签名与更新规范](/spec/07-plugins/08-plugin-signing-updates)。
 
 ## 11. 故障排除
 
@@ -1232,13 +1233,13 @@ SHA-256 并发布该版本，再把目录与安装包同步到
 ## 12. 参考索引
 
 - [示例插件](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins)
-- [插件系统概述](/zh-CN/spec/07-plugins/01-plugin-system)
-- [Manifest Schema](/zh-CN/spec/07-plugins/02-plugin-manifest-schema)
-- [主机 API](/zh-CN/spec/07-plugins/03-plugin-api)
-- [生命周期](/zh-CN/spec/07-plugins/05-plugin-lifecycle)
-- [包装](/zh-CN/spec/07-plugins/06-plugin-packaging)
-- [开发者体验](/zh-CN/spec/07-plugins/10-plugin-devex)
-- [权限](/zh-CN/spec/07-plugins/13-plugin-permissions-matrix)
+- [插件系统概述](/spec/07-plugins/01-plugin-system)
+- [Manifest Schema](/spec/07-plugins/02-plugin-manifest-schema)
+- [主机 API](/spec/07-plugins/03-plugin-api)
+- [生命周期](/spec/07-plugins/05-plugin-lifecycle)
+- [包装](/spec/07-plugins/06-plugin-packaging)
+- [开发者体验](/spec/07-plugins/10-plugin-devex)
+- [权限](/spec/07-plugins/13-plugin-permissions-matrix)
 - [Hello 参考插件](https://github.com/vastsa/PI-Desktop/tree/main/examples/plugins/hello)
 
 ## 13. 完整 SDK 接口与源码索引

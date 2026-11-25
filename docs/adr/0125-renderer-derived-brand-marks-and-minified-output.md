@@ -3,69 +3,43 @@
 - Status: Accepted
 - Date: 2026-08-26
 - Related: ADR 0083, D079, D094
-- Baseline: `0.10.8`
 
 ## Context
 
-The renderer output was 31 MiB, and three of its costs were accidental rather
-than product decisions:
-
-1. `electron-vite` hard-defaults its renderer preset to `minify: false`, unlike
-   plain Vite. `apps/desktop/electron.vite.config.ts` did not override it, so
-   every production build shipped unminified chunks; the entry chunk alone was
-   108,273 lines.
-2. KaTeX's stylesheet declares `woff2`, `woff`, and `truetype` sources for each
-   of its faces. The bundled Chromium supports `woff2` universally, so 40
-   `.woff`/`.ttf` files (0.78 MiB) were emitted and never served.
-3. D079 and D094 named `build/icon_1024.png` as the canonical brand mark, and
-   `BrandLogo` imported it directly. That file is the 1024x1024 master
-   `scripts/make-icon.py` derives `build/icon.icns` from. `BrandLogo` renders at
-   16, 20, and 64 CSS px, so the renderer carried 1.04 MiB of PNG to draw a
-   64 px mark.
-
-None of this is Electron's own footprint. The unpacked application is about
-279 MB, but a bare Electron 43.4.0 shell with no application code is already
-about 277 MB, so the renderer is the only part worth tuning.
+Three costs in a 31 MiB renderer output were accidental rather than product
+decisions: `electron-vite` defaults its renderer preset to `minify: false` and
+the config did not override it, KaTeX declared `woff` and `truetype` sources that
+the bundled Chromium never needs, and `BrandLogo` imported the 1024x1024 PNG
+master to draw a 64 px mark. The Electron shell itself accounts for almost all
+of the unpacked application size, so the renderer was the only part worth
+tuning.
 
 ## Decision
 
-1. The renderer build sets `minify: "esbuild"` explicitly. The setting is
-   asserted by `packaging-footprint.test.mjs` because the framework default
-   would silently undo it.
-2. A `pi-drop-legacy-font-fallbacks` Vite plugin removes `woff` and `truetype`
-   `src` entries from CSS with `enforce: "pre"`, before Vite registers `url()`
-   values as assets. Stripping them later leaves the assets emitted. Only
-   comma-prefixed fallback entries are removed, so a face whose single source
-   is `woff` or `truetype` keeps it.
-3. `build/icon_1024.png` and `build/logo_dark.png` remain the canonical brand
-   masters and the source of truth for installer icons. This amends D079 and
-   D094 on one point: the renderer imports **derived** marks at
-   `apps/desktop/src/assets/brand/logo-light.png` and `logo-dark.png` instead
-   of the masters. The derived files are 192x192, covering a 64 px render at 3x
-   device pixel ratio. Regenerate them from the masters with `sips -Z 192`
-   whenever the canonical marks change; the visual identity is unchanged.
+The renderer build sets `minify: "esbuild"` explicitly, asserted by the
+packaging footprint test because the framework default would silently undo it. A
+`pi-drop-legacy-font-fallbacks` Vite plugin strips comma-prefixed `woff` and
+`truetype` fallback `src` entries at `enforce: "pre"` before Vite registers
+`url()` values as assets, keeping a face whose only source is one of those
+formats. `build/icon_1024.png` and `build/logo_dark.png` remain the canonical
+brand masters; this amends D079 and D094 so the renderer imports derived 192x192
+marks from `apps/desktop/src/assets/brand/`, regenerated with `sips -Z 192`
+whenever the masters change, with no change to visual identity.
 
-*(Superseded by [ADR 0298](0298-remove-bundled-fonts.md): the app ships no
-fonts, so there is nothing to subset.)* The two bundled CJK faces stayed
-unsubset while they existed. ADR 0083 section 2 appended `Noto Sans SC` to
-every font stack so Chinese text stayed readable offline, and subsetting would
-have dropped glyphs from user-supplied content; reducing those 15 MiB required
-revising ADR 0083, not a build-config change. ADR 0298 removed the faces
-instead, and `out/renderer` now keeps only KaTeX's `woff2` glyphs.
+Font subsetting is no longer part of this decision.
+[ADR 0298](0298-remove-bundled-fonts.md) removed the bundled CJK faces instead,
+since subsetting would have dropped glyphs from user-supplied content.
 
 ## Consequences
 
-- `out/renderer` drops from 31 MiB to 24 MiB: JavaScript 12.53 to 7.72 MiB,
-  legacy font fallbacks 0.78 MiB to 0, PNG brand assets 1.23 to 0.06 MiB.
-  Measured before [ADR 0298](0298-remove-bundled-fonts.md); the bundled
-  `woff2` payload is no longer part of the renderer.
-- Minified renderer stack traces need the devtools source view; no sourcemaps
-  are emitted, which matches the previous release behavior.
-- The brand marks now exist in two places. `packaging-footprint.test.mjs`
-  asserts the renderer does not import from `build/`, so a future contributor
-  reintroducing the master path fails the suite rather than silently regaining
-  1 MiB.
-- Stripping legacy font formats is safe only because the app runs exclusively
-  in the bundled Chromium. Plugin panels sanitize their own theme CSS to
-  `data:` URIs and cannot reference renderer font assets, and the docs site
-  uses an independent theme.
+- The renderer output drops by roughly seven MiB of JavaScript, font, and PNG
+  weight, measured before [ADR 0298](0298-remove-bundled-fonts.md).
+- Minified stack traces need the devtools source view; no sourcemaps are
+  emitted, matching previous release behavior.
+- Brand marks now exist in two places, and the packaging footprint test fails if
+  the renderer imports from `build/` again.
+
+## Alternatives
+
+- Subset the bundled CJK faces: it would have dropped glyphs from
+  user-supplied content, so ADR 0083 had to be revised instead.

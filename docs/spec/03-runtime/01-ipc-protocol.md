@@ -1,5 +1,17 @@
 # 01. IPC Protocol
 
+### Private native window snapping
+
+`window.enableNativeSnap` is Main-to-Host only: `{nativeHandle: string, ownerPid: number}`
+returns `{enabled: true, borderSuppressed: boolean}`. The decimal, nonzero HWND
+must belong to the Main process injected through `PI_DESKTOP_ELECTRON_PID`.
+Host validates both the requested PID and live window owner, restores the fixed
+`WS_THICKFRAME | WS_CAPTION` mask, and suppresses the Windows 11 DWM outline.
+Windows 10 reports `borderSuppressed: false` for the unsupported attribute.
+Invalid parameters, unauthorized owners, and other native failures remain errors.
+No renderer/preload/plugin channel, schema migration, or protocol version changes.
+See [native snapping ADR](../../adr/windows-native-snap-without-frame-insets.md).
+
 ### composer/readClipboardDirectories
 
 An additive main-window-only Electron channel accepting no source paths. During
@@ -538,8 +550,10 @@ current renderer lifetime while live `plans.changed` events arrive.
 
 For `approve`, host-core and Electron require an explicit
 `targetPermissionMode`; Electron never fills it from stored settings. The
-renderer initializes each approval to Ask, which remains the product default,
-and the host does not persist the selection as the next approval default.
+renderer initializes each approval from its owning Session's effective
+permission (Session override, then global default, then Ask), and ignores old
+device-wide approval preferences. The Host still persists the explicitly
+approved mode on the Session; it does not change the global default.
 `reject` carries no permission mode.
 Responses with a wrong proposal, session, turn, tool-call, version, or expired
 host-owned deadline fail with a stable Plan/Goal approval error. There is no
@@ -2366,20 +2380,26 @@ cannot be replayed. The returned `ComposerPastedFile` records are the only
 paths the renderer stores or dispatches, so a picker selection cannot leave an
 external source path in the prompt or bypass the attachment-root boundary.
 
-For native clipboard files, `reference: true` consumes the same one-shot token
-but registers metadata instead of copying bytes. Main requires a local project,
-stores a durable UUID selection record, and returns the canonical original path,
-name, MIME, exact byte size and additive `localReference` id. Only the main window
-may invoke this flow. Ordinary file-only and mixed file/folder clipboard lists
-both use it; no `File.arrayBuffer()` is needed and transfer byte limits do not
-apply. The 20-item clipboard limit remains. Screenshots/generated payloads use
-`pasteFiles`; picker imports without `reference` retain the copy behavior above.
+For native clipboard files, `reference: true` consumes the same one-shot token.
+Raster image files (not SVG) that fit the import bounds above (64 MiB per file,
+128 MiB and 20 files per batch, counted in paste order) are copied into session
+scratch exactly like picker imports and returned as `kind: "image"` without
+`localReference`; they do not require a local project. Every other file,
+including images beyond those bounds, registers metadata instead of copying
+bytes: main requires a local project, stores a durable UUID selection record,
+and returns the canonical original path, name, MIME, exact byte size and
+additive `localReference` id. Results keep the clipboard order. Only the main
+window may invoke this flow. Ordinary file-only and mixed file/folder clipboard
+lists both use it; no `File.arrayBuffer()` is needed and transfer byte limits do
+not apply to references. The 20-item clipboard limit remains.
+Screenshots/generated payloads use `pasteFiles`; picker imports without
+`reference` retain the copy behavior above.
 
 Drafts, queue entries and message attachments retain `localReference` and `size`.
 On dispatch, main matches the id/path to the selection record and current local
 project, rejects missing files or canonical-target changes, and refreshes size.
 The Agent receives path and byte size as reference context. No referenced file
-or image contents are read, hashed, snapshotted or uploaded by dispatch; normal
+contents are read, hashed, snapshotted or uploaded by dispatch; normal
 tool access policy governs subsequent reads, including outside-project approval.
 Input history can restore the live reference into another session in the same
 project. Original contents can change and the reference can become unavailable.
