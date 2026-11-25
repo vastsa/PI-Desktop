@@ -1499,6 +1499,43 @@ async function runLiveAcceptance(state) {
   return `provider=${setup.providerId} model=${setup.modelId} runtime=${pendingRuntime.runtimeId} marker=${LIVE_MARKER} artifact=${artifact.artifactPath}`;
 }
 
+async function assertRevisionToolbarFits(state) {
+  const samples = await state.cdp.evaluate(`(() => {
+    const button = document.querySelector('[data-testid="send-plan-revision"]');
+    const stack = button.closest(".composer-stack");
+    const toolbar = button.closest(".composer-toolbar");
+    const saved = stack.style.cssText;
+    try {
+      stack.style.transition = "none";
+      stack.style.flex = "none";
+      return [450, 451, 480, 481, 560, 561, 640, 641, 768].map(width => {
+        stack.style.width = width + "px";
+        const row = toolbar.getBoundingClientRect();
+        const controls = [...toolbar.querySelectorAll("button")]
+          .map(node => ({ ...node.getBoundingClientRect().toJSON(), name: node.className })).filter(box => box.width && box.height)
+          .sort((a, b) => a.left - b.left);
+        const range = document.createRange();
+        range.selectNodeContents(button.querySelector("span"));
+        return {
+          width, actual: stack.getBoundingClientRect().width, label: button.getAttribute("aria-label"),
+          height: button.getBoundingClientRect().height, lines: range.getClientRects().length,
+          icon: button.querySelector("svg").getBoundingClientRect().width > 0,
+          crowded: controls.filter((box, i) => box.left < row.left - 1 || box.right > row.right + 1 ||
+            (i && box.left < controls[i - 1].right - 1)).map(box => box.name),
+        };
+      });
+    } finally {
+      stack.style.cssText = saved;
+    }
+  })()`);
+  for (const sample of samples) {
+    const labelFits = sample.width <= 640 ? sample.icon && sample.lines === 0 : !sample.icon && sample.lines === 1;
+    assert(sample.label === "Enviar pedido de alteração" && sample.actual === sample.width &&
+      sample.height === 28 && labelFits && !sample.crowded.length,
+      `revision toolbar at ${sample.width}px: ${jsonText(samples)}`);
+  }
+}
+
 async function runRevisionAcceptance(state) {
   const revision = "Remove deployment and keep only the installation steps.";
   const revisedPlan = { title: "Installation", markdown: "# Installation\n\n- Install the app.", question: "Approve?" };
@@ -1527,11 +1564,13 @@ async function runRevisionAcceptance(state) {
     const { session } = await getPreloadResult(state, "sessionCreate", [{
       title: "Revise a plan", mode: "plan", projectPath: state.workspace, providerId: provider.id, modelId: model,
     }]);
+    await setLanguage(state, "pt-BR");
     await reloadRenderer(state);
     await selectSession(state, session.id);
     await submitComposerPrompt(state, "Plan installation and deployment.");
     const first = await waitFor(() => getPendingPlan(state, session.id), "first plan", state);
     await fillComposerPrompt(state, revision);
+    await assertRevisionToolbarFits(state);
     assert((await getPendingPlan(state, session.id))?.id === first.id, "typing resolved the pending approval");
     await clickSelector(state, '[data-testid="send-plan-revision"]', "send plan revision");
     const revised = await waitFor(async () => {
@@ -1547,6 +1586,7 @@ async function runRevisionAcceptance(state) {
     await verifyArtifact(state, revised, revisedPlan);
     assert(first.artifact.relativePath !== revised.artifact.relativePath, "revision reused the first artifact");
     await clickSelector(state, ".plan-approval-reject", "dismiss second plan");
+    await setLanguage(state, "zh-CN");
     record("E2E-106-plan-revision", true, "same-session revision produced a second immutable plan awaiting explicit approval");
   } finally {
     server.closeAllConnections();

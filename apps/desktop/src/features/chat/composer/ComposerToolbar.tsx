@@ -14,7 +14,7 @@ import { modeErrorMessage } from "../../modes/mode-run-model";
 import { ComposerPermissionPicker } from "./ComposerPermissionPicker";
 import { ContextUsageInspector } from "../../../components/ContextUsageInspector";
 import { ComposerControlSlots } from "./ComposerControlSlots";
-import { Button, TooltipButton } from "../../../components/ui";
+import { TooltipButton } from "../../../components/ui";
 import {
   IconArrowUp,
   IconPlus,
@@ -245,18 +245,7 @@ export function ComposerToolbar({
             <IconUndo2 size={15} aria-hidden="true" />
           </TooltipButton>
         ) : null}
-        {revisingPlan ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="primary"
-            data-testid="send-plan-revision"
-            disabled={!hasDraftContent || sendBlocked || !modelReady}
-            onClick={() => void submit()}
-          >
-            {t("plan.sendRevision")}
-          </Button>
-        ) : runActive && !hasDraftContent ? (
+        {runActive && !hasDraftContent ? (
           <TooltipButton
             type="button"
             className="stop-btn"
@@ -268,6 +257,18 @@ export function ComposerToolbar({
             })}
           >
             <IconStop size={14} />
+          </TooltipButton>
+        ) : revisingPlan ? (
+          <TooltipButton
+            type="button"
+            className="btn btn-primary composer-plan-revision"
+            tooltip={t("plan.sendRevision")}
+            data-testid="send-plan-revision"
+            disabled={!hasDraftContent || sendBlocked || !modelReady}
+            onClick={() => void submit()}
+          >
+            <span>{t("plan.sendRevision")}</span>
+            <IconArrowUp size={16} aria-hidden="true" />
           </TooltipButton>
         ) : (
           <TooltipButton

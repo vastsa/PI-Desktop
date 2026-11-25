@@ -8,6 +8,7 @@ import type {
   QueuedTurnSummary,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { pendingRevisionPlan } from "../../lib/plan-mode-state";
 import { isRemoteSession, sessionAllows } from "../../lib/remote-session-safety";
 import {
   enqueueQueuedPrompt,
@@ -388,9 +389,9 @@ export function createQueueSlice({
       const { id, sessionId, turnId, toolCallId, version } = proposal;
       const session = get().sessions.find((row) => row.id === sessionId);
       const key = `revision:${id}`;
-      if (!session || session.mode !== "plan" || isRemoteSession(session) || session.source === "pi-native") return false;
-      if (!sessionAllows(session, "canPrompt") || (draft?.fileReferences.length && !sessionAllows(session, "canAttach"))) return false;
-      if (!content.trim() || proposal.kind === "goal" || get().pendingPlans[sessionId]?.id !== id) return false;
+      const current = pendingRevisionPlan(session, get().planCheckpoints[sessionId], get().pendingPlans[sessionId]);
+      if (current?.id !== id || !content.trim()) return false;
+      if (draft?.fileReferences.length && !sessionAllows(session, "canAttach")) return false;
       if (get().runningSessions[sessionId] || pendingSubmissions.has(key)) return false;
       pendingSubmissions.add(key);
       try {

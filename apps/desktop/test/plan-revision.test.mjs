@@ -4,6 +4,7 @@ import test from "node:test";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { createQueueSlice } = await import("../src/stores/slices/queue-slice.ts");
+const { pendingRevisionPlan } = await import("../src/lib/plan-mode-state.ts");
 
 function fixture(t) {
   const plan = { id: "p1", sessionId: "s1", turnId: "t1", toolCallId: "c1", version: 1, kind: "plan", status: "pending" };
@@ -49,5 +50,29 @@ test("a still-finishing submission leaves the first plan pending and the draft a
   const { state, send } = fixture(t);
   state.runningSessions.s1 = true;
   assert.equal(await send(), false);
+  assert.equal(state.resolvePlan.mock.callCount(), 0);
+});
+
+test("only the current editable local Plan checkpoint can be revised", async t => {
+  const { state, plan, send } = fixture(t);
+  const session = state.sessions[0];
+  assert.equal(pendingRevisionPlan(session, plan, plan), plan);
+  for (const [target, checkpoint, pending] of [
+    [undefined, plan, plan],
+    [{ ...session, mode: "agent" }, plan, plan],
+    [{ ...session, source: "pi-native" }, plan, plan],
+    [{ ...session, source: "remote" }, plan, plan],
+    [{ ...session, capabilities: { canPrompt: false } }, plan, plan],
+    [session, { ...plan, kind: "goal" }, plan],
+    [session, { ...plan, status: "approved" }, plan],
+    [session, plan, undefined],
+    [session, plan, { ...plan, id: "p2" }],
+  ]) {
+    assert.equal(pendingRevisionPlan(target, checkpoint, pending), undefined);
+    state.sessions = target ? [target] : [];
+    state.planCheckpoints.s1 = checkpoint;
+    state.pendingPlans.s1 = pending;
+    assert.equal(await send(), false);
+  }
   assert.equal(state.resolvePlan.mock.callCount(), 0);
 });

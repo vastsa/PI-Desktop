@@ -8,6 +8,8 @@ import {
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { slotSsr } from "./helpers/slot-ssr.mjs";
+import { composerToolbar } from "./helpers/composer-toolbar.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -46,6 +48,15 @@ const [
 ]);
 
 const queuedPromptsLib = await read("../src/lib/queued-prompts.ts");
+
+test("an empty pending Plan keeps Stop available while the original turn finishes", async t => {
+  const toolbar = await composerToolbar(t, await slotSsr(t), {
+    mode: "plan", revisingPlan: true, runActive: true, sendBlocked: true, stopAllowed: true,
+  });
+  const html = toolbar();
+  assert.match(html, /<button[^>]*class="stop-btn"[^>]*>/);
+  assert.doesNotMatch(html, /<button[^>]*class="stop-btn"[^>]*disabled|data-testid="send-plan-revision"/);
+});
 
 test("composer send/stop button follows draft content and the visible session's run state", () => {
   const composerRight = toolbar.match(/<div className="composer-right">[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";

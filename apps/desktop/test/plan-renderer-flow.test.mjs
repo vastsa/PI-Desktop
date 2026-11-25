@@ -61,7 +61,7 @@ test("only a local Plan exposes revision input while approval gates configuratio
     composer,
     /const controlsBlocked = approvalPending \|\| nativeSession \|\| !sessionAllows\(capabilitySession, "canConfigureModel"\);/,
   );
-  assert.match(composer, /approvalPending && planCheckpoint.kind !== "goal" && !remoteSession && !nativeSession/);
+  assert.match(composer, /pendingRevisionPlan\(activeSessionSummary, planCheckpoint, pendingPlan\)/);
   assert.match(store, /pendingPlans\[sessionId\]\?\.status === "pending"/);
   assert.match(store, /pendingPlans\[resolution\.sessionId\]/);
 });

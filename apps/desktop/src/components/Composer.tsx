@@ -21,7 +21,7 @@ import {
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { latestTurnContextInspector } from "../lib/latest-turn-context";
-import { isActivePlanExecution } from "../lib/plan-mode-state";
+import { isActivePlanExecution, pendingRevisionPlan } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
 import { composerModelDisplayName, sameComposerModelId } from "../lib/composer-models";
@@ -144,9 +144,11 @@ export function Composer({
   const planCheckpoint = useAppStore((s) =>
     s.activeSessionId ? s.planCheckpoints[s.activeSessionId] : undefined,
   );
+  const pendingPlan = useAppStore((s) =>
+    s.activeSessionId ? s.pendingPlans[s.activeSessionId] : undefined,
+  );
   const approvalPending = planCheckpoint?.status === "pending";
-  const revisionPlan = approvalPending && planCheckpoint.kind !== "goal" && !remoteSession && !nativeSession
-    ? planCheckpoint : undefined;
+  const revisionPlan = pendingRevisionPlan(activeSessionSummary, planCheckpoint, pendingPlan);
   const approvalBlocksInput = approvalPending && !revisionPlan;
   const pendingAsk = useAppStore((s) =>
     headAsk(s.pendingAsks, s.activeSessionId),
