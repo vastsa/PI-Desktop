@@ -135,7 +135,11 @@ const skillsDirectory = () => query('[data-testid="modes-skills-directory"]')?.t
 const save = () => button(t("modes.settings.save"));
 const openFolder = () => button(t("modes.settings.openSkillsDirectory"));
 const click = (node) => flushSync(() => node.click());
+const showCatalog = () => {
+  if (!query('[data-testid="modes-directory"]')) click(button(t("modes.settings.listTitle")));
+};
 const selectMode = async (id) => {
+  showCatalog();
   click(await waitFor(() => modeRow(id), "Mode row missing: " + id));
   await waitFor(() => currentId() === id && tabs().every((node) => !node.disabled), "Mode did not open: " + id);
 };
@@ -223,8 +227,13 @@ window.modesProbe = async () => {
     result.directory = (await waitFor(() => query('[data-testid="modes-directory"]'), "Settings list missing")).textContent;
     await selectMode("sisyphus");
     result.tabs = tabLabels();
+    result.detailReplacesCatalog = !modeRow("sisyphus") && !query('[data-testid="modes-directory"]');
+    result.modeOnly = !prompt();
     result.source = modeSource().value;
+    selectTab("Prompt");
     result.prompt = prompt().value;
+    result.promptOnly = !modeSource();
+    selectTab("Mode");
     result.globalDefault = checked(button(t("modes.settings.includeGlobalSubagents")));
     click(button(t("modes.settings.includeGlobalSubagents")));
     click(save());
@@ -241,10 +250,12 @@ window.modesProbe = async () => {
     result.legacyErrorsBlockSave = save().disabled;
     typeInto(legacySource(), legacyCopy);
     click(save());
-    await waitFor(() => modeRow("legacy-copy") && save()?.disabled, "Legacy duplicate did not save");
+    await waitFor(() => save()?.disabled, "Legacy duplicate did not save");
+    showCatalog();
     click(await enterId("New mode", "my-mode"));
     await waitFor(() => currentId() === "my-mode", "New mode not opened");
     result.newTabs = tabLabels();
+    selectTab("Prompt");
     result.newHasPrompt = prompt().value.length > 0;
     result.newCanSave = !save().disabled;
     result.newDuplicateDisabled = button("Duplicate").disabled;
@@ -253,7 +264,7 @@ window.modesProbe = async () => {
     result.newBlankPromptBlocked = save().disabled;
     typeInto(prompt(), starterPrompt);
     click(save());
-    await waitFor(() => modeRow("my-mode") && save()?.disabled, "New bundle was not created");
+    await waitFor(() => save()?.disabled, "New bundle was not created");
     await selectMode("my-mode");
     result.newReopened = modeSource().value;
 
@@ -262,6 +273,7 @@ window.modesProbe = async () => {
     await waitFor(() => currentId() === "sisyphus-copy" && save()?.disabled, "Host copy did not open");
     result.copyMap = modeSource().value;
     result.copyGlobal = checked(button(t("modes.settings.includeGlobalSubagents")));
+    selectTab("Prompt");
     result.copyPrompt = prompt().value;
     selectTab("Skills");
     result.copiedSkillEnabled = checked(await waitFor(() => skillSwitch(), "Copy did not discover its own skill"));
@@ -274,18 +286,25 @@ window.modesProbe = async () => {
     click(button("Cancel"));
 
     click(roleRow("agents/oracle.agent.md"));
-    const model = () => button(t("extensions.subagents.model"));
+    result.roleReplacesList = !roleRow("agents/oracle.agent.md") && !!query('[data-testid="mode-role-detail"]');
+    const roleDetail = () => query('[data-testid="mode-role-detail"]');
+    const showRoleModel = () => click(all('[role="tab"]', roleDetail()).find((tab) => tab.textContent.trim() === t("extensions.subagents.model")));
+    showRoleModel();
+    const model = () => button(t("extensions.subagents.model"), query('[role="tabpanel"]', roleDetail()));
     result.roleInitialModel = model().textContent.trim();
     await choose(model(), "gpt-5");
     const reasoning = () => button(t("extensions.subagents.thinking"), query(".modes-settings-fallback"));
     await choose(reasoning(), "medium");
     click(save());
+    click(button(t("modes.settings.rolesTitle"), roleDetail()));
+    if (!roleRow("agents/oracle.agent.md") || roleDetail()) throw new Error("Returning from a role did not restore its list");
     await waitFor(() => save()?.disabled, "Role change did not save");
     await selectMode("sisyphus");
     await selectMode("sisyphus-copy");
     selectTab("Subagents");
     result.roleSelectionCleared = !query('[data-role-reference][aria-current="true"]');
     click(roleRow("agents/oracle.agent.md"));
+    showRoleModel();
     result.roleModelReopened = model().textContent.trim();
     result.fallbackThinkingReopened = reasoning().textContent.trim();
 
@@ -293,15 +312,15 @@ window.modesProbe = async () => {
     click(await enterId("Duplicate", "occupied"));
     await waitFor(() => document.body.innerText.includes('the destination "occupied" already exists'), "Host copy conflict was not shown");
     await waitFor(() => !button("Cancel").disabled, "Conflict did not re-enable form");
-    result.copyConflict = currentId();
     click(button("Cancel"));
+    result.copyConflict = currentId();
 
     await fixture("hold", IPC.invoke.modesCopy, "late-copy");
     click(await enterId("Duplicate", "late-copy"));
     await waitFor(() => fixture("held"), "Duplicate reply not held");
     await selectMode("my-mode");
     await releaseReply();
-    await waitFor(() => modeRow("late-copy") && save()?.disabled, "Late copy did not appear in the catalog");
+    await waitFor(() => save()?.disabled, "Late copy did not settle");
     result.modeAfterStaleCopy = [currentId(), modeSource().value];
 
     // Refuse writing over an unmanaged path from a saved mode.
@@ -317,20 +336,20 @@ window.modesProbe = async () => {
     selectTab("Skills");
     await waitFor(() => skillSwitch(), "Private skill not listed");
     result.skillsDirectory = skillsDirectory();
-    result.skillLabel = document.body.innerText.includes("/skill:verify-delivery");
+    result.skillLabel = !!skillSwitch();
     result.skillInitiallyOn = checked(skillSwitch());
     click(openFolder());
     await waitFor(async () => (await fixture("opened")).length && !openFolder()?.disabled, "Open folder not handed to shell");
     result.skillsOpened = await fixture("opened");
 
     // A mode-local switch must not discard an unrelated prompt draft.
-    selectTab("Mode");
+    selectTab("Prompt");
     const originalPrompt = prompt().value;
     typeInto(prompt(), "Unsaved prompt edit");
     selectTab("Skills");
     click(skillSwitch());
     await waitFor(() => checked(skillSwitch()) === "false" && !skillSwitch().disabled, "Skill did not turn off");
-    selectTab("Mode");
+    selectTab("Prompt");
     result.promptAfterToggle = prompt().value;
     typeInto(prompt(), originalPrompt);
 
@@ -346,6 +365,7 @@ window.modesProbe = async () => {
     result.skillPatches = await sent(IPC.invoke.modesBundleSettings);
 
     // Complete a bundle read and a skills read out of order.
+    showCatalog();
     await fixture("hold", IPC.invoke.modesBundleRead, "sisyphus");
     click(modeRow("sisyphus"));
     await waitFor(() => fixture("held"), "Bundle reply not held");
@@ -613,7 +633,11 @@ test("modes: grouped Electron settings create, copy and edit private mode docume
         input: "Review the docs too", budget: { maxTurns: 40, maxTokens: 200000 },
       }]);
       assert.equal(result.directory, modes);
-      assert.deepEqual(result.tabs, ["Mode", "Subagents", "Skills"]);
+      assert.deepEqual(result.tabs, ["Mode", "Prompt", "Subagents", "Skills"]);
+      assert.equal(result.detailReplacesCatalog, true);
+      assert.equal(result.modeOnly, true);
+      assert.equal(result.promptOnly, true);
+      assert.equal(result.roleReplacesList, true);
       assert.equal(result.source, BUNDLE);
       assert.equal(result.prompt, PROMPT);
       assert.equal(result.globalDefault, "false");
