@@ -26,7 +26,7 @@ numbers refer to the [WebUI acceptance catalog](../06-delivery/e2e/live-and-remo
 | W03 | Find, create, rename, pin, archive and restore sessions in the right scope | E2E-270, E2E-271, E2E-275 |
 | W04 | Continue a real desktop chat, see progress, answer ordinary questions and stop work | E2E-271, E2E-272 |
 | W05 | Move between clients, refresh or reconnect without losing or repeating work | E2E-270, E2E-271, E2E-273 |
-| W06 | Control what each paired device sees and does; keep elevated actions on Desktop | E2E-269, E2E-272, E2E-274 |
+| W06 | Revoke paired devices and keep elevated actions on Desktop | E2E-269, E2E-272, E2E-274 |
 | W07 | Complete the journey on a phone, with a keyboard or screen reader, and with long histories | E2E-276 |
 | W08 | Retain existing names, organization, transcripts and local behavior across upgrade and disable | E2E-275 |
 
@@ -44,44 +44,37 @@ numbers refer to the [WebUI acceptance catalog](../06-delivery/e2e/live-and-remo
    rebinding) or whose `Origin` is foreign, requires a CSRF token on every
    authenticated mutation, and serves a restrictive CSP. Adding HTTPS later must
    not change the browser API.
-3. Once the listener is on, the connection card shows a copyable address and
-   the Devices card shows pending requests and paired devices. **Add device**
-   opens a two-step dialog with the address, one-time 6-digit code and expiry.
-   A new request while the dialog is open advances it to device confirmation;
-   requests already waiting can be reviewed or denied from the Devices card.
-   Confirmation discloses access to all eligible local projects, including
-   projects added later, and does not require individual project selections.
-   No catalog or history is sent before confirmation. Each code lasts at most
-   five minutes, is single-use, and expires after five failed attempts. Only
-   Desktop can generate a replacement code. A QR code is deferred.
-4. Device rows show the label, last activity and access summary. **Permissions**
-   edits temporary access and actions without pairing again. The listener closes
-   existing streams and does not return pending or cached results under the old grants.
-   The browser refetches its access and view when it reconnects. **Remove** and
-   browser sign-out invalidate that device's cookie and streams. Turning off
-   closes the listener and invalidates every pairing; turning it back on
+3. Once the listener is on, **Add device** shows the address and a one-time
+   6-digit code. The dialog discloses that the code grants access to the local
+   WebUI, including temporary conversations and supported changes. A valid
+   code immediately issues the device cookie; no additional Desktop approval
+   or permission configuration is required. No project data is sent before
+   pairing. Each code lasts five minutes at most and is invalidated after use
+   or five failed attempts. Only Desktop can generate a code. A QR code is deferred.
+4. Devices shows the label and last activity of each paired browser. **Remove**
+   and browser sign-out invalidate that device's cookie and streams. Turning
+   off closes the listener and signs out every device; a subsequent start
    requires fresh pairing. Closing a browser tab is not sign-out.
 5. Minimizing or hiding Desktop does not stop the service. Phone backgrounding,
-   Wi-Fi loss or closing a tab is not a stop or approval command. Locking the
-   computer grants no new authority: new pairing and manual approvals still
-   require a local user. Sleep makes the Host unreachable. On network change the
-   bound address disappears and the service must be restarted on Desktop.
-   On full Desktop quit the service ends; on a new
-   app launch it starts **off**. Do not promise active turns survive process exit.
+   Wi-Fi loss or closing a tab does not stop it. A browser cannot generate a
+   pairing code or submit a tool or plan approval. Sleep makes Desktop
+   unreachable. If the bound address changes, restart the service on Desktop.
+   Quitting Desktop stops the service; each launch starts **off**. Do not
+   promise active turns survive process exit.
 
 Show actionable failures on the side that can fix them: no eligible interface,
 port occupied, client isolation/firewall,
-wrong/expired code, desktop refusal, revoked device or desktop offline. A phone
+wrong/expired code, device limit, revoked device or desktop offline. A phone
 unable to reach the Host cannot diagnose why; offer the address and local
 network checks, not a false claim that the desktop quit. Never open firewall or
 router ports, use UPnP, or set up a tunnel automatically.
 
 Desktop administration stays on the main-window-only LAN admin IPC channel.
-`confirm` and `update` require `projectScope: "all-local"`, not a list of project
-IDs. A stale request without this marker is refused rather than widening a
-prior selection. `/v1/me` reports the same marker; `/v1/projects` is the live
-catalog, not a snapshot attached to pairing. The payload-free `lanWebUiChanged`
-event asks the Desktop renderer to refetch after listener, pairing or device changes.
+The payload-free `lanWebUiChanged` event asks the renderer to refetch after
+listener, code or device changes. `POST /pair` returns `{ state: "paired" }`
+and sets the session cookie in the same response. `/pair/status` checks an
+already-established cookie for older browser tabs; there is no pending state.
+`/v1/me` retains the former access flags as fixed compatibility metadata.
 
 ## 3. Projects and sessions (W02, W03)
 
@@ -90,7 +83,7 @@ event asks the Desktop renderer to refetch after listener, pairing or device cha
 | Projects | Show all eligible local desktop projects, including closed or archived ones and projects added after pairing, not just the visible sidebar. A logical multi-root group is **one** project. Search by display name across the catalog, switch, rename the display name, pin/unpin, archive/restore. Show pinned first, then recent; distinguish “no local projects”, “no matches” and “no sessions”. Do not show absolute paths. |
 | Project sessions | Enter a project to see its sessions; search by title, open history, rename, pin/unpin, archive/restore. Show running, waiting, interrupted or failed status from the Host. Stable IDs, not names or list positions, distinguish equally named records. Use bounded pages; search is not limited to the first loaded page. |
 | New in project | A project's **New session** targets that explicit project, even if the desktop or a second tab is viewing another. Use desktop defaults and the normal local Agent. Only reuse an existing empty conversation if it meets Desktop's pristine, same-scope reuse rule; never attach to a running session or another pending submission. Double-tapping one intent cannot create two sessions. |
-| Temporary | **Temporary conversations** is a separate Desktop share scope, off by default. When granted, list/organize existing ordinary temporary sessions and allow a new temporary session with no project and normal temporary workspace isolation. Otherwise global **New session** opens the shared-project chooser; never inherit the last desktop project or disclose temporary titles/counts. |
+| Temporary | Any paired device can list, organize and continue ordinary temporary conversations and create one through the Temporary conversations entry. A temporary conversation has no project and uses normal temporary workspace isolation. It never inherits the last Desktop project. |
 | Archive | Archiving is reversible organization, not deletion, cancellation, folder movement or transcript modification. Inspect archived items via an explicit filter without restoring them. Restore an archived parent project before creating or sending; restore an archived session before sending. Restoring a project preserves each session's own archive/pin state. Decline a web archive if the target session, or a project descendant, is running, queued or waiting for input. Never stop work to make archive succeed. |
 
 Only existing locally owned, local-workspace projects and ordinary local Agent
@@ -99,7 +92,7 @@ legacy remote-Agent sessions, and sessions outside a registered project or
 the Temporary scope are **not exposed**. In a local project, existing special
 sessions (e.g. Plan/Goal) may show safe history and “Continue on Desktop”, but
 no unsupported mutation. Never convert them to Agent or change their workspace.
-Desktop-only deletion, scope removal or a change of project membership must
+Desktop-only deletion or a change of project membership must
 invalidate stale rows and deep links; do not redirect to a different session.
 
 ## 4. Conversation (W04)
@@ -186,29 +179,28 @@ Stopping the WebUI removes access, not data.
 
 ## 6. Access and privacy (W06)
 
-Follow the [LAN WebUI project-access decision](../../adr/lan-webui-project-access.md)
+Follow the [code-only pairing decision](../../adr/lan-webui-code-pairing.md)
 and the applicable [remote permission policy](../05-security/02-remote-control-security.md).
-A device that Desktop confirms can
-view **all eligible local projects**, including future projects and archived
-history. Temporary conversations still require a separate, off-by-default grant.
-Label the device and disclose its access before confirmation; Chat and Organize
-remain separate from the ability to view projects.
+Successful pairing gives every device the same WebUI access: eligible current
+and future local projects, archived history, and temporary conversations.
+Disclose that scope before displaying a code. Chat and Organize are included
+for every paired device, not separate grants.
 History may contain sensitive text the user or model already put in the
 conversation; sharing is not an automatic redaction of authored messages.
 Never enrich it with credential records, absolute workspace paths or raw tool
 diagnostics that the safe transcript projection does not already expose.
 
-| Grant | Allowed within eligible scopes | Never implied |
+| Operation | Available after pairing | Not exposed by pairing |
 |---|---|---|
-| View | Local project catalog, safe history, current activity and scoped events | Remote project metadata, unauthorized Temporary conversations, paths, secrets or arbitrary file reads |
-| Chat (explicit, includes View) | Create, send/queue, interrupt, cancel queued work, answer ordinary typed questions | Shell endpoint, remote approvals, raising permission mode, configuring providers |
-| Organize (explicit, includes View) | Rename, set pin, set archive/restore on eligible objects | Permanent delete, project registration/root editing, widening the share or granting roles |
+| View | Local project and temporary catalogs, safe history, activity and scoped events | Remote project metadata, paths, secrets or arbitrary file reads |
+| Chat | Create, send/queue, interrupt, cancel queued work, answer ordinary typed questions when supported | Shell endpoint, remote approvals, raising permission mode, configuring providers |
+| Organize | Rename, set pin, set archive/restore on eligible objects | Permanent delete, project registration/root editing, granting roles |
 
-Check the grant, actual current scope, object state, and policy on **every**
-command, page, attachment placeholder, catalog notification and active stream.
-Guessing an ID must reveal no more than a missing record. Revoking a device or
-scope closes its affected subscriptions, rejects subsequent commands and
-cancels its not-started queued work in the revoked scope. Already admitted
+Check the device credential, live resource scope, object state, and policy on
+every command, page, attachment placeholder, catalog notification and stream.
+Guessing an ID must reveal no more than a missing record. Revoking a device
+closes its streams and rejects subsequent requests or in-flight results. The
+release also requires canceling its not-started queued work. Already admitted
 running work follows the Host incident policy; never silently replay or undo
 it. Clear protected views on authorization loss; already seen text cannot be
 remotely erased. A web turn never gets the SSH-paired-owner exemption: apply
@@ -216,8 +208,8 @@ the lower of session policy and the WebUI `ask` ceiling without changing the
 desktop session setting. A browser cannot approve its own escalation.
 
 Session archive is **owner-only** in RACP. The LAN WebUI does not reuse RACP
-`session/archive` and never grants a phone the owner role: its Organize grant
-is checked by the WebUI edge against the current local catalog and only writes
+`session/archive` and never grants a phone the owner role. The WebUI checks
+its organize operations against the current local catalog and only writes
 the same Desktop organization record the sidebar uses (§5).
 
 Use a Host-issued `HttpOnly`, host-only, `SameSite=Strict` session cookie
@@ -227,8 +219,8 @@ only in Desktop memory: stopping the service or quitting Desktop signs every
 device out. No credentials in URLs, local storage or logs. Serve assets locally
 under a restrictive CSP; never cache authenticated data (`no-store`). Logs
 record only start/stop and failure codes, not prompts, history, codes or
-cookies. Bound request bodies (300 KiB), prompts (256 KiB), pages (50 items),
-pending pairings (8) and devices (16); never silently truncate input.
+cookies. Bound request bodies (300 KiB), prompts (256 KiB), pages (50 items)
+and devices (16); never silently truncate input.
 
 ## 7. Phone usability and service targets (W07)
 
@@ -262,7 +254,7 @@ pending pairings (8) and devices (16); never silently truncate input.
    transport decision.
 2. **Deliver the basic workflow:** implement W02–W04 against the same durable
    records, then exercise both clients together, including empty/new/existing
-   projects and sessions, restricted grants and a lost reply. Do not count an
+   projects and sessions, device revocation and a lost reply. Do not count an
    independent headless session or a mock renderer as the real user journey.
 3. **Release gate:** all P0 rows and E2E-269 through E2E-276 must pass on the
    candidate, including physical iPhone/Safari and Android/Chrome on a real
@@ -286,11 +278,11 @@ settings) and `apps/desktop/src/features/lan-webui/lan-catalog-sync.ts`
 
 | Area | Delivered | Not yet |
 |---|---|---|
-| W01 | Off by default; interface + port; guided pairing with device confirmation; all local projects; edit or remove devices; stop signs everyone out | QR code; HTTPS (deliberately deferred) |
-| W02/W03 | Shared-project and temporary scopes; search; archived filter; rename, pin, archive/restore with revision conflicts; new session in the explicit project | Reuse of an existing empty session |
+| W01 | Off by default; interface + port; direct one-time-code pairing; remove devices; stop signs everyone out | QR code; HTTPS (deliberately deferred) |
+| W02/W03 | Local projects and temporary conversations; search; archived filter; rename, pin, archive/restore with revision conflicts; new session in the explicit project | Reuse of an existing empty session |
 | W04 | Paged history; live assistant text; send; queue; cancel queued; stop the named turn; “waiting on Desktop” for approvals and input | Answering ordinary questions from the browser; model label is the raw model id |
 | W05 | Idempotency keys for every mutation; SSE change notices with refetch; reconnect banner | Cursor-based replay (refetch is used instead) |
-| W06 | Non-owner principal under the remote `ask` ceiling; plan/goal and remote sessions read-only or hidden | Idle (30 min) session expiry; canceling already queued work on scope loss |
+| W06 | Device revocation; non-owner principal under the remote `ask` ceiling; plan/goal and remote sessions read-only or hidden | Idle (30 min) session expiry; canceling already queued work on device revocation |
 | W07 | Phone-first layout, 44 px targets, English and Simplified Chinese, IME-safe Enter | Screen-reader and large-catalog qualification |
 | W08 | Existing names, pins and archives keep working; browser edits survive stale sidebar writes | — |
 

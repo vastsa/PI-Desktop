@@ -32,7 +32,7 @@ const listeners = new Set();
 const writes = [];
 const copied = [];
 const view = {
-  running: false, origin: null, address: null, port: null, code: null, pending: [], devices: [], error: null,
+  running: false, origin: null, address: null, port: null, code: null, devices: [], error: null,
   interfaces: [{ address: "192.168.1.20", name: "Wi-Fi" }],
 };
 let stateReads = 0;
@@ -68,23 +68,11 @@ window.piDesktop = {
         issueCount++;
         view.code = { value: ["000012", "134209", "512309"][issueCount - 1], expiresAt: Date.now() + (issueCount === 1 ? -1000 : 300_000) };
         break;
-      case "confirm": {
-        const request = view.pending.find((item) => item.id === action.id);
-        view.pending = view.pending.filter((item) => item.id !== action.id);
-        view.devices.push({ id: "device", label: request.label, grants: action.grants, lastActiveAt: Date.now() });
-        break;
-      }
-      case "update":
-        view.devices.find((item) => item.id === action.id).grants = action.grants;
-        break;
-      case "deny":
-        view.pending = view.pending.filter((item) => item.id !== action.id);
-        break;
       case "revoke":
         view.devices = view.devices.filter((item) => item.id !== action.id);
         break;
       case "stop":
-        Object.assign(view, { running: false, address: null, port: null, origin: null, code: null, pending: [], devices: [] });
+        Object.assign(view, { running: false, address: null, port: null, origin: null, code: null, devices: [] });
         break;
       default:
         throw new Error("Unexpected LAN action: " + action.kind);
@@ -120,7 +108,6 @@ const title = () => q("h2", dialog())?.textContent;
 const toggle = () => q('[role="switch"][aria-label="Allow LAN connections"]');
 const field = () => q('input[aria-label="Port"]');
 const alert = () => q('[role="alert"]', section())?.textContent;
-const checkbox = (name) => [...dialog().querySelectorAll("label")].find((label) => label.textContent.startsWith(name)).querySelector("input");
 const click = (element) => { check(element && !element.disabled, "Missing or disabled control"); element.focus(); element.click(); };
 const press = (key, shiftKey = false) => document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true }));
 const input = (value) => {
@@ -156,44 +143,26 @@ window.lanSettingsProbe = async () => {
   click(button(lanEn.copy));
   await wait(() => button(lanEn.copied), "clipboard feedback");
 
-  view.pending.push({ id: "old", label: "Other phone", createdAt: Date.now() });
-  emit();
-  await wait(() => button(lanEn.review), "pending request from Main");
   click(button(lanEn.addDevice));
   await wait(() => title() === lanEn.pairTitle && dialog().textContent.includes(lanEn.codeExpired), "expired pairing code");
   check(fitsDialog(), "pairing fits a narrow dark window");
+  check(dialog().textContent.includes(lanEn.pairDescription), "the code dialog discloses its access");
   click(button(lanEn.newCode, dialog()));
   await wait(() => q(".lan-code")?.textContent === "134209", "replacement code");
   await wait(() => dialog().contains(document.activeElement), "focus in pair dialog");
   press("Escape");
   await wait(() => !dialog() && document.activeElement === button(lanEn.addDevice), "Escape returns focus");
+  document.documentElement.dataset.theme = "light";
   click(button(lanEn.addDevice));
   await wait(() => q(".lan-code")?.textContent === "512309", "fresh code when opened again");
-  view.pending.push({ id: "phone", label: "iPhone", createdAt: Date.now() });
+  check(fitsDialog() && !dialog().querySelector('input[type="checkbox"]'), "pairing fits the light window without permission controls");
+  q(".lan-dialog-close", dialog()).focus();
+  check(!press("Tab", true) && document.activeElement === button(lanEn.newCode, dialog()), "Shift+Tab stays in the pairing dialog");
+  view.devices.push({ id: "device", label: "iPhone", lastActiveAt: Date.now() });
   view.code = null;
   emit();
-  await wait(() => title() === "Allow iPhone?", "new request advances directly to approval");
-  await wait(() => dialog().contains(document.activeElement), "focus moves into approval");
-  check(!button(lanEn.allow, dialog()).disabled, "device approval does not require choosing a project");
-  check(dialog().textContent.includes(lanEn.scopeAll) && dialog().textContent.includes(lanEn.approveDescription), "approval discloses access to all local projects");
-  check(dialog().querySelectorAll('input[type="checkbox"]').length === 3 && !checkbox(lanEn.scopeTemporary).checked, "only optional permissions are configurable");
-  q(".lan-dialog-close", dialog()).focus();
-  check(!press("Tab", true) && document.activeElement === button(lanEn.allow, dialog()), "Shift+Tab stays in the approval dialog");
-  click(button(lanEn.allow, dialog()));
-  await wait(() => !dialog() && button(lanEn.permissions) && document.activeElement === button(lanEn.addDevice), "paired device row and restored focus");
-
-  document.documentElement.dataset.theme = "light";
-  click(button(lanEn.permissions));
-  await wait(() => title() === "iPhone permissions", "edit device");
-  check(dialog().textContent.includes(lanEn.scopeAll) && !checkbox(lanEn.scopeTemporary).checked && fitsDialog(), "device permissions fit in a narrow light window");
-  click(checkbox(lanEn.chat));
-  click(checkbox(lanEn.organize));
-  await wait(() => !button(lanEn.save, dialog()).disabled && !checkbox(lanEn.chat).checked, "view-only edit");
-  click(button(lanEn.save, dialog()));
-  await wait(() => !dialog() && q(".lan-device:not(.is-request)")?.textContent.includes(lanEn.viewOnly), "device updates without re-pairing");
-  check(q(".lan-device:not(.is-request)").textContent.includes(lanEn.scopeAll), "project access is retained in view-only mode");
-  click(button(lanEn.deny, q(".lan-device.is-request")));
-  await wait(() => !q(".lan-device.is-request"), "deny pre-existing request");
+  await wait(() => !dialog() && q(".lan-device-name")?.textContent === "iPhone" && document.activeElement === button(lanEn.addDevice), "paired device appears directly and focus returns");
+  check(q(".lan-device").querySelectorAll("button").length === 1, "a paired device can be removed, not configured");
   click(button(lanEn.remove));
   await wait(() => q(".lan-devices-empty")?.textContent === lanEn.noDevices, "device removed");
   click(toggle());
@@ -205,7 +174,7 @@ window.lanSettingsProbe = async () => {
 };
 `;
 
-test("Desktop Settings starts, pairs, edits and removes a LAN device", {
+test("Desktop Settings shows a code, registers the paired device directly, and removes it", {
   timeout: 60_000,
   skip: process.platform === "linux" && !process.env.DISPLAY ? "Isolated Electron test requires a display" : false,
 }, async (t) => {
@@ -256,9 +225,7 @@ app.whenReady().then(async () => {
       { kind: "start", address: "192.168.1.20", port: 38180 },
       { kind: "start", address: "192.168.1.20", port: 38180 },
       { kind: "issueCode" }, { kind: "issueCode" }, { kind: "issueCode" },
-      { kind: "confirm", id: "phone", grants: { projectScope: "all-local", temporary: false, chat: true, organize: true } },
-      { kind: "update", id: "device", grants: { projectScope: "all-local", temporary: false, chat: false, organize: false } },
-      { kind: "deny", id: "old" }, { kind: "revoke", id: "device" }, { kind: "stop" },
+      { kind: "revoke", id: "device" }, { kind: "stop" },
     ],
     copied: ["http://192.168.1.20:38180"],
     remainingListeners: 0,

@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { LanAdminView, LanGrants } from "@pi-desktop/shared";
+import type { LanAdminView } from "@pi-desktop/shared";
 import { Button, cx } from "../../components/ui";
 import { IconCheck, IconCopy, IconRefresh, IconSmartphone } from "../../components/icons";
 import { LanDialog } from "./LanDialog";
-import { LanGrantsEditor } from "./LanGrantsEditor";
 import { useCountdown } from "./use-lan-webui-admin";
 
 export function CopyButton({ text }: { text: string }) {
@@ -53,6 +52,7 @@ export function LanPairDialog({ origin, code, busy, error, issueCode, onClose }:
     <LanDialog
       id="lan-pair"
       title={t("pairTitle")}
+      description={t("pairDescription")}
       icon={<IconSmartphone size={18} />}
       onClose={onClose}
       error={error}
@@ -94,53 +94,6 @@ export function LanPairDialog({ origin, code, busy, error, issueCode, onClose }:
           </div>
         </li>
       </ol>
-    </LanDialog>
-  );
-}
-
-/** Approve a pending browser, or change what a paired device may do. */
-export function LanAccessDialog({
-  mode, label, initial, busy, error, onSubmit, onDeny, onClose,
-}: {
-  mode: "approve" | "edit";
-  label: string;
-  initial: LanGrants;
-  busy: boolean;
-  error: string | null;
-  onSubmit: (grants: LanGrants) => void;
-  onDeny?: () => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation("lan");
-  const [draft, setDraft] = useState(initial);
-  return (
-    <LanDialog
-      id={`lan-access-${mode}`}
-      title={mode === "approve" ? t("approveTitle", { label }) : t("editTitle", { label })}
-      description={mode === "approve" ? t("approveDescription") : undefined}
-      icon={<IconSmartphone size={18} />}
-      busy={busy}
-      error={error}
-      onClose={onClose}
-      footer={
-        <>
-          {mode === "approve" ? (
-            <Button type="button" variant="ghost" aria-disabled={busy || undefined} onClick={busy ? undefined : onDeny}>{t("deny")}</Button>
-          ) : (
-            <Button type="button" variant="ghost" aria-disabled={busy || undefined} onClick={busy ? undefined : onClose}>{t("cancel")}</Button>
-          )}
-          <Button
-            type="button"
-            variant="primary"
-            aria-disabled={busy || undefined}
-            onClick={busy ? undefined : () => onSubmit(draft)}
-          >
-            {mode === "approve" ? t("allow") : t("save")}
-          </Button>
-        </>
-      }
-    >
-      <LanGrantsEditor value={draft} onChange={setDraft} disabled={busy} />
     </LanDialog>
   );
 }

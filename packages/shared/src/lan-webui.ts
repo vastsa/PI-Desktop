@@ -2,19 +2,6 @@
  * The direct-to-Desktop LAN browser profile (proposed WebUI MVP).
  * No native paths, host RPC or provider secrets cross this boundary.
  */
-export interface LanGrants {
-  /** All eligible local projects, resolved from the current Host catalog. */
-  projectScope: "all-local";
-  /** Temporary (projectless) conversations. */
-  temporary: boolean;
-  /** Create sessions, send, queue, stop. */
-  chat: boolean;
-  /** Rename, pin, archive and restore. */
-  organize: boolean;
-}
-export interface LanAccess extends LanGrants {
-  deviceId: string;
-}
 export const LAN_TEMPORARY_PROJECT = "__temporary__";
 export interface LanProject {
   id: string;
@@ -59,12 +46,6 @@ export interface LanDevice {
   id: string;
   label: string;
   lastActiveAt: number;
-  grants: LanGrants;
-}
-export interface LanPairing {
-  id: string;
-  label: string;
-  createdAt: number;
 }
 export interface LanInterface {
   address: string;
@@ -76,7 +57,6 @@ export interface LanAdminView {
   address: string | null;
   port: number | null;
   code: { value: string; expiresAt: number } | null;
-  pending: LanPairing[];
   devices: LanDevice[];
   interfaces: LanInterface[];
   error: string | null;
@@ -84,10 +64,7 @@ export interface LanAdminView {
 export type LanAdminAction =
   | { kind: "state" | "stop" | "issueCode" }
   | { kind: "start"; address: string; port: number }
-  | { kind: "confirm"; id: string; grants: LanGrants }
-  /** Change what an already paired device may see and do. */
-  | { kind: "update"; id: string; grants: LanGrants }
-  | { kind: "deny" | "revoke"; id: string }
+  | { kind: "revoke"; id: string }
   /** The renderer applied organization patches up to `seq`. */
   | { kind: "ack"; seq: number };
 

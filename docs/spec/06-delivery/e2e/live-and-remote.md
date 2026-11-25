@@ -752,7 +752,7 @@ their separate platform acceptance.
 These scenarios qualify the [LAN companion](../../01-product/03-lan-webui-mvp.md),
 not the SSH remote Host, a standalone server, or a public Gateway. For all eight:
 **Milestone:** M6+ (WebUI MVP). **Status:** Partially automated — the core user
-path, scope/grant guards and organization merge run in
+path, pairing guards and organization merge run in
 `apps/desktop/test/lan-webui-*.test.mjs` (real listener, fake Desktop, Electron
 Chromium at phone size); real-device steps remain Draft. Use an isolated Desktop
 profile, disposable test devices and deterministic fixtures. Do not use a
@@ -763,25 +763,23 @@ user's running instance.
 - **Preconditions:** Fresh Desktop profile with projects A and B; a real phone
   on the selected private LAN. Repeat on iOS Safari and Android Chrome.
 - **Steps:** Choose the interface and start. Open **Add device**, copy the shown
-  `http://` address, and enter the displayed code on the phone. Confirm the
-  device without choosing projects. Add project C on Desktop after pairing.
-  Open and close the dialog with the keyboard, regenerate an expired code,
-  and deny a separate waiting request. Close/reopen the tab, hide Desktop,
-  then stop, quit and relaunch Desktop.
-- **Expected:** No listener by default and no project data before confirmation.
-  The request advances to device confirmation, which discloses access to all
-  local projects. The paired device sees A, B and subsequently C without another
-  approval; Temporary conversations remain off. An expired, reused or five-times-
-  wrong code fails. Hiding Desktop/closing the tab does not sign out. Stopping
-  closes streams, invalidates cookies and releases the port; restarting requires
-  pairing again. An occupied port or isolated Wi-Fi produces actionable guidance.
+  `http://` address, and enter the displayed code on the phone. Do not click
+  another Desktop control. Open a local project and a temporary conversation,
+  then add project C on Desktop. Test an expired code, a second redemption,
+  five wrong attempts and the keyboard flow. Stop, quit and relaunch Desktop.
+- **Expected:** No listener by default and no project data before pairing.
+  The valid code immediately connects the phone and lists the device on
+  Desktop. No approval or per-device grants are required; A, B, C and
+  temporary conversations are available. Closing the tab does not sign out.
+  Invalid, expired or redeemed codes fail. Stopping invalidates credentials and
+  releases the port; restarting requires pairing again.
 - **Acceptance:** A, E; W01, W06.
 
 ### E2E-270: Organize projects and sessions without stealing navigation
 
-- **Preconditions:** Desktop is editing an unsent draft in A. The phone has
-  View and Organize; B is a closed local multi-root group with existing
-  sessions, one separately archived. Seed a duplicate display name.
+- **Preconditions:** Desktop is editing an unsent draft in A. The phone is
+  paired. B is a closed multi-root group with existing sessions, one separately
+  archived. Seed a duplicate display name.
 - **Steps:** Search for B, open it, pin and rename it; rename/pin/archive/restore
   an idle session. Archive and restore B through the archived filter. Make a
   competing rename from Desktop and submit the stale edit from the phone.
@@ -795,13 +793,13 @@ user's running instance.
 
 ### E2E-271: Create and continue the same session on phone and desktop
 
-- **Preconditions:** Desktop is viewing A. The phone has Chat in B, no Temporary
-  grant, and a usable fixture model. B has an existing chat with paged history.
+- **Preconditions:** Desktop is viewing A. The phone is paired. A usable
+  fixture model is configured. B has an existing chat with paged history.
 - **Steps:** Double-tap New session in B, send text, stream a reply, then continue
   the same session on Desktop. Queue a second message while busy and cancel it;
   interrupt the named active turn. Reopen the older B chat and load older pages.
-  Try global New with and without an explicit Temporary grant. Repeat with no
-  configured model, and with a pre-existing eligible empty conversation in B.
+  Create a temporary conversation from its own entry. Repeat with no configured
+  model and with a pre-existing eligible empty conversation in B.
   From idle, send two different prompts simultaneously from Desktop and the
   phone, first without queuing and then with explicit queue admission.
 - **Expected:** The initial double-tap/send yields one session and one user
@@ -809,8 +807,8 @@ user's running instance.
   Concurrent sends never start two active turns in a session. A losing send is
   queued only by request; otherwise its client sees busy and keeps the draft.
   Canceled work never runs and stop preserves partial output. Paging older
-  items keeps position. No implicit Temporary disclosure, wrong-project empty
-  reuse, or duplicate creates. An authorized temporary session has no project.
+  items keeps position, without wrong-project empty reuse or duplicate creates.
+  A temporary session has no project and never inherits A or B.
   Missing model blocks send, preserves text and points to Desktop setup.
 - **Acceptance:** B, C, D; W03, W04, W05.
 
@@ -846,25 +844,21 @@ user's running instance.
   not a fabricated completion, continuing stream or automatic new turn.
 - **Acceptance:** C, F; W05.
 
-### E2E-274: Enforce device grants, network boundary and revocation
+### E2E-274: Enforce the network boundary and device revocation
 
-- **Preconditions:** A View-only device, a second device with Chat, Organize and
-  Temporary access, two local projects and an SSH-backed project. Use a controlled
-  clock, a second interface and an allowed and a disallowed browser origin.
-- **Steps:** Exercise catalog, deep links, history, search/counts, commands and
-  SSE with those identities. Check wrong Origin/Host, absent CSRF, expired
-  cookies, pairing throttles and rejected admin/owner operations. In **Permissions**,
-  turn off Temporary, Chat and Organize while a temporary history request and
-  stream are in flight. Remove the device and change the desktop network.
-  Inspect fixture logs/cache.
-- **Expected:** No out-of-scope metadata, events or writes, even for known IDs;
-  View cannot mutate. No generic owner/SSH exemption or raw RPC, no leaked
-  credentials/content in logs or persistent browser caches. Permission edits
-  do not require re-pairing or change local project visibility. Temporary scope
-  loss closes affected streams and cancels its pending queued work; a late or
-  cached reply under the old grants cannot recover it.
-  Expiry is not extended by a heartbeat. No connection on other interfaces or
-  automatic sharing on the new network.
+- **Preconditions:** Two paired devices, local projects, temporary conversations
+  and an SSH-backed project. Use a controlled clock and a second interface.
+- **Steps:** Exercise catalog, histories, commands and SSE. Check wrong
+  Origin/Host, missing CSRF, the device cap and rejected admin/owner operations.
+  Remove one device while a temporary history request and stream are in flight;
+  then change the desktop network. Inspect fixture logs and caches.
+- **Expected:** The SSH-backed project remains hidden. Paired devices have the
+  same local WebUI operations, but no generic owner/SSH exemption or raw RPC.
+  Removal closes streams and refuses later requests, in-flight results and
+  cached mutation results for that device. Other devices remain connected. The
+  release also requires canceling revoked devices' not-started queued work.
+  Credentials and content do not leak to logs or persistent caches. There is no
+  connection on other interfaces or automatic sharing on the new network.
 - **Acceptance:** D, E; W01, W02, W06.
 
 ### E2E-275: Preserve an existing desktop profile and disable cleanly

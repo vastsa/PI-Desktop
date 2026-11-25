@@ -1,46 +1,29 @@
 import { randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
-import type { LanAccess, LanDevice, LanGrants, LanPairing } from "@pi-desktop/shared";
+import type { LanDevice } from "@pi-desktop/shared";
 import { LanError, type LanChange, type LanRequest } from "./ports";
 
 export type LanAsset = { type: string; body: string };
 export type LanServerHandler = {
   handle(request: LanRequest, key: string | null): Promise<unknown>;
   subscribe(listener: (change: LanChange) => void): () => void;
-  mayReveal(access: LanAccess, sessionId: string): Promise<boolean>;
+  mayReveal(sessionId: string): Promise<boolean>;
 };
 
 const CODE_TTL_MS = 5 * 60_000;
 const CODE_ATTEMPTS = 5;
-const PENDING_TTL_MS = 10 * 60_000;
-const MAX_PENDING = 8;
 const MAX_DEVICES = 16;
 const MAX_BODY = 300 * 1024;
 const MAX_IDEMPOTENT = 200;
 const HEARTBEAT_MS = 25_000;
 const LABEL_MAX = 60;
 const SESSION_COOKIE = "pi_lan";
-const PENDING_COOKIE = "pi_lan_pending";
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-type RememberedOperation = { grants: LanGrants; result: Promise<unknown> };
-type Device = LanDevice & { token: string; csrf: string; streams: Set<ServerResponse>; idempotent: Map<string, RememberedOperation> };
-type Pending = LanPairing & { secret: string; deviceId: string | null };
+type Device = LanDevice & { token: string; csrf: string; streams: Set<ServerResponse>; idempotent: Map<string, Promise<unknown>> };
 
 const secret = () => randomBytes(32).toString("base64url");
-
-function cleanGrants(value: unknown): LanGrants {
-  const input = (value && typeof value === "object" ? value : {}) as Partial<Record<keyof LanGrants, unknown>>;
-  // Never reinterpret an older project-id selection as consent to all local projects.
-  if (input.projectScope !== "all-local") throw new LanError(400, "INVALID_SCOPE");
-  return {
-    projectScope: input.projectScope,
-    temporary: input.temporary === true,
-    chat: input.chat === true,
-    organize: input.organize === true,
-  };
-}
 
 const sameSecret = (a: string, b: string) => {
   const left = Buffer.from(a);
@@ -98,7 +81,7 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
 /**
  * Plain-HTTP LAN listener for the browser companion. It owns pairing, device
  * credentials and the event stream; every data operation goes through the
- * workspace handler, which re-checks the device's scope.
+ * workspace handler, which checks that resources belong to the local catalog.
  */
 export function createLanServer(options: {
   handler: LanServerHandler;
@@ -110,7 +93,6 @@ export function createLanServer(options: {
   let server: Server | null = null;
   let host = "";
   let code: { value: string; expiresAt: number; attempts: number } | null = null;
-  const pending = new Map<string, Pending>();
   const devices = new Map<string, Device>();
   const sockets = new Set<Socket>();
   let unsubscribe: (() => void) | null = null;
@@ -125,11 +107,8 @@ export function createLanServer(options: {
     return null;
   };
 
-  const access = (device: Device): LanAccess => ({ deviceId: device.id, ...device.grants });
-
-  function requireCurrentGrants(device: Device, grants: LanGrants) {
+  function requireDevice(device: Device) {
     if (!devices.has(device.id)) throw new LanError(401, "UNAUTHORIZED");
-    if (device.grants !== grants) throw new LanError(409, "CONFLICT");
   }
 
   /** DNS rebinding and cross-site request guard; not a TLS check. */
@@ -144,15 +123,13 @@ export function createLanServer(options: {
     device.streams.clear();
   }
 
-  function prune() {
-    const time = now();
-    if (code && code.expiresAt <= time) code = null;
-    for (const [id, entry] of pending) if (time - entry.createdAt > PENDING_TTL_MS) pending.delete(id);
+  function expireCode() {
+    if (code && code.expiresAt <= now()) code = null;
   }
 
   async function pair(request: IncomingMessage, response: ServerResponse) {
     const body = await readBody(request);
-    prune();
+    expireCode();
     const supplied = typeof body.code === "string" ? body.code.trim() : "";
     const label = (typeof body.label === "string" ? body.label.trim() : "").slice(0, LABEL_MAX) || "Browser";
     if (!code) throw new LanError(403, "PAIRING_CLOSED");
@@ -164,30 +141,17 @@ export function createLanServer(options: {
       }
       throw new LanError(403, "PAIRING_FAILED");
     }
-    if (pending.size >= MAX_PENDING) throw new LanError(429, "RATE_LIMITED");
-    code = null; // single use
-    const entry: Pending = { id: randomUUID(), label, createdAt: now(), secret: secret(), deviceId: null };
-    pending.set(entry.id, entry);
-    changed();
-    sendJson(response, 200, { state: "pending" }, { "Set-Cookie": cookie(PENDING_COOKIE, entry.secret, PENDING_TTL_MS / 1000) });
-  }
+    if (devices.size >= MAX_DEVICES) throw new LanError(429, "RATE_LIMITED");
 
-  function pairStatus(request: IncomingMessage, response: ServerResponse) {
-    prune();
-    const token = cookies(request).get(PENDING_COOKIE);
-    const entry = token ? [...pending.values()].find((candidate) => sameSecret(candidate.secret, token)) : undefined;
-    if (!entry) {
-      const device = deviceFor(request);
-      if (device) return sendJson(response, 200, { state: "paired" });
-      throw new LanError(401, "UNAUTHORIZED");
-    }
-    if (!entry.deviceId) return sendJson(response, 200, { state: "pending" });
-    const device = devices.get(entry.deviceId);
-    pending.delete(entry.id);
-    if (!device) throw new LanError(401, "UNAUTHORIZED");
-    sendJson(response, 200, { state: "paired" }, {
-      "Set-Cookie": [cookie(SESSION_COOKIE, device.token, 12 * 60 * 60), cookie(PENDING_COOKIE, "", 0)],
-    });
+    // Consume the code and register the device together, without an async gap.
+    code = null;
+    const device: Device = {
+      id: randomUUID(), label, lastActiveAt: now(), token: secret(), csrf: secret(),
+      streams: new Set(), idempotent: new Map(),
+    };
+    devices.set(device.id, device);
+    changed();
+    sendJson(response, 200, { state: "paired" }, { "Set-Cookie": cookie(SESSION_COOKIE, device.token, 12 * 60 * 60) });
   }
 
   function events(device: Device, request: IncomingMessage, response: ServerResponse, sessionFilter: string | null) {
@@ -206,17 +170,14 @@ export function createLanServer(options: {
   }
 
   async function broadcast(change: LanChange) {
+    if (![...devices.values()].some((device) => device.streams.size)) return;
+    const reveal = change.sessionId && await options.handler.mayReveal(change.sessionId).catch(() => false);
+    const data = reveal ? { sessionId: change.sessionId } : {};
     for (const device of devices.values()) {
-      if (!device.streams.size) continue;
-      const grants = device.grants;
-      let reveal = false;
-      if (change.sessionId) reveal = await options.handler.mayReveal(access(device), change.sessionId).catch(() => false);
-      if (!devices.has(device.id) || device.grants !== grants) continue;
       for (const stream of device.streams) {
         const filter = (stream as ServerResponse & { lanSession?: string | null }).lanSession ?? null;
         if (filter && change.sessionId !== filter) continue;
         if (filter && !reveal) continue;
-        const data = reveal ? { sessionId: change.sessionId } : {};
         stream.write(`event: change\ndata: ${JSON.stringify(data)}\n\n`);
       }
     }
@@ -225,11 +186,12 @@ export function createLanServer(options: {
   async function api(request: IncomingMessage, response: ServerResponse, url: URL) {
     const device = deviceFor(request);
     if (!device) throw new LanError(401, "UNAUTHORIZED");
-    const grants = device.grants;
     device.lastActiveAt = now();
     const method = request.method === "POST" ? "POST" : "GET";
     if (url.pathname === "/v1/me" && method === "GET") {
-      return sendJson(response, 200, { csrf: device.csrf, access: access(device), label: device.label });
+      // Compatibility metadata for already-open browser tabs; not per-device grants.
+      const access = { deviceId: device.id, projectScope: "all-local", temporary: true, chat: true, organize: true };
+      return sendJson(response, 200, { csrf: device.csrf, access, label: device.label });
     }
     if (method === "POST") {
       const csrf = String(request.headers["x-csrf-token"] ?? "");
@@ -245,13 +207,13 @@ export function createLanServer(options: {
     const sessionEvents = /^\/v1\/sessions\/([^/]+)\/events$/.exec(url.pathname);
     if (method === "GET" && sessionEvents) {
       const sessionId = decodeURIComponent(sessionEvents[1]!);
-      if (!(await options.handler.mayReveal(access(device), sessionId))) throw new LanError(404, "NOT_FOUND");
-      requireCurrentGrants(device, grants);
+      if (!(await options.handler.mayReveal(sessionId))) throw new LanError(404, "NOT_FOUND");
+      requireDevice(device);
       return events(device, request, response, sessionId);
     }
     const body = method === "POST" ? await readBody(request) : {};
-    requireCurrentGrants(device, grants);
-    const lanRequest: LanRequest = { method, path: url.pathname, query: url.searchParams, body, access: access(device) };
+    requireDevice(device);
+    const lanRequest: LanRequest = { method, path: url.pathname, query: url.searchParams, body, deviceId: device.id };
     const rawKey = request.headers["idempotency-key"];
     const key = typeof rawKey === "string" && /^[A-Za-z0-9_-]{8,80}$/.test(rawKey) ? rawKey : null;
     let result: Promise<unknown>;
@@ -259,15 +221,12 @@ export function createLanServer(options: {
       const cacheKey = `${url.pathname}:${key}`;
       const remembered = device.idempotent.get(cacheKey);
       if (remembered) {
-        // A retry from an earlier grant must neither return its result nor execute again.
-        if (remembered.grants !== grants) throw new LanError(409, "CONFLICT");
-        result = remembered.result;
+        result = remembered;
       } else {
         result = options.handler.handle(lanRequest, key);
-        const entry = { grants, result };
-        device.idempotent.set(cacheKey, entry);
+        device.idempotent.set(cacheKey, result);
         result.catch(() => {
-          if (device.idempotent.get(cacheKey) === entry) device.idempotent.delete(cacheKey);
+          if (device.idempotent.get(cacheKey) === result) device.idempotent.delete(cacheKey);
         });
         while (device.idempotent.size > MAX_IDEMPOTENT) {
           device.idempotent.delete(device.idempotent.keys().next().value as string);
@@ -277,7 +236,7 @@ export function createLanServer(options: {
       result = options.handler.handle(lanRequest, null);
     }
     const value = await result;
-    requireCurrentGrants(device, grants);
+    requireDevice(device);
     sendJson(response, 200, value);
   }
 
@@ -300,7 +259,11 @@ export function createLanServer(options: {
       }
     }
     if (url.pathname === "/pair" && request.method === "POST") return pair(request, response);
-    if (url.pathname === "/pair/status" && request.method === "GET") return pairStatus(request, response);
+    // Older pages poll this route after pairing. It only checks the live cookie now.
+    if (url.pathname === "/pair/status" && request.method === "GET") {
+      if (!deviceFor(request)) throw new LanError(401, "UNAUTHORIZED");
+      return sendJson(response, 200, { state: "paired" });
+    }
     if (url.pathname.startsWith("/v1/")) return api(request, response, url);
     throw new LanError(404, "NOT_FOUND");
   }
@@ -349,7 +312,6 @@ export function createLanServer(options: {
       heartbeat = null;
       for (const device of devices.values()) closeStreams(device);
       devices.clear();
-      pending.clear();
       code = null;
       host = "";
       if (!current) return;
@@ -370,55 +332,12 @@ export function createLanServer(options: {
     },
 
     code(): { value: string; expiresAt: number } | null {
-      prune();
+      expireCode();
       return code ? { value: code.value, expiresAt: code.expiresAt } : null;
     },
 
-    pending(): LanPairing[] {
-      prune();
-      return [...pending.values()].filter((entry) => !entry.deviceId).map(({ id, label, createdAt }) => ({ id, label, createdAt }));
-    },
-
     devices(): LanDevice[] {
-      return [...devices.values()].map(({ id, label, lastActiveAt, grants }) => ({ id, label, lastActiveAt, grants }));
-    },
-
-    /** Desktop confirmation: the only path that turns a pending browser into a device. */
-    confirm(id: string, grants: LanGrants): void {
-      prune();
-      const entry = pending.get(id);
-      if (!entry || entry.deviceId) throw new LanError(404, "NOT_FOUND");
-      if (devices.size >= MAX_DEVICES) throw new LanError(429, "RATE_LIMITED");
-      const device: Device = {
-        id: randomUUID(),
-        label: entry.label,
-        lastActiveAt: now(),
-        grants: cleanGrants(grants),
-        token: secret(),
-        csrf: secret(),
-        streams: new Set(),
-        idempotent: new Map(),
-      };
-      devices.set(device.id, device);
-      entry.deviceId = device.id;
-      changed();
-    },
-
-    /** Keep device identity but reauthorize its next request and subscriptions. */
-    update(id: string, grants: LanGrants): void {
-      const device = devices.get(id);
-      if (!device) throw new LanError(404, "NOT_FOUND");
-      const next = cleanGrants(grants);
-      const current = device.grants;
-      if (next.temporary === current.temporary && next.chat === current.chat && next.organize === current.organize) return;
-      device.grants = next;
-      closeStreams(device);
-      changed();
-    },
-
-    deny(id: string): void {
-      pending.delete(id);
-      changed();
+      return [...devices.values()].map(({ id, label, lastActiveAt }) => ({ id, label, lastActiveAt }));
     },
 
     revoke(id: string): void {

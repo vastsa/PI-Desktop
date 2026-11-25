@@ -64,7 +64,6 @@ export function createLanWebUiService(deps: {
       address: running ? address : null,
       port: running ? port : null,
       code: running ? current!.code() : null,
-      pending: running ? current!.pending() : [],
       devices: running ? current!.devices() : [],
       interfaces: listLanInterfaces(),
       error,
@@ -96,15 +95,6 @@ export function createLanWebUiService(deps: {
           break;
         case "issueCode":
           ensureServer().issueCode();
-          break;
-        case "confirm":
-          ensureServer().confirm(String(action.id), action.grants);
-          break;
-        case "update":
-          ensureServer().update(String(action.id), action.grants);
-          break;
-        case "deny":
-          server?.deny(String(action.id));
           break;
         case "revoke":
           server?.revoke(String(action.id));

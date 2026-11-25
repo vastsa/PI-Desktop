@@ -3,11 +3,9 @@ import test from "node:test";
 import { request } from "node:http";
 import { browser, createLanServer, desktop } from "./helpers/lan-webui-fixture.mjs";
 
-const allProjects = { projectScope: "all-local", temporary: false, chat: true, organize: true };
-
-async function setup(t, grants, wrapHandler = (workspace) => workspace) {
+async function setup(t, { wrapHandler = (workspace) => workspace, now } = {}) {
   const fake = desktop();
-  const server = createLanServer({ handler: wrapHandler(fake.workspace), assets: new Map([["/index.html", { type: "text/html", body: "<p>ok</p>" }]]) });
+  const server = createLanServer({ handler: wrapHandler(fake.workspace), now, assets: new Map([["/index.html", { type: "text/html", body: "<p>ok</p>" }]]) });
   const { port } = await server.start("127.0.0.1", 0);
   t.after(async () => {
     await server.stop();
@@ -15,24 +13,20 @@ async function setup(t, grants, wrapHandler = (workspace) => workspace) {
   });
   const origin = `http://127.0.0.1:${port}`;
   const phone = browser(origin);
-  server.issueCode();
-  const code = server.code().value;
-  assert.equal((await phone.request("POST", "/pair", { code, label: "iPhone" })).status, 200);
-  assert.equal((await phone.request("GET", "/pair/status")).body.state, "pending");
-  assert.equal((await phone.request("GET", "/v1/me")).status, 401, "no data before Desktop confirms");
+  assert.equal((await phone.request("GET", "/v1/me")).status, 401);
+  assert.equal((await phone.request("GET", "/pair/status")).status, 401);
   assert.equal((await phone.request("GET", "/v1/projects")).status, 401);
-  const [pending] = server.pending();
-  assert.equal(pending.label, "iPhone");
-  assert.throws(() => server.confirm(pending.id, { projectIds: ["g-a"], temporary: false, chat: true, organize: true }), { code: "INVALID_SCOPE" });
-  assert.equal((await phone.request("GET", "/pair/status")).body.state, "pending");
-  server.confirm(pending.id, grants);
-  assert.equal((await phone.request("GET", "/pair/status")).body.state, "paired");
+  const { value: code } = server.issueCode();
+  assert.deepEqual(await phone.request("POST", "/pair", { code, label: "iPhone" }), { status: 200, body: { state: "paired" } });
+  assert.equal(server.code(), null);
+  assert.equal(server.devices()[0].label, "iPhone");
   await phone.signIn();
+  assert.deepEqual(await phone.request("GET", "/pair/status"), { status: 200, body: { state: "paired" } });
   return { ...fake, server, phone, origin };
 }
 
 test("pair, browse all local projects, create, chat and organize from a phone", async (t) => {
-  const { phone, calls, turns, activeTurns, meta, server } = await setup(t, allProjects);
+  const { phone, calls, turns, activeTurns, meta, server } = await setup(t);
 
   // No project choices are required; the SSH-backed group stays hidden.
   const projects = await phone.request("GET", "/v1/projects?q=");
@@ -101,17 +95,14 @@ test("pair, browse all local projects, create, chat and organize from a phone", 
   assert.equal((await phone.request("GET", "/v1/projects")).status, 401);
 });
 
-test("remote projects, temporary scope, mutation grants and request guards fail closed", async (t) => {
-  const { phone, origin, server } = await setup(t, { ...allProjects, chat: false, organize: false });
+test("remote projects, unregistered sessions and transport guards stay restricted", async (t) => {
+  const { phone, origin, server } = await setup(t);
 
-  for (const path of ["/v1/sessions?projectId=g-r", "/v1/sessions/s-ssh", "/v1/sessions/s-ungrouped", "/v1/sessions/s-tmp", "/v1/sessions?projectId=__temporary__"]) {
+  for (const path of ["/v1/sessions?projectId=g-r", "/v1/sessions/s-ssh", "/v1/sessions/s-ungrouped"]) {
     assert.equal((await phone.request("GET", path)).status, 404, path);
   }
   assert.equal((await phone.request("GET", "/v1/sessions/s-b1")).status, 200);
-  assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-a" })).body.code, "FORBIDDEN");
-  assert.equal((await phone.request("POST", "/v1/sessions/s-a1/turns", { text: "x" })).body.code, "FORBIDDEN");
-  const session = (await phone.request("GET", "/v1/sessions?projectId=g-a")).body.items[0];
-  assert.equal((await phone.request("POST", `/v1/sessions/${session.id}/organize`, { revision: session.revision, pinned: true })).body.code, "FORBIDDEN");
+  assert.equal((await phone.request("POST", "/v1/permissions/approve", {})).status, 404);
 
   // Missing CSRF, foreign Origin and a wrong Host are rejected.
   assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-a" }, { "X-CSRF-Token": "" })).body.code, "CSRF");
@@ -142,7 +133,7 @@ test("remote projects, temporary scope, mutation grants and request guards fail 
 });
 
 test("a paired device sees newly added projects and distinguishes duplicate names without paths", async (t) => {
-  const { phone, groups } = await setup(t, allProjects);
+  const { phone, groups } = await setup(t);
   assert.deepEqual((await phone.request("GET", "/v1/projects")).body.items.map((project) => project.id), ["g-a", "g-b"]);
   groups.push({ id: "g-a2", name: "Alpha", primaryPath: "/elsewhere/clone/a", roots: [{ path: "/elsewhere/clone/a", name: "a", position: 0 }], pinned: false, lastOpenedAt: 0, createdAt: 0, updatedAt: 0 });
   const projects = (await phone.request("GET", "/v1/projects")).body.items;
@@ -150,34 +141,55 @@ test("a paired device sees newly added projects and distinguishes duplicate name
   assert.equal((await phone.request("GET", "/v1/sessions?projectId=g-a2")).status, 200);
 });
 
-test("temporary conversations need their own grant", async (t) => {
-  const { phone, calls } = await setup(t, { ...allProjects, temporary: true, organize: false });
+test("pairing grants temporary conversations without a separate permission", async (t) => {
+  const { phone, calls, turns } = await setup(t);
   assert.deepEqual((await phone.request("GET", "/v1/sessions?projectId=__temporary__")).body.items.map((s) => s.id), ["s-tmp"]);
   assert.equal((await phone.request("GET", "/v1/sessions/s-a1")).status, 200);
   const created = await phone.request("POST", "/v1/sessions", { projectId: null });
   assert.equal(created.status, 200);
   assert.deepEqual(calls.find(([c]) => c === "create")[1], [{}], "no project is inherited");
+  assert.equal((await phone.request("POST", `/v1/sessions/${created.body.id}/turns`, { text: "hello" })).status, 200);
+  assert.equal(turns[0].params.sessionId, created.body.id);
 });
 
-test("editing temporary and mutation grants discards stale results without pairing again", { timeout: 10_000 }, async (t) => {
+test("pairing codes expire and exactly one redemption creates a device", async (t) => {
+  let time = Date.now();
+  const { server, origin } = await setup(t, { now: () => time });
+  const expired = server.issueCode();
+  time = expired.expiresAt;
+  assert.equal((await browser(origin).request("POST", "/pair", { code: expired.value })).body.code, "PAIRING_CLOSED");
+
+  const { value: code } = server.issueCode();
+  const redeem = () => fetch(`${origin}/pair`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }),
+  });
+  const responses = await Promise.all([redeem(), redeem()]);
+  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 403]);
+  const accepted = responses.find((response) => response.ok);
+  const [cookie] = accepted.headers.getSetCookie();
+  assert.match(cookie, /^pi_lan=[^;]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=43200$/);
+  assert.equal(responses.find((response) => !response.ok).headers.getSetCookie().length, 0);
+  assert.equal(server.devices().length, 2);
+});
+
+test("removing a device closes its stream and discards in-flight results", { timeout: 10_000 }, async (t) => {
   const prepared = Promise.withResolvers();
   const release = Promise.withResolvers();
   t.after(() => release.resolve());
   const { phone, server, calls } = await setup(t, {
-    ...allProjects, temporary: true,
-  }, (workspace) => ({
-    ...workspace,
-    async handle(request, key) {
-      const result = await workspace.handle(request, key);
-      if (request.path === "/v1/sessions/s-tmp") {
-        prepared.resolve();
-        await release.promise;
-      }
-      return result;
-    },
-  }));
+    wrapHandler: (workspace) => ({
+      ...workspace,
+      async handle(request, key) {
+        const result = await workspace.handle(request, key);
+        if (request.path === "/v1/sessions/s-tmp") {
+          prepared.resolve();
+          await release.promise;
+        }
+        return result;
+      },
+    }),
+  });
   const id = server.devices()[0].id;
-  assert.throws(() => server.update(id, { projectIds: ["g-a"], temporary: false, chat: true, organize: true }), { code: "INVALID_SCOPE" });
   const mutation = { "Idempotency-Key": "device-edit-create" };
   assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-a" }, mutation)).status, 200);
   const stream = await phone.events("/v1/sessions/s-tmp/events", t.signal);
@@ -187,17 +199,28 @@ test("editing temporary and mutation grants discards stale results without pairi
   const inFlight = phone.request("GET", "/v1/sessions/s-tmp");
   await prepared.promise;
 
-  server.update(id, { ...allProjects, chat: false, organize: false });
+  server.revoke(id);
   release.resolve();
-  assert.deepEqual(await inFlight, { status: 409, body: { code: "CONFLICT" } });
-  assert.equal((await reader.read()).done, true, "editing grants closes the subscribed stream");
-  assert.equal((await phone.events("/v1/sessions/s-tmp/events", t.signal)).status, 404);
-  assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-a" }, mutation)).status, 409);
+  assert.deepEqual(await inFlight, { status: 401, body: { code: "UNAUTHORIZED" } });
+  assert.equal((await reader.read()).done, true, "removing the device closes the subscribed stream");
+  assert.equal((await phone.events("/v1/sessions/s-tmp/events", t.signal)).status, 401);
+  assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-a" }, mutation)).status, 401);
   assert.equal(calls.filter(([channel]) => channel === "create").length, 1);
+  assert.equal((await phone.request("GET", "/v1/projects")).status, 401);
+});
 
-  const me = await phone.request("GET", "/v1/me");
-  assert.deepEqual(me.body.access, { deviceId: id, ...allProjects, chat: false, organize: false });
-  assert.deepEqual((await phone.request("GET", "/v1/projects")).body.items.map((project) => project.id), ["g-a", "g-b"]);
-  assert.equal((await phone.request("GET", "/v1/sessions/s-tmp")).status, 404);
-  assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-b" })).status, 403);
+test("direct pairing respects the device limit without disconnecting other devices", async (t) => {
+  const { server, origin, phone } = await setup(t);
+  for (let index = 1; index < 16; index += 1) {
+    const { value: code } = server.issueCode();
+    assert.equal((await browser(origin).request("POST", "/pair", { code, label: `Device ${index}` })).status, 200);
+  }
+  const { value: code } = server.issueCode();
+  const next = browser(origin);
+  assert.deepEqual(await next.request("POST", "/pair", { code }), { status: 429, body: { code: "RATE_LIMITED" } });
+  assert.equal((await next.request("GET", "/v1/me")).status, 401);
+  server.revoke(server.devices()[1].id);
+  assert.equal((await next.request("POST", "/pair", { code })).status, 200);
+  assert.equal((await phone.request("GET", "/v1/projects")).status, 200);
+  assert.equal(server.devices().length, 16);
 });

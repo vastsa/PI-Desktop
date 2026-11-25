@@ -1,5 +1,3 @@
-import type { LanAccess } from "@pi-desktop/shared";
-
 /** A safe, user-facing failure: only `status` and `code` reach the browser. */
 export class LanError extends Error {
   readonly status: number;
@@ -17,7 +15,7 @@ export interface LanRequest {
   path: string;
   query: URLSearchParams;
   body: Record<string, unknown>;
-  access: LanAccess;
+  deviceId: string;
 }
 
 export type LanChange = { sessionId?: string };

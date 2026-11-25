@@ -40,9 +40,14 @@ const journey = String.raw`(async () => {
   code.value = window.__code;
   document.querySelector(".pair button[type=submit]").click();
 
-  // Desktop approves the device; both local projects appear, but the SSH project does not.
+  // Redeeming the code connects immediately, without a second Desktop action.
   await wait(() => rowByTitle("Alpha"), "projects");
   result.projects = [...document.querySelectorAll(".row-title")].map((n) => n.textContent);
+  const temporary = await wait(() => rowByTitle("Temporary conversations") ?? rowByTitle("临时会话"), "temporary entry");
+  temporary.querySelector(".row-main").click();
+  await wait(() => rowByTitle("Scratch") && document.querySelector("main > button.primary"), "temporary conversations");
+  history.back();
+  await wait(() => rowByTitle("Alpha"), "back to projects");
 
   // Open a project and see its sessions.
   rowByTitle("Alpha").querySelector(".row-main").click();
@@ -78,44 +83,23 @@ const journey = String.raw`(async () => {
   history.back();
   await wait(() => rowByTitle("Fix login"), "back to sessions");
   result.backHash = location.hash;
+  history.back();
+  await wait(() => rowByTitle("Alpha"), "back to projects before sign-out");
+  document.querySelector("main > button.link").click();
+  await wait(() => document.getElementById("pair-code"), "sign-out returns to pairing");
+  result.polledApproval = performance.getEntriesByType("resource").some((entry) => new URL(entry.name).pathname === "/pair/status");
   return JSON.stringify(result);
 })()`;
 
-const afterGrantEdit = String.raw`(async () => {
-  const waitForRow = async (label, ready = () => true) => {
-    const deadline = performance.now() + 10_000;
-    while (performance.now() < deadline) {
-      const row = [...document.querySelectorAll(".row")].find((item) => item.querySelector(".row-title")?.textContent === label);
-      if (row && ready(row)) return row;
-      await new Promise(requestAnimationFrame);
-    }
-    throw new Error("Missing row after grant edit: " + label);
-  };
-  const readOnly = (row) => !row.querySelector(".row-more") && !document.querySelector("main > button.primary");
-  await waitForRow("Fix login", readOnly);
-  history.back();
-  await waitForRow("Alpha");
-  const projectTitles = [...document.querySelectorAll(".row-title")].map((item) => item.textContent);
-  (await waitForRow("Beta")).querySelector(".row-main").click();
-  const session = await waitForRow("Second root chat");
-  return { projectTitles, readOnly: readOnly(session), pairingShown: Boolean(document.getElementById("pair-code")) };
-})()`;
-
-test("a phone pairs, organizes, chats and follows updated grants through the real page", { timeout: 60_000 }, async (t) => {
+test("a phone pairs by code, uses projects and temporary conversations, and signs out", { timeout: 60_000 }, async (t) => {
   const { electronBinary } = resolveElectronBinary();
   const fake = desktop();
   const server = createLanServer({ handler: fake.workspace, assets: await assets() });
   const { port } = await server.start("127.0.0.1", 0);
   server.issueCode();
   const code = server.code().value;
-  // Desktop-side approval as soon as the phone asks.
-  const approver = setInterval(() => {
-    const [pending] = server.pending();
-    if (pending) server.confirm(pending.id, { projectScope: "all-local", temporary: false, chat: true, organize: true });
-  }, 50);
   const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? tmpdir(), "lan-webui-ui-"));
   t.after(async () => {
-    clearInterval(approver);
     await server.stop();
     fake.workspace.dispose();
     await rm(temp, { recursive: true, force: true });
@@ -123,19 +107,14 @@ test("a phone pairs, organizes, chats and follows updated grants through the rea
   await writeFile(join(temp, "main.cjs"), `
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
-const { once } = require("node:events");
 app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ show: false, width: 390, height: 844, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   try {
     await window.loadURL(${JSON.stringify(`http://127.0.0.1:${port}/`)});
-    await window.webContents.executeJavaScript("window.__code = ${code};");
+    await window.webContents.executeJavaScript("window.__code = '${code}';");
     const output = await window.webContents.executeJavaScript(${JSON.stringify(journey)});
-    const edited = once(process.stdin, "data");
-    process.stdout.write("EDIT_GRANTS\\n");
-    await edited;
-    const afterEdit = await window.webContents.executeJavaScript(${JSON.stringify(afterGrantEdit)});
-    process.stdout.write("RESULT " + JSON.stringify({ ...JSON.parse(output), afterEdit }) + "\\n");
+    process.stdout.write("RESULT " + output + "\\n");
     app.exit(0);
   } catch (error) {
     process.stderr.write(String(error && error.stack || error) + "\\n");
@@ -148,15 +127,7 @@ app.whenReady().then(async () => {
   const child = spawn(electronBinary, [join(temp, "main.cjs")], { env, signal: t.signal });
   let stdout = "";
   let stderr = "";
-  let edited = false;
-  child.stdout.on("data", (chunk) => {
-    stdout += chunk;
-    if (edited || !stdout.includes("EDIT_GRANTS\n")) return;
-    edited = true;
-    const [device] = server.devices();
-    if (device) server.update(device.id, { projectScope: "all-local", temporary: false, chat: false, organize: false });
-    child.stdin.end("updated");
-  });
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
   child.stderr.on("data", (chunk) => (stderr += chunk));
   const [exitCode] = await once(child, "close");
   assert.equal(exitCode, 0, stderr);
@@ -164,7 +135,8 @@ app.whenReady().then(async () => {
   assert.ok(line, stdout + stderr);
   const result = JSON.parse(line.slice(7));
 
-  assert.deepEqual(result.projects, ["Alpha", "Beta"]);
+  assert.match(result.projects[0], /^(Temporary conversations|临时会话)$/);
+  assert.deepEqual(result.projects.slice(1), ["Alpha", "Beta"]);
   assert.deepEqual(result.sessions, ["Fix login", "A plan"]);
   assert.equal(result.projectHash, "#/p/g-a");
   assert.ok(result.pinnedMeta.length > 0, "the pinned label is shown");
@@ -179,5 +151,6 @@ app.whenReady().then(async () => {
   assert.equal(result.horizontalScroll, false);
   assert.equal(result.smallTargets, 0);
   assert.equal(result.backHash, "#/p/g-a");
-  assert.deepEqual(result.afterEdit, { projectTitles: ["Alpha", "Beta"], readOnly: true, pairingShown: false });
+  assert.equal(result.polledApproval, false);
+  assert.equal(server.devices().length, 0, "browser sign-out revoked its device");
 });

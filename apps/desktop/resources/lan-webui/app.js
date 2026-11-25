@@ -121,7 +121,7 @@
     const source = new EventSource("/v1/events");
     source.addEventListener("open", async () => {
       try {
-        // Permission edits close the old stream. Refresh grants as well as data
+        // Revalidate the credential and refresh the view
         // when the browser reconnects with the same device credential.
         const me = await api("GET", "/v1/me");
         if (state.events !== source) return;
@@ -182,7 +182,6 @@
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !sheet.hidden) closeSheet(); });
 
   function organizeActions(kind, item) {
-    if (!state.me?.access.organize) return [];
     const path = `/v1/${kind}/${encodeURIComponent(item.id)}/organize`;
     const send = (patch) => api("POST", path, { revision: item.revision, ...patch }, newKey()).then(() => render({ refresh: true }), (error) => { fail(error); render({ refresh: true }); });
     const label = kind === "projects" ? item.label : item.title || t("untitled");
@@ -241,7 +240,7 @@
     if (token !== state.renderToken) return;
     for (const item of items) state.projects.set(item.id, item.label);
     const list = el("ul", { class: "list" });
-    if (state.me.access.temporary && !filters.archived && !filters.q) {
+    if (!filters.archived && !filters.q) {
       list.append(row({ title: t("temporary"), meta: [], actions: [], onOpen: () => go(`#/p/${TEMP}`) }));
     }
     for (const item of items) {
@@ -280,24 +279,22 @@
         moreLabel: t("more", { name: item.title || t("untitled") }),
       }));
     }
-    const create = state.me.access.chat
-      ? el("button", {
-          type: "button",
-          class: "primary",
-          text: t("newSession"),
-          onclick: async (event) => {
-            const button = event.currentTarget;
-            button.disabled = true;
-            try {
-              const created = await api("POST", "/v1/sessions", { projectId: projectId === TEMP ? null : projectId }, newKey());
-              go(`#/s/${encodeURIComponent(created.id)}`);
-            } catch (error) {
-              fail(error);
-              button.disabled = false;
-            }
-          },
-        })
-      : null;
+    const create = el("button", {
+      type: "button",
+      class: "primary",
+      text: t("newSession"),
+      onclick: async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          const created = await api("POST", "/v1/sessions", { projectId: projectId === TEMP ? null : projectId }, newKey());
+          go(`#/s/${encodeURIComponent(created.id)}`);
+        } catch (error) {
+          fail(error);
+          button.disabled = false;
+        }
+      },
+    });
     show(
       header(title, "#/projects"),
       toolbar((patch) => { Object.assign(filters, patch); render(); }, filters),
@@ -363,13 +360,11 @@
     const queue = conversation.queue.length
       ? el("div", { class: "queue" }, conversation.queue.map((entry) => el("div", { class: "row" }, [
           el("span", { class: "row-main" }, [el("span", { class: "row-meta", text: t("queued") }), el("span", { class: "row-title", text: entry.text })]),
-          state.me.access.chat
-            ? el("button", { type: "button", "aria-label": t("cancelQueued"), text: "×", onclick: () => api("POST", `/v1/turns/${encodeURIComponent(entry.id)}:cancel`, { sessionId }, newKey()).then(() => render({ refresh: true }), fail) })
-            : null,
+          el("button", { type: "button", "aria-label": t("cancelQueued"), text: "×", onclick: () => api("POST", `/v1/turns/${encodeURIComponent(entry.id)}:cancel`, { sessionId }, newKey()).then(() => render({ refresh: true }), fail) }),
         ])))
       : null;
 
-    const canChat = state.me.access.chat && !session.readOnly && !session.archived;
+    const canChat = !session.readOnly && !session.archived;
     const composer = canChat ? buildComposer(sessionId, conversation) : null;
     const actions = organizeActions("sessions", session);
     const head = header(session.title || t("untitled"), session.projectId ? `#/p/${encodeURIComponent(session.projectId)}` : `#/p/${TEMP}`);
@@ -460,10 +455,10 @@
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       submit.disabled = true;
+      status.textContent = t("pairConnecting");
       try {
         await api("POST", "/pair", { code: code.value.trim(), label: label.value.trim() });
-        status.textContent = t("pairWaiting");
-        await waitForApproval(status);
+        await start();
       } catch (error) {
         submit.disabled = false;
         const codeName = error instanceof ApiError ? error.code : "FAILED";
@@ -474,14 +469,6 @@
     code.focus();
   }
 
-  async function waitForApproval(status) {
-    for (;;) {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      const result = await api("GET", "/pair/status");
-      if (result.state === "paired") return start();
-      status.textContent = t("pairWaiting");
-    }
-  }
 
   async function signOut() {
     try {

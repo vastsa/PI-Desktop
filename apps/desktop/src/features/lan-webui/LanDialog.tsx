@@ -10,51 +10,46 @@ export function LanDialog({
   description,
   icon,
   onClose,
-  busy = false,
   error,
   children,
   footer,
 }: {
   id: string;
   title: string;
-  description?: string;
+  description: string;
   icon: ReactNode;
   onClose: () => void;
-  busy?: boolean;
   error?: string | null;
   children: ReactNode;
   footer?: ReactNode;
 }) {
   const { t } = useTranslation("lan");
   const dialogRef = useRef<HTMLDivElement>(null);
-  const close = () => { if (!busy) onClose(); };
-  useModalDialog(dialogRef, { onClose: close });
+  useModalDialog(dialogRef, { onClose });
 
   return portalOverlay(
-    <OverlayBackdrop className="overlay lan-dialog-overlay" role="presentation" onClick={close}>
+    <OverlayBackdrop className="overlay lan-dialog-overlay" role="presentation" onClick={onClose}>
       <div
         ref={dialogRef}
         tabIndex={-1}
         className="dialog lan-dialog"
         role="dialog"
         aria-modal="true"
-        aria-busy={busy || undefined}
         aria-labelledby={`${id}-title`}
-        aria-describedby={description ? `${id}-description` : undefined}
+        aria-describedby={`${id}-description`}
       >
         <header className="lan-dialog-head">
           <span className="lan-dialog-icon" aria-hidden="true">{icon}</span>
           <div className="lan-dialog-heading">
             <h2 id={`${id}-title`} className="lan-dialog-title">{title}</h2>
-            {description ? <p id={`${id}-description`} className="lan-dialog-description">{description}</p> : null}
+            <p id={`${id}-description`} className="lan-dialog-description">{description}</p>
           </div>
           <TooltipButton
             type="button"
             className="icon-btn lan-dialog-close"
             tooltip={t("close")}
             ariaLabel={t("close")}
-            aria-disabled={busy || undefined}
-            onClick={close}
+            onClick={onClose}
           >
             <IconClose size={16} />
           </TooltipButton>

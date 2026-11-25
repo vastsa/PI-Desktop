@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import {
   LAN_TEMPORARY_PROJECT,
   type AgentEventEnvelope,
-  type LanAccess,
   type LanConversation,
   type LanMessage,
   type LanPage,
@@ -186,8 +185,8 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return (result.sessions ?? []).filter(isLocalDesktopSession);
   }
 
-  /** Re-resolves the session's scope on every call; missing and forbidden look alike. */
-  async function authorizedSession(access: LanAccess, sessionId: string) {
+  /** Resolve only sessions in the current local catalog or temporary workspace. */
+  async function requireLocalSession(sessionId: string) {
     if (!sessionId || sessionId.startsWith("remote:") || sessionId.startsWith("native-pi:")) {
       throw new LanError(404, "NOT_FOUND");
     }
@@ -195,7 +194,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     const session = sessions.find((candidate) => candidate.id === sessionId);
     if (!session) throw new LanError(404, "NOT_FOUND");
     const projectId = projectOf(session, rootIndex(list));
-    if (projectId === undefined || (projectId === null && !access.temporary)) throw new LanError(404, "NOT_FOUND");
+    if (projectId === undefined) throw new LanError(404, "NOT_FOUND");
     const meta = deps.organization.read();
     return { session, projectId, meta, view: sessionView(session, projectId, meta) };
   }
@@ -226,10 +225,9 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return page(list, query.get("cursor"));
   }
 
-  async function listSessions(access: LanAccess, query: URLSearchParams): Promise<LanPage<LanSession>> {
+  async function listSessions(query: URLSearchParams): Promise<LanPage<LanSession>> {
     const requested = query.get("projectId") ?? "";
     const wantTemporary = requested === LAN_TEMPORARY_PROJECT;
-    if (wantTemporary && !access.temporary) throw new LanError(404, "NOT_FOUND");
     const [list, sessions] = await Promise.all([groups(), hostSessions()]);
     if (!wantTemporary && !list.some((group) => group.id === requested)) throw new LanError(404, "NOT_FOUND");
     const index = rootIndex(list);
@@ -273,8 +271,8 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return { items, nextCursor: detail.hasMoreBefore && start > 0 ? String(start) : null };
   }
 
-  async function conversation(access: LanAccess, sessionId: string): Promise<LanConversation> {
-    const { session, view } = await authorizedSession(access, sessionId);
+  async function conversation(sessionId: string): Promise<LanConversation> {
+    const { session, view } = await requireLocalSession(sessionId);
     const [messages, pending] = await Promise.all([
       history(sessionId, null),
       deps.getBridge()?.pendingInteractiveRequests(sessionId).catch(() => ({ asks: [], permissions: [] })) ??
@@ -296,21 +294,11 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     };
   }
 
-  const requireChat = (access: LanAccess) => {
-    if (!access.chat) throw new LanError(403, "FORBIDDEN");
-  };
-  const requireOrganize = (access: LanAccess) => {
-    if (!access.organize) throw new LanError(403, "FORBIDDEN");
-  };
-
-  async function createSession(access: LanAccess, body: Record<string, unknown>) {
-    requireChat(access);
+  async function createSession(body: Record<string, unknown>) {
     const projectId = body.projectId === null ? null : stringField(body, "projectId");
     if (projectId === undefined) throw new LanError(400, "INVALID_ARGUMENT");
     let projectPath: string | undefined;
-    if (projectId === null) {
-      if (!access.temporary) throw new LanError(404, "NOT_FOUND");
-    } else {
+    if (projectId !== null) {
       const { group, view } = await requireLocalProject(projectId);
       if (view.archived) throw new LanError(409, "ARCHIVED");
       projectPath = group.primaryPath;
@@ -325,8 +313,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return { id };
   }
 
-  async function organizeProject(access: LanAccess, projectId: string, body: Record<string, unknown>) {
-    requireOrganize(access);
+  async function organizeProject(projectId: string, body: Record<string, unknown>) {
     const [field, value] = oneOrganizeField(body);
     const { group, view } = await requireLocalProject(projectId);
     if (body.revision !== view.revision) throw new LanError(409, "CONFLICT");
@@ -346,10 +333,9 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return { ok: true };
   }
 
-  async function organizeSession(access: LanAccess, sessionId: string, body: Record<string, unknown>) {
-    requireOrganize(access);
+  async function organizeSession(sessionId: string, body: Record<string, unknown>) {
     const [field, value] = oneOrganizeField(body);
-    const { view } = await authorizedSession(access, sessionId);
+    const { view } = await requireLocalSession(sessionId);
     if (body.revision !== view.revision) throw new LanError(409, "CONFLICT");
     if (field === "archived" && value === true) {
       const queued = deps.getBridge()?.queue.list(sessionId).length ?? 0;
@@ -366,20 +352,19 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return { ok: true };
   }
 
-  async function sendTurn(access: LanAccess, sessionId: string, body: Record<string, unknown>, key: string | null) {
-    requireChat(access);
+  async function sendTurn(deviceId: string, sessionId: string, body: Record<string, unknown>, key: string | null) {
     const text = stringField(body, "text")?.trim() ?? "";
     if (!text) throw new LanError(400, "INVALID_ARGUMENT");
     if (Buffer.byteLength(text) > MAX_PROMPT) throw new LanError(413, "PAYLOAD_TOO_LARGE");
-    const { view } = await authorizedSession(access, sessionId);
+    const { view } = await requireLocalSession(sessionId);
     if (view.readOnly) throw new LanError(409, "READ_ONLY");
     if (view.archived) throw new LanError(409, "ARCHIVED");
-    const principal: Principal = { subject: `lan:${access.deviceId}`, roles: ["viewer", "controller"], pairedDevice: false };
+    const principal: Principal = { subject: `lan:${deviceId}`, roles: ["viewer", "controller"], pairedDevice: false };
     try {
       const result = await bridge().agentHost.startTurn(principal, {
         sessionId,
         admission: body.queue === true ? "queue" : "reject_if_busy",
-        ...(key ? { idempotencyKey: `lan:${access.deviceId}:${key}` } : {}),
+        ...(key ? { idempotencyKey: `lan:${deviceId}:${key}` } : {}),
         input: { text },
         context: { requestId: `lan-${Date.now().toString(36)}` },
       });
@@ -395,20 +380,18 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     }
   }
 
-  async function interrupt(access: LanAccess, turnId: string, body: Record<string, unknown>) {
-    requireChat(access);
+  async function interrupt(turnId: string, body: Record<string, unknown>) {
     const sessionId = stringField(body, "sessionId") ?? "";
-    await authorizedSession(access, sessionId);
+    await requireLocalSession(sessionId);
     if (deps.activeTurns.get(sessionId) !== turnId) return { ok: true, stopped: false };
     await deps.invoke(deps.channels.agentAbort, [{ sessionId, turnId }]);
     emitSoon(sessionId);
     return { ok: true, stopped: true };
   }
 
-  async function cancel(access: LanAccess, turnId: string, body: Record<string, unknown>) {
-    requireChat(access);
+  async function cancel(turnId: string, body: Record<string, unknown>) {
     const sessionId = stringField(body, "sessionId") ?? "";
-    await authorizedSession(access, sessionId);
+    await requireLocalSession(sessionId);
     const queue = bridge().queue;
     if (!queue.list(sessionId).some((entry) => entry.id === turnId)) return { ok: true, canceled: false };
     await queue.remove(turnId);
@@ -418,29 +401,29 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
 
   return {
     async handle(request: LanRequest, key: string | null): Promise<unknown> {
-      const { method, path, access, query, body } = request;
+      const { method, path, deviceId, query, body } = request;
       const parts = path.split("/").filter(Boolean).map(decodeURIComponent); // ["v1", ...]
       const [, resource, id, sub] = parts;
       if (method === "GET") {
         if (resource === "projects" && !id) return listProjects(query);
-        if (resource === "sessions" && !id) return listSessions(access, query);
-        if (resource === "sessions" && id && !sub) return conversation(access, id);
+        if (resource === "sessions" && !id) return listSessions(query);
+        if (resource === "sessions" && id && !sub) return conversation(id);
         if (resource === "sessions" && id && sub === "history") {
-          await authorizedSession(access, id);
+          await requireLocalSession(id);
           return history(id, query.get("cursor"));
         }
       } else {
-        if (resource === "sessions" && !id) return createSession(access, body);
-        if (resource === "projects" && id && sub === "organize") return organizeProject(access, id, body);
-        if (resource === "sessions" && id && sub === "organize") return organizeSession(access, id, body);
-        if (resource === "sessions" && id && sub === "turns") return sendTurn(access, id, body, key);
-        if (resource === "turns" && id?.endsWith(":interrupt")) return interrupt(access, id.slice(0, -10), body);
-        if (resource === "turns" && id?.endsWith(":cancel")) return cancel(access, id.slice(0, -7), body);
+        if (resource === "sessions" && !id) return createSession(body);
+        if (resource === "projects" && id && sub === "organize") return organizeProject(id, body);
+        if (resource === "sessions" && id && sub === "organize") return organizeSession(id, body);
+        if (resource === "sessions" && id && sub === "turns") return sendTurn(deviceId, id, body, key);
+        if (resource === "turns" && id?.endsWith(":interrupt")) return interrupt(id.slice(0, -10), body);
+        if (resource === "turns" && id?.endsWith(":cancel")) return cancel(id.slice(0, -7), body);
       }
       throw new LanError(404, "NOT_FOUND");
     },
 
-    /** Session-scoped change notifications; ids are filtered by the caller's scope. */
+    /** Session-scoped change notifications; the listener filters out non-local ids. */
     subscribe(listener: (change: LanChange) => void): () => void {
       listeners.add(listener);
       return () => {
@@ -448,10 +431,10 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
       };
     },
 
-    /** Whether a change for `sessionId` may be revealed to `access`. */
-    async mayReveal(access: LanAccess, sessionId: string): Promise<boolean> {
+    /** Whether a change for `sessionId` belongs to a visible local session. */
+    async mayReveal(sessionId: string): Promise<boolean> {
       try {
-        await authorizedSession(access, sessionId);
+        await requireLocalSession(sessionId);
         return true;
       } catch {
         return false;
