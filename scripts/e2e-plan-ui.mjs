@@ -1516,10 +1516,11 @@ async function assertRevisionToolbarFits(state) {
           .sort((a, b) => a.left - b.left);
         const range = document.createRange();
         range.selectNodeContents(button.querySelector("span"));
+        const icon = button.querySelector("svg").getBoundingClientRect();
         return {
           width, actual: stack.getBoundingClientRect().width, label: button.getAttribute("aria-label"),
           height: button.getBoundingClientRect().height, lines: range.getClientRects().length,
-          icon: button.querySelector("svg").getBoundingClientRect().width > 0,
+          iconWidth: icon.width, iconHeight: icon.height,
           crowded: controls.filter((box, i) => box.left < row.left - 1 || box.right > row.right + 1 ||
             (i && box.left < controls[i - 1].right - 1)).map(box => box.name),
         };
@@ -1529,7 +1530,9 @@ async function assertRevisionToolbarFits(state) {
     }
   })()`);
   for (const sample of samples) {
-    const labelFits = sample.width <= 640 ? sample.icon && sample.lines === 0 : !sample.icon && sample.lines === 1;
+    const labelFits = sample.width <= 640
+      ? sample.iconWidth >= 14 && sample.iconWidth === sample.iconHeight && sample.lines === 0
+      : sample.iconWidth === 0 && sample.lines === 1;
     assert(sample.label === "Enviar pedido de alteração" && sample.actual === sample.width &&
       sample.height === 28 && labelFits && !sample.crowded.length,
       `revision toolbar at ${sample.width}px: ${jsonText(samples)}`);
