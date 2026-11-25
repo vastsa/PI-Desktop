@@ -11728,6 +11728,16 @@ mod update_settings_tests {
     use super::*;
 
     #[test]
+    fn foreground_cache_warming_settings_require_boolean() {
+        for value in [json!(null), json!("true"), json!(1), json!([]), json!({})] {
+            assert!(validate_settings_value(&json!({"foregroundCacheWarmingEnabled": value})).is_err());
+        }
+        for enabled in [true, false] {
+            assert!(validate_settings_value(&json!({"foregroundCacheWarmingEnabled": enabled})).is_ok());
+        }
+    }
+
+    #[test]
     fn validates_update_preference_and_reminder_version() {
         for value in [
             json!({}),
