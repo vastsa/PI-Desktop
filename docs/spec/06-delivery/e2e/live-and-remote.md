@@ -746,3 +746,149 @@ ancestor opens after a project switch, and restored local
 editing/Browser/editor detection. No model, user profile or external SSH server
 participates. Real SSH transport and native Windows/Linux behavior require
 their separate platform acceptance.
+
+## LAN WebUI MVP acceptance
+
+These scenarios qualify the [LAN companion](../../01-product/03-lan-webui-mvp.md),
+not the SSH remote Host, a standalone server, or a public Gateway. For all eight:
+**Milestone:** M6+ (WebUI MVP). **Status:** Partially automated — the core user
+path, scope/grant guards and organization merge run in
+`apps/desktop/test/lan-webui-*.test.mjs` (real listener, fake Desktop, Electron
+Chromium at phone size); real-device steps remain Draft. Use an isolated Desktop
+profile, disposable test devices and deterministic fixtures. Do not use a
+user's running instance.
+
+### E2E-269: Enable, pair and shut down
+
+- **Preconditions:** Fresh Desktop profile with projects A and B; a real phone
+  on the selected private LAN. Repeat on iOS Safari and Android Chrome.
+- **Steps:** Check the initial listener state. Choose the interface and start;
+  open the shown `http://` address on the phone, show a code on Desktop, enter
+  it, and confirm access to A on Desktop. Close/reopen the tab; hide Desktop;
+  then stop the service, quit and relaunch Desktop.
+- **Expected:** No listener by default and no project data before confirmation.
+  The paired device sees A only; an expired, reused or five-times-wrong code
+  fails. Hiding Desktop/closing the tab does not sign out. Stopping closes
+  streams, invalidates cookies and releases the port; after relaunch the
+  service is off, and a new start requires new pairing. An occupied port or
+  isolated Wi-Fi produces actionable guidance, not a silent rebind.
+- **Acceptance:** A, E; W01, W06.
+
+### E2E-270: Organize projects and sessions without stealing navigation
+
+- **Preconditions:** Desktop is editing an unsent draft in A. The phone has
+  View and Organize for A and B; B is a closed local multi-root group with
+  existing sessions, one separately archived. Seed a duplicate display name.
+- **Steps:** Search for B, open it, pin and rename it; rename/pin/archive/restore
+  an idle session. Archive and restore B through the archived filter. Make a
+  competing rename from Desktop and submit the stale edit from the phone.
+- **Expected:** One row per group, stable IDs, correct filtered/recent/pinned
+  lists; both clients show committed changes without reloading. Archive is not
+  deletion and does not cascade; restoring B preserves the separately archived
+  session. A stale writer sees the latest value instead of overwriting it.
+  Desktop stays in A with draft, focus and scroll intact. Repeating the archive
+  against a busy target fails without stopping work.
+- **Acceptance:** C, D; W02, W03, W05.
+
+### E2E-271: Create and continue the same session on phone and desktop
+
+- **Preconditions:** Desktop is viewing A. The phone has Chat in B, no Temporary
+  grant, and a usable fixture model. B has an existing chat with paged history.
+- **Steps:** Double-tap New session in B, send text, stream a reply, then continue
+  the same session on Desktop. Queue a second message while busy and cancel it;
+  interrupt the named active turn. Reopen the older B chat and load older pages.
+  Try global New with and without an explicit Temporary grant. Repeat with no
+  configured model, and with a pre-existing eligible empty conversation in B.
+  From idle, send two different prompts simultaneously from Desktop and the
+  phone, first without queuing and then with explicit queue admission.
+- **Expected:** The initial double-tap/send yields one session and one user
+  message. Work runs in B, not A; the other client continues the same ID/history.
+  Concurrent sends never start two active turns in a session. A losing send is
+  queued only by request; otherwise its client sees busy and keeps the draft.
+  Canceled work never runs and stop preserves partial output. Paging older
+  items keeps position. No implicit Temporary disclosure, wrong-project empty
+  reuse, or duplicate creates. An authorized temporary session has no project.
+  Missing model blocks send, preserves text and points to Desktop setup.
+- **Acceptance:** B, C, D; W03, W04, W05.
+
+### E2E-272: Answer ordinary input but leave privileged decisions on Desktop
+
+- **Preconditions:** A Chat-capable phone and Desktop are viewing the same test
+  session; fixtures can ask an ordinary choice question and require a tool
+  permission. Provide an existing Plan/Goal session for the read-only case.
+- **Steps:** Submit an ordinary answer, race a second answer from Desktop, then
+  trigger a gated action. Reload the phone while pending; try a browser approval
+  and permission change, then deny locally. Repeat with local approval and with
+  expiry/cancellation. Inspect the special session on the phone.
+- **Expected:** One ordinary answer is accepted. The phone reports the pending
+  request and actual outcome; only Desktop can approve, including on a session
+  configured for a higher local permission mode. Deny/expiry never executes the
+  gated action, local allow executes the fixture once, and reload grants nothing.
+  Unsupported sessions do not gain writable controls or change mode.
+- **Acceptance:** C, E; W04, W06.
+
+### E2E-273: Resume across lost responses, Wi-Fi loss and changed epochs
+
+- **Preconditions:** Two clients on a running Desktop; fixture can retain or
+  expire cursors, drop a response after admission and pause a streaming turn.
+- **Steps:** Lose a create/send response, background the phone, switch Wi-Fi
+  off/on, refresh and reattach. Exercise same-key retry, a duplicate event,
+  a stale cursor/new epoch and slow-client overflow. Switch sessions while an
+  old history page is outstanding. Separately restart Desktop, re-enable and pair.
+- **Expected:** One original admission per intent, no automatic draft or tool
+  replay. A transient disconnect does not stop the turn. Cursor replay or a
+  replacement snapshot restores committed and partial content, queue and
+  pending input without gaps or duplicates. Late results do not repaint another
+  session. After process restart the phone shows actual host recovery state,
+  not a fabricated completion, continuing stream or automatic new turn.
+- **Acceptance:** C, F; W05.
+
+### E2E-274: Enforce device grants, network boundary and revocation
+
+- **Preconditions:** A View-only device, a second device with Chat/Organize for
+  A only, and unshared B, Temporary and SSH-backed fixtures. Use a controlled
+  clock, a second interface and an allowed and a disallowed browser origin.
+- **Steps:** Exercise catalog, deep links, history, search/counts, commands and
+  SSE with those identities. Check wrong Origin/Host, absent CSRF, expired
+  cookies, pairing throttles and rejected admin/owner operations. Remove A
+  while a stream, a queued turn and an in-flight catalog request exist. Sign
+  out/revoke devices and change the desktop network. Inspect fixture logs/cache.
+- **Expected:** No out-of-scope metadata, events or writes, even for known IDs;
+  View cannot mutate. No generic owner/SSH exemption or raw RPC, no leaked
+  credentials/content in logs or persistent browser caches. Lost scope closes
+  affected streams and cancels its pending queued work; an old cookie or late
+  response cannot recover it. Expiry is not extended by a heartbeat. No
+  connection on other interfaces or automatic sharing on the new network.
+- **Acceptance:** D, E; W01, W02, W06.
+
+### E2E-275: Preserve an existing desktop profile and disable cleanly
+
+- **Preconditions:** Upgrade fixture from before the feature with group/legacy
+  project identities, renamed/pinned/archived projects and sessions, partial or
+  missing optional preferences, and transcripts. Keep a pre-upgrade inventory.
+- **Steps:** Upgrade without enabling sharing; check Desktop. Enable, pair,
+  compare the authorized inventory, change organization on each surface, restart,
+  and exercise interrupted/repeated metadata import. Disable and use Desktop alone.
+- **Expected:** IDs, membership, labels, pins, archives, transcript contents
+  and recoverable legacy aliases survive; no duplicate group or empty-profile
+  reset. Old sidebar writes do not overwrite newer organization. Private
+  navigation stays private. Changes made on either client remain on Desktop
+  after disable; no extra writer or listener remains.
+- **Acceptance:** C, D, F; W02, W03, W08.
+
+### E2E-276: Phone, keyboard and large-catalog usability
+
+- **Preconditions:** Real iOS Safari and Android Chrome, desktop Chromium,
+  English and Simplified Chinese. Warm assets, LAN RTT ≤50 ms, fixture data:
+  100 projects, 1,000 sessions, a 2,000-message conversation. Use no paid model.
+- **Steps:** Run Projects → Sessions → New session → Send → Back. Repeat at
+  320 CSS px and 200% zoom, in both phone orientations, with the soft keyboard,
+  Chinese IME, keyboard-only navigation and a screen reader. Search for a late
+  page, load older history, and measure catalog readiness and peer edits over
+  30 runs. Record device/browser/OS and Desktop candidate/base revisions.
+- **Expected:** Reachable labeled actions, ≥44 CSS px targets, no obstructed
+  composer, horizontal page scrolling or accidental IME send. Back restores the
+  prior list position. Screen readers announce important states rather than
+  every token. At p95 the initial usable catalog and committed peer changes each
+  take ≤2 seconds; initial history fetch contains at most 100 items.
+- **Acceptance:** C, D; W07.

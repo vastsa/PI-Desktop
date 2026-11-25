@@ -49,6 +49,8 @@ import type { IpcRegistrar } from "./types";
 import type { createTraySessions } from "../tray-sessions";
 import type { createTaskbarUnreadBadge } from "../taskbar-unread-badge";
 
+import { registerLanWebUiIpc } from "../lan-webui/ipc";
+
 export type RegisterIpcDependencies = {
   isQuitting: () => boolean;
   ipcMain: IpcMain;
@@ -586,9 +588,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
 
   registerStartupAnimationIpc({ registrar, dataDir, stripWinLongPrefix });
-
-
-  return async (channel: string, args: readonly unknown[] = []) => {
+  const invokeInternal = async (channel: string, args: readonly unknown[] = []) => {
     const handler = ipcHandlers.get(channel);
     if (!handler) {
       throw Object.assign(new Error(`IPC channel is not available to external agents: ${channel}`), {
@@ -597,4 +597,25 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     }
     return handler(...args);
   };
+
+  registerLanWebUiIpc({
+    registrar,
+    dataDir,
+    sendToRenderer,
+    log: (level, message, data) => logger.app("runtime", level, message, data === undefined ? undefined : { data }),
+    workspace: {
+      getHost,
+      getBridge: () => getAgentHostBridge(),
+      invoke: (channel, args) => invokeInternal(channel, args),
+      channels: {
+        sessionCreate: IPC.invoke.sessionCreate,
+        sessionRename: IPC.invoke.sessionRename,
+        projectGroupRename: IPC.invoke.projectGroupRename,
+        agentAbort: IPC.invoke.agentAbort,
+      },
+      activeTurns,
+    },
+  });
+
+  return invokeInternal;
 }

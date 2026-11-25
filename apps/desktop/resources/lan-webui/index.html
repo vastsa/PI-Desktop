@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>PI-Desktop</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/locale.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div id="offline" class="banner" role="status" hidden></div>
+    <main id="app" aria-live="polite"></main>
+    <div id="toast" class="toast" role="alert" hidden></div>
+    <div id="sheet" class="sheet" hidden>
+      <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <h2 id="sheet-title" class="sheet-title"></h2>
+        <div id="sheet-actions" class="sheet-actions"></div>
+      </div>
+    </div>
+  </body>
+</html>

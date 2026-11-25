@@ -1,4 +1,4 @@
-import type { ReviewContextLines, ReviewContextResult, ReviewTurnsPage, ReviewChangesPage } from "@pi-desktop/shared";
+import type { LanAdminAction, LanAdminView, LanCatalogChangedEvent, ReviewContextLines, ReviewContextResult, ReviewTurnsPage, ReviewChangesPage } from "@pi-desktop/shared";
 type ClipboardDirectoryPaste = {
   items: Array<{ kind: "directory"; path: string; name: string } | { kind: "file"; name: string }>;
   token: string | null;
@@ -972,6 +972,15 @@ export const api = {
   configSyncDisconnect: () => invoke<ConfigSyncState>(IPC.invoke.configSyncDisconnect),
   testNetworkProxy: (settings: unknown) =>
     invoke<{ ok: boolean; error?: string }>(IPC.invoke.networkProxyTest, settings),
+  /** Desktop administration of the LAN WebUI (pairing, devices, listener). */
+  lanWebUiAdmin: (action: LanAdminAction) => invoke<LanAdminView>(IPC.invoke.lanWebUiAdmin, action),
+  /** Organization edits made from a paired browser; apply, then acknowledge. */
+  onLanWebUiCatalogChanged: (listener: (event: LanCatalogChangedEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.lanWebUiCatalogChanged, (payload) =>
+      listener(payload as LanCatalogChangedEvent),
+    );
+  },
   /** Installed system font families (Electron main, cached briefly). */
   listSystemFonts: () => invoke<string[]>(IPC.invoke.systemFontsList),
   listCommandShells: () =>
