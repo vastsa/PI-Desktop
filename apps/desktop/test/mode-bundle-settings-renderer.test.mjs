@@ -1,7 +1,7 @@
 /**
  * Renderer rules for the grouped mode settings page (issue #2544).
  *
- * The page shows one mode in three tabs. What it offers and what a save writes
+ * The page shows one mode at a time. What it offers and what a save writes
  * is decided by pure helpers, so this test exercises those directly: which tabs
  * a document gets, how the map's keys read, how a role row is described, how a
  * role document round-trips, and how an out-of-order read is dropped.
@@ -48,10 +48,10 @@ const ORACLE = [
   "",
 ].join("\n");
 
-test("a bundle gets all three tabs and a legacy document only its own", () => {
-  assert.deepEqual(model.modeSettingsTabs("bundle"), ["mode", "subagents", "skills"]);
+test("a bundle has four navigation sections and a legacy document only its own", () => {
+  assert.deepEqual(model.modeSettingsTabs("bundle"), ["mode", "prompt", "subagents", "skills"]);
   assert.deepEqual(model.modeSettingsTabs("legacy"), ["mode"]);
-  assert.deepEqual(model.MODE_SETTINGS_TABS, ["mode", "subagents", "skills"]);
+  assert.deepEqual(model.MODE_SETTINGS_TABS, ["mode", "prompt", "subagents", "skills"]);
 });
 
 test("the entry point decides the format, and a mode with no file starts as YAML", () => {

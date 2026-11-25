@@ -1,25 +1,11 @@
-﻿/**
- * The three tabs of one mode's settings (issue #2544).
- *
- * These cards render in the existing Settings content area, without a nested
- * modal, drawer, or sidebar.
- *
- * Model and thinking controls appear only under the role they belong to: the
- * mode itself follows the session model and has no model setting. A role's own
- * pin, its ordered fallbacks and each fallback's thinking level are its own
- * file's business, and this tab is where that file is edited.
- *
- * The skills tab is read-only except for one switch per skill: the issue gives
- * the page no create, import, edit or delete there. The user drops a skill
- * folder into the mode directory themselves and the host validates it.
- */
-import { useMemo } from "react";
+﻿/** Mode definition, prompt, private role, and skill editors. */
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   SUBAGENT_ASSIGNABLE_TOOLS,
   SUBAGENT_THINKING_LEVELS,
   imageGenerationBindings,
-  isSubagentMutatingTool,
   type ModeSkillsResult,
   type SubagentThinkingLevel,
 } from "@pi-desktop/shared";
@@ -28,7 +14,7 @@ import {
   Button,
   Checkbox,
   Field,
-  HelpIcon,
+  SegmentedControl,
   Input,
   SettingsToggle,
   Textarea,
@@ -46,7 +32,6 @@ import { useAppStore } from "../../stores/app-store";
 import {
   addRoleReference,
   bundleList,
-  bundleScalar,
   includeGlobalSubagents,
   modeRoleRows,
   setBundleList,
@@ -94,19 +79,18 @@ function useRoleModelChoices() {
 export function ModeTab({
   draft,
   setDraft,
-  promptFile,
+  section,
   disabled,
 }: {
   draft: ModeBundleDraft;
   setDraft: (next: ModeBundleDraft) => void;
-  promptFile: string;
+  section: "mode" | "prompt";
   disabled: boolean;
 }) {
   const { t } = useTranslation();
   const includeGlobals = includeGlobalSubagents(draft.source);
-  return (
-    <>
-      <SettingsCard title={t("modes.settings.tabMode")}>
+  return section === "mode" ? (
+      <SettingsCard title={t("modes.settings.modeMap")}>
         <SettingsRow
           title={t("modes.settings.includeGlobalSubagents")}
         >
@@ -123,7 +107,6 @@ export function ModeTab({
           />
         </SettingsRow>
         <div className="modes-settings-tab-field">
-          <Field label={t("modes.settings.modeMap")}>
             <Textarea
               className="modes-settings-source"
               value={draft.source}
@@ -131,10 +114,10 @@ export function ModeTab({
               disabled={disabled}
               onChange={(event) => setDraft({ ...draft, source: event.target.value })}
             />
-          </Field>
         </div>
       </SettingsCard>
-      <SettingsCard title={t("modes.settings.promptTitle")} caption={promptFile}>
+  ) : (
+      <SettingsCard title={t("modes.settings.promptTitle")}>
         <div className="modes-settings-tab-field">
           <Textarea
             className="modes-settings-source"
@@ -145,7 +128,6 @@ export function ModeTab({
           />
         </div>
       </SettingsCard>
-    </>
   );
 }
 
@@ -198,11 +180,19 @@ export function SubagentsTab({
     const agents = { ...draft.agents };
     delete agents[row.reference];
     setDraft({ ...draft, agents, source: setBundleList(draft.source, "subagents", remaining) });
-    onSelect(remaining[0] ?? null);
+    onSelect(null);
   };
 
-  return (
-    <>
+  return row ? (
+    <RoleEditor
+      key={row.reference}
+      row={row}
+      disabled={disabled}
+      onBack={() => onSelect(null)}
+      onChange={(source) => write(row.reference, source)}
+      onRemove={removeRole}
+    />
+  ) : (
       <SettingsCard
         title={t("modes.settings.rolesTitle")}
         action={
@@ -214,10 +204,10 @@ export function SubagentsTab({
         <div className="modes-settings-list" role="list" aria-label={t("modes.settings.rolesTitle")}>
           {rows.map((role) => (
             <div role="listitem" key={role.reference}>
-              <button
+              <Button
                 type="button"
                 className="modes-settings-row"
-                aria-current={role.reference === selected || undefined}
+                variant="ghost"
                 data-role-reference={role.reference}
                 title={role.description || undefined}
                 disabled={disabled}
@@ -225,7 +215,6 @@ export function SubagentsTab({
               >
                 <span className="modes-settings-row-copy">
                   <span>{role.name}</span>
-                  <span className="modes-settings-row-id">{role.reference}</span>
                 </span>
                 <span className="modes-settings-row-badges">
                   <Badge tone={role.inheritsModel ? "neutral" : "success"}>
@@ -233,22 +222,13 @@ export function SubagentsTab({
                   </Badge>
                   {role.thinkingLevel ? <Badge>{role.thinkingLevel}</Badge> : null}
                 </span>
-              </button>
+                <ChevronRight size={14} aria-hidden="true" />
+              </Button>
             </div>
           ))}
         </div>
         {rows.length === 0 ? <p className="modes-settings-hint">{t("modes.settings.rolesEmpty")}</p> : null}
       </SettingsCard>
-      {row ? (
-        <RoleEditor
-          key={row.reference}
-          row={row}
-          disabled={disabled}
-          onChange={(source) => write(row.reference, source)}
-          onRemove={removeRole}
-        />
-      ) : null}
-    </>
   );
 }
 
@@ -265,11 +245,13 @@ function RoleEditor({
   row,
   disabled,
   onChange,
+  onBack,
   onRemove,
 }: {
   row: ModeRoleRow;
   disabled: boolean;
   onChange: (source: string) => void;
+  onBack: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -279,9 +261,30 @@ function RoleEditor({
   const write = (next: RoleDocument) => onChange(serializeRoleDocument(next));
   const orphan = subagentModelOrphanPin(role.model, choices);
 
+  const [section, setSection] = useState<RoleSection>("identity");
+  const sectionId = useId();
+  const options = ROLE_SECTIONS.map(({ value, label }) => ({
+    value, label: t(label), id: sectionId + "-" + value, controls: sectionId + "-panel-" + value,
+  }));
+  const active = options.find((option) => option.value === section);
+
   return (
-    <SettingsCard title={row.name} caption={row.reference}>
-      <div className="modes-settings-tab-fields">
+    <div className="settings-stack" data-testid="mode-role-detail">
+      <div className="modes-settings-page-head">
+        <Button size="sm" variant="ghost" onClick={onBack}>
+          <ChevronLeft size={14} aria-hidden="true" />
+          {t("modes.settings.rolesTitle")}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={disabled} onClick={onRemove}>
+          {t("modes.settings.removeRole")}
+        </Button>
+      </div>
+      <h3 className="modes-settings-role-title">{row.name}</h3>
+      <div className="modes-settings-tabs">
+        <SegmentedControl role="tablist" value={section} onChange={setSection} options={options} label={row.name} />
+      </div>
+      <div className="modes-settings-tab-fields" role="tabpanel" id={active?.controls} aria-labelledby={active?.id}>
+        {section === "identity" && (
         <div className="ext-field-pair">
           <Field label={t("extensions.subagents.name")}>
             <Input
@@ -298,20 +301,8 @@ function RoleEditor({
             />
           </Field>
         </div>
-
-        <div className="ext-field-group">
-          <div className="ext-field-label">
-            {t("extensions.subagents.tools")}
-            <HelpIcon
-              label={t(
-                role.inheritTools
-                  ? "extensions.subagents.toolsInheritHint"
-                  : role.tools.some(isSubagentMutatingTool)
-                    ? "extensions.subagents.mutatingHint"
-                    : "extensions.subagents.toolsHint",
-              )}
-            />
-          </div>
+        )}
+        {section === "tools" && (
           <div className="ext-tool-pick" role="group" aria-label={t("extensions.subagents.tools")}>
             <Checkbox
               label={t("extensions.subagents.toolsInherit")}
@@ -331,17 +322,10 @@ function RoleEditor({
               />
             ))}
           </div>
-        </div>
-
+        )}
+        {section === "model" && <>
         <div className="ext-field-pair">
-          <Field
-            label={t("extensions.subagents.model")}
-            hint={
-              choices.length > 0
-                ? t("extensions.subagents.modelHint")
-                : t("extensions.subagents.modelPickEmpty")
-            }
-          >
+          <Field label={t("extensions.subagents.model")}>
             <SubagentModelPicker
               value={subagentModelSelectValue(role.model, choices)}
               groups={groups}
@@ -350,7 +334,7 @@ function RoleEditor({
               onChange={(next) => write({ ...role, model: next })}
             />
           </Field>
-          <Field label={t("extensions.subagents.thinking")} hint={t("extensions.subagents.thinkingHint")}>
+          <Field label={t("extensions.subagents.thinking")}>
             <SettingsMenuSelect
               fullWidth
               label={t("extensions.subagents.thinking")}
@@ -362,10 +346,7 @@ function RoleEditor({
           </Field>
         </div>
 
-        <Field
-          label={t("extensions.subagents.fallbackModels")}
-          hint={t("extensions.subagents.fallbackModelsHint")}
-        >
+        <Field label={t("extensions.subagents.fallbackModels")}>
           <ol className="modes-settings-fallbacks">
             {role.fallbacks.map((fallback, index) => (
               <li key={`${index}:${fallback.model}`} className="modes-settings-fallback">
@@ -435,7 +416,8 @@ function RoleEditor({
             />
           ) : null}
         </Field>
-
+        </>}
+        {section === "prompt" && (
         <Field label={t("extensions.subagents.body")}>
           <Textarea
             className="ext-skill-body"
@@ -447,16 +429,19 @@ function RoleEditor({
             onChange={(event) => write({ ...role, body: event.target.value })}
           />
         </Field>
-
-        <div className="modes-settings-tab-actions">
-          <Button size="sm" variant="ghost" disabled={disabled} onClick={onRemove}>
-            {t("modes.settings.removeRole")}
-          </Button>
-        </div>
+        )}
       </div>
-    </SettingsCard>
+    </div>
   );
 }
+
+const ROLE_SECTIONS = [
+  { value: "identity", label: "extensions.subagents.name" },
+  { value: "tools", label: "extensions.subagents.tools" },
+  { value: "model", label: "extensions.subagents.model" },
+  { value: "prompt", label: "modes.settings.promptTitle" },
+] as const;
+type RoleSection = (typeof ROLE_SECTIONS)[number]["value"];
 
 function thinkingOptions(t: (key: string) => string) {
   return [
@@ -470,11 +455,6 @@ function thinkingOptions(t: (key: string) => string) {
 }
 
 /* --- Skills tab ----------------------------------------------------------- */
-
-/** The map's declared prompt reference, for the Mode tab's caption. */
-export function promptReference(source: string): string {
-  return bundleScalar(source, "promptFile") ?? "";
-}
 
 /**
  * The mode's own `skills/` folder: where it is, a way to open it, and one
@@ -506,7 +486,6 @@ export function SkillsTab({
       }
     >
       <div className="modes-settings-directory">
-        <span className="settings-row-title">{t("modes.settings.skillsDirectory")}</span>
         <span className="modes-settings-path" data-testid="modes-skills-directory">
           {state?.directory ?? ""}
         </span>
@@ -514,7 +493,7 @@ export function SkillsTab({
       <div className="modes-settings-list" role="list" aria-label={t("modes.settings.skillsTitle")}>
         {(state?.skills ?? []).map((skill) => (
           <div role="listitem" key={skill.id}>
-            <SettingsRow title={skill.name} detail={<code>{`/skill:${skill.id}`}</code>}>
+            <SettingsRow title={skill.name}>
               <SettingsToggle
                 checked={skill.enabled}
                 label={t("settings.enableCapability", { name: skill.name })}
