@@ -39,7 +39,9 @@ const word = {
     `extract ${quote(original)}`,
     `replace ${[original, edited, before, after].map(quote).join(" ")}`,
   ],
-  results: [untouched],
+  verify(stdout) {
+    assert.ok(stdout.includes(untouched));
+  },
 };
 const excel = {
   skill: "excel", output: "新建 样例.xlsx", input: "原始 样例.xlsx",
@@ -50,7 +52,13 @@ const excel = {
     `recalc '另存 样例.xlsx' '重算 样例.xlsx'`,
     `read '重算 样例.xlsx' '销售 数据'`,
   ],
-  results: ['["甲",150]', '["甲",160,260]'],
+  verify(stdout) {
+    const tables = stdout.split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line));
+    assert.deepEqual(tables, [
+      { columns: ["项目", "金额"], data: [["甲", 150], ["乙", 100]] },
+      { columns: ["项目", "金额", "合计"], data: [["甲", 160, 260], ["乙", 100, ""]] },
+    ]);
+  },
 };
 const skillId = (scenario) => `pie.offline-office/${scenario.skill}`;
 const toolText = (content) => Array.isArray(content)
@@ -229,10 +237,12 @@ async function runTurn({ invoke }, providerId, current, enabled) {
   }, 45_000, `${current.skill} turn completion`, 150);
   assert.equal(JSON.stringify(requests[0]?.messages).includes(id), enabled);
   if (enabled) {
-    for (const result of current.results) {
-      assert.ok(requests.some(({ messages }) => messages.some((message) => message.role === "tool" &&
-        toolText(message.content).includes(result))), result);
-    }
+    const reply = requests.flatMap(({ messages }) => messages).find((message) =>
+      message.role === "tool" && message.tool_call_id === `${current.skill}_Bash`);
+    assert.ok(reply, `Missing Bash result for ${current.skill}`);
+    const { exitCode, stdout, stderr } = JSON.parse(toolText(reply.content));
+    assert.equal(exitCode, 0, stderr);
+    current.verify(stdout);
   }
 }
 
