@@ -64,9 +64,7 @@ const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
 app.setPath("userData", path.join(__dirname, "profile"));
 const SHIFT = 8;
-const CTRL = 2;
-const VK = { Enter: 13, Backspace: 8, z: 90, y: 89 };
-const CODE = { z: "KeyZ", y: "KeyY" };
+const VK = { Enter: 13, Backspace: 8, ArrowDown: 40 };
 app.whenReady().then(async () => {
   const window = new BrowserWindow({
     show: false, width: 760, height: 520,
@@ -92,13 +90,13 @@ app.whenReady().then(async () => {
       const text = key === "Enter" ? "\\r" : undefined;
       await input("dispatchKeyEvent", {
         type: text ? "keyDown" : "rawKeyDown",
-        key, code: CODE[key] ?? key, modifiers,
+        key, code: key, modifiers,
         windowsVirtualKeyCode: VK[key] ?? 0,
         nativeVirtualKeyCode: VK[key] ?? 0,
         ...(text ? { text, unmodifiedText: text } : {}),
       });
       await input("dispatchKeyEvent", {
-        type: "keyUp", key, code: CODE[key] ?? key, modifiers,
+        type: "keyUp", key, code: key, modifiers,
         windowsVirtualKeyCode: VK[key] ?? 0,
         nativeVirtualKeyCode: VK[key] ?? 0,
       });
@@ -108,7 +106,13 @@ app.whenReady().then(async () => {
       await input("insertText", { text });
       await frames();
     };
-    const clickLine = async (line) => js("globalThis.composerTailClickLine(" + line + ")");
+    const clickLine = async (line) => {
+      const point = await js("globalThis.composerTailLinePoint(" + line + ")");
+      for (const type of ["mousePressed", "mouseReleased"]) {
+        await input("dispatchMouseEvent", { type, ...point, button: "left", clickCount: 1 });
+      }
+      return (await state()).caret;
+    };
 
     await js("globalThis.composerTailReset('')");
     await js("document.querySelector('.composer-input').focus()");
@@ -123,7 +127,7 @@ app.whenReady().then(async () => {
     expect(typed.invisibleChars.length === 0, "the editable must hold no invisible character", typed);
     expect(typed.caret === typed.value.length, "the caret must stay at the draft end", typed);
 
-    await js("globalThis.composerTailCaret(5)");
+    expect(await clickLine(1) === 5, "click at the end of line 1", typed);
     await press("Enter", SHIFT);
     const brokenInLine1 = await state();
     expect(
@@ -137,87 +141,116 @@ app.whenReady().then(async () => {
 
     const clicks = [];
     for (const line of [1, 2, 3, 4]) {
-      const clicked = await clickLine(line);
-      clicks.push(clicked.clickLine);
+      clicks.push(await clickLine(line));
     }
     expect(
       JSON.stringify(clicks) === JSON.stringify([5, 6, 12, 18]),
       "each painted line must map to its own draft offset",
       { clicks },
     );
-    const beyondLast = await clickLine(5);
-    expect(beyondLast.clickLine !== null && beyondLast.clickLine === 18, "there is no line below the last one", beyondLast);
+    // ArrowDown on the last line cannot reach a phantom fifth line.
+    await press("ArrowDown");
+    expect((await state()).caret === 18, "no caret position below line four", await state());
 
-    const NL = String.fromCharCode(10);
-    const base = ["1test", "", "2test", "3test"].join(NL);
-    await js("globalThis.composerTailCaret(" + JSON.stringify(base.length) + ")");
-    await type("x");
-    const typedAtEnd = await state();
-    expect(typedAtEnd.value === base + "x", "typing at the end must append there", typedAtEnd);
-    expect(typedAtEnd.caret === typedAtEnd.value.length, "typing at the end must keep the caret at the end", typedAtEnd);
-
-    await press("Backspace");
-    const deletedAtEnd = await state();
-    expect(deletedAtEnd.value === base, "Backspace at the end must drop the last character", deletedAtEnd);
-    expect(deletedAtEnd.caret === deletedAtEnd.value.length, "Backspace must keep the caret at the end", deletedAtEnd);
-    const baseLines = deletedAtEnd.lineTops.length;
-
-    // The end-of-draft break is one native edit: undo and redo take the new line
-    // and its layout placeholder together (#2588 follow-up).
+    const checkEnd = async (value, label) => {
+      const snapshot = await state();
+      expect(snapshot.value === value && snapshot.caret === value.length, label, snapshot);
+      expect(snapshot.lineTops.length === value.split("\\n").length && !snapshot.invisibleChars.length,
+        label + ": painted lines and invisible characters", snapshot);
+    };
+    const base = "1test\\n\\n2test\\n3test";
+    let suffix = "";
+    for (const char of "xyz") {
+      await type(char);
+      suffix += char;
+      await checkEnd(base + suffix, "type at tail");
+    }
+    while (suffix.length) {
+      await press("Backspace");
+      suffix = suffix.slice(0, -1);
+      await checkEnd(base + suffix, "delete at tail");
+    }
     await press("Enter", SHIFT);
     const tailBreak = await state();
-    expect(tailBreak.value === base + NL, "a trailing break must add one line", tailBreak);
+    expect(tailBreak.value === "1test\\n\\n2test\\n3test\\n", "a trailing break must add one line", tailBreak);
     expect(tailBreak.invisibleChars.length === 0, "an empty last line must hold no character", tailBreak);
-    expect(tailBreak.caret === tailBreak.value.length, "the trailing break must leave the caret at the end", tailBreak);
-    expect(tailBreak.lineTops.length === baseLines + 1, "the trailing break must paint one more line", tailBreak);
-
-    await press("z", CTRL);
-    const undoneBreak = await state();
-    expect(undoneBreak.value === base, "undo must remove the trailing break", undoneBreak);
-    expect(undoneBreak.caret === base.length, "undo must keep the caret at the end", undoneBreak);
-    expect(undoneBreak.lineTops.length === baseLines, "undo must drop the extra line", undoneBreak);
-
-    await press("y", CTRL);
-    const redoneBreak = await state();
-    expect(redoneBreak.value === base + NL, "redo must restore the trailing break", redoneBreak);
-    expect(redoneBreak.lineTops.length === baseLines + 1, "redo must restore the extra line", redoneBreak);
+    await checkEnd(base + "\\n", "empty last line before typing");
+    const selected = await js("const s = getSelection(); s.selectAllChildren(document.querySelector('.composer-input')); s.toString()");
+    expect(selected === base + "\\n", "native select-all must contain only the draft", { selected });
+    // Opt in only on a disposable desktop with its own clipboard. Never read
+    // or replace existing clipboard data on a developer's workstation.
+    const nativeCopy = process.argv.includes("--isolated-clipboard");
+    if (nativeCopy) {
+      const { clipboard } = require("electron");
+      if (clipboard.availableFormats().length) throw new Error("Expected an empty isolated clipboard");
+      await js("document.execCommand('copy')");
+      const matches = clipboard.readText().replace(/\\r\\n/g, "\\n") === selected;
+      expect(matches, "native clipboard text must equal the selected draft", {});
+    }
+    await js("getSelection().collapseToEnd()");
     await type("z");
-    const typedAfterRedo = await state();
-    expect(typedAfterRedo.value === base + NL + "z", "typing after redo must land on the empty line", typedAfterRedo);
+    const typedOnEmptyLine = await state();
+    expect(typedOnEmptyLine.value === "1test\\n\\n2test\\n3test\\nz", "the keystroke must land on the empty line", typedOnEmptyLine);
+    expect(typedOnEmptyLine.lineTops.length === 5, "the empty last line must keep its box", typedOnEmptyLine);
 
-    // Consecutive end-of-draft breaks each add exactly one line.
-    await press("Enter", SHIFT);
-    await press("Enter", SHIFT);
-    await press("Enter", SHIFT);
-    const consecutive = await state();
-    expect(
-      consecutive.value === base + NL + "z" + NL + NL + NL,
-      "each trailing break must add one line",
-      consecutive,
-    );
-    expect(consecutive.invisibleChars.length === 0, "consecutive empty lines must hold no character", consecutive);
-    expect(consecutive.lineTops.length === baseLines + 4, "consecutive breaks must paint one line each", consecutive);
+    await press("Backspace");
+    await checkEnd(base + "\\n", "delete final character back to an empty line");
+    await input("imeSetComposition", { text: "ni", selectionStart: 2, selectionEnd: 2 });
+    await checkEnd(base + "\\nni", "IME preedit on empty last line");
+    await type("你");
+    await checkEnd(base + "\\n你", "IME commit on empty last line");
+    await press("Backspace");
+    await press("Backspace");
+    await checkEnd(base, "merge an empty last line");
 
-    // A break in the middle stays native: one newline, and it is undoable.
-    await js("globalThis.composerTailCaret(5)");
+    await js("globalThis.composerTailReset('history')");
+    await press("Enter");
+    await checkEnd("history\\n", "plain Enter with Enter-to-send disabled");
+    window.webContents.undo();
+    await checkEnd("history", "undo a single line break");
+    window.webContents.redo();
+    await checkEnd("history\\n", "redo a single line break");
+    await type("r");
+    await checkEnd("history\\nr", "continue typing after redo");
+
+    await js("globalThis.composerTailReset('abc')");
     await press("Enter", SHIFT);
-    const middleBreak = await state();
-    expect(
-      middleBreak.value === ["1test", "", "", "2test", "3test", "z", "", "", ""].join(NL),
-      "a middle break must add exactly one line",
-      middleBreak,
-    );
-    await press("z", CTRL);
-    const undoneMiddle = await state();
-    expect(undoneMiddle.value === consecutive.value, "undo must remove the middle break", undoneMiddle);
-    const typedOnEmptyLine = undoneMiddle;
+    await press("Backspace");
+    await checkEnd("abc", "merge a newly created empty last line");
+    window.webContents.undo();
+    await checkEnd("abc\\n", "undo Backspace must restore the empty last line");
+    window.webContents.redo();
+    await checkEnd("abc", "redo Backspace must merge the last line again");
+    window.webContents.undo();
+    await type("x");
+    await checkEnd("abc\\nx", "typing after undoing Backspace must land on the restored line");
+
+    await js("globalThis.composerTailReset(" + JSON.stringify("one\\ntwo") + ")");
+    await clickLine(1);
+    await press("Enter", SHIFT);
+    expect((await state()).value === "one\\n\\ntwo", "middle break", await state());
+    window.webContents.undo();
+    expect((await state()).value === "one\\ntwo", "undo middle break", await state());
+    await clickLine(1);
+    await press("Enter");
+    const paragraph = await state();
+    expect(paragraph.value === "one\\n\\ntwo" && paragraph.caret === 4,
+      "plain Enter must place the caret on the new middle line", paragraph);
+
+    await js("globalThis.composerTailReset('')");
+    await press("Enter", SHIFT);
+    await checkEnd("\\n", "first break in an empty draft");
+    await press("Enter", SHIFT);
+    await checkEnd("\\n\\n", "two consecutive empty lines");
+    await type("x");
+    await checkEnd("\\n\\nx", "type after consecutive breaks");
 
     if (failures.length > 0) {
       console.error("COMPOSER_TAIL_LINE " + JSON.stringify({ ok: false, failures }));
       app.exit(1);
       return;
     }
-    console.log("COMPOSER_TAIL_LINE " + JSON.stringify({ ok: true, clicks, last: typedOnEmptyLine }));
+    console.log("COMPOSER_TAIL_LINE " + JSON.stringify({ ok: true, electron: process.versions.electron, chromium: process.versions.chrome, nativeCopy, clicks, last: typedOnEmptyLine }));
     app.exit(0);
   } catch (error) {
     console.error("COMPOSER_TAIL_LINE " + JSON.stringify({ ok: false, error: String(error), stack: error && error.stack }));
@@ -228,7 +261,9 @@ app.whenReady().then(async () => {
   );
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
-  const child = spawn(electronBinary, [join(temp, "main.cjs")], {
+  const args = [join(temp, "main.cjs")];
+  if (process.argv.includes("--isolated-clipboard")) args.push("--isolated-clipboard");
+  const child = spawn(electronBinary, args, {
     env,
     stdio: ["ignore", "pipe", "pipe"],
   });

@@ -467,8 +467,13 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   `04-ux/09-interaction-patterns.md` §1.2
 - **Acceptance**: C (composer send)
 - **Milestone**: M2
-- **Status**: Source-level regression (`composer-ime.test.mjs`); full UI
-  keyboard journey remains Draft. Protocol smoke does not dispatch key events.
+- **Automation**: `pnpm test:e2e:composer-tail-line` mounts the production editor in
+  Electron. Type three lines, click the end of line one, insert one break, click
+  each painted line, then type and backspace at the end. Check the exact draft,
+  line geometry, selection and caret, including an empty last line, consecutive
+  breaks, native undo/redo of both insertion and Backspace, and IME preedit/commit. On a disposable desktop with
+  its own empty clipboard, add `--isolated-clipboard` to check native copy as well.
+  The full Settings-to-send journey remains Draft; this lane needs no provider.
 
 ## E2E-008e: Host speech transcribe and speak
 

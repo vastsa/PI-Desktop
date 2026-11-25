@@ -300,7 +300,7 @@ export function setEditorCaret(el: HTMLElement, index: number): void {
  * and counts that break as zero characters everywhere; that keeps the line count,
  * the draft string and its indices unchanged, without a character that could be
  * selected or copied. Text typed into the empty line lands before the placeholder,
- * and a line with content drops it on the next commit.
+ * and after text a final BR is inert but may still anchor native undo.
  */
 export function syncTailPlaceholder(el: HTMLElement): void {
   const placeholders = Array.from(
@@ -314,7 +314,11 @@ export function syncTailPlaceholder(el: HTMLElement): void {
     for (const extra of placeholders.slice(1)) extra.remove();
     return;
   }
-  for (const placeholder of placeholders) placeholder.remove();
+  // A final BR after text does not paint another line. Keep its identity:
+  // Chromium may need this exact sibling to undo deletion of the preceding LF.
+  for (const placeholder of placeholders) {
+    if (placeholder !== el.lastChild) placeholder.remove();
+  }
 }
 
 /** One glyph per file family on attachment chips, as inline SVG strings. */
