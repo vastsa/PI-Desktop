@@ -177,6 +177,7 @@
      cannot drift away from the viewport-fixed toggle. */
   --ds-work-panel-toggle-size: 28px;
   --ds-work-panel-toggle-inset: 12px;
+  --ds-work-panel-toggle-right: var(--ds-work-panel-toggle-inset);
   /* The one gap between adjacent controls in the panel header row: the tab
      strip to the action group, between `+` and maximize, and — through the
      lane reserve that spends this token — between that group and the

@@ -1,7 +1,20 @@
 # E2E Scenarios: Plugins and Extensions
 
+## E2E-plugin-view-refresh-order
+
+Hold the first project's plugin view request, switch projects and complete the second request, then resolve or reject the first. Verify the production WorkPanel launcher retains only the current project's views. Also switch projects without another request and reject stale writes. Coverage: `plugin-view-refresh-order.test.mjs`, view contracts and `scripts/e2e-plugin-view-refresh-order.mjs` with production WorkPanel/useAppStore in Electron. Host view results are controlled.
+
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Plugins, MCP, trusted extensions, subagents, hooks, skills, and generated UI.
 > Scenario template, gates, and traceability live in the plan.
+
+## E2E-BROWSER-CAPTURE-window-manager-readiness
+
+On Linux/Xvfb, start the browser capture/resize suite through
+`sh scripts/e2e/with-openbox.sh node scripts/e2e-browser-capture-resize.mjs`.
+Delay Openbox startup and verify the suite waits for its EWMH root-window
+claim before requesting maximize/restore/fullscreen. All capture, viewport,
+and lifecycle assertions must still pass. A missing or failed window manager
+fails within ten seconds. A failed native probe prints its last progress stages.
 
 ## E2E-EXTENSION-thinking-request-state
 
@@ -831,7 +844,8 @@ window; opening a normal panel afterward must still work.
       the same tool in the existing session without searching again.
   11. Repeat with the restarted stub omitting that tool, and with the server
       disabled or scoped away before recovery. Also try concurrent calls after
-       a disconnect and a server that fails its recovery handshake.
+      a disconnect and a server that fails its recovery handshake. Restore that
+      server and call the same tool again without an edit or Test connection.
   12. Connect the HTTP server, stop it, and refresh the MCP settings page.
       Test connection again after restarting the server.
 - **Expected**:
@@ -839,8 +853,9 @@ window; opening a normal panel afterward must still work.
     concurrent calls share one handshake. The fresh server list must still
     advertise the tool. Removed tools and inactive servers are refused without
     executing a call; inactive servers are not reconnected. Recovery failure
-    returns `UNAVAILABLE` and does not trigger repeated handshake attempts until
-    an edit or Test connection. A failed tool execution is never replayed.
+    returns `UNAVAILABLE` and is not redialled by session assembly. A later
+    explicit tool call retries the failed handshake and succeeds after the
+    server recovers. A failed tool execution is never replayed.
   - Two servers import; the third is listed as skipped with "a stdio server
      requires command". The LAN HTTP entry lands as `http` with its url intact,
      and the editor shows the unencrypted-connection warning.
@@ -1258,6 +1273,20 @@ window; opening a normal panel afterward must still work.
 - **Status**: The bundle's manifest, entry page, and upstream checksum are
   unit-covered (`apps/desktop/test/bundled-plugins.test.mjs`); the plugin-side
   journey is Draft (run only in a capable environment when this surface changes)
+
+## E2E-PLUGIN-file-manager-markdown-and-workbook-previews
+
+- **Steps**: In the bundled File Manager, open a project Markdown file with a
+  relative image reference and switch to Preview. Switch files, then open an
+  `.xlsx` workbook.
+- **Expected**: A valid project-local image renders inline. Missing, denied,
+  oversized and network images do not render. The workbook shows bounded table
+  data, offers no edit action, and the plugin refuses writes to workbook paths.
+- **Coverage**: Upstream `tests/electron/verify-markdown.cjs` against the bundled
+  production view and `views-src/verify-viewers.mjs` against the pinned source.
+- **Compatibility**: Copying saved source lines retains plain text in the
+  clipboard. Adding a structured reference to chat is only offered when the
+  Desktop bridge advertises support.
 
 ## E2E-PLUGIN-file-view-switches-folder-per-project
 
@@ -3631,6 +3660,27 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Status**: Automated by `apps/desktop/test/plugin-mcp.test.mjs` (held-open
   reply case); no live app process required.
 
+## E2E-MCP-HTTP-legacy-SSE — An HTTP+SSE-only server connects through the compatibility path (issue #2528)
+
+- **Preconditions**: A local mock server speaks only the 2024-11-05 HTTP+SSE
+  transport: `GET /mcp` opens an event stream and announces
+  `/messages?session=…`; `POST /mcp` answers `405` (repeat with `404` and
+  `400`). No provider credentials needed.
+- **Steps**: Configure the server with the `http` transport and an
+  `authorization` header; connect, discover the tools, and call one. Close the
+  client. Repeat with an endpoint on another origin, with `401` from the POST,
+  and with a server that rejects both POST and GET.
+- **Expected**: Handshake, discovery, and the call succeed over the event
+  stream, every message goes to the announced endpoint with the configured
+  header, and closing the client ends the stream. A cross-origin endpoint is
+  refused before any message is posted, `401` does not fall back, and a server
+  speaking neither transport reports the original `HTTP_ERROR` status.
+- **Specs**: 07-plugins/01-plugin-system §12.2; ADR 0038.
+- **Acceptance**: HTTP transport integration and the main-process MCP handshake.
+- **Milestone**: Maintenance.
+- **Status**: Automated by `apps/desktop/test/mcp-legacy-sse.test.mjs`; no live
+  app process required.
+
 ## E2E-IME-escape: Composition cancellation preserves drafts
 
 - **Steps**: Edit a user message; type a draft; dispatch composing Escape and Cmd/Ctrl+Enter. Open global search and dispatch composing Escape from its input. Repeat with legacy keyCode 229, then ordinary Escape and retry shortcuts.
@@ -3771,6 +3821,21 @@ registry-only installation and credential isolation.
   `apps/desktop/test/plugin-session-access.test.mjs`, and the plugin-process
   path in `apps/desktop/test/plugin-session-api.test.mjs`; the interactive
   Electron scenario remains a manual validation run.
+
+## E2E-PLUGIN-bundled-enhancements-defaults
+
+- **Preconditions**: A fresh Desktop profile with bundled Official Enhancements
+  and a ready model. Use a synthetic completion provider in automated tests.
+- **Steps**: Open the Enhancements settings, complete a turn in a new session,
+  then switch titles off and prompt enhancement on. Reload the plugin.
+- **Expected**: Only titles start enabled; the first completed turn can replace
+  the fallback title without reading the full transcript, offering a suggestion,
+  or recalling memory. A manual name wins. Explicit settings survive reload.
+- **Specs linked**: `04-ux/08-component-spec.md` §3.4; ADR 0323.
+- **Acceptance**: G (plugins), Quality.
+- **Milestone**: M6+.
+- **Status**: Plugin-process coverage in
+  `apps/desktop/test/bundled-official-enhancements.test.mjs`.
 
 ## E2E-1175: A plugin suggestion rides in the Composer placeholder and is taken with Tab
 
@@ -3941,6 +4006,22 @@ Open an editor in project A, switch the page to B and wait for B's list. A/B
 same-name definitions with different IDs do not prevent saving to A. A real
 duplicate name or ID in A still blocks creation; a real duplicate name blocks
 editing. Cover both creating and editing before changing the page selection.
+
+## E2E-ISSUE-2399
+
+In an unbound Agent conversation, call `PluginScaffold` with `panel-basic` and
+`word-to-pdf`, then `PluginCheck` and `PluginPack` on that directory. Files and the
+package must stay under that session's host-owned scratch root, and development
+registration/loading must receive that same plugin path. A second temporary
+session must not share the first session's directory. Project/worktree sessions
+must retain their own root; missing sessions and escaping paths must fail closed.
+Host lookup failures must remain observable. Scratch sources retain the existing
+temporary cleanup lifecycle, not a persistent project guarantee.
+
+Offline coverage: `node --test apps/desktop/test/plugin-dev-workspace.test.mjs`
+executes the production resolver, DI wiring, tool handlers and devkit filesystem
+operations. Host RPC and Electron plugin loading are boundary fixtures; rendered
+Electron and real-host lifecycle verification remain manual/CI coverage.
 
 ## E2E-ISSUE-2184
 

@@ -177,8 +177,12 @@ export function useContextMenu() {
     Both are applied here so no call site can forget one.
   */
   const openContextMenu = useCallback(
-    (event: ReactMouseEvent<HTMLElement>, request: ContextMenuRequest) => {
-      if (!request.items.length) return;
+    (
+      event: ReactMouseEvent<HTMLElement>,
+      request: ContextMenuRequest,
+      selectionItems?: (selection: string) => ContextMenuItem[],
+    ) => {
+      if (!request.items.length && !selectionItems) return;
       event.preventDefault();
       event.stopPropagation();
       /*
@@ -190,7 +194,10 @@ export function useContextMenu() {
       const selection = snapshotSelection(event.currentTarget);
       const rect = request.anchor ? event.currentTarget.getBoundingClientRect() : undefined;
       const anchorRect = rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } : undefined;
-      setState({ ...request, point: pointForEvent(event), anchorRect, selection });
+      const items = selectionItems
+        ? [...request.items, ...selectionItems(selection)]
+        : request.items;
+      if (items.length) setState({ ...request, items, point: pointForEvent(event), anchorRect, selection });
     },
     [],
   );

@@ -60,14 +60,14 @@ test("the runtime forwards runInBackground on a Bash tools.execute call", () => 
   );
 });
 
-test("host-core parses runInBackground on ToolsExecuteParams and skips the cancellation registry for it", () => {
+test("host-core accepts optional Bash background and initial-wait flags", () => {
+  const params = toolSources.match(/pub struct ToolsExecuteParams \{([\s\S]*?)^\}/m)?.[1];
+  assert.ok(params, "ToolsExecuteParams must define the Host wire fields");
+  assert.match(params, /#\[serde\(default\)\]\s+pub run_in_background: bool,/);
+  assert.match(params, /#\[serde\(default\)\]\s+pub yield_after_initial_wait: bool,/);
   assert.match(
     toolSources,
-    /pub run_in_background: bool,\s*\n\s*pub timeout_ms/,
-  );
-  assert.match(
-    toolSources,
-    /if options\.run_in_background \{[\s\S]*?spawn_background_task_detached/,
+    /if options\.run_in_background \{[\s\S]*?spawn_background_task_with_continuation/,
   );
 });
 
@@ -155,8 +155,8 @@ test("the container shows only live work: a finished row expires and can be remo
   assert.match(controller, /observeTasks\(current, result\.tasks, observedAt\)/);
   // Removal is refused for a live task in the state layer, not just by hiding
   // the control.
-  assert.match(visibility, /task\.state === "running"\) return state;/);
-  assert.match(controller, /if \(!task \|\| task\.state === "running"\)/);
+  assert.match(visibility, /task\.state === "running" \|\| task\.continuation === "pending"\) return state;/);
+  assert.match(controller, /if \(!task \|\| task\.state === "running" \|\| task\.continuation === "pending"\)/);
   assert.match(controller, /dismissTask\(current, task\)/);
   // A finished row offers removal instead of stopping.
   assert.match(bar, /\{t\("backgroundTasks\.dismiss"\)\}/);

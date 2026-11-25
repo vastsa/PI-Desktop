@@ -1,161 +1,155 @@
-/**
- * The renderer end of `pi.composer.suggest` (ADR 0333).
- *
- * A plugin process offers one line, the shell decides whether the composer can
- * take it, and the user takes it with Tab, drops it with Esc, or drops it by
- * typing. This module owns that decision and the single suggestion slot; the
- * main process owns the two facts the composer cannot know (which session is on
- * screen, which turn is current) and has already refused a stale offer before it
- * reaches here.
- *
- * The suggestion is never a draft value: it lives beside the draft and shows in
- * the placeholder layer, so nothing a plugin offers can be sent without the user
- * accepting it. Every reason the slot can be emptied is handled here:
- *
- * - the draft stops being empty (typing, pasting, a chip, `composer.insertText`,
- *   `composer.replaceDraft`) — the composer publishes each change;
- * - the composer takes input for another session, or stops taking input at all;
- * - the offer's own lifetime runs out;
- * - the main process says so: a new turn started, the plugin stopped, or the
- *   plugin asked to clear it.
- *
- * A renderer reload and a window close end the whole module with the page, so
- * there is nothing to hold over.
- */
+/** The renderer owns the live composer and its one suggestion slot, separate from the draft. */
+import type { ComposerSuggestionMessage } from "@pi-desktop/shared";
 import type { PluginComposerSuggestionRefusal } from "@pi-desktop/plugin-sdk";
 import type { ComposerDraftHandle } from "./draft-bridge";
 
-/** One suggestion the shell may draw in the placeholder layer. */
-export type ComposerSuggestion = {
-  readonly pluginId: string;
-  readonly sessionId: string;
-  readonly turnId?: string;
-  readonly text: string;
-  /** Epoch milliseconds; the line goes away at this moment. */
-  readonly expiresAt: number;
-};
+/** An offer from main, without its IPC correlation fields. */
+type OfferMessage = Extract<ComposerSuggestionMessage, { kind: "offer" }>;
+type OfferFields = Pick<OfferMessage, "pluginId" | "sessionId" | "turnId" | "expiresAt">;
+export type ComposerSuggestionOffer = OfferFields & (
+  | { text: string }
+  | { candidates: readonly string[]; revision: string; validUntil: number }
+);
 
-/** What the main process asks the shell to consider. */
-export type ComposerSuggestionOffer = ComposerSuggestion;
+export type ComposerSuggestion = Readonly<OfferFields & {
+  text: string;
+  candidates: readonly string[];
+  index: number;
+  revision?: string;
+}>;
 
-/** Whether the offer is on screen now. */
 export type ComposerSuggestionOutcome =
   | { shown: true }
   | { shown: false; reason: PluginComposerSuggestionRefusal };
 
-/** Narrowing filter for a host-ordered clear; nothing named means everything. */
 export type ComposerSuggestionFilter = {
   readonly pluginId?: string;
   readonly sessionId?: string;
 };
 
-type Live = {
-  readonly sessionId: string;
-  readonly text: string;
-  /** References the draft holds, staged attachments included. */
-  readonly referenceCount: number;
+/** The version is read synchronously from the draft cache, even before React commits. */
+export type ComposerSuggestionHandle = ComposerDraftHandle & {
+  draftRevision: () => number;
+  canSuggest?: () => boolean;
 };
-
-function now(): number {
-  return Date.now();
-}
+type Draft = NonNullable<ReturnType<ComposerDraftHandle["read"]>>;
 
 export class ComposerSuggestionBridge {
-  private readonly handles: ComposerDraftHandle[] = [];
+  private readonly handles: ComposerSuggestionHandle[] = [];
   private readonly listeners = new Set<() => void>();
+  private selectedSession: string | null | undefined;
+  private revision: string | null = null;
+  private liveStamp: { handle: ComposerSuggestionHandle; draftKey: string; sessionId: string; version: number } | null = null;
   private current: ComposerSuggestion | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Lend the bridge a composer; the returned call takes it back. */
-  register(handle: ComposerDraftHandle): () => void {
+  register(handle: ComposerSuggestionHandle): () => void {
     this.handles.push(handle);
-    this.reconcile();
+    this.invalidateRevision();
     return () => {
       const index = this.handles.lastIndexOf(handle);
-      if (index === -1) return;
+      if (index < 0) return;
+      const wasActive = index === this.handles.length - 1;
       this.handles.splice(index, 1);
-      this.reconcile();
+      if (wasActive) this.invalidateRevision();
     };
   }
 
-  /**
-   * The composer's word that its draft changed. The suggestion belongs to an
-   * empty draft of one session, so a first character, a staged attachment or a
-   * switch of session ends it here — before any render draws it again.
-   */
-  publish(handle: ComposerDraftHandle): void {
-    if (this.handles.at(-1) !== handle) return;
-    this.reconcile();
+  /** Call on every store selection transition, even those batched out of a React render. */
+  selectSession(sessionId: string | null): void {
+    if (this.selectedSession === sessionId) return;
+    this.selectedSession = sessionId;
+    this.invalidateRevision();
   }
 
-  /** The suggestion on screen, or `null`. Stable between changes. */
+  publish(handle: ComposerSuggestionHandle): void {
+    if (this.handles.at(-1) === handle) this.live();
+  }
+
+  /** Nothing about a nonempty or inactive draft is returned, even to main. */
+  getTarget(sessionId: string): string | null {
+    const live = this.live();
+    if (!live || live.draft.sessionId !== sessionId || !this.isEmpty(live.draft)) return null;
+    return (this.revision ??= crypto.randomUUID());
+  }
+
   get(): ComposerSuggestion | null {
     return this.current;
   }
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return () => { this.listeners.delete(listener); };
   }
 
-  /**
-   * Consider one offer. Only the composer taking input can answer, so a window
-   * with no composer reports `unsupported` instead of pretending.
-   */
   offer(offer: ComposerSuggestionOffer): ComposerSuggestionOutcome {
     const live = this.live();
     if (!live) return { shown: false, reason: "unsupported" };
-    if (live.sessionId !== offer.sessionId) return { shown: false, reason: "session-not-visible" };
-    if (live.text.length > 0 || live.referenceCount > 0) {
-      return { shown: false, reason: "draft-not-empty" };
-    }
-    // The main process dates the offer when the plugin made it, so an offer
-    // that arrives after its own lifetime describes a moment that is over.
-    if (offer.expiresAt <= now()) return { shown: false, reason: "stale-turn" };
+    if (live.draft.sessionId !== offer.sessionId) return { shown: false, reason: "session-not-visible" };
+    if (!this.isEmpty(live.draft)) return { shown: false, reason: "draft-not-empty" };
+    const now = Date.now();
+    if (offer.expiresAt <= now || ("revision" in offer && (
+      offer.revision !== this.revision || offer.validUntil <= now
+    ))) return { shown: false, reason: "stale-turn" };
+    const candidates = "candidates" in offer ? [...offer.candidates] : [offer.text];
     this.set({
       pluginId: offer.pluginId,
       sessionId: offer.sessionId,
       ...(offer.turnId ? { turnId: offer.turnId } : {}),
-      text: offer.text,
+      text: candidates[0]!,
+      candidates,
+      index: 0,
       expiresAt: offer.expiresAt,
+      ...("revision" in offer ? { revision: offer.revision } : {}),
     });
     return { shown: true };
   }
 
-  /**
-   * Take the suggestion: the draft becomes its text, the caret lands at the end
-   * and the input takes focus, which is exactly what typing that sentence would
-   * have done. The existing references are kept, so an image staged in the
-   * meantime is not lost.
-   */
-  accept(): boolean {
-    const suggestion = this.current;
-    const draft = this.handles.at(-1)?.read() ?? null;
-    if (
-      !suggestion ||
-      !draft ||
-      draft.text.length > 0 ||
-      draft.sessionId !== suggestion.sessionId
-    ) {
+  cycle(delta: -1 | 1, expected = this.current): boolean {
+    const live = this.live();
+    const current = this.current;
+    if (!live || !current || current !== expected || current.candidates.length < 2) return false;
+    if (current.expiresAt <= Date.now()) {
       this.dismiss();
       return false;
     }
-    this.dismiss();
-    this.handles
-      .at(-1)
-      ?.write(suggestion.text, [...draft.references], suggestion.text.length, true);
+    const count = current.candidates.length;
+    const index = (current.index + count + delta) % count;
+    this.set({ ...current, index, text: current.candidates[index]! });
     return true;
   }
 
-  /** Drop whatever is on screen. */
-  dismiss(): void {
-    this.set(null);
+  /** Take only the current line. This is a draft write, never a send. */
+  accept(expected = this.current): boolean {
+    const suggestion = this.current;
+    if (!suggestion || suggestion !== expected) return false;
+    const handle = this.handles.at(-1);
+    // Preserve legacy behavior if an attachment arrives before its draft publish.
+    // Revision-bound groups, in contrast, must still own the same empty draft.
+    const live = suggestion.revision ? this.live() : null;
+    const draft = suggestion.revision ? live?.draft : handle?.read();
+    if (
+      !draft || draft.text.length > 0 || draft.sessionId !== suggestion.sessionId ||
+      this.current !== suggestion || suggestion.expiresAt <= Date.now() ||
+      (this.selectedSession !== undefined && draft.sessionId !== this.selectedSession)
+    ) {
+      this.dismiss(expected);
+      return false;
+    }
+    this.invalidateRevision();
+    handle?.write(suggestion.text, [...draft.references], suggestion.text.length, true);
+    return true;
   }
 
-  /** A host-ordered clear: one plugin, one session, or everything. */
+  dismiss(expected = this.current): void {
+    if (this.current === expected) this.set(null);
+  }
+
   clear(filter: ComposerSuggestionFilter = {}): void {
+    if (!filter.pluginId && (!filter.sessionId || filter.sessionId === this.liveStamp?.sessionId)) {
+      this.invalidateRevision();
+      return;
+    }
     const suggestion = this.current;
     if (!suggestion) return;
     if (filter.pluginId && filter.pluginId !== suggestion.pluginId) return;
@@ -164,56 +158,47 @@ export class ComposerSuggestionBridge {
   }
 
   private set(next: ComposerSuggestion | null): void {
-    if (this.timer !== null) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
     if (this.current === next) return;
+    if (this.timer !== null) clearTimeout(this.timer);
     this.current = next;
-    if (next) {
-      // A lifetime the shell already spent is not a suggestion any more.
-      const remaining = next.expiresAt - now();
-      this.timer = setTimeout(
-        () => {
-          if (this.current?.expiresAt === next.expiresAt) this.dismiss();
-        },
-        Math.max(0, remaining),
-      );
-    }
+    this.timer = next ? setTimeout(() => this.dismiss(next), Math.max(0, next.expiresAt - Date.now())) : null;
+    // Node-based tests do not need this renderer timer to keep their process alive.
+    (this.timer as { unref?: () => void } | null)?.unref?.();
     for (const listener of [...this.listeners]) listener();
   }
 
-  /** The composer taking input and its draft, or `null`. */
-  private live(): Live | null {
-    const handle = this.handles.at(-1);
-    const draft = handle?.read() ?? null;
-    if (!handle || !draft) return null;
-    return {
-      sessionId: draft.sessionId,
-      text: draft.text,
-      referenceCount: draft.references.length,
-    };
+  private invalidateRevision(): void {
+    this.revision = null;
+    this.liveStamp = null;
+    this.dismiss();
   }
 
-  /**
-   * End the suggestion when the composer can no longer hold it. Called on every
-   * draft change and on every registration change, so the slot never outlives
-   * the empty draft it was offered for.
-   */
-  private reconcile(): void {
-    const suggestion = this.current;
-    if (!suggestion) return;
-    const live = this.live();
+  private isEmpty(draft: Draft): boolean {
+    return draft.text.length === 0 && draft.references.length === 0;
+  }
+
+  /** Reconcile version, availability and ownership before doing anything with a suggestion. */
+  private live(): { draft: Draft } | null {
+    const handle = this.handles.at(-1);
+    const draft = handle?.read();
     if (
-      !live ||
-      live.sessionId !== suggestion.sessionId ||
-      live.text.length > 0 ||
-      live.referenceCount > 0
+      !handle || !draft || handle.canSuggest?.() === false ||
+      (this.selectedSession !== undefined && draft.sessionId !== this.selectedSession)
     ) {
-      this.dismiss();
+      this.invalidateRevision();
+      return null;
     }
+    const version = handle.draftRevision();
+    const previous = this.liveStamp;
+    if (previous?.handle !== handle || previous.draftKey !== draft.draftKey || previous.sessionId !== draft.sessionId) {
+      this.invalidateRevision();
+    } else if (previous.version !== version || !this.isEmpty(draft)) {
+      this.revision = null;
+      if (this.current?.revision || !this.isEmpty(draft)) this.dismiss();
+    }
+    this.liveStamp = { handle, draftKey: draft.draftKey, sessionId: draft.sessionId, version };
+    return { draft };
   }
 }
 
-/** The app window's suggestion slot. */
 export const composerSuggestion = new ComposerSuggestionBridge();

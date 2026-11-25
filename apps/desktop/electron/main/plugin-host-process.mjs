@@ -17,6 +17,8 @@
  *   *      -> *      { t: "res", id, ok, value } | { t: "res", id, ok: false, error: { code, message } }
  *   parent -> child  { t: "event", event, ... }           push, no reply (bus.message, host events)
  *   child  -> parent { t: "log", level, message }         diagnostics, fire and forget
+ *   child  -> parent { t: "ping", id } / parent -> child { t: "pong", id }
+ *                                                    keepalive proving the parent is alive
  */
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -25,20 +27,88 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 const parentPort = process.parentPort;
 
-/** Electron utilityProcess and node:child_process disagree on the transport. */
-function send(message) {
-  if (parentPort) parentPort.postMessage(message);
-  else process.send?.(message);
+// Once the parent channel is gone, diagnostics must never re-enter it: every
+// further send attempt would only produce a new failure to report. One stderr
+// note is the last thing a broken channel gets. The terminal path is
+// idempotent: whichever failure surface gets here first (a synchronous throw
+// in `send`, an async delivery error callback, or a process-level transport
+// error) runs the single `process.exit` — later arrivals see the flag and stop.
+let transportBroken = false;
+let exitStarted = false;
+
+function markBrokenAndExit(error) {
+  if (transportBroken) return;
+  transportBroken = true;
+  const reason = error?.code || error?.message || String(error ?? "unknown");
+  try {
+    process.stderr.write(`plugin host: parent IPC channel is broken (${reason})\n`);
+  } catch {
+    // Even stderr can be gone (closed pipe); nothing left to report to.
+  }
+  if (exitStarted) return;
+  exitStarted = true;
+  // The channel to the owner is gone: nothing this process does is useful
+  // anymore, and lingering here would leak the plugin host. A settled
+  // process.exit cannot recurse through further diagnostics.
+  process.exit(0);
 }
 
-function onHostMessage(handler) {
-  if (parentPort) parentPort.on("message", (event) => handler(event.data));
-  else process.on("message", handler);
+// Async delivery failures on the node IPC channel do not throw inside `send`:
+// with the parent connector gone, `process.send` fails asynchronously and the
+// channel reports it as a process-level `error` event (typically EPIPE).
+// Handling it here keeps it out of `uncaughtException`, where the diagnostics
+// send would otherwise recurse forever. It is the same terminal break.
+process.on("error", (error) => {
+  markBrokenAndExit(error);
+});
+if (parentPort) {
+  // Electron's pinned parent-port never surfaces `disconnect`: the gone
+  // connector shows up as `close`, and undeliverable frames as `messageerror`.
+  // Treat both as the same terminal break.
+  parentPort.on("close", () => markBrokenAndExit(new Error("parent-port closed")));
+  parentPort.on("messageerror", (error) => markBrokenAndExit(error));
+}
+
+/**
+ * Send over the parent transport. On the node IPC channel delivery is
+ * asynchronous: failures are reported through `onDeliveryError` (or the
+ * process-level `error` handler above), never synchronously, so callers must
+ * not assume `send` returning means the parent received the frame.
+ */
+function send(message, onDeliveryError) {
+  if (parentPort) parentPort.postMessage(message);
+  else process.send?.(message, (error) => onDeliveryError?.(error));
+}
+
+/** Best-effort send. Never throws, so callers that report failures through
+ * this channel cannot recurse into reporting the failure of the report. */
+function trySend(message) {
+  if (transportBroken) return false;
+  try {
+    send(message, (error) => {
+      if (error) markBrokenAndExit(error);
+    });
+    return true;
+  } catch (error) {
+    markBrokenAndExit(error);
+  }
+  return false;
 }
 
 function log(level, message) {
-  send({ t: "log", level, message: String(message) });
+  trySend({ t: "log", level, message: String(message) });
 }
+
+// Keepalive tunables. The parent answers every `ping` with a `pong`; missing
+// that round-trip repeatedly means the parent (or its connector) is gone.
+function positiveIntEnv(name, fallback) {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+const PING_INTERVAL_MS = positiveIntEnv("PI_PLUGIN_PING_INTERVAL_MS", 10_000);
+const PING_MISSES = positiveIntEnv("PI_PLUGIN_PING_MISSES", 2);
+let missedPings = 0;
+let nextPingId = 1;
 
 let pluginId = "";
 let pluginPath = "";
@@ -60,7 +130,22 @@ function call(api, args = []) {
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject, invocationId: invocation?.id });
     try {
-      send({ t: "call", id, api, args, ...(invocation ? { invocationId: invocation.id } : {}) });
+      send(
+        { t: "call", id, api, args, ...(invocation ? { invocationId: invocation.id } : {}) },
+        // An async delivery failure means the channel to the broker is gone:
+        // fail the pending call and take the same terminal break as every
+        // other transport error. A null argument is a successful flush, not
+        // a failure: the child channel reports delivery as callback(null).
+        (error) => {
+          if (!error) return;
+          const entry = pending.get(id);
+          if (entry) {
+            pending.delete(id);
+            entry.reject(error);
+          }
+          markBrokenAndExit(error);
+        },
+      );
     } catch (error) {
       pending.delete(id);
       reject(error);
@@ -168,6 +253,7 @@ function buildApi() {
       getVersion: () => call("app.getVersion"),
       getLocale: () => call("app.getLocale"),
       getAppearance: () => call("app.getAppearance"),
+      getCapabilities: () => call("app.getCapabilities"),
       setTheme: (themeId) => call("app.setTheme", [themeId]),
     },
     themes: {
@@ -258,6 +344,8 @@ function buildApi() {
     // spending another completion.
     composer: {
       suggest: (input) => call("composer.suggest", [input ?? {}]),
+      getSuggestionTarget: (input) => call("composer.getSuggestionTarget", [input]),
+      suggestCandidates: (input) => call("composer.suggestCandidates", [input]),
       clearSuggestion: (input) => call("composer.clearSuggestion", [input ?? {}]),
     },
     project: {
@@ -687,6 +775,29 @@ async function handleParentCall(method, payload, invocationId, callId) {
       }
       return answer;
     }
+    case "agent.modelContext": {
+      const handler = pluginModule?.onModelContext;
+      if (typeof handler !== "function") return null;
+      const controller = new AbortController();
+      parentCallControllers.set(callId, controller);
+      // Release the controller even if the plugin never settles its promise.
+      const release = () => parentCallControllers.delete(callId);
+      controller.signal.addEventListener("abort", release, { once: true });
+      try {
+        const answer = await handler(payload, { signal: controller.signal });
+        if (controller.signal.aborted || answer === undefined || answer === null) return null;
+        // Reject before crossing IPC; don't copy arbitrary plugin objects.
+        const text = answer.text;
+        if (typeof text !== "string" || text.length > 4096 || Buffer.byteLength(text, "utf8") > 4096) {
+          throw Object.assign(new Error("onModelContext requires text of at most 4096 UTF-8 bytes"), {
+            code: "PLUGIN_INVALID_RESULT",
+          });
+        }
+        return { text };
+      } finally {
+        release();
+      }
+    }
     case "lifecycle.unload": {
       for (const id of invocations.keys()) cancelInvocation(id, "Plugin unloaded");
       for (const [id, controller] of parentCallControllers) {
@@ -715,8 +826,37 @@ async function handleParentCall(method, payload, invocationId, callId) {
   }
 }
 
+function onHostMessage(handler) {
+  if (parentPort) parentPort.on("message", (event) => handler(event.data));
+  else process.on("message", handler);
+}
+
+// Parent liveness. node:child_process emits `disconnect` when the parent side
+// goes away, but Electron's pinned parent-port (utilityProcess) only closes its
+// connector without any JavaScript-visible event: there we keep a ping/pong
+// round-trip going and exit when the parent stops answering. Either way the
+// host must not outlive the parent that owns it.
+if (parentPort) {
+  const heartbeat = setInterval(() => {
+    missedPings += 1;
+    if (missedPings > PING_MISSES || !trySend({ t: "ping", id: nextPingId++ })) {
+      clearInterval(heartbeat);
+      process.exit(0);
+    }
+  }, PING_INTERVAL_MS);
+  heartbeat.unref?.();
+} else {
+  process.on("disconnect", () => {
+    process.exit(0);
+  });
+}
+
 onHostMessage((message) => {
   if (!message || typeof message !== "object") return;
+  if (message.t === "pong") {
+    missedPings = 0;
+    return;
+  }
   if (message.t === "res") {
     settle(message);
     return;
@@ -737,9 +877,11 @@ onHostMessage((message) => {
   }
   if (message.t === "init") {
     void handleInit(message)
-      .then((value) => send({ t: "res", id: message.id, ok: true, value }))
-      .catch((error) =>
-        send({
+      .then((value) => {
+        trySend({ t: "res", id: message.id, ok: true, value });
+      })
+      .catch((error) => {
+        trySend({
           t: "res",
           id: message.id,
           ok: false,
@@ -747,15 +889,17 @@ onHostMessage((message) => {
             code: error?.code || "PLUGIN_LOAD_FAILED",
             message: error?.message ? String(error.message) : String(error),
           },
-        }),
-      );
+        });
+      });
     return;
   }
   if (message.t === "call") {
     void invocationContext.run(undefined, () => handleParentCall(message.method, message.payload, message.invocationId, message.id))
-      .then((value) => send({ t: "res", id: message.id, ok: true, value: value ?? null }))
-      .catch((error) =>
-        send({
+      .then((value) => {
+        trySend({ t: "res", id: message.id, ok: true, value: value ?? null });
+      })
+      .catch((error) => {
+        trySend({
           t: "res",
           id: message.id,
           ok: false,
@@ -763,16 +907,26 @@ onHostMessage((message) => {
             code: error?.code || "PLUGIN_CALL_FAILED",
             message: error?.message ? String(error.message) : String(error),
           },
-        }),
-      );
+        });
+      });
   }
 });
 
 // A misbehaving plugin must not take down its own host process silently, and it
-// can never take down the app: the broker owns teardown decisions.
+// can never take down the app: the broker owns teardown decisions. Diagnostics
+// go through the guarded channel, so a broken transport can never re-enter
+// these handlers recursively.
 process.on("uncaughtException", (error) => {
-  log("error", `uncaught exception: ${error?.stack || error}`);
+  try {
+    log("error", `uncaught exception: ${error?.stack || error}`);
+  } catch {
+    // Reporting failed; survive to keep the transport diagnostics bounded.
+  }
 });
 process.on("unhandledRejection", (reason) => {
-  log("error", `unhandled rejection: ${reason instanceof Error ? reason.stack : String(reason)}`);
+  try {
+    log("error", `unhandled rejection: ${reason instanceof Error ? reason.stack : String(reason)}`);
+  } catch {
+    // Reporting failed; survive to keep the transport diagnostics bounded.
+  }
 });

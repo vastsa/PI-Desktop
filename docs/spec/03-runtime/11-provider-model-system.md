@@ -121,6 +121,12 @@ showing Name, Base URL, or API format on the named-service path. Chat turns
 still use the selected pi-ai adapter (`chat_completions`, `responses`,
 `anthropic_messages`, `google_generative_ai`, or `opencode_go`). Zhipu / Z.AI
 Completions requests use `thinkingFormat: "zai"` and `zaiToolStream: true`.
+Mistral Chat Completions requests suppress pi-ai's OpenAI-only `store` field,
+which the endpoint rejects with HTTP 422 (`extra_forbidden`, #2539). Detection
+uses the configured Mistral host or named `vendorKey`; custom rows pointed at
+Mistral are covered, while unrelated custom endpoints and OpenAI keep their
+existing request bodies. DeepSeek-family compatibility remains layered on top
+for Mistral-hosted DeepSeek models.
 DeepSeek-family Completions requests set
 `requiresReasoningContentOnAssistantMessages: true` when the row's `vendorKey`,
 base URL, model id, or catalog `family` identifies DeepSeek. pi-ai only
@@ -484,7 +490,8 @@ is the endpoint that vendor actually publishes:
   with the account id taken from the access token. The endpoint requires
   `client_version` and hides models whose minimum Codex client is newer, so
   the value is a pinned Codex CLI version (`CODEX_MODELS_CLIENT_VERSION`) that
-  is bumped when an account model goes missing. A `{ data: [...] }` payload is
+  is bumped when an account model goes missing (0.169.1 since `gpt-6.2-sol` and
+  `gpt-6.2-astra` require 0.166.0, #2411). A `{ data: [...] }` payload is
   not accepted. A newly published id such as `gpt-6-luna` is selectable
   without a client update when that response includes it.
 - GitHub Copilot: `GET {base}/models` with the pinned IDE identity headers and
@@ -755,6 +762,17 @@ The OpenAI Responses adapter treats `response.completed` and
 the TCP connection open cannot hold the turn after the final event. Pi-ai
 1.0.0 includes this upstream fix. The 1.0.0 hosted-search patch does not need to
 reapply the old 0.99.1 terminal-event hunk.
+
+### 16.2 Responses function tool strictness
+
+When the effective Responses adapter compatibility disables strict tool sampling,
+pi-ai sends `strict: false` on function declarations to override the endpoint's
+default. This applies to current `tools` and replayed declarations in
+`additional_tools` and `tool_search_output`. Function schemas retain their
+constraints, including `uniqueItems` for scheduled task weekdays, and local tool
+validation still rejects duplicate weekdays. With strict sampling support enabled,
+the adapter continues to honor constrained sampling and its existing default,
+including Codex's `strict: null`. Custom grammar tools keep their wire shape.
 
 ## 17. Multi-provider product rules
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { copyFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -231,18 +231,12 @@ test(
       await mkdir(join(scratch, "run"), { recursive: true });
       await writeFile(join(scratch, "run", "artifact.txt"), "artifact\n");
 
-      // The preload requires the vendored plugin from the app resources; stage
-      // its runtime files next to the workspace the fixture constructs. main.js
-      // requires its sibling remote-workspace.js, so both travel together; a
-      // copy needs no symlink privilege.
-      const pluginStage = join(temp, "staged");
-      await mkdir(join(pluginStage, "pi.file-manager"), { recursive: true });
-      for (const runtimeFile of ["main.js", "remote-workspace.js"]) {
-        await copyFile(
-          join(root, "apps/desktop/resources/plugins/pi.file-manager", runtimeFile),
-          join(pluginStage, "pi.file-manager", runtimeFile),
-        );
-      }
+      // Stage the full runtime so the preload uses the same module layout as Desktop.
+      await cp(
+        join(root, "apps/desktop/resources/plugins/pi.file-manager"),
+        join(temp, "staged", "pi.file-manager"),
+        { recursive: true },
+      );
 
       const preload = String.raw`
 const { contextBridge } = require("electron");

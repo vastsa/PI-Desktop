@@ -27,7 +27,7 @@ fn manifest() -> PluginManifest {
                 "apiStyle": "chat_completions",
                 "authKind": "api_key",
                 "models": [
-                    { "id": "demo-large", "name": "Demo Large", "contextWindow": 200000, "maxTokens": 8192 },
+                    { "id": "demo-large", "name": "Demo Large", "contextWindow": 200000, "maxTokens": 8192, "allowEmptyThinkingSignature": true },
                     { "id": "demo-small" }
                 ]
             }]
@@ -142,11 +142,24 @@ fn declared_providers_reads_the_manifest() {
         ["demo-large", "demo-small"]
     );
     assert_eq!(provider.models[0].context_window, 200_000);
-    // A model that declares no limits falls back to the runtime default
-    // instead of storing a zero window.
     assert_eq!(provider.models[1].context_window, 0);
+    assert_eq!(
+        provider.models[0].allow_empty_thinking_signature,
+        Some(true)
+    );
+    assert_eq!(provider.models[1].allow_empty_thinking_signature, None);
 }
 
+#[test]
+fn plugin_provider_rejects_non_boolean_empty_signature_opt_in() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut value = serde_json::to_value(manifest()).unwrap();
+    value["contributes"]["providers"][0]["models"][0]["allowEmptyThinkingSignature"] = json!("yes");
+    write_plugin(temp.path(), value);
+    assert!(
+        read_manifest_err(temp.path()).contains("allowEmptyThinkingSignature must be a boolean")
+    );
+}
 #[test]
 fn provider_declarations_have_no_eight_row_cap() {
     let ids: Vec<String> = (0..18).map(|index| format!("site-{index}")).collect();
@@ -191,6 +204,7 @@ fn empty_api_key_model_list_uses_the_cached_endpoint_discovery() {
             display_name: "Demo Chat".to_string(),
             capabilities: vec!["text".to_string()],
             context_window: Some(128_000),
+            reported_context_window: None,
         }],
         true,
     )
@@ -263,18 +277,21 @@ fn dropping_a_declared_model_forgets_its_cached_row() {
                 display_name: "Demo Large".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(200_000),
+                reported_context_window: None,
             },
             providers::DiscoveredModelInput {
                 model_id: "demo-small".into(),
                 display_name: "Demo Small".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(32_000),
+                reported_context_window: None,
             },
             providers::DiscoveredModelInput {
                 model_id: "demo-extra".into(),
                 display_name: "Demo Extra".into(),
                 capabilities: vec!["text".into()],
                 context_window: None,
+                reported_context_window: None,
             },
         ],
         true,
@@ -326,12 +343,14 @@ fn moving_a_declared_endpoint_forgets_the_discovered_answer() {
                 display_name: "Demo Large".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(200_000),
+                reported_context_window: None,
             },
             providers::DiscoveredModelInput {
                 model_id: "demo-remote-only".into(),
                 display_name: "Demo Remote Only".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(8_000),
+                reported_context_window: None,
             },
         ],
         true,

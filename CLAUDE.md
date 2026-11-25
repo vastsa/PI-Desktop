@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Policy-Sync: 2026-09-26.1
+Policy-Sync: 2026-11-24.1
 
 Instructions for Claude Code CLI and Claude Cowork on PI-Desktop.
 
@@ -105,6 +105,24 @@ ports, logs, and artifacts isolated. Install or rebuild only for missing or
 incompatible host dependencies, and record the reason; clean CI/release
 runners may install from lockfiles.
 
+### Shared install teardown
+
+A worktree that shares the primary checkout's `node_modules` also shares its
+pnpm bin shims. Shims written from inside the worktree record absolute
+worktree paths, so removing the worktree breaks `tsc`, `electron`, `vitest`,
+and `electron-builder` in the primary checkout.
+
+Before `git worktree remove`, verify no shim still references a worktree:
+
+```bash
+grep -h "worktrees/" node_modules/.bin/* apps/*/node_modules/.bin/* \
+  packages/*/node_modules/.bin/* | grep -v "^# cmd-shim-target="
+```
+
+It must print nothing. Rewrite offenders back to the primary checkout path
+and confirm `tsc --version` / `electron --version` run. Never delete the
+worktree first and leave dangling shims behind.
+
 ### Architecture (frozen)
 
 ```text
@@ -150,17 +168,17 @@ Database / schema changes need migration, schema version bump, upgrade compatibi
 Do not pile new logic into God Modules. Prefer shrink-or-stay-stable for:
 
 ```text
+packages/agent-runtime/src/runtime.ts
+crates/host-core/src/rpc/mod.rs
+crates/host-core/src/sessions.rs
+crates/host-core/src/tools/mod.rs
+apps/desktop/electron/main/plugin-runtime.ts
+apps/desktop/src/components/Sidebar.tsx
 apps/desktop/electron/main/index.ts
 apps/desktop/src/stores/app-store.ts
-apps/desktop/src/components/ChatTranscript.tsx
-apps/desktop/src/components/Composer.tsx
-crates/host-core/src/plugins.rs
-crates/host-core/src/db.rs
-crates/host-core/src/providers.rs
-crates/host-core/src/plans.rs
 ```
 
-New logic belongs in the domain module that owns the state or process boundary. Facades stay for compatibility only.
+New logic belongs in the domain module that owns the state or process boundary. Facades stay for compatibility only. `node scripts/check-architecture.mjs` flags oversized files that grow (see `docs/architecture/README.md`).
 
 Size guidance:
 

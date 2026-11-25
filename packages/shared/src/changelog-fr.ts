@@ -2,7 +2,25 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-24",
+    highlights: [
+      "Modifiez les rôles et compétences intégrés dans les réglages des Modes, organisez les rôles d'agent privés et limitez les tâches déléguées aux outils et fichiers nécessaires.",
+      "Suivez en option les sous-agents actifs au-dessus du Composer et arrêtez-en un ou tous sans interrompre l'agent coordinateur.",
+      "Les commandes Bash longues rendent la main après une première attente et continuent en arrière-plan ; elles peuvent aussi signaler leur résultat et reprendre une conversation inactive.",
+      "Envoyez du texte sélectionné et des références de lignes depuis le Gestionnaire de fichiers vers le Composer, et collez des images comme pièces jointes.",
+      "Les anciens serveurs MCP se reconnectent après des erreurs HTTP+SSE temporaires au lieu de devenir inutilisables.",
+      "Activez en option les scripts Codemode isolés, avec exécution bornée et aides de modèle ; désactivé par défaut.",
+      "Activez le rejeu de blocs de réflexion sans signature pour les modèles personnalisés compatibles Anthropic ; sans activation, le comportement existant reste inchangé.",
+      "Les requêtes Chat Completions compatibles Mistral ne reçoivent plus le champ store OpenAI non pris en charge.",
+      "Les libellés de projet dans Récent gardent leur place à côté des titres longs ; les projets restent accessibles avec un zoom élevé.",
+      "Améliorations des références de fichiers et de lignes du Composer, du collage d'images, de la restauration après compaction et de l'état des fenêtres Windows/macOS.",
+      "Corrigé : synchronisation après suppression d'un seul côté, reconnexions MCP, chemins d'outils mal formés et plusieurs problèmes de barre latérale, de sélecteur de modèles et de panneau de plugins.",
+    ],
+  },
+  {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Activez OpenAI Fast par modèle et utilisez /fast dans une conversation pour demander un service prioritaire ; les limites d’abonnement peuvent baisser plus vite ou le coût par token augmenter.",
       "Les visualisations intégrées se chargent plus vite grâce à des outils de graphique réutilisables ; les scripts en échec affichent désormais des erreurs utiles au lieu de cartes vides.",
@@ -11,6 +29,13 @@ export const frEntries: ChangelogEntry[] = [
       "L’indicateur de contexte affiche l’estimation compactée dès la fin d’une compression manuelle ou automatique.",
       "Avec une IME chinoise, les commandes slash attendent la validation de la composition et préservent le brouillon au lieu de dupliquer la barre oblique.",
       "Les prompts régénérés gardent leur place après la réponse la plus récente lorsque leur archivage se termine hors de l’historique chargé.",
+      "Parcourez la marketplace de plugins dans une liste qui se charge au défilement, triez par recommandés, populaires, récents ou nom, et voyez le nombre de résultats par catégorie ; le dernier catalogue enregistré répond si le centre de plugins est injoignable.",
+      "Chaque plugin est désormais rangé sur une étagère bilingue : la marketplace se lit en français ou en chinois et filtre par la même catégorie.",
+      "Les détails d'un plugin affichent désormais l’éditeur, le readme et les notes de sécurité du catalogue, qui étaient perdus à la lecture.",
+      "Choisissez GPT-6.2 Sol et GPT-6.2 Astra avec OpenAI, ChatGPT, GitHub Copilot, OpenCode et les passerelles qui les publient, avec leurs limites et tarifs publiés.",
+      "Les paramètres s’ouvrent désormais dans une boîte de dialogue au-dessus de la page actuelle, la barre latérale place Nouvelle tâche, Planifiées et Marché des plugins en haut, et un court guide de démarrage vous aide à ajouter un modèle et à découvrir le raccourci du lanceur de plugins.",
+      "Choisissez les modules affichés dans la barre latérale via Paramètres → Apparence → Modules de la barre latérale : Nouvelle tâche, Planifiées, Marketplace de plugins, sessions épinglées, Sessions, Projets, leurs boutons et la version.",
+      "La section Sessions de la barre latérale devient Récentes : toutes les conversations non épinglées, des plus récentes aux plus anciennes, avec Charger plus ; le titre de l'accueil vide affiche aussi une flèche déroulante pour changer de projet.",
     ],
   },
   {
@@ -32,6 +57,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copiez les diagrammes Mermaid en texte SVG ou exportez-les en fichiers SVG autonomes, y compris depuis les aperçus README.",
       "Voyez le coût de chaque tour et de toute la conversation dans l’inspecteur de contexte et la capsule d’usage du tour, l’usage d’abonnement restant distinct des dépenses à l’usage.",
       "Utilisez votre propre vidéo comme animation de démarrage : déposez-en une dans le dossier « startup » ; l’interface apparaît ensuite en fondu.",
       "Les plugins peuvent lister les projets enregistrés et leurs dossiers sans changer de session active.",

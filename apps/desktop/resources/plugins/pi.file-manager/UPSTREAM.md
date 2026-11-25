@@ -1,129 +1,53 @@
-# Vendored File Manager: scoped remote-read hotfix
+# Vendored File Manager
 
-This directory is the actual plugin loaded and packaged by Desktop. It now
-contains the remote-read consumer required by issue #1711. It follows the
-existing Desktop hotfix convention introduced by commit
-`73d8932ade73471277b9a51afac90ee9867d97c8`, rather than representing an
-unpublished plugin contribution as an official upstream release.
-
-## Source and distribution provenance
+Desktop ships the ordinary runtime for `pi.file-manager` with the same ID,
+permissions, workspace scope and view entry as upstream. Build and QA files
+are not shipped.
 
 | Field | Value |
 | --- | --- |
-| Upstream repository | https://github.com/Tioit-Wang/pi-desktop-plugin-file-manager |
-| Released reference tag | `v0.9.0` |
-| Released reference commit | `92ccff9b7c1102d1664915c44ae1e5f3bb5c56a6` |
-| Integration source | https://github.com/Seraph-x/pi-desktop-plugin-file-manager/tree/f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1 |
-| Integration commit | `f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1` |
-| Companion upstream proposal | https://github.com/Tioit-Wang/pi-desktop-plugin-file-manager/pull/5 |
-| Bundled version | `0.9.1-pi.2` — Desktop hotfix, not an upstream release |
-| License | MIT; preserve the bundled `LICENSE` and PDF.js notices |
-| Locally packed runtime | `pi.file-manager-0.9.1-pi.1.piplug`, 6921923 bytes, SHA-256 `e8b6041cb5d3d4eab2b68a1e7fa61a8c7089235d9918f4a418541bd60cd109b3` |
-| Marketplace publication | Not published; no marketplace artifact or accepted upstream tag is claimed for this hotfix |
+| Repository | https://github.com/Tioit-Wang/pi-desktop-plugin-file-manager |
+| Source tag | None; pinned upstream main commit |
+| Source commit | `6466e52bfd329ba961e81d2537753522ce664fb7` |
+| Bundled version | `0.13.0` |
+| Distribution | Desktop build from the pinned commit; not a marketplace artifact |
+| License | MIT; preserve Desktop's `LICENSE` and bundled PDF.js notices |
 
-The released reference tag is retained unchanged. The integration source is a
-separate, immutable contribution commit. Its remote consumer uses public
-`pi.fs.list` / `pi.fs.readPreview`, not local filesystem reads for opaque remote
-identities. Remote editing/search/Git/watch remain unavailable explicitly.
+This snapshot adds document tabs with independent drafts, Git changes and
+history with user-initiated repository operations, and responsive loading.
+The SSH workspace stays read-only and uses scoped Host services, not local Git.
+Desktop preserves an already-installed copy at the same or a newer version.
 
-The hotfix is strictly newer than the previous bundled `0.9.1-pi.1` (and still
-than the older `0.5.3-pi.1` and marketplace `0.9.0`), so `sync_builtin` can
-repair either installation. A future stable upstream `0.9.1` remains strictly
-newer than the `-pi.2` prerelease and can replace it normally. The source
-candidate version `0.9.1` is not reused as a supposedly released version.
+## Desktop differences and rebuild
 
-## Build inputs
+1. Export the pinned commit as LF files and use its `views-src` lockfile.
+2. Replay `patches/file-manager-runtime.patch` on `main.js` for trailing-dot
+   rejection (#2184) and immediate Git deadlines (#1731). Upstream already
+   returns canonical mutation metadata. Replay
+   `patches/file-manager-directory-location.patch` on the view source for
+   directory locations sent by Desktop (#2113).
+3. Run `pnpm typecheck`, `pnpm build` and `pnpm verify` in `views-src`.
+   Copy `views/` from the build, never edit generated JavaScript by hand.
+4. Run upstream's `node scripts/prepare-package.mjs`. Copy the runtime files,
+   including all three Git modules. Keep Desktop's MIT license and CommonJS
+   marker; add the license field and Desktop changelog prefix to the manifest.
+5. Update the checksums and run the bundled plugin, Git deadline, file mutation,
+   directory location, theme, and remote regressions against the shipped copy.
 
-The recorded build used Node 24.13.0, Vite 5.4.21, TypeScript 5.9.3,
-React 18.3.1 and PDF.js 6.4.299, reusing the existing plugin dependency tree.
-The exact source tree and its dependency lockfiles are pinned by the integration
-commit above. Native file-watch verification ran outside the filesystem sandbox
-so the synthetic filesystem events could reach Node.
-
-## Local changes from the pinned integration source
-
-1. Apply `patches/file-manager-search-theme.patch` to
-   `views-src/src/styles/index.css`, then rebuild the production view. This
-   retains the theme-token search-control repair already shipped in Desktop
-   by #1861 and proposed upstream in plugin PR #6. No minified JavaScript is
-   edited by hand. The patch changes only CodeMirror search fields/buttons.
-2. Apply `patches/file-manager-directory-location.patch` to `views-src`, then
-   rebuild the production view. This is the #2113 Desktop hotfix: a host
-   directory location no longer dispatches a file read (`fm.read` refuses
-   directories with `INVALID_PATH`); the receiver classifies the target from
-   the loaded parent listing and, for a directory, expands it, loads its
-   entries and shows the tree, while a directory outside the managed roots
-   keeps reporting its rejection through a localized message. The classifier
-   and the failure translation are covered by the checked-in
-   `views-src/verify-host-open.mjs`. No minified JavaScript is edited by hand.
-3. Register `verify:host-open` in `views-src/package.json` and include it in
-   the `verify` chain.
-4. Set manifest version to `0.9.1-pi.2`, add `license: MIT`, and prefix its
-   changelog with the Desktop hotfix description. Keep all other manifest
-   declarations, permissions and safety notes from the integration source.
-5. Keep Desktop's MIT `LICENSE` and `package.json` CommonJS marker. The latter
-   scopes Node's module interpretation to this plugin; other bundled plugins
-   retain their own module format.
-
-`remote-workspace.js`, `README.md`, `CHANGELOG.md`, `views/index.html`
-and `views/assets/pdfjs-LICENSES.txt` are byte-identical to the pinned integration
-commit. The manifest, rebuilt view and Desktop-local `main.js` repairs differ. The runtime pack has eight
-files; the two Desktop-local license/module files are added when vendoring.
-QA dependencies, tests and `views-src/` are not included in the shipped plugin.
-The pinned changelog contains trailing spaces; its narrow `.gitattributes`
-exception preserves those upstream bytes rather than silently rewriting them.
-
-## Shipped checksums (SHA-256)
-
-Every runtime file, including the new remote helper and PDF license notices,
-is recorded here. `UPSTREAM.md` is the provenance record, not a runtime input.
+## Runtime checksums
 
 | File | Bytes | SHA-256 |
 | --- | --- | --- |
-| `CHANGELOG.md` | 34520 | `b7a3c06c07b2dbe5ce79577bbc6c6a53ffa00324bd64a27d0d5634493dec48b4` |
+| `CHANGELOG.md` | 37124 | `5dd1dc141c61e3013c53275bb282b6780dbca2a05c488863c2cc7492e69991cf` |
 | `LICENSE` | 1067 | `ebaec3ae096498a39f6b86e3ac8017e39818fb5aaff80b452349f94bc275ec0d` |
-| `README.md` | 38470 | `4ecf6e3afa2051b59b479907c485d156caca54ef6d1f4e3c410805807942a268` |
-| `main.js` | 125487 | `f819c13bb8e0196e92a0cbef18ffb147a5f38fdc9a8e7fbe27d58463fd991088` |
-| `manifest.json` | 40092 | `ea3798770849c77193f16da5a582157cc07e5f756f7225dcbec1762ed591d461` |
+| `README.md` | 42505 | `fc28350ebd0b11de3ba23c46fc75f687d2ff1c8876c93e5a91da40c9a4b65ba9` |
+| `git-batch.js` | 2229 | `6fa41b09313a2e7c2140ad6c2dabfc356b5ba8a6392069a410fbb9268e5f4107` |
+| `git-history.js` | 8916 | `02e51c58144dde8152b26737421fcb1d7124dbe71dfa4d0b40a7a8906f1f0f4d` |
+| `git-sync.js` | 20845 | `5cd653e600a31b7186c4542d0a70c6a8434c45f342732233af587539dd95b0aa` |
+| `main.js` | 153538 | `af73cc4c4efe015d1637b611171a8bd3d3695cd2b8fdaa9bdc33a470e4e37c47` |
+| `manifest.json` | 3526 | `b71b52c8f9cf201df4e4dc51cf60b7f5b4b8903825024fed044788158f8e95db` |
 | `package.json` | 25 | `8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a` |
-| `remote-workspace.js` | 3757 | `931a579801fd4b334c3d96231aafc7ff52e0c03e7baebbabaf00b4c5e17cc366` |
-| `views/assets/index.js` | 6617597 | `75fe29bb98db38e8246aa38bcc55c21c28a6b9310cf1ae5ae146bf6c304f080a` |
+| `remote-workspace.js` | 4150 | `aa8526fcf30220f58f21b278fc2736de9a1d2abedab9d320462a936add77b79c` |
+| `views/assets/index.js` | 6666887 | `4db75965d643b1b450d9af1a536f358197b81bce6a272069e38f7deef8dfe8b1` |
 | `views/assets/pdfjs-LICENSES.txt` | 61789 | `a8b04e2e9022721482079ee5c85b9f05ae129e6a2cfd59ea67f2629a3fc23640` |
 | `views/index.html` | 345 | `771fd3d8afdea7fca75ed1f1918c1ce93ad1c87babdb321cfb85e910465cd2c1` |
-
-## Reproducing or updating this hotfix
-
-1. Export the exact integration commit above as LF blobs. Reuse the plugin's
-   compatible build dependencies; do not copy QA dependencies into the runtime.
-2. Apply the checked-in theme and directory-location patches from the Desktop
-   checkout with `git apply`.
-3. Run the source typecheck, every verification script (including native file
-   watching), and `vite build` in `views-src`.
-4. Apply the three documented manifest edits, then run
-   `node scripts/prepare-package.mjs` and the official `pi-plugin check` and
-   `pi-plugin pack` against `dist/runtime`. Compare unpacked artifact files to
-   the installed resource files byte for byte; retain both local metadata files.
-5. Refresh this provenance record and all runtime checksums. Run
-   `bundled-plugins.test.mjs` and `bundled-remote-file-manager.test.mjs`, then
-   `node scripts/e2e-remote-file-manager.mjs` **without** a directory argument.
-   The default journey must list and read real remote fixture files through the
-   actual bundled process/view, Desktop broker, RACP and Host filesystem.
-6. Run the bundled light/dark editor-search journey and local edit/save controls.
-   Validate the final candidate after incorporating current `origin/main`.
-7. When the companion change is accepted and officially published, replace the
-   integration pin with that real tag/commit and marketplace provenance; preserve
-   the search-theme fix if that release does not yet contain it. Do not rewrite
-   an existing upstream tag or label the local artifact as a marketplace release.
-
-## Desktop mutation repair (#2184)
-
-The bundled `main.js` restores file-name validation and moves
-`entryFromStat` to module scope. This is a Desktop-local runtime repair;
-the upstream pins and published artifact claims above are unchanged.
-
-## Desktop Git deadline repair (#1731)
-
-The Git timeout rejects immediately and destroys its captured output streams,
-instead of waiting for a `close` event that inherited child pipes may delay.
-The existing best-effort snapshot path returns unavailable Git metadata while
-preserving directory listing and preview. No upstream release is claimed.

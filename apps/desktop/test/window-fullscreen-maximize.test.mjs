@@ -183,8 +183,10 @@ test("the maximize toggle leaves fullscreen first", () => {
     lifecycleSource.indexOf('case "toggleMaximize"'),
     lifecycleSource.indexOf('case "close"'),
   );
-  assert.match(block, /if \(target\.isMaximized\(\)\)/);
-  assert.match(block, /isWindowFullScreen\(target\)/);
+  // The toggle decision reads the tracked fullscreen flag, so the maximize
+  // path still runs the exit-fullscreen-then-maximize interlock (#1655).
+  assert.match(block, /isMaximized: target\.isMaximized\(\)/);
+  assert.match(block, /isFullScreen: isWindowFullScreen\(target\)/);
   assert.match(block, /setWindowFullScreen\(/);
   assert.match(block, /target\.maximize\(\)/);
 });

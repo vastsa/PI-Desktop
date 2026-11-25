@@ -68,6 +68,7 @@ export function useComposerCompletions({
   composing,
   enabled,
   agentsEnabled = false,
+  agentMode,
   referenceSessionId,
   fileReferencesRef,
   applyEditorDraft,
@@ -80,13 +81,14 @@ export function useComposerCompletions({
   enabled: boolean;
   /** Whether the `@` menu offers subagents (Agent mode only, ADR 0346). */
   agentsEnabled?: boolean;
+  agentMode?: string;
   referenceSessionId: string;
   fileReferencesRef: RefObject<ComposerFileReference[]>;
   applyEditorDraft: (text: string, references: ComposerFileReference[], caret: number) => void;
   handleInput: (source: string, caret: number, composing?: boolean) => string;
   invalidateComposerTransforms: () => void;
 }) {
-  const host = useComposerAutocomplete({ value, cursor, composing, enabled, agentsEnabled });
+  const host = useComposerAutocomplete({ value, cursor, composing, enabled, agentsEnabled, agentMode });
   const { triggers } = useSyncExternalStore(
     slotRegistry.subscribe,
     slotRegistry.getSnapshot,

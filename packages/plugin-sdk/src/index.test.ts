@@ -414,6 +414,15 @@ describe("contributes.views", () => {
     );
   });
 
+  it("requires an explicit boolean for transcript selection", () => {
+    expect(validateContributions({
+      views: [{ ...view, acceptsTranscriptSelection: true }],
+    })).toBeUndefined();
+    expect(validateContributions({
+      views: [{ ...view, acceptsTranscriptSelection: "true" as never }],
+    })).toMatch(/acceptsTranscriptSelection must be a boolean/);
+  });
+
   it("requires both locales for a localized title", () => {
     expect(
       validateContributions({ views: [{ ...view, title: { en: "Changes" } as never }] }),
@@ -1021,8 +1030,13 @@ describe("contributes.providers", () => {
         },
       }).error,
     ).toMatch(/defaultThinkingLevel must be a string/);
+    expect(
+      validateManifest({
+        ...perm,
+        contributes: { providers: [{ ...provider, models: [{ ...provider.models[0], allowEmptyThinkingSignature: "yes" as never }] }] },
+      }).error,
+    ).toMatch(/allowEmptyThinkingSignature must be a boolean/);
   });
-
   it("requires provider.oauth and accepts a declared OAuth provider", () => {
     const oauthProvider: PluginProviderContrib = {
       ...provider,

@@ -28,7 +28,12 @@ The first step has three entry points, all calling the same
   the file panel read. If the folder cannot be opened as a project the plugin
   still stays loaded, and the toast says only that it was created and loaded.
 - **Agent** — `PluginScaffold`, in a conversation ("write me a plugin that …").
-  It writes inside the current workspace, which is already open.
+  It writes inside the calling session's worktree or project, or its host-owned
+  scratch directory for a temporary conversation. It never inherits the visible
+  project's directory. Scratch plugins use the same development registration and
+  loading flow, but their sources remain temporary: session deletion or the
+  scratch cleanup policy can remove them. Copy sources to a persistent project
+  before relying on development reload across cleanup.
 - **CLI** — `pnpm pi-plugin init <template> <dir>`.
 
 ## 3. Template types
@@ -133,7 +138,9 @@ must never be built with `zip` or another shell tool.
 
 Three tools are served from Electron main (host-core never sees them), each
 resolving its `directory` argument against the session's workspace root and
-refusing to escape it:
+refusing to escape it. A persisted temporary session uses `session.getScratchPath`;
+missing sessions fail closed, and Host RPC failures remain errors rather than
+being reported as an absent workspace:
 
 | Tool | Modes | Effect |
 |---|---|---|

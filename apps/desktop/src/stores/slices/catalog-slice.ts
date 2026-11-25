@@ -4,6 +4,7 @@ import type {
   SessionSummary,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { isRemoteSession, safeSessionSummary } from "../../lib/remote-session-safety";
 import { latestSessionOutcomes } from "../../lib/sidebar-session-status";
 import type { AppState } from "../app-state";
 import { providerModelRetryDelayMs, type CatalogRuntime } from "../runtime/catalog-runtime";
@@ -43,6 +44,7 @@ export function createCatalogSlice({
   | "openNotification"
   | "acknowledgeSessionOutcome"
 > {
+  let pluginViewRefresh: object | undefined;
   return {
     rememberModel: (model) => {
       const recentModels = rememberModelInList(get().recentModels, model);
@@ -62,13 +64,20 @@ export function createCatalogSlice({
         api.getOnboarding(),
       ]);
       if (generation !== catalogRuntime.providerGeneration()) return;
-      set((state) => ({
-        providers: providers.providers,
-        providerModels: {},
-        sessions: decorateSessions(sessions.sessions, state.sessionMeta),
-        settings,
-        onboarding,
-      }));
+      set((state) => {
+        const next = sessions.sessions.map(safeSessionSummary);
+        const active = state.sessions.find(session => session.id === state.activeSessionId);
+        if (active && isRemoteSession(active) && !next.some(session => session.id === active.id)) {
+          next.push(safeSessionSummary(active));
+        }
+        return {
+          providers: providers.providers,
+          providerModels: {},
+          sessions: decorateSessions(next, state.sessionMeta),
+          settings,
+          onboarding,
+        };
+      });
     },
 
     loadProviderModels: async (providerId) => {
@@ -193,10 +202,19 @@ export function createCatalogSlice({
     },
 
     refreshPluginViews: async () => {
+      const request = {};
+      pluginViewRefresh = request;
+      const projectPath = get().activeProjectPath;
       try {
-        set({ pluginViews: await api.listPluginViews() });
+        const pluginViews = await api.listPluginViews();
+        if (pluginViewRefresh !== request || get().activeProjectPath !== projectPath) return;
+        set({ pluginViews });
       } catch {
-        set({ pluginViews: [] });
+        if (pluginViewRefresh === request && get().activeProjectPath === projectPath) {
+          set({ pluginViews: [] });
+        }
+      } finally {
+        if (pluginViewRefresh === request) pluginViewRefresh = undefined;
       }
     },
 

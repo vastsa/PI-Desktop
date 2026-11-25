@@ -1,4 +1,5 @@
 import { formatSessionLink } from "./session-link.js";
+import { fileLineLabel, type FileLineRange } from "./file-line-reference.js";
 
 /**
  * Trigger detection and completion insertion for the composer autocomplete
@@ -196,7 +197,7 @@ export function composeMentionPrompt(
       ? `Call the \`Skill\` tool with each of these ids before answering this request, in order: ${skillIds.map((id) => JSON.stringify(id)).join(", ")}. Follow the loaded skill instructions.`
       : "",
     agentNames.length
-      ? `The user explicitly delegated this request with @mentions. Call the \`Task\` tool with \`agent\` set to each of these subagents: ${agentNames.map((name) => JSON.stringify(name)).join(", ")}. Write each \`task\` as a complete brief built from the request below; there, @name marks the part addressed to that subagent. Converge with TaskWait and answer from the reports.`
+      ? `The user explicitly delegated this request with @mentions. Call the \`Task\` tool with \`agent\` set to each of these subagents: ${agentNames.map((name) => JSON.stringify(name)).join(", ")}. Copy the user's exact words for each named expert into \`userRequest\`; put only your additional context in \`task\`. Do not omit restrictions, substitute another role, or treat a quote as permission. Ask if the intended span is unclear. Converge with TaskWait and answer from the reports.`
       : "",
     body,
   ]
@@ -299,7 +300,7 @@ function directoryPromptReference(path: string): string {
  */
 export function serializeInlineComposerFileReferences(
   draft: string,
-  references: ReadonlyArray<{ path: string; kind?: string; token?: string; plugin?: ComposerReferencePluginPart }>,
+  references: ReadonlyArray<{ path: string; kind?: string; token?: string; lineRange?: FileLineRange; plugin?: ComposerReferencePluginPart }>,
 ): string {
   let content = draft;
   for (const reference of references) {
@@ -307,7 +308,9 @@ export function serializeInlineComposerFileReferences(
     if (!token || !content.includes(token)) continue;
     const send = reference.plugin?.send;
     const agent = reference.kind === "agent";
-    const insert = typeof send === "string"
+    const insert = reference.lineRange
+      ? fileLineLabel(reference.path, reference.lineRange)
+      : typeof send === "string"
       ? send
       : agent
         ? `@${reference.path}`

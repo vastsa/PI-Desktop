@@ -133,6 +133,19 @@ describe("loadComposerTemplates", () => {
     );
   });
 
+  it("reads frontmatter from a file saved with a UTF-8 byte-order mark", async () => {
+    const bomDir = join(root, "bom-prompts");
+    await mkdir(bomDir, { recursive: true });
+    await writeFile(
+      join(bomDir, "summarize.md"),
+      "\uFEFF---\ndescription: Summarize a file\n---\nSummarize $1.",
+    );
+    const { templates } = await loadComposerTemplates(root, { user: bomDir });
+    expect(templates).toHaveLength(1);
+    expect(templates[0]!.description).toBe("Summarize a file");
+    expect(templates[0]!.content).toBe("Summarize $1.");
+  });
+
   it("degrades to an empty list when directories are missing", async () => {
     const { templates, diagnostics } = await loadComposerTemplates(root, {
       project: join(root, "absent-a"),

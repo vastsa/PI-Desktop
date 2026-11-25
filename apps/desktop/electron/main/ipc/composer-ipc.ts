@@ -22,6 +22,16 @@ export type ComposerIpcDependencies = {
     description?: string;
   }>>;
   disabledBuiltinSkills?: () => Promise<string[]>;
+  /**
+   * The current mode's private skills. Ids are mode-scoped (`mode:<mode>/<id>`),
+   * so a same-named skill from another mode, a plugin or the global catalog is a
+   * different entry and a disabled or moved one is simply absent.
+   */
+  modeSkills?: (mode: string) => Promise<Array<{
+    id: string;
+    name: string;
+    description?: string;
+  }>>;
   pluginActiveInProject: (pluginId: string, projectPath: string | null | undefined) => boolean;
   loadComposerTemplatesCached: (root: string | null) => Promise<Array<{
     name: string;
@@ -34,6 +44,11 @@ export type ComposerIpcDependencies = {
 export type ComposerCommandOptions = {
   /** The session runs on a remote host, so local-only builtin skills are left out. */
   remote?: boolean;
+  /**
+   * Session mode whose private skills belong in the menu. Absent leaves the
+   * list exactly as before: builtin, plugin and global user skills only.
+   */
+  mode?: string;
 };
 
 export type ComposerCommandService = {
@@ -50,12 +65,32 @@ export function createComposerCommandService({
   agentExtensions,
   activeUserSkills,
   disabledBuiltinSkills = async () => [],
+  modeSkills,
   pluginActiveInProject,
   loadComposerTemplatesCached,
 }: Omit<ComposerIpcDependencies, "registrar" | "optionalWorkspaceRoot">): ComposerCommandService {
+  /**
+   * Mode-private entries. A mode whose catalog cannot be read contributes
+   * nothing: the menu is a convenience here, and the send-time resolver refuses
+   * the stale id on its own (`loadModeSkillDocument`), so hiding is enough.
+   */
+  const loadModeSkillCommands = async (mode: string | undefined): Promise<ComposerCommand[]> => {
+    if (!mode) return [];
+    const skills = await modeSkills?.(mode).catch(() => []);
+    return (skills ?? []).flatMap((skill) => skill.id
+      ? [{
+          name: `skill:${skill.id}`,
+          kind: "skill" as const,
+          title: skill.name,
+          ...(skill.description ? { description: skill.description } : {}),
+          skillId: skill.id,
+        }]
+      : []);
+  };
   const loadComposerSkillCommands = async (
     root: string | null,
     remote: boolean,
+    mode: string | undefined,
   ): Promise<ComposerCommand[]> => {
     const builtins = builtinSkills({
       workspacePath: root,
@@ -77,7 +112,7 @@ export function createComposerCommandService({
       description: skill.description,
     }));
     const seen = new Set<string>();
-    return [...builtins, ...pluginSkills, ...userSkills].flatMap((skill) => {
+    const entries = [...builtins, ...pluginSkills, ...userSkills].flatMap((skill) => {
       if (!skill.id || seen.has(skill.id)) return [];
       seen.add(skill.id);
       return [
@@ -90,6 +125,9 @@ export function createComposerCommandService({
         },
       ];
     });
+    // Mode-private entries come last and carry a mode-scoped id, so they never
+    // collide with a builtin, plugin or global skill of the same local name.
+    return [...entries, ...(await loadModeSkillCommands(mode))];
   };
 
   const buildComposerCommands = async (
@@ -124,7 +162,11 @@ export function createComposerCommandService({
       description: command.description ?? command.extensionLabel,
       id: trustedExtensionCommandId(command.name),
     }));
-    const skillCommands = await loadComposerSkillCommands(root, options.remote === true).catch(() => []);
+    const skillCommands = await loadComposerSkillCommands(
+      root,
+      options.remote === true,
+      options.mode,
+    ).catch(() => []);
     const statuses = userMcp?.listStatuses(root) ?? [];
     const ready = new Set(statuses
       .filter((status) => status.state === "ready" && status.toolCount > 0)
@@ -168,9 +210,12 @@ export function registerComposerIpc({
   ...serviceDependencies
 }: ComposerIpcDependencies): ComposerCommandService {
   const service = createComposerCommandService(serviceDependencies);
-  registrar.handle(IPC.invoke.composerCommands, async () => {
+  registrar.handle(IPC.invoke.composerCommands, async (query?: { mode?: string }) => {
     const root = await optionalWorkspaceRoot();
-    return { commands: await service.buildComposerCommands(root) };
+    const mode = typeof query?.mode === "string" && query.mode ? query.mode : undefined;
+    return {
+      commands: await service.buildComposerCommands(root, mode ? { mode } : {}),
+    };
   });
   return service;
 }

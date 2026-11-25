@@ -104,6 +104,13 @@ test("paintEditorValue preserves line breaks across DOM rendering", async () => 
         tagName: tagName.toUpperCase(),
         classList: { contains: () => false },
         childNodes: [],
+        attributes: {},
+        setAttribute(name, value) {
+          this.attributes[name] = value;
+        },
+        hasAttribute(name) {
+          return name in this.attributes;
+        },
       };
     },
   };

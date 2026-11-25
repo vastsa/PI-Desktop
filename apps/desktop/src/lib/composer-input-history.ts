@@ -1,3 +1,4 @@
+import { parseFileLineRange } from "@pi-desktop/shared";
 import type { ComposerDraftSnapshot } from "./composer-smart-stop";
 
 /**
@@ -40,12 +41,14 @@ function readReference(value: unknown): HistoryReference | null {
   const row = value as Record<string, unknown>;
   if (typeof row.path !== "string" || !row.path || typeof row.name !== "string") return null;
   const kind = row.kind === "image" || row.kind === "file" || row.kind === "directory" ? row.kind : undefined;
+  const lineRange = parseFileLineRange(row.lineRange);
   return {
     path: row.path,
     name: row.name,
     kind,
     ...(typeof row.size === "number" && Number.isSafeInteger(row.size) && row.size >= 0 ? { size: row.size } : {}),
     ...(typeof row.localReference === "string" ? { localReference: row.localReference } : {}),
+    ...(lineRange ? { lineRange } : {}),
     ...(typeof row.mimeType === "string" && row.mimeType ? { mimeType: row.mimeType } : {}),
     ...(typeof row.token === "string" && row.token ? { token: row.token } : {}),
   };

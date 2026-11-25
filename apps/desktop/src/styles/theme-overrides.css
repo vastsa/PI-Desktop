@@ -167,34 +167,83 @@
   background: var(--ds-accent);
 }
 
-.footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-/* Shares the notification trigger's 32px hit target so the row reads as one bar. */
-.footer-action {
+/* Footer Settings entry: a labelled row on the sidebar's 32px control line. */
+.footer-settings {
   display: inline-flex;
-  width: 32px;
+  min-width: 0;
   height: 32px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
   border-radius: var(--radius-md);
-  color: var(--ds-text-muted);
+  padding: 0 10px 0 8px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  line-height: var(--leading-none);
   transition: background var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.footer-action:hover {
+.footer-settings:hover {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
 
-.footer-action.active {
+.footer-settings.active {
   background: var(--ds-bg-active);
   color: var(--ds-text-primary);
+}
+
+/* Primary destinations above the session lists (new task, scheduled, plugins). */
+.sidebar-primary-nav {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 6px;
+}
+
+.sidebar-primary-item {
+  display: flex;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  padding: 0 8px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  line-height: var(--leading-none);
+  text-align: left;
+  transition: background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.sidebar-primary-item:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+.sidebar-primary-item.active {
+  background: var(--ds-bg-active);
+  color: var(--ds-text-primary);
+}
+
+.sidebar-primary-item > svg {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+}
+
+.sidebar-primary-item:hover > svg,
+.sidebar-primary-item.active > svg {
+  color: currentColor;
+}
+
+.sidebar-primary-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .composer-toolbar .icon-btn {

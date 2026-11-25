@@ -11,6 +11,7 @@
  */
 import { useAppStore, type AppState, type ToastOptions } from "../stores/app-store";
 import type { CaptureRig, CaptureRigMethods } from "./capture-rig";
+import { useStartupGuideRequest } from "../features/startup/startup-guide-request";
 
 type CaptureRigMethod = keyof CaptureRigMethods;
 
@@ -22,13 +23,16 @@ type CaptureRigStubs = {
 };
 
 export type RendererApi = {
-  setPage: (page: AppState["page"]) => void;
+  /** `"settings"` is kept for capture scripts: it opens the Settings dialog. */
+  setPage: (page: AppState["page"] | "settings") => void;
   refreshProviders: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   setSettingsTab: (tab: AppState["settingsTab"]) => void;
   setThemeAttr: (theme: "light" | "dark") => void;
   clearProject: () => Promise<void>;
   showToast: (message: string, opts?: ToastOptions) => void;
+  /** Keep the startup guide and release announcement off for automation. */
+  skipStartupOverlays: () => void;
 } & (CaptureRigStubs | CaptureRigMethods);
 
 declare global {
@@ -95,7 +99,11 @@ export function installRendererApi(): () => void {
   ) as CaptureRigStubs;
 
   const surface: RendererApi = {
-    setPage: (page) => useAppStore.getState().setPage(page),
+    setPage: (page) => {
+      const store = useAppStore.getState();
+      if (page === "settings") store.openSettings();
+      else store.setPage(page);
+    },
     refreshProviders: () => useAppStore.getState().refreshProviders(),
     selectSession: (id) => useAppStore.getState().selectSession(id),
     setSettingsTab: (tab) => useAppStore.getState().setSettingsTab(tab),
@@ -104,6 +112,7 @@ export function installRendererApi(): () => void {
     },
     clearProject: () => useAppStore.getState().clearProject(),
     showToast: (message, opts) => useAppStore.getState().showToast(message, opts),
+    skipStartupOverlays: () => useStartupGuideRequest.getState().suppress(),
     ...stubs,
   };
   window.__PI_DESKTOP__ = surface;

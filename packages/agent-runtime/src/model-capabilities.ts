@@ -102,6 +102,7 @@ export function modelConfigWithBinding(
         | "supportsImages"
         | "supportsDocuments"
         | "nativeWebSearch"
+        | "allowEmptyThinkingSignature"
       >
     | null,
 ): ModelConfig {
@@ -135,10 +136,17 @@ export function modelConfigWithBinding(
     ? requestedLevels.filter(level => model.supportedThinkingLevels?.includes(level))
     : requestedLevels;
   const thinkingLevelMap = { ...(model.thinkingLevelMap ?? {}) };
-  const compat = binding.thinkingProtocol
+  const hasCompatOverride = binding.thinkingProtocol !== undefined ||
+    binding.allowEmptyThinkingSignature !== undefined;
+  const compat = hasCompatOverride
     ? {
         ...(model.compat ?? {}),
-        forceAdaptiveThinking: binding.thinkingProtocol === "adaptive",
+        ...(binding.thinkingProtocol
+          ? { forceAdaptiveThinking: binding.thinkingProtocol === "adaptive" }
+          : {}),
+        ...(binding.allowEmptyThinkingSignature !== undefined
+          ? { allowEmptySignature: binding.allowEmptyThinkingSignature }
+          : {}),
       }
     : model.compat;
   // pi-ai treats xhigh/max as unsupported when their adapter-facing mapping

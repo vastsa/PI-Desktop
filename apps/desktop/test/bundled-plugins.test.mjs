@@ -10,8 +10,8 @@ import test from "node:test";
  *
  * The point of shipping a panel surface as a plugin rather than host code is
  * that it proves the public contribution channel is sufficient. The file view
- * is now a vendored third-party plugin — the artifact the marketplace also
- * publishes — so these assertions guard both halves of that claim: it must be
+ * is a vendored third-party plugin, so these assertions guard two properties:
+ * it must be
  * an ordinary plugin any third party could have written, and the copy in this
  * repository must stay traceable to the release it came from.
  */
@@ -62,31 +62,26 @@ test("the file view is a sandboxed page over the public bridge", () => {
 });
 
 test("the file manager search panel remains readable in both themes", () => {
-  assert.match(
-    viewBundle,
-    /\.cm-editor \.cm-panel\.cm-search \.cm-textfield\{[^}]*background:var\(--surface\);color:var\(--fg\);caret-color:var\(--fg\)/,
-  );
-  assert.match(
-    viewBundle,
-    /\.cm-editor \.cm-panel\.cm-search \.cm-button\{[^}]*background:var\(--surface-hover\);color:var\(--fg\)/,
-  );
+  const fields = viewBundle.match(/\.cm-editor \.cm-panel:is\(\.cm-search,\s*\.cm-dialog\) \.cm-textfield\{([^}]+)\}/)?.[1];
+  const buttons = viewBundle.match(/\.cm-editor \.cm-panel:is\(\.cm-search,\s*\.cm-dialog\) \.cm-button\{([^}]+)\}/)?.[1];
+  assert.ok(fields?.includes("background:var(--surface)"));
+  assert.ok(fields?.includes("color:var(--fg)"));
+  assert.ok(fields?.includes("caret-color:var(--fg)"));
+  assert.ok(buttons?.includes("background:var(--surface-hover)"));
+  assert.ok(buttons?.includes("color:var(--fg)"));
 });
 
-test("the vendored copy stays traceable to its upstream release", () => {
+test("the vendored copy stays traceable to its pinned upstream commit and Desktop patches", () => {
   assert.match(upstream, /github\.com\/Tioit-Wang\/pi-desktop-plugin-file-manager/);
-  assert.match(upstream, /92ccff9b7c1102d1664915c44ae1e5f3bb5c56a6/);
-  assert.match(upstream, /f47ce21fab3c59f3f4b94d30f3e3a0c8124447e1/);
-  // The bundled hotfix is intentionally newer than its upstream base while
-  // remaining below the next stable upstream release.
-  const tag = upstream.match(/`v(\d+\.\d+\.\d+)`/);
-  assert.ok(tag, "UPSTREAM.md must name the vendored base tag");
-  assert.equal(tag[1], "0.9.0");
-  assert.equal(manifest.version, "0.9.1-pi.2");
-  assert.match(upstream, /Not published; no marketplace artifact/);
-  // Every upstream or locally rebuilt file hashes to a recorded value, so a
-  // silent edit cannot pass as the released artifact or documented patch.
+  assert.match(upstream, /Source commit \| `6466e52bfd329ba961e81d2537753522ce664fb7`/);
+  assert.match(upstream, /Bundled version \| `0\.13\.0`/);
+  assert.equal(manifest.version, "0.13.0");
+  // Every upstream or locally rebuilt file hashes to its recorded value.
   for (const file of [
     "main.js",
+    "git-batch.js",
+    "git-history.js",
+    "git-sync.js",
     "remote-workspace.js",
     "README.md",
     "CHANGELOG.md",

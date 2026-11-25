@@ -264,3 +264,104 @@ it("retains local extension loading but rejects implicit workspace exec for a re
     await runtime.dispose(); delete (globalThis as Record<string, unknown>)[key]; rmSync(root, { recursive: true, force: true });
   }
 });
+
+it("correlates provider request and response hooks with a local contextRequestId and exposes autoCompactAt", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-context-request-id-"));
+  const entry = join(root, "telemetry.mjs");
+  const slowFirstResponse = deferred<void>();
+  const key = `__piProviderHookProbe_${Math.random().toString(36).slice(2)}`;
+  const observed: {
+    requests: Array<{ handler: number; id: unknown; step: unknown }>;
+    responses: Array<{ id: unknown; tag: unknown }>;
+    usages: unknown[];
+  } = { requests: [], responses: [], usages: [] };
+  (globalThis as Record<string, unknown>)[key] = { observed, waitFirst: () => slowFirstResponse.promise };
+  writeFileSync(entry, `export default function (pi) {
+    const probe = globalThis[${JSON.stringify(key)}];
+    pi.on("before_provider_request", async (event) => {
+      probe.observed.requests.push({ handler: 1, id: event.contextRequestId, step: event.payload.step });
+      return { ...event.payload, chain: ["h1"] };
+    });
+    pi.on("before_provider_request", async (event) => {
+      probe.observed.requests.push({ handler: 2, id: event.contextRequestId, step: event.payload.step });
+      return { ...event.payload, chain: [...event.payload.chain, "h2"] };
+    });
+    pi.on("after_provider_response", async (event) => {
+      if (event.response?.tag === "first") await probe.waitFirst();
+      probe.observed.responses.push({ id: event.contextRequestId, tag: event.response?.tag });
+    });
+    pi.registerCommand("usage", { handler: (_args, ctx) => {
+      probe.observed.usages.push(ctx.getContextUsage());
+    } });
+  }`);
+  const runtime = new DesktopAgentRuntime({
+    host: { call: async () => ({}), onNotification: () => () => {} } as never,
+    sessionId: "context-request-id",
+    projectPath: root,
+    mode: "agent",
+    thinkingLevel: "off",
+    provider: {
+      id: "gateway",
+      name: "Local Gateway",
+      apiKey: "",
+      authKind: "none",
+      baseUrl: "http://127.0.0.1:1/v1",
+      modelId: "gateway/coder-max",
+      supportsReasoning: false,
+      supportedThinkingLevels: ["off"],
+      modelConfig: {
+        source: "generic",
+        name: "gateway/coder-max",
+        baseUrl: "http://127.0.0.1:1/v1",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128_000,
+        maxTokens: 16_000,
+      },
+    },
+    commandShell: { id: "bash", label: "Bash", dialect: "posix", available: true, isDefault: true },
+    trustedExtensions: [{ id: entry, entry, label: "Telemetry", root, source: "plugin" }],
+    onEvent: () => {},
+  });
+  try {
+    await runtime.loadTrustedExtensions();
+    const rt = runtime as any;
+    const first = rt.withExtensionProviderHooks({}, rt.model);
+    const second = rt.withExtensionProviderHooks({}, rt.model);
+    const firstPayload = await first.onPayload({ step: "one" }, rt.model);
+    const secondPayload = await second.onPayload({ step: "two" }, rt.model);
+    expect(firstPayload).toEqual({ step: "one", chain: ["h1", "h2"] });
+    expect(secondPayload).toEqual({ step: "two", chain: ["h1", "h2"] });
+    expect("contextRequestId" in firstPayload).toBe(false);
+
+    await first.onResponse({ tag: "first" }, rt.model);
+    await second.onResponse({ tag: "second" }, rt.model);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(observed.responses).toEqual([{ id: 2, tag: "second" }]);
+    slowFirstResponse.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(observed.requests).toEqual([
+      { handler: 1, id: 1, step: "one" },
+      { handler: 2, id: 1, step: "one" },
+      { handler: 1, id: 2, step: "two" },
+      { handler: 2, id: 2, step: "two" },
+    ]);
+    expect(observed.responses).toEqual([
+      { id: 2, tag: "second" },
+      { id: 1, tag: "first" },
+    ]);
+
+    await runtime.runTrustedExtensionCommand("usage", "");
+    rt.compactionEnabled = false;
+    await runtime.runTrustedExtensionCommand("usage", "");
+    expect(observed.usages).toMatchObject([
+      { contextWindow: 111_616, autoCompactAt: 100_454 },
+      { contextWindow: 111_616, autoCompactAt: null },
+    ]);
+  } finally {
+    await runtime.dispose();
+    delete (globalThis as Record<string, unknown>)[key];
+    rmSync(root, { recursive: true, force: true });
+  }
+});

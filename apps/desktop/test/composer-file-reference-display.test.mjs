@@ -75,7 +75,8 @@ test("composer renders atomic inline chips and serializes paths on send", () => 
   assert.match(composer, /chip\.contentEditable = "false"/);
   assert.match(composer, /chip\.dataset\.token = token/);
   assert.match(composer, /composer-chip-name/);
-  assert.match(composer, /nameSpan\.textContent = reference\.name/);
+  assert.match(composer, /const label = reference\.lineRange \? fileLineLabel\(reference\.name, reference\.lineRange\) : reference\.name/);
+  assert.match(composer, /nameSpan\.textContent = label/);
   // A file chip's title is its path; a plugin mark's is its plugin.
   assert.match(
     composer,

@@ -559,7 +559,9 @@ describe("the pi-ai Responses adapter's proxy-safe session identity", () => {
     ).result();
 
     expect(sent).toHaveLength(1);
-    expect(sent[0].headers.get("session_id")).toBe("session-42");
+    // pi-ai 1.5.1 sends the documented hyphenated header, not `session_id`.
+    expect(sent[0].headers.get("session-id")).toBe("session-42");
+    expect(sent[0].headers.get("session_id")).toBeNull();
     expect(sent[0].headers.get("x-client-request-id")).toBe("session-42");
     expect(sent[0].headers.get("x-session-affinity")).toBe("session-42");
   });

@@ -47,6 +47,7 @@ import {
   mergeLiveSessionMessages,
 } from "../../lib/session-transcript";
 import { sessionReadLooksEmpty } from "../../lib/session-transcript-read";
+import { transcriptViewMessages } from "../../lib/transcript-reading";
 import type {
   AppState,
   DraftSessionConfiguration,
@@ -144,6 +145,21 @@ function replacePendingQueue<T>(
   }
   if (queues[sessionId] === queue) return queues;
   return { ...queues, [sessionId]: queue };
+}
+
+/** Resolve a visible reply fork anchor without hydrating the live source transcript. */
+function findVisibleAssistantForkAnchor(
+  state: Pick<AppState, "messages" | "transcriptViews">,
+  sessionId: string,
+  messageId: string,
+): UiMessage | undefined {
+  const fromLive = state.messages.find((candidate) => candidate.id === messageId);
+  if (fromLive) return fromLive;
+  // Historical pages are already on screen via transcriptViews. Do not copy
+  // them onto state.messages: that would overwrite a concurrently streaming tail.
+  return transcriptViewMessages(state.messages, state.transcriptViews[sessionId]).find(
+    (candidate) => candidate.id === messageId,
+  );
 }
 
 export function createSessionSlice({
@@ -410,7 +426,7 @@ export function createSessionSlice({
           stateAtStart.sessionHistory[stateAtStart.activeSessionId],
         );
       }
-      set({ selectingSessionId: id, page: "chat" });
+      set({ selectingSessionId: id, page: "chat", settingsOpen: false });
       const outcomeAcknowledgement = get().acknowledgeSessionOutcome(id);
 
       const commitSelection = (
@@ -703,10 +719,15 @@ export function createSessionSlice({
       if (!(options && "projectPath" in options) && isRemoteSession(activeSession ?? (
         get().activeSessionId?.startsWith("remote:") ? { id: get().activeSessionId! } : undefined
       ))) throw new Error(i18n.t("remote:REMOTE_PROJECT_REQUIRED"));
+      // A global New Task (sidebar, titlebar, Cmd/Ctrl+N, palette, search)
+      // starts a temporary conversation; only an explicit `projectPath` (a
+      // project row's +, the home project picker, the project index, or a
+      // worktree) attaches it to a project (issue #2455). An active remote
+      // project is the exception above: it has no temporary group.
       const requestedProjectPath =
         options && "projectPath" in options
           ? options.projectPath ?? null
-          : get().workspace?.path ?? null;
+          : null;
       const isolated = options?.isolated === true;
       const scopeKey = `${runtime.newSessionScopeKey(requestedProjectPath)}${isolated ? "\u0000isolated" : ""}`;
       const pending = runtime.pendingNewSessionRequests.get(scopeKey);
@@ -814,7 +835,7 @@ export function createSessionSlice({
       const state = get();
       const sessionId = state.activeSessionId;
       if (!sessionId || state.selectingSessionId) return;
-      const message = state.messages.find((candidate) => candidate.id === messageId);
+      const message = findVisibleAssistantForkAnchor(state, sessionId, messageId);
       const source = state.sessions.find((session) => session.id === sessionId);
       if (!message || message.role !== "assistant" || !source) return;
       if (!sessionAllows(source, "canEditMessages")) return;

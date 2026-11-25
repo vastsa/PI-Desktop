@@ -15,7 +15,10 @@ export type MarketPluginSummary = {
   latestVersion: string;
   downloads?: number;
   updatedAt: string;
+  /** Category labels in the app's language, for display. */
   categories?: string[];
+  /** The canonical category ids, for filtering. */
+  categoryIds?: string[];
   permissionSummary: string[];
   verified?: boolean;
   /** Catalog v2 trust tier, as the host is willing to render it. */
@@ -28,6 +31,47 @@ export type MarketPluginSummary = {
   installable?: boolean;
   /** True when every catalog version of this plugin has been withdrawn. */
   yanked?: boolean;
+};
+
+/** Orders `market.browse` accepts; `recommended` is a seeded shuffle. */
+export type MarketBrowseSort = "recommended" | "popular" | "updated" | "name";
+
+export type MarketBrowseQuery = {
+  query?: string;
+  category?: string;
+  sort?: MarketBrowseSort;
+  /** Keeps a `recommended` order stable across the pages of one session. */
+  seed?: number;
+  /** 1-based. */
+  page?: number;
+  /** Defaults to 24, capped at 60 by the host. */
+  pageSize?: number;
+};
+
+/** One category and how many of the query's matches carry it. */
+export type MarketCategoryFacet = {
+  /** The canonical category id; what a filter selects. */
+  id: string;
+  /** The label for the app's language, when the source published one. */
+  name?: string;
+  count: number;
+};
+
+/** One page of the marketplace, as `market.browse` answers it. */
+export type MarketBrowseResult = {
+  plugins: MarketPluginSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  sort: MarketBrowseSort;
+  categories: MarketCategoryFacet[];
+  /** `remote`: the plugin center answered; `local`: the cached snapshot did. */
+  source: "remote" | "local";
+  /** Why the plugin center's page was not used, when `source` is `local`. */
+  fallbackReason?: string;
+  providerId: string;
+  sourceUrl: string;
 };
 
 export type MarketPluginDetail = MarketPluginSummary & {

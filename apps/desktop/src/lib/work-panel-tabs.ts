@@ -151,6 +151,18 @@ export function browserPluginTab(location?: string): WorkPanelTab {
   return { ...base, id: `${base.id}:${Date.now().toString(36)}-${++newWorkPanelTabSequence}`, location: target, label: browserTabLabel(target) };
 }
 
+/**
+ * The tab a launcher pick opens. Tools reuse their open tab, except the
+ * browser: each page lives in its own tab (#1086), so picking Browser while one
+ * is open starts another blank page instead of focusing the existing one.
+ */
+export function launcherWorkPanelTab(tabs: WorkPanelTab[], tab: WorkPanelTab): WorkPanelTab {
+  const browserResource = `${BROWSER_PLUGIN_TAB.pluginId}/${BROWSER_PLUGIN_TAB.viewId}`;
+  if (tab.kind !== "plugin" || tab.resource !== browserResource) return tab;
+  if (!tabs.some((item) => item.id === tab.id)) return tab;
+  return { ...tab, id: `${tab.id}:${Date.now().toString(36)}-${++newWorkPanelTabSequence}` };
+}
+
 export function browserPluginTabForReveal(
   tabs: WorkPanelTab[],
   activeTabId: string | null,
