@@ -174,6 +174,50 @@
 }
 
 /* Settings → Modes. */
+.modes-settings-page-head {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.modes-settings-page-head h2,
+.modes-settings-role-title {
+  min-width: 0;
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.modes-settings-page-head h2 {
+  font-size: var(--text-lg);
+}
+
+.modes-settings-role-title {
+  font-size: var(--text-base);
+}
+
+.modes-settings-breadcrumb {
+  display: flex;
+}
+
+.modes-settings-row > svg {
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+}
+
+.modes-settings-row[aria-disabled="true"] > svg {
+  visibility: hidden;
+}
+
+.modes-settings-tabs > * {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
 .modes-settings-list {
   display: flex;
   flex-direction: column;
@@ -202,26 +246,11 @@
 }
 
 .modes-settings-row-copy {
-  display: flex;
   min-width: 0;
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 2px;
+  overflow-wrap: anywhere;
 }
 
-.modes-settings-row-id {
-  color: var(--ds-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-}
-
-.modes-settings-row-diagnostic {
-  overflow: hidden;
-  color: var(--ds-error);
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .modes-settings-row-badges {
   display: flex;
@@ -270,7 +299,9 @@
 /* --- Grouped tabs inside the settings content area (issue #2544) ---------- */
 
 .modes-settings-tabs {
-  padding: 8px 12px;
+  min-width: 0;
+  padding-block-end: 8px;
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .modes-settings-tab-field,
@@ -306,6 +337,16 @@
 .modes-settings-fallback > :nth-child(2) {
   flex: 1 1 0;
   min-width: 0;
+}
+
+@container (max-width: 480px) {
+  .modes-settings-page .ext-field-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.modes-settings-page {
+  container-type: inline-size;
 }
 
 .modes-settings-validation {
