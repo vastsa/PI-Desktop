@@ -287,6 +287,42 @@ export async function transcriptAutoCollapseProbe() {
       focusOutside();
     }
 
+    const progress = message("handoff-progress", "assistant", "Now checking the next files.", {
+      status: "complete",
+    });
+    const beforeHandoff = reads.slice(0, 2);
+    const afterHandoff = [...beforeHandoff, progress, ...reads.slice(2, 4)];
+    const groupHeaders = () => [...container.querySelectorAll<HTMLButtonElement>(
+      ".process-activity-group > .tool-activity-header",
+    )];
+    for (const mode of ["command-first", "fully-folded"] as const) {
+      const id = `handoff-${mode}`;
+      configure({ transcriptDisplayMode: mode });
+      render(id, beforeHandoff, true);
+      check(expanded(groupHeader()), `${mode}: the first group opens while current`);
+      render(id, afterHandoff, true);
+      const [previous, current] = groupHeaders();
+      check(
+        expanded(header()) && groupHeaders().length === 2 && !expanded(previous) && expanded(current),
+        `${mode}: the previous group folds as the next group takes over in the same running turn`,
+      );
+
+      configure({ transcriptDisplayMode: mode, autoCollapseSettledGroups: false });
+      check(expanded(previous) && expanded(current), `${mode}: turning folding off reopens the previous group`);
+      configure({ transcriptDisplayMode: mode });
+      click(previous);
+      focusOutside();
+      render(id, [...afterHandoff, reads[4]], true);
+      check(expanded(previous), `${mode}: a manually reopened group stays open during later work`);
+
+      const runningRead = { ...reads[1], toolStatus: "running" } as const;
+      const parallel = [reads[0], runningRead, ...afterHandoff.slice(2)];
+      render(`${id}-parallel`, parallel, true);
+      check(expanded(groupHeader()), `${mode}: a previous group with a running tool stays open`);
+      render(`${id}-parallel`, afterHandoff, true);
+      check(!expanded(groupHeader()), `${mode}: a previous group folds when its last running tool finishes`);
+    }
+
     configure();
     // The group header no longer renders an issue counter: a failed call is
     // reported by the tool row that failed, not repeated on the group.

@@ -1795,7 +1795,7 @@ sklm: {
     autoCollapseThinking: "已完成思考自動收合",
     autoCollapseThinkingDesc: "只有正在生成的思考保持展開；關閉後所有思考內容保持展開。",
     autoCollapseSettledGroups: "已完成群組自動收合",
-    autoCollapseSettledGroupsDesc: "任務結束後，過程群組預設收合，標題會說明這一組做過什麼。關閉後已結束的群組全部展開。",
+    autoCollapseSettledGroupsDesc: "進入下一階段時，已完成的過程群組會自動收合，不必等整輪結束。關閉後，已完成的群組預設保持展開。",
     transcriptDisplayMode: "過程顯示",
     transcriptDisplayModeDesc: "選擇助理過程在對話中的分組方式。",
     radialMenu: "環形右鍵選單",

@@ -4550,11 +4550,15 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   answer; the `Show thinking` preference on and off; the `Transcript display`
   preference at Flat, Commands first, and Fully folded; a restart with saved
   settings; legacy message-level transcript search targets.
-- **Steps:** Confirm a live active group starts open, let that same turn finish
-  without interacting, and confirm the process closes so only the final answer
-  (and any error or pending-action surface) remains. Reopen it and confirm a
-  every settled group folded and every finished reasoning row folded, and that
-  each group header names the actions it contains plus the call count
+- **Steps:** In Commands first and Fully folded, start with an expanded current
+  group. Advance past a progress paragraph into another group while the turn is
+  still active. Verify that the previous group folds and the current group
+  remains open. Repeat with a running tool left behind in the previous group; it
+  stays open until that tool settles. Let the turn finish without interacting
+  and confirm the process closes so only the final answer (and any error or
+  pending-action surface) remains. Reopen it and confirm every settled group
+  and finished reasoning row starts folded, and that each header names the actions
+  it contains plus the call count
   (`搜索并读取文件 · 12 次操作`). Confirm tool and search payloads stay closed.
   Turn `Auto-fold finished groups` off and confirm every settled group opens
   whatever its size, then turn it back on; turn `Auto-fold finished thinking`
@@ -4606,10 +4610,10 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   stay inside their groups and only ordinary assistant progress text splits a
   group, so the middle progress paragraph ends the preceding group and the
   following activity starts a new one. A group appears only with at least two
-  visible items; a singleton has no group. Every group stays open while its turn
-  runs; after completion both nested levels fold, so every settled group and
-  every reasoning row that is no longer streaming starts closed, whatever the
-  group's size. Only the reasoning a live turn is still streaming starts
+  visible items; a singleton has no group. An untouched group folds when it is
+  no longer current and has no running tool, search, or delegation, even before
+  the turn ends. Finished reasoning also starts closed. Only the reasoning a
+  live turn is still streaming starts
   expanded when `Show thinking` is on, and a group does not inherit open state
   from the reasoning inside it, so folding a group hides expanded reasoning.
   Turning off `Auto-fold finished groups` opens every settled group; turning off
@@ -4650,8 +4654,9 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   group presentation only; precise item-level transcript search targeting is out
   of scope and keeps the existing message-level search behavior.
 - **Automation:** `pnpm test:e2e:transcript` covers the command-first and
-  fully-folded layouts, active-to-completed process disclosure behavior, the
-  automatic folding and reading-hold transitions, and the activity issue
+  fully-folded layouts, group-to-group handoff while the turn continues,
+  active-to-completed process disclosure, automatic folding and reading holds,
+  and the activity issue
   counter's inline layout at 320/800px and 100%/150% zoom in English and
   Simplified Chinese; `pnpm test:e2e:transcript-disclosure` verifies manual-open
   retention and viewport anchoring; `apps/desktop/test/turn-process.test.mjs`

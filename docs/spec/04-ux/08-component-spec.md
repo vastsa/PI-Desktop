@@ -1012,21 +1012,18 @@ thinking never creates an empty wrapper. All three modes render exactly one
 top-level process disclosure and change neither what a tool received nor what is
 stored.
 
-Every group of a turn stays open while that turn is active, whether or not it
-still owns the live execution segment, so work never folds away mid-run. Once the
-turn settles both nested levels fold: expanding a completed turn lists what the
-agent did instead of a wall of rows, and two opt-out switches carry the reader's
-choice. `Auto-fold finished groups` (`autoCollapseSettledGroups`, on by default)
-folds settled groups whatever their size; turned off it leaves every settled
-group open, because the four-item tier is retired. `Auto-fold finished thinking`
+`Auto-fold finished groups` (`autoCollapseSettledGroups`, on by default) folds
+an untouched group when it is no longer current and has no live work, even while
+its turn continues. The current group and groups with running tools, searches,
+or delegations stay open by default. Turning the switch off leaves finished
+groups open regardless of size. `Auto-fold finished thinking`
 (`autoCollapseThinking`, on by default) keeps only reasoning the live turn is
 still streaming expanded. Each switch is a sub-row of the setting that gates it
 (`Show thinking`, and a non-flat `Transcript display`), it disappears with that
 parent, and hiding it never rewrites the stored value. A group does not inherit
-open state from the reasoning it contains: the group and its Thinking rows each
-answer to their own switch, so closing a group hides expanded reasoning inside
-it. Explicit user choices remain authoritative, and a running turn - or a group
-that still owns a running tool or delegation - never folds. The group header
+open state from its reasoning: folding a group hides expanded reasoning inside
+it. Explicit user choices remain authoritative, and focus or text selection
+in the group temporarily defers automatic folding. The group header
 states what the group did: the actions it contains, joined with the locale's own
 list wording and capped at three with "and more", followed by the call count as
 its own non-truncating token (`搜索并读取文件 · 12 次操作`). Reasoning is named in
@@ -2669,7 +2666,7 @@ twice.
 | State | Header treatment | Expanded content |
 |---|---|---|
 | Running | Progressive action with readable text and a pulsing marker; a `run` row also shows its spinner and pulses the status dot beside `Working…` | The active multi-item group opens; no tool/search payload opens itself, except the display mode's Thinking default; live thinking follows its own indicator/disclosure policy |
-| Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown; small groups and Task topology groups stay open, large untouched ordinary groups close, and manual group and item choices are retained |
+| Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown; group folding follows the settings and live activity rules above, and manual group and item choices are retained |
 | Error | Past-tense action + compact danger status; details remain collapsed by default and open only on user request. A `run` row is in this state whenever its command exited nonzero, whatever the call reported (D227) | Error note first, then arguments |
 | Denied | Muted `Denied` status; payload remains closed until requested | Permission result when available |
 
