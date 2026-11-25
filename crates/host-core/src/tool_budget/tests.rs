@@ -514,3 +514,35 @@ async fn an_abandoned_hold_releases_waiting_calls() {
     drop(admitted(late.as_mut()));
     drop(running);
 }
+
+#[test]
+fn shared_tool_execution_spec_matches_host_budget_classes() {
+    use super::ToolClass;
+    use serde::Deserialize;
+    use std::collections::BTreeMap;
+
+    #[derive(Deserialize)]
+    struct Spec {
+        #[serde(rename = "hostBudget")]
+        budget: serde_json::Value,
+    }
+
+    let specs: BTreeMap<String, Spec> = serde_json::from_str(include_str!(
+        "../../../../packages/shared/src/tool-execution-spec.json"
+    ))
+    .unwrap();
+    for (name, spec) in specs {
+        if name == "Task" {
+            assert!(spec.budget.is_null(), "Task is handled in the runtime");
+            continue;
+        }
+        let actual = match ToolClass::from_name(&name) {
+            ToolClass::Read => "read",
+            ToolClass::Mutation => "mutation",
+            ToolClass::Shell => "shell",
+            ToolClass::Plugin => "plugin",
+        };
+        assert_eq!(spec.budget, actual, "{name}");
+    }
+    assert_eq!(ToolClass::from_name("unknown_tool"), ToolClass::Plugin);
+}

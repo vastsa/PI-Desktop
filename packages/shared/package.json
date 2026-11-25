@@ -10,6 +10,7 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./tool-execution-spec.json": "./src/tool-execution-spec.json",
     "./protocol": {
       "types": "./dist/protocol.d.ts",
       "import": "./dist/protocol.js"
