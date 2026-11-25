@@ -357,6 +357,29 @@ try {
   assert.equal(await evaluate("Boolean(document.getElementById('plugins-tab-market'))"), false);
   assert.equal(await evaluate("Boolean(document.querySelector('[data-nav=scheduled]'))"), false);
   await evaluate("document.querySelector('[data-nav=settings]').click()");
+
+  const subtitle = "Ars longa, vita brevis.";
+  for (const [locale, appearance, info, notes, nextLocale, nextLanguage] of [
+    ["en", "Appearance", "Info", "Release notes", "zh-CN", "简体中文"],
+    ["zh-CN", "外观", "信息", "发版日志", "en", "English"],
+  ]) {
+    await clickText(".settings-nav-item", info);
+    await until(() => evaluate("document.querySelector('.settings-about-hero-subtitle')?.textContent === " +
+      JSON.stringify(subtitle)), "About subtitle in " + locale);
+    await clickText(".settings-content button", notes);
+    await until(() => evaluate("Boolean(document.querySelector('.release-notes-list article li'))"),
+      "bundled release notes in " + locale);
+    assert.equal(await evaluate("document.querySelector('#release-notes-title')?.textContent"), notes);
+    assert.equal(await evaluate("document.querySelector('#release-notes-title + p')?.textContent"), subtitle);
+    await evaluate("document.querySelector('.release-notes-close').click()");
+    await clickText(".settings-nav-item", appearance);
+    await evaluate("document.querySelector('.settings-language-trigger').click()");
+    await clickText(".settings-language-option-native", nextLanguage);
+    await until(() => evaluate("document.documentElement.lang === " + JSON.stringify(nextLocale)),
+      "switch UI language to " + nextLocale);
+  }
+  assert.equal((await invoke(IPC.invoke.updatesGetState)).mode, "disabled");
+
   await clickText(".settings-nav-item", "Models");
   await until(() => evaluate(
     "(() => { const row = Array.from(document.querySelectorAll('.model-provider-list > li'))" +
@@ -511,4 +534,4 @@ try {
   }
   await rm(scratch, { recursive: true, force: true, maxRetries: 3 });
 }
-console.log("PASS offline boot, saved model editing, coding and MCP, and disabled scheduling");
+console.log("PASS offline boot, local release notes in two languages, saved model editing, coding and MCP, and disabled scheduling");

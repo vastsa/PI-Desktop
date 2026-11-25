@@ -2080,7 +2080,7 @@ sklm: {
     "defaultUpdated": "Standard-AI-Anbieter aktualisiert",
     "providerRemoved": "AI-Anbieter entfernt",
     "application": "Anwendung",
-    "aboutTagline": "KI-Programmierarbeitsplatz für das Intranet",
+    "aboutTagline": "Ars longa, vita brevis.",
     "offlineUpdateInstructions": "Beenden Sie die App und installieren Sie das neuere Paket aus Ihrer internen Softwareverteilung. Projekte und Einstellungen bleiben erhalten.",
     "aboutVersion": "Version {{version}}",
     "logs": "Protokolle",

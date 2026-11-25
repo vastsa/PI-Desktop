@@ -2075,7 +2075,7 @@ sklm: {
     defaultUpdated: "默认 AI 服务已更新",
     providerRemoved: "AI 服务已删除",
     application: "应用",
-    aboutTagline: "内网 AI 编程工作台",
+    aboutTagline: "Ars longa, vita brevis.",
     offlineUpdateInstructions: "退出应用后，安装单位内网提供的新版安装包。项目和设置会保留。",
     aboutVersion: "版本 {{version}}",
     logs: "日志",

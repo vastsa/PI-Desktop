@@ -9,8 +9,10 @@ Issue #2 covers the ARM64 Debian package, offline installation and opening a
 local project on Galaxy Kylin V10 SP1 (2403) with glibc 2.31. See the
 [offline install and acceptance procedure](../06-delivery/kylin-arm64-offline-install.md).
 
-Pie Code is an independent desktop application, described in Simplified Chinese
-as “内网 AI 编程工作台”. Its application ID is `io.github.w4yne00.piecode`;
+Pie Code is an independent desktop application with the subtitle
+“Ars longa, vita brevis.” in every language. It appears on the startup screen,
+in About and release notes, and in the package description.
+Its application ID is `io.github.w4yne00.piecode`;
 the Linux executable, desktop entry and Debian package are `pie-code`,
 `pie-code.desktop` and `pie-code`, respectively. The ARM64 package is named
 `pie-code_<version>_arm64.deb`.
@@ -23,6 +25,8 @@ profiles. Explicit profile overrides and relocation keep their existing behavior
 The packaged updater metadata also uses its own `pie-code-updater` cache
 and points to Pie Code releases. Offline mode does not check that endpoint;
 updates are installed from internally distributed packages.
+Settings → Info opens the bundled release notes without checking for updates
+or connecting to GitHub.
 
 The included icon uses the selected bitten coral P with exposed gold crust on
 a blue-gray tile. The built-in dark theme uses coral for the accent; the

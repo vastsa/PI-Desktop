@@ -20,7 +20,7 @@ export function StartupSplash({ exiting = false }: { exiting?: boolean }) {
         </div>
         <div className="startup-splash-copy">
           <div className="startup-splash-name">{t("app.shellName")}</div>
-          <div className="startup-splash-tagline">{t("app.tagline")}</div>
+          <div className="startup-splash-tagline">{t("settings.aboutTagline")}</div>
         </div>
         <div className="startup-splash-track" aria-hidden>
           <span className="startup-splash-bar" />

@@ -107,7 +107,8 @@ required for flat identity fields.
 7. macOS system-menu custom commands and Windows/Linux window controls expose
    localized labels in every shipped locale
 8. Boot splash and renderer crash chrome use catalog keys (`app.starting`,
-   `app.shellName`, `app.tagline`, `app.uiCrashed`); project, temporary-session,
+   `app.shellName`, `settings.aboutTagline`, `app.uiCrashed`); the Pie Code
+   subtitle stays in Latin across locales. Project, temporary-session,
    and no-session empty-home hero titles/subtitles are translated in every
    shipped locale
 9. User-visible catalog copy prefers plain product language over internal

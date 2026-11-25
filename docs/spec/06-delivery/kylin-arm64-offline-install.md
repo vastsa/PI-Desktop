@@ -6,8 +6,9 @@ or a clean image. Only a clean-image test can establish what a stock system
 provides. A Debian 11 smoke test cannot establish Kylin desktop behavior.
 
 The first Pie Code release delivers only the validated Kylin ARM64 Debian
-package and any offline dependencies it needs. Use “Pie Code · 内网 AI 编程工作台”
-in the release notes. The inherited multi-platform tag workflow is not the
+package and any offline dependencies it needs. Use “Pie Code · Ars longa, vita brevis.”
+in the release notes and check the same subtitle in the package description.
+The inherited multi-platform tag workflow is not the
 first-release delivery procedure.
 
 1. Use the `pie-code-linux-arm64-deb` artifact from Linux package validation.
@@ -46,8 +47,9 @@ first-release delivery procedure.
    different theme in each app. Quit both, launch both again, and verify
    that each restores its own settings and session without seeing the other's.
    Use default data directories under a disposable home for this check.
-6. Open About in Pie Code and check the name and Simplified Chinese tagline
-   “内网 AI 编程工作台”. Check the installed launcher icon at 16, 24 and
+6. Check the Pie Code name and the subtitle “Ars longa, vita brevis.” on the
+   startup screen and in About. Switch the app language and confirm the
+   subtitle still matches. Check the installed launcher icon at 16, 24 and
    32 pixels on the Kylin desktop and record each size. In both built-in
    themes, check the primary action, a selected item, and the focus indicator
    when reaching the Settings search by Tab.

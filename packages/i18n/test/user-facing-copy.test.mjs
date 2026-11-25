@@ -8,6 +8,12 @@ const traditional = flattenCatalog(zhTW);
 const korean = flattenCatalog(ko);
 const turkish = flattenCatalog(tr);
 
+test("all app languages use the same Pie Code subtitle", () => {
+  for (const [locale, catalog] of Object.entries(catalogs)) {
+    assert.equal(catalog.settings.aboutTagline, "Ars longa, vita brevis.", locale);
+  }
+});
+
 test("shell status and crash copy stay user-facing", () => {
   assert.equal(english["app.tagline"], "Local AI coding partner");
   assert.equal(
