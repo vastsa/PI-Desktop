@@ -764,7 +764,8 @@ const planRuntime = createPlanRuntime({
   pendingExecutionFinishes,
   announceTurnEnded,
   emitAgentEvent: (envelope) => emitAgentEvent(envelope),
-  persistAgentEvent: (envelope) => persistAgentEvent(envelope),
+  persistInterruptionMessage: (sessionId, turnId, message) =>
+    eventPersistence.persistInterruptionMessage(sessionId, turnId, message),
   acquireSessionOperation,
   resolveAgentRuntimeLaunch,
   isQuitting: () => mainState.quitting,

@@ -677,8 +677,8 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   The streaming row settles to `aborted` in place with its text. The session
   timer, running badge, and tool spinner stop, and a localized crash error
   appears. The recovered reply and one crash card remain after a reload, and
-  no `.inflight.json` remains. A follow-up prompt can run on the restarted
-  sidecar. 4) The partial
+  no `.inflight.json` remains. A queued follow-up runs on the restarted
+  sidecar and appears after the crash card on reload. 4) The partial
   reply is visible immediately after Stop and after reopening; the transcript
   file was not rewritten (its earlier lines are byte-identical) and the
   checkpoint file is gone once the aborted final row landed. 5) The completed

@@ -64,7 +64,7 @@ export type PlanRuntimeDependencies = {
    */
   announceTurnEnded: (payload: TurnEndedPayload) => void;
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
-  persistAgentEvent: (envelope: AgentEventEnvelope) => void;
+  persistInterruptionMessage: (sessionId: string, turnId: string, message: UiMessage) => Promise<void>;
   acquireSessionOperation: (sessionId: string) => Promise<() => void>;
   resolveAgentRuntimeLaunch: (...args: any[]) => Promise<any>;
   isQuitting: () => boolean;
@@ -95,7 +95,7 @@ export function createPlanRuntime({
   pendingExecutionFinishes,
   announceTurnEnded,
   emitAgentEvent,
-  persistAgentEvent,
+  persistInterruptionMessage,
   acquireSessionOperation,
   resolveAgentRuntimeLaunch,
   isQuitting,
@@ -212,6 +212,7 @@ function finishTurn(
     (!wasPlanSubmission && shouldCreateTaskNotification(id));
   const recoverInflight = options.recoverInflight === true;
   const interruptionError = options.interruptionError;
+  const ownsLiveTurn = () => !isQuitting() && isActiveTurn(id, turnId);
 
   const runFinalization = async (): Promise<void> => {
     try {
@@ -237,7 +238,7 @@ function finishTurn(
               notification: result.notification,
             });
           }
-          if (result.recovered) {
+          if (result.recovered && (!interruptionError || ownsLiveTurn())) {
             // Settle the renderer's streaming row the same way a final
             // message_end would have, so it does not stay "streaming" forever.
             emitAgentEvent({
@@ -255,32 +256,31 @@ function finishTurn(
         }
       }
 
-      if (interruptionError && !isQuitting() && isActiveTurn(id, turnId)) {
+      if (interruptionError && ownsLiveTurn()) {
         const ts = Date.now();
         const identity = { sessionId: id, turnId, ts };
-        const messageEnd: AgentEventEnvelope = {
-          ...identity,
-          event: {
-            type: "message_end",
-            message: {
-              id: randomUUID(),
-              role: "assistant",
-              content: "",
-              createdAt: new Date(ts).toISOString(),
-              status: "error",
-              isError: true,
-              error: interruptionError,
-            },
-          },
+        const message: UiMessage = {
+          id: randomUUID(),
+          role: "assistant",
+          content: "",
+          createdAt: new Date(ts).toISOString(),
+          status: "error",
+          isError: true,
+          error: interruptionError,
         };
-        persistAgentEvent(messageEnd);
-        emitAgentEvent(messageEnd);
-        // The renderer needs its terminal error event. Agent Host gets the
-        // interrupted outcome from endTurn after the finalization claim clears.
-        sendToRenderer(IPC.event.agentMessage, {
-          ...identity,
-          event: { type: "error", error: interruptionError },
-        } satisfies AgentEventEnvelope);
+        await persistInterruptionMessage(id, turnId, message).catch((error: unknown) => {
+          logger.app("persistence", "warn", "interruption message enqueue failed", {
+            sessionId: id, data: String(error),
+          });
+        });
+        if (ownsLiveTurn()) {
+          emitAgentEvent({ ...identity, event: { type: "message_end", message } });
+          // Agent Host gets the interrupted outcome when finalization releases.
+          sendToRenderer(IPC.event.agentMessage, {
+            ...identity,
+            event: { type: "error", error: interruptionError },
+          } satisfies AgentEventEnvelope);
+        }
       }
 
       if (runId && runtimeState.host) {

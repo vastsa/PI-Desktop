@@ -269,7 +269,9 @@ classified error as an assistant transcript row and publishes a terminal
 renderer event for each turn that still owns its session. Foreground and
 background sessions clear their running state and settle live tool rows.
 Agent Host closes the turn as interrupted with the same error code before
-queued work can resume.
+queued work can resume. Turn finalization waits for the Host to acknowledge
+the crash row. If the Host cannot accept the row, the persistence outbox
+spools it before finalization releases the queue.
 
 Minimizing the main window is a resident-shell action, not an application
 shutdown. On Windows/Linux, explicit application minimize actions use the
