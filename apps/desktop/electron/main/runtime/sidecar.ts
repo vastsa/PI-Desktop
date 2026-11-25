@@ -388,7 +388,7 @@ export function createSidecarRuntime({
   wireSidecar(s);
   if (readPluginModelContext) {
     s.setPluginModelContextReader((params) => runtimeState.sidecar === s && !isQuitting()
-      ? readPluginModelContext(params) : Promise.resolve([]));
+      ? readPluginModelContext(params) : Promise.resolve({ contributions: [], hasProviders: true }));
   }
   // The directory a session's file tools work in: its isolated worktree
   // (ADR 0329), project, or host-owned scratch directory (ADR 0124).

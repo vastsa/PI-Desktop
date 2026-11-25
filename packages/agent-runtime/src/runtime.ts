@@ -1929,11 +1929,18 @@ export class DesktopAgentRuntime {
     !this.disposed && !this.runCancelled && !this.turnHadError &&
     (waiting ? this.agentActivity?.phase === "waiting-subagents" : !this.getStatus().isRunning)
   );
+  private cacheWarmingEnabled = false;
   private cacheWarmingTurnId?: string;
   private cacheWarmingAttempt = 0;
 
   setCacheWarmingForeground(foreground: boolean): void {
     this.idleCacheWarming.setForeground(foreground);
+  }
+
+  setCacheWarmingEnabled(enabled: boolean): void {
+    if (this.cacheWarmingEnabled === enabled) return;
+    this.cacheWarmingEnabled = enabled;
+    if (!enabled) this.invalidateCacheWarming();
   }
 
   setCacheWarmingWaitAllowed(allowed: boolean): void {
@@ -2040,6 +2047,7 @@ export class DesktopAgentRuntime {
   private workspaceRoot?: string;
   private commandShell: CommandShellOption;
   private baseProjectInstructions?: ProjectInstructions;
+  private projectInstructionPath?: string;
   private projectInstructions?: ProjectInstructions;
   /** Weak argument identity binds preparation to the exact validated call, without retained IDs. */
   private preparedPathToolArgs = new WeakMap<object, unknown>();
@@ -2456,7 +2464,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             });
           const idleEligible = this.idleCacheWarming.isForeground;
           if (usageTurnId && usageTurnId === this.cacheWarmingTurnId &&
-              (idleEligible || this.idleCacheWarming.canRememberWaitingRequest) &&
+              (idleEligible || this.cacheWarmingEnabled) &&
               input === requestContext && !m.webSearch) {
             const model = this.thinkingLevel === "omit" ? omitThinkingModel(m) : m;
             const omitThinking = this.thinkingLevel === "omit";
@@ -2766,11 +2774,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private async cacheWarmingInstructionSourcesMatch(): Promise<boolean> {
-    if (this.remoteWorkspace || safeJson(this.projectInstructions) !== safeJson(this.baseProjectInstructions)) return false;
+    if (this.remoteWorkspace) return false;
     const root = this.workspaceRoot ?? this.projectPath;
-    const [instructions, customPrompt] = await Promise.all([loadInstructionChain(root), loadCustomSystemPrompt(root)]);
+    const [instructions, customPrompt] = await Promise.all([loadInstructionChain(root, this.projectInstructionPath), loadCustomSystemPrompt(root)]);
     // Group instructions come from Host configuration, not the local file chain.
-    const original = this.baseProjectInstructions?.entries.filter(entry =>
+    const original = this.projectInstructions?.entries.filter(entry =>
       entry.source !== "Project group folders" && entry.source !== "Project group instructions") ?? [];
     return safeJson(instructions?.entries ?? []) === safeJson(original) &&
       safeJson(customPrompt) === safeJson(this.customSystemPrompt);
@@ -7074,12 +7082,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // Rules are scoped to the file currently being accessed. Rebuild the
     // complete chain so sibling-directory rules never leak into one another
     // and edits to an existing instruction file take effect immediately.
-    (apply ?? ((instructions) => this.applyProjectInstructions(instructions)))(
-      resolved.fallback ? this.baseProjectInstructions : resolved.instructions,
-    );
+    const instructions = resolved.fallback ? this.baseProjectInstructions : resolved.instructions;
+    if (apply) apply(instructions);
+    else this.applyProjectInstructions(instructions, resolved.fallback ? undefined : path);
   }
 
-  private applyProjectInstructions(resolved: ProjectInstructions | undefined): void {
+  private applyProjectInstructions(resolved: ProjectInstructions | undefined, path?: string): void {
+    this.projectInstructionPath = path;
     this.projectInstructions = resolved;
     this.setAgentSystemPrompt(this.composeSystemPrompt());
   }

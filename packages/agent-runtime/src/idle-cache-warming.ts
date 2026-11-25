@@ -55,10 +55,6 @@ export class IdleCacheWarming {
     return this.revision;
   }
 
-  get canRememberWaitingRequest(): boolean {
-    return this.waitingAllowed;
-  }
-
   setWaitingAllowed(allowed: boolean): void {
     if (this.waitingAllowed === allowed) return;
     this.waitingAllowed = allowed;
@@ -123,7 +119,7 @@ export class IdleCacheWarming {
   }
 
   private requiresPrefixCheck(candidate: CacheCandidate): boolean {
-    return this.waiting || candidate.request.foregroundRevision !== this.revision;
+    return this.waiting || !candidate.request.idleEligible || candidate.request.foregroundRevision !== this.revision;
   }
 
   private canReuse(candidate: CacheCandidate): boolean {
@@ -139,7 +135,7 @@ export class IdleCacheWarming {
     const candidate = this.candidate;
     if (!candidate || this.inFlight) return;
     if (!this.waiting && this.settled &&
-        (!candidate.request.idleEligible || candidate.request.result.stopReason !== "stop")) {
+        ((!candidate.request.idleEligible && !this.foreground) || candidate.request.result.stopReason !== "stop")) {
       this.clear();
       return;
     }

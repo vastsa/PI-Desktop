@@ -20,7 +20,7 @@ export function createForegroundCacheWarming({
   let rendererGone = false;
 
   function publish(sessionId: string | null, waitAllowed = false): void {
-    void getSidecar()?.call("agent.setCacheWarmingSession", { sessionId, waitAllowed }).catch(() => undefined);
+    void getSidecar()?.call("agent.setCacheWarmingSession", { sessionId, waitAllowed, enabled }).catch(() => undefined);
   }
 
   function sync(): void {
@@ -53,7 +53,7 @@ export function createForegroundCacheWarming({
       sync();
     },
     noteTurnStarted(sessionId: string): void {
-      if (enabled && sessionId === viewingSessionId) {
+      if (enabled) {
         void getSidecar()?.call("agent.invalidateCacheWarming", { sessionId }).catch(() => undefined);
       }
     },

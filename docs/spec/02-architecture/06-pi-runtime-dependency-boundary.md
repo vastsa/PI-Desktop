@@ -60,13 +60,17 @@ Settings → Agent Behavior exposes a default-off experimental switch. Electron
 authorizes one selected ordinary local Desktop conversation for warming after
 a turn settles. Focus loss, navigation, a new turn, a provider, session, or
 plugin configuration change, and runtime disposal cancel idle warming. Returning to a conversation can resume an eligible
-request within the original window. Before resuming, the sidecar rebuilds the
+request within the original window. A request sent before the conversation
+is selected can qualify if the user selects it before the turn ends.
+Before resuming, the sidecar rebuilds the
 original input locally and checks the route, system instructions, and ordered
 messages and tool declarations. The check excludes the appended answer and
-rechecks local instruction files before sending. It does not invoke a provider
+rechecks the most recent path-scoped instruction chain before sending. It does not invoke a provider
 or run plugin hooks. If the prefix changed or depends on a
 plugin hook the local check cannot evaluate, a new normal request is required.
-Plugin settings and transcript edits through the SDK also invalidate paused candidates.
+Plugin settings, transcript edits, and session deletion through the SDK
+invalidate paused candidates. Successful project-memory, group-instruction,
+and MCP configuration writes also discard prior candidates.
 While the parent is waiting for subagents through TaskWait or automatic
 delegation completion, warming follows its latest normal model request and
 can reuse a request whose response ended with a tool call. The schedule
@@ -79,7 +83,8 @@ Native Pi sessions retain their SDK lifecycle.
 Use the effective request's known TTL and skip a cache that covers the
 30-minute window. For official OpenAI Responses models supporting prompt-cache
 options, use the documented 30-minute minimum when the SDK catalog provides
-no TTL. An unknown TTL, including for custom endpoints, uses a
+no TTL. An empty account endpoint can inherit the published TTL only if
+the resolved route matches the published API, model, and endpoint. An unknown TTL, including for custom endpoints, uses a
 4-minute-30-second interval after a successful request reports cache reads or
 writes. The 30-minute window starts with the last real request, so the fallback
 can issue at most six refreshes. Stale timers are skipped. A failed refresh,

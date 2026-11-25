@@ -558,7 +558,7 @@ export class AgentSidecar {
           return;
         }
         if (method === "plugins.modelContext.read") {
-          const result = await this.pluginModelContextReader?.(params) ?? [];
+          const result = await this.pluginModelContextReader?.(params) ?? { contributions: [], hasProviders: true };
           this.writeToChild(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n");
           return;
         }

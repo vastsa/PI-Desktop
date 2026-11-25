@@ -510,6 +510,9 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   registerMcpIpc({
     registrar,
     getHost,
+    invalidateCacheWarming: async () => {
+      await getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined);
+    },
     userMcp,
     oauth: mcpOAuth,
     currentWorkspacePath,

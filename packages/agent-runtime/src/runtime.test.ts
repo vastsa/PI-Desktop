@@ -923,13 +923,22 @@ describe("foreground cache warming through the normal turn", () => {
     }
   });
 
-  it.each(["unchanged", "system prompt", "message", "tool order", "model", "endpoint", "plugin source", "instruction file", "validation timeout"])(
+  it.each(["unchanged", "system prompt", "message", "tool order", "model", "endpoint", "plugin source", "instruction file", "nested instructions", "edited nested instructions", "selected during response", "validation timeout"])(
     "rebuilds the foreground prefix locally before resuming with %s", async (change) => {
       const projectPath = await mkdtemp(join(tmpdir(), "pi-cache-prefix-"));
       const file = join(projectPath, "AGENTS.md");
       await writeFile(file, "Original workspace instructions");
+      const nested = change === "nested instructions" || change === "edited nested instructions";
+      const nestedFile = join(projectPath, "nested", "AGENTS.md");
+      const selectedDuringResponse = change === "selected during response";
+      if (nested) {
+        await mkdir(join(projectPath, "nested"));
+        await writeFile(nestedFile, "Original nested instructions");
+      }
       const runtime = createRuntime({
         projectPath, thinkingLevel: "off",
+        ...(nested ? { host: { call: vi.fn().mockImplementation((method) => method === "project.instructions.resolve"
+          ? loadInstructionChain(projectPath, "nested/file.txt") : undefined) } } : {}),
         projectInstructions: await loadInstructionChain(projectPath),
         customSystemPrompt: await loadCustomSystemPrompt(projectPath),
         readPluginModelContext: async () => ({ contributions: [], hasProviders: change === "plugin source" }),
@@ -940,6 +949,7 @@ describe("foreground cache warming through the normal turn", () => {
         declaredTools(): AgentTool[];
         setAgentSystemPrompt(prompt: string): void;
         cacheWarmingInstructionSourcesMatch(): Promise<boolean>;
+        loadPathInstructions(toolName: string, args: unknown): Promise<void>;
       };
       const fileCheck = vi.spyOn(state, "cacheWarmingInstructionSourcesMatch");
       vi.useFakeTimers();
@@ -955,18 +965,28 @@ describe("foreground cache warming through the normal turn", () => {
         result.usage.cacheRead = 2_048;
         result.usage.totalTokens = 2_049;
         const events = createAssistantMessageEventStream();
-        events.push({ type: "start", partial: result });
-        events.push({ type: "done", reason: "stop", message: result });
-        events.end(result);
+        const finish = () => {
+          events.push({ type: "start", partial: result });
+          events.push({ type: "done", reason: "stop", message: result });
+          events.end(result);
+        };
+        if (selectedDuringResponse) queueMicrotask(() => {
+          runtime.setCacheWarmingForeground(true);
+          finish();
+        });
+        else finish();
         return events;
       });
       try {
-        runtime.setCacheWarmingForeground(true);
+        if (nested) await state.loadPathInstructions("Read", { path: "nested/file.txt" });
+        runtime.setCacheWarmingEnabled(true);
+        runtime.setCacheWarmingForeground(!selectedDuringResponse);
         await runtime.prompt({ text: "Synthetic prompt" }, "user-1", "turn-1");
         expect(stream).toHaveBeenCalledTimes(1);
-        runtime.setCacheWarmingForeground(false);
+        if (!selectedDuringResponse) runtime.setCacheWarmingForeground(false);
         await vi.advanceTimersByTimeAsync(90_000);
         if (change === "instruction file") await writeFile(file, "Updated workspace instructions");
+        if (change === "edited nested instructions") await writeFile(nestedFile, "Updated nested instructions");
         if (change === "system prompt") state.setAgentSystemPrompt("Different system instructions");
         if (change === "message") {
           state.agent.state.messages = state.agent.state.messages.map(message =>
@@ -987,13 +1007,14 @@ describe("foreground cache warming through the normal turn", () => {
         expect(stream).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(180_000);
         if (change === "validation timeout") await vi.advanceTimersByTimeAsync(16_000);
-        if (change === "unchanged" || change === "instruction file" || change === "validation timeout") {
+        const resumes = change === "unchanged" || change === "nested instructions" || selectedDuringResponse;
+        if (resumes || change === "instruction file" || change === "edited nested instructions" || change === "validation timeout") {
           expect(fileCheck).toHaveBeenCalledOnce();
           await fileCheck.mock.results[0].value;
         } else {
           expect(fileCheck).not.toHaveBeenCalled();
         }
-        expect(stream).toHaveBeenCalledTimes(change === "unchanged" ? 2 : 1);
+        expect(stream).toHaveBeenCalledTimes(resumes ? 2 : 1);
       } finally {
         await runtime.dispose();
         vi.useRealTimers();

@@ -38,6 +38,11 @@ Render the normal Composer toolbar for an active remote session that denies Stop
   change. Resolve the wait or stop the turn and verify the old request stops
   warming. Check that a short wait sends nothing and a long wait stops by the
   original 30-minute limit.
+- Select a conversation while its first response is streaming. Verify it
+  qualifies for idle warming after a local prefix check. Verify unchanged
+  nested instructions allow warming and an edit stops it. Verify SDK session
+  deletion, an offscreen new turn, and successful project memory, group
+  instruction, or MCP configuration writes discard the old request.
 
 ## E2E-USAGE-explicit-zero-cache
 

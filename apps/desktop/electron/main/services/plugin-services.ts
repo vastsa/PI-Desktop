@@ -183,17 +183,17 @@ export function createPluginServices({
       (method === "plugin.session.replaceMessages" && typeof body.messageCount === "number") ||
       (method === "plugin.session.deleteMessage" && typeof body.deletedCount === "number") ||
       (method === "plugin.session.truncateFrom" && typeof body.keptCount === "number");
-    const changed = transcriptChanged ||
+    const deleted = method === "plugin.session.delete" && body.deleted === true;
+    const changed = transcriptChanged || deleted ||
       (method === "plugin.session.import" && body.imported === true) ||
       (method === "plugin.session.importBatch" && Number(body.imported ?? 0) > 0) ||
       (method === "plugin.session.rename" && body.updated === true) ||
-      (method === "plugin.session.setAutoTitle" && body.updated === true) ||
-      (method === "plugin.session.delete" && body.deleted === true);
+      (method === "plugin.session.setAutoTitle" && body.updated === true);
     if (changed) {
       // `sessionId` scopes the refresh to the session that actually changed, so
       // the shell can repaint an open transcript without re-selecting it.
       const sessionId = typeof input.sessionId === "string" ? input.sessionId : undefined;
-      if (transcriptChanged && sessionId) await invalidateCacheWarming(sessionId);
+      if ((transcriptChanged || deleted) && sessionId) await invalidateCacheWarming(sessionId);
       sendToRenderer(IPC.event.sessionsChanged, {
         reason: method,
         pluginId,
