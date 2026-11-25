@@ -1492,7 +1492,9 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   changes occur. The keyboard hint includes Shift+Enter and a submit hint, while the
   command/file hint includes `/` and `@`. The slash menu still contains `/new`,
   `/compact`, `/agent-mode`, `/plan-mode`, and `/goal-mode`, followed by a
-  Skills group at the bottom. Selecting a Skill inserts `/skill:<id>`; sending
+  Skills group at the bottom. Select a Skill mid-sentence and type its arguments;
+  verify the editor has one atomic Skill node, deletion removes the whole node,
+  and native undo restores it. The node serializes to `/skill:<id>` without an attachment; sending
   it keeps the typed command chip visible and the model calls `Skill` with the
   original ID before answering. Verify builtin, plugin, and user Skill prefixes,
   multiple inline references, and a prompt template sharing the unprefixed

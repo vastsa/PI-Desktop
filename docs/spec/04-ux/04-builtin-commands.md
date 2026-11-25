@@ -133,7 +133,9 @@ display name and description in a separate **Skills** group after extension
 commands. This group is always last; a Skill with the same unprefixed name as a
 command or template remains independently addressable.
 
-Selecting a Skill inserts `/skill:<skill-id> `. After the first token, typing `/`
+Selecting a Skill inserts a non-editable inline chip followed by an editable space.
+The chip shows the catalog title, deletes as a unit, and sends `/skill:<skill-id>`.
+Typing the slash form by hand still works as plain text. After the first token, typing `/`
 offers Skills only; app commands and templates remain first-token actions.
 Multiple Skills may be selected in one message. Sending keeps each validated
 Skill as its own transcript chip, with ordinary prompt text between chips, and

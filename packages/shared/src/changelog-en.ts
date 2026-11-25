@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Skills selected from the / menu appear as individual chips in the composer.",
       "Edit bundled role and skill definitions in Modes, organize private agent roles, and scope delegated work to the tools and files each role needs.",
       "Optionally follow active subagents above the Composer and stop one or all without stopping the coordinator.",
       "Long-running Bash commands return control after an initial wait and can continue in the background; optionally report results and resume an idle conversation when finished.",

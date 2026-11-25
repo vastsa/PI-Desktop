@@ -5,6 +5,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Les compétences choisies dans le menu / apparaissent sous forme de pastilles dans le champ de saisie.",
       "Modifiez les rôles et compétences intégrés dans les réglages des Modes, organisez les rôles d'agent privés et limitez les tâches déléguées aux outils et fichiers nécessaires.",
       "Suivez en option les sous-agents actifs au-dessus du Composer et arrêtez-en un ou tous sans interrompre l'agent coordinateur.",
       "Les commandes Bash longues rendent la main après une première attente et continuent en arrière-plan ; elles peuvent aussi signaler leur résultat et reprendre une conversation inactive.",

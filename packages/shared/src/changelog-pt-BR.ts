@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "As habilidades selecionadas no menu / aparecem como etiquetas individuais no campo de mensagem.",
       "Edite funções e habilidades incluídas nas configurações de Modos, organize funções privadas de agentes e limite tarefas delegadas às ferramentas e arquivos necessários.",
       "Opcionalmente acompanhe subagentes ativos acima do Composer e pare um ou todos sem interromper o agente coordenador.",
       "Comandos Bash longos devolvem o controle após a espera inicial e continuam em segundo plano; opcionalmente informam o resultado e retomam uma conversa ociosa.",
