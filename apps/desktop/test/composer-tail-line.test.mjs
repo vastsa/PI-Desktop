@@ -66,4 +66,3 @@ test("the end-of-draft break is one native edit, so undo takes both nodes", () =
   // that refuses insertHTML.
   assert.ok(draft.indexOf("execCommand") < draft.indexOf("range.insertNode"));
 });
-

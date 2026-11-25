@@ -25,10 +25,8 @@ test("one Enter is one newline, owned by the editor at the draft end only", () =
   assert.match(deletionSource, /atDraftEnd\(\)/);
   assert.match(deletionSource, /editorSelectionRange\(editor\)\.end === readEditorValue\(editor\)\.length/);
   assert.match(deletionSource, /event\.preventDefault\(\);\n\s+onInsertLineBreak\(\);/);
-  // A break anywhere else is exactly one newline natively and stays in the undo
-  // stack, so the guard must not take it over.
-  assert.match(deletionSource, /A break anywhere else is exactly one newline/);
+  // Paragraph boundaries must not introduce uncounted block wrappers.
+  assert.match(deletionSource, /editor\.ownerDocument\.execCommand\("insertLineBreak"\)/);
   // React never dispatches the synthetic beforeinput event, so the guard owns it.
   assert.doesNotMatch(inputSource, /onBeforeInput/);
 });
-
