@@ -7,6 +7,38 @@ Render the normal Composer toolbar for an active remote session that denies Stop
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Provider setup, credentials, OAuth, model catalogs, wire protocols, usage, and hosted search.
 > Scenario template, gates, and traceability live in the plan.
 
+## E2E-PROVIDER-foreground-cache-warming
+
+- Open two ordinary conversations backed by a synthetic provider that reports
+  cache reads and writes. Complete a normal request and verify warming is off.
+- Enable the experiment, complete a request in the selected conversation, and
+  advance the clock by 4 minutes 30 seconds with an unknown TTL. Verify one
+  refresh on the same route with continuation disabled and no transcript row.
+- Switch conversations, blur the window, and start a new turn. Each ends the
+  old schedule. Returning can resume an unexpired candidate without extending
+  the original 30-minute window. A miss or missing usage stops the schedule.
+- Verify that refresh usage belongs to the original turn and that native Pi,
+  scheduled runs, and routes with an already sufficient TTL are unaffected.
+- Load a trusted extension that observes provider requests. Verify the refresh
+  retains the original headers, skips the observer, and sends a one-token
+  output limit. Have the extension replace the normal request body and
+  verify no refresh is sent.
+- Switch away and return before the original deadline. Verify that an unchanged
+  prefix resumes on the original schedule and that the local check does not
+  send provider requests or run plugin hooks. Repeat after editing a workspace
+  instruction file, editing an original message through the UI or plugin SDK,
+  or changing tool order, model route, plugin settings (through the UI or SDK),
+  or plugin scope. Verify the old request is discarded.
+  Repeat with a plugin hook or model context source whose current output cannot
+  be checked locally and verify that a new normal request is required.
+- Hold a synthetic subagent past the first refresh time while the parent is in
+  TaskWait or automatically waiting for delegation completion. Keep the app
+  focused and select another conversation or open Settings. Verify a bounded
+  refresh on the original parent schedule, with no tool execution or transcript
+  change. Resolve the wait or stop the turn and verify the old request stops
+  warming. Check that a short wait sends nothing and a long wait stops by the
+  original 30-minute limit.
+
 ## E2E-USAGE-explicit-zero-cache
 
 - Complete a controlled Pi request with nonzero input/output and explicit zero

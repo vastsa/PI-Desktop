@@ -712,6 +712,7 @@ export function registerSessionIpc({
         { id, ...config, ...(modeSnapshot ? { modeSnapshot } : {}) },
       );
       if (!result.session) return result;
+      await sidecar?.call("agent.invalidateCacheWarming", { sessionId: id }).catch(() => undefined);
       const { providers, defaults } = await sessionCapabilityContext();
       const session = enrichSession(result.session, providers, defaults);
       if (

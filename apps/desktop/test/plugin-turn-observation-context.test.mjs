@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -74,22 +74,49 @@ test("process events and model context enforce grants and scope; context freezes
   runtime.broadcastEvent("session:userMessagePersisted", [{ ...inserted, messageId: "no-scope-filter" }]);
   runtime.broadcastEvent("session:turnEnded", [{ ...identity, reason: "completed" }]);
 
-  const initial = await model.read({ ...identity, modelKey: "provider/model" });
+  const { contributions: initial } = await model.read({ ...identity, modelKey: "provider/model" });
   assert.deepEqual(initial.map((entry) => entry.pluginId), ["scope.allowed", "scope.denied"]);
   const payload = JSON.parse(initial[0].text);
   assert.deepEqual(payload.input, { ...identity, projectId: "7", modelKey: "provider/model" });
   assert.deepEqual(payload.seen, [["session:turnStarted", identity], ["session:userMessagePersisted", inserted],
     ["session:turnEnded", { ...identity, reason: "completed" }]]);
   assert.deepEqual(JSON.parse(initial[1].text).seen, [["session:turnEnded", { ...identity, reason: "completed" }]]);
-  assert.deepEqual(await model.read({ ...identity, modelKey: "another-model" }), initial);
+  assert.deepEqual(await model.read({ ...identity, modelKey: "another-model" }), { contributions: initial, hasProviders: true });
   allowed = false;
-  assert.deepEqual(await model.read(identity), [initial[1]]);
+  assert.deepEqual((await model.read(identity)).contributions, [initial[1]]);
   allowed = true;
-  assert.deepEqual(await model.read(identity), [initial[1]]);
+  assert.deepEqual((await model.read(identity)).contributions, [initial[1]]);
   model.end("session", "turn");
   active = "next-turn";
-  assert.deepEqual(await model.read(identity), []);
-  assert.equal((await model.read({ ...identity, turnId: active })).length, 2);
+  assert.deepEqual((await model.read(identity)).contributions, []);
+  assert.equal((await model.read({ ...identity, turnId: active })).contributions.length, 2);
+  active = "empty-turn";
+  const empty = createPluginModelContext({
+    isDispatchable: () => true, projectFor: () => "project",
+    inProject: () => true, providers: () => [], projectId: async () => undefined,
+  });
+  assert.deepEqual(await empty.read({ ...identity, turnId: active }), { contributions: [], hasProviders: false });
+});
+
+test("plugin SDK setting writes notify the host only when the settings change", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-plugin-cache-settings-"));
+  const pluginId = "cache.settings";
+  const changes = [];
+  const runtime = new PluginRuntime({ hostEntry, spawnProcess, onPluginSettingsChanged: (id) => changes.push(id) });
+  const data = join(root, "data");
+  await mkdir(data);
+  runtime.pluginDataDir = () => data;
+  t.after(async () => {
+    await runtime.unload(pluginId);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await load(root, runtime, pluginId, [], "module.exports = {};");
+  const api = runtime.hostApi(runtime.loaded.get(pluginId));
+  await api.plugin.setSettings({ revision: 1 });
+  await api.plugin.setSettings({ revision: 1 });
+  await api.plugin.setSettings({ revision: 2 });
+  assert.deepEqual(changes, [pluginId, pluginId]);
 });
 
 test("a wedged process loses its model context; a timed-out hook gets an AbortSignal", async (t) => {

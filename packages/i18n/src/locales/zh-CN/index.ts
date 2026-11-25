@@ -1756,6 +1756,8 @@ sklm: {
     noResults: "没有匹配的设置项",
     enterToSend: "回车发送",
     enterToSendDesc: "关闭后按 ⌘/Ctrl+Enter 发送。",
+    foregroundCacheWarming: "提示词缓存保活（实验）",
+    foregroundCacheWarmingDesc: "一轮对话结束后，为当前选中的对话续缓存。主 Agent 等待子 Agent 时，切换页面也会继续保活。刷新会消耗供应商额度。",
     backgroundJobContinuation: "后台任务完成后续跑",
     backgroundJobContinuationDesc: "允许助手在安排的本地测试或构建结束后接回原会话，仍遵循现有权限模式。默认关闭；关闭时撤销待续跑任务，不停止后台进程。",
     codemode: "Codemode 脚本",

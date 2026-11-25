@@ -8,6 +8,7 @@ type ContextProvider = {
 
 type FrozenTurn = {
   turnId: string;
+  hasProviders: boolean;
   controller: AbortController;
   context: Promise<{ provider: ContextProvider; text: string; revoked?: boolean }[]>;
 };
@@ -30,11 +31,12 @@ export function createPluginModelContext(deps: {
   };
 
   const read = async (params: Record<string, unknown>) => {
+    const unavailable = { contributions: [], hasProviders: true };
     const { sessionId, turnId, modelKey } = params;
     if (typeof sessionId !== "string" || typeof turnId !== "string" ||
-        !deps.isDispatchable(sessionId, turnId)) return [];
+        !deps.isDispatchable(sessionId, turnId)) return unavailable;
     const projectPath = deps.projectFor(sessionId);
-    if (projectPath === undefined) return [];
+    if (projectPath === undefined) return unavailable;
     let frozen = turns.get(sessionId);
     if (frozen?.turnId !== turnId) {
       if (frozen) end(sessionId, frozen.turnId);
@@ -57,18 +59,19 @@ export function createPluginModelContext(deps: {
         }));
         return results.filter((entry) => entry !== undefined);
       })();
-      frozen = { turnId, controller, context };
+      frozen = { turnId, hasProviders: providers.length > 0, controller, context };
       turns.set(sessionId, frozen);
     }
     const results = await frozen.context;
     // A permission or scope loss observed in this turn is irreversible here.
-    return results.flatMap((entry) => {
+    const contributions = results.flatMap((entry) => {
       if (entry.revoked || !entry.provider.eligible()) {
         entry.revoked = true;
         return [];
       }
       return [{ pluginId: entry.provider.pluginId, text: entry.text }];
     });
+    return turns.get(sessionId) === frozen ? { contributions, hasProviders: frozen.hasProviders } : unavailable;
   };
 
   return { read, end };

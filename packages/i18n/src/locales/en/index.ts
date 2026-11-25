@@ -1776,6 +1776,8 @@ sklm: {
     noResults: "No matching settings",
     enterToSend: "Enter to send",
     enterToSendDesc: "Off: press ⌘/Ctrl+Enter to send.",
+    foregroundCacheWarming: "Keep prompt cache warm (experimental)",
+    foregroundCacheWarmingDesc: "Keep the selected conversation’s prompt cache warm after a turn. While the main agent waits for subagents, it can refresh the cache even if you switch pages. Refreshes use provider quota.",
     backgroundJobContinuation: "Continue after background jobs",
     backgroundJobContinuationDesc: "Allow the assistant to resume a local conversation after requested tests or builds finish, using the existing permission mode. Off by default. Turning this off cancels pending continuations, not their processes.",
     codemode: "Codemode scripts",

@@ -27,6 +27,7 @@ export type SettingsIpcDependencies = {
   applyDeveloperMode: (settings?: { developerMode?: unknown } | null) => void;
   applyPreventScreenSleep: (settings?: { preventScreenSleep?: unknown } | null) => void;
   applyKeepAwakeWhileRunning: (settings?: { keepAwakeWhileRunning?: unknown } | null) => void;
+  applyForegroundCacheWarming: (settings?: { foregroundCacheWarmingEnabled?: unknown } | null) => void;
   applyUpdatePreference: (preference: UpdatePreference) => void;
   resolveEffectiveCommandShell: () => Promise<unknown>;
   liveCallService?: Pick<LiveCallService, "beginSettingsWrite" | "settingsWritten">;
@@ -48,6 +49,7 @@ export function registerSettingsIpc({
   applyDeveloperMode,
   applyPreventScreenSleep,
   applyKeepAwakeWhileRunning,
+  applyForegroundCacheWarming,
   applyUpdatePreference,
   resolveEffectiveCommandShell,
   liveCallService,
@@ -83,6 +85,9 @@ export function registerSettingsIpc({
     let result: { ok: true };
     try {
       result = await host.call<{ ok: true }>("settings.set", validatedSettings);
+      if (typeof validatedSettings?.foregroundCacheWarmingEnabled === "boolean") {
+        applyForegroundCacheWarming(validatedSettings);
+      }
       // settings.set acknowledges the write; it does not return the stored settings.
       const style = validatedSettings?.subagentStyle;
       if (isSubagentStyle(style)) {

@@ -54,6 +54,48 @@ Do not reintroduce imports from removed `pi-agent-core` harness, session,
 compaction, or prompt-template APIs. Keep desktop behavior in the agent-runtime
 boundary and use public `pi-ai` APIs for provider-facing operations.
 
+### Experimental foreground prompt-cache warming
+
+Settings → Agent Behavior exposes a default-off experimental switch. Electron
+authorizes one selected ordinary local Desktop conversation for warming after
+a turn settles. Focus loss, navigation, a new turn, a provider, session, or
+plugin configuration change, and runtime disposal cancel idle warming. Returning to a conversation can resume an eligible
+request within the original window. Before resuming, the sidecar rebuilds the
+original input locally and checks the route, system instructions, and ordered
+messages and tool declarations. The check excludes the appended answer and
+rechecks local instruction files before sending. It does not invoke a provider
+or run plugin hooks. If the prefix changed or depends on a
+plugin hook the local check cannot evaluate, a new normal request is required.
+Plugin settings and transcript edits through the SDK also invalidate paused candidates.
+While the parent is waiting for subagents through TaskWait or automatic
+delegation completion, warming follows its latest normal model request and
+can reuse a request whose response ended with a tool call. The schedule
+continues when another conversation or page is selected. It requires a
+focused, visible app window and stops on wait exit, app focus loss, screen
+lock, suspend, renderer loss, or invalidation. The sidecar verifies the original prefix
+locally before refresh. One schedule covers all subagents in that wait.
+Native Pi sessions retain their SDK lifecycle.
+
+Use the effective request's known TTL and skip a cache that covers the
+30-minute window. For official OpenAI Responses models supporting prompt-cache
+options, use the documented 30-minute minimum when the SDK catalog provides
+no TTL. An unknown TTL, including for custom endpoints, uses a
+4-minute-30-second interval after a successful request reports cache reads or
+writes. The 30-minute window starts with the last real request, so the fallback
+can issue at most six refreshes. Stale timers are skipped. A failed refresh,
+unreported cache use, or a response mostly billed as uncached input or cache
+write stops warming until another real request.
+
+The sidecar reuses the provider binding and the public Pi cache-warming options
+with continuation and retries disabled. Refresh output stays outside the
+conversation and provider usage follows the existing turn accounting path.
+Trusted extensions can remain loaded during warming. A refresh retains the
+original request headers and skips extension request and response hooks. A
+request whose body was replaced by an extension is excluded, as are requests
+with hosted search, per-turn plugin context, or adapters without a bounded
+output option. No transcript, session-data migration, or new
+provider-configuration setting is required.
+
 ## 3. `pi-durable` assessment
 
 `@earendil-works/pi-durable` is a candidate for a later runtime migration, not

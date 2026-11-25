@@ -1756,6 +1756,8 @@ sklm: {
     noResults: "沒有匹配的設定項",
     enterToSend: "回車傳送",
     enterToSendDesc: "關閉後按 ⌘/Ctrl+Enter 傳送。",
+    foregroundCacheWarming: "提示詞快取保活（實驗）",
+    foregroundCacheWarmingDesc: "一輪對話結束後，為目前選取的對話續用快取。主 Agent 等待子 Agent 時，切換頁面也會繼續維持快取。這些請求會消耗供應商額度。",
     backgroundJobContinuation: "背景工作完成後續跑",
     backgroundJobContinuationDesc: "允許助理在安排的本機測試或建置結束後接回原對話，仍遵循現有權限模式。預設關閉；關閉時撤銷待續跑工作，不停止背景程序。",
     codemode: "Codemode 腳本",
