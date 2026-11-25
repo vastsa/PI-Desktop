@@ -173,9 +173,11 @@
     transform var(--motion-duration-normal) var(--motion-ease-out);
 }
 
-/* Focus deepens the lift; the shell never gains a stroke (D297). */
+/* The outline marks the focused composer without changing its geometry. */
 .composer-shell:focus-within {
   box-shadow: 0 7px 24px color-mix(in oklab, var(--ds-text-primary) 9%, transparent);
+  outline: 2px solid var(--ds-focus);
+  outline-offset: 2px;
 }
 
 /* Native file-system drops get a target cue without changing shell geometry. */

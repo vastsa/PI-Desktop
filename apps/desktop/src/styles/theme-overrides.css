@@ -51,7 +51,6 @@
   background: var(--ds-bg-composer);
   background-image: none;
   box-shadow: var(--ds-shadow-composer);
-  outline: none;
   border: 0;
 }
 

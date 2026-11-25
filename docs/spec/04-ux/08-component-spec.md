@@ -779,8 +779,7 @@ visually distinct from list content.
 
 ### 3.7 Brand and icon contract
 
-- The visible shell name is `PI-Desktop`; Codex is not used as the renderer
-  identity.
+- The visible shell name is `Pie Code`.
 - A control with no label states `.icon-btn-square`, which pins both axes to
   `--ds-control-size` (28px). `.icon-btn` on its own takes its width from its
   glyph plus 8px of side padding — right for a label-driven pill, wrong for a
@@ -788,12 +787,9 @@ visually distinct from list content.
   conversation topbar toggle, and the composer's add/enhance/undo controls all
   render the same 28px square target as the topbar and work-panel actions
   instead of a wider-than-tall pill.
-- `BrandLogo` imports the renderer-sized marks derived from the canonical
-  masters through Vite: `src/assets/brand/logo-light.png` for light mode and
-  `src/assets/brand/logo-dark.png` for dark mode (192x192, covering the 64 px
-  splash at 3x; ADR 0125). The component subscribes to
-  `document.documentElement[data-theme]` via a `MutationObserver` and swaps the
-  source at runtime for the sidebar and startup splash without a reload. The
+- `BrandLogo` imports the same renderer-sized Pie Code mark in both themes,
+  `src/assets/brand/logo.png` (192x192, covering the 64 px splash at 3x).
+  It is derived from `build/icon_1024.png` (ADR 0125). The
   empty-home hero uses `HomeMascotLogo` as a 100px eight-frame GIF. Light and
   dark themes each have a dedicated GIF plus still PNG. CSS follows
   `document.documentElement[data-theme]` without a reload; anything other than
@@ -1629,7 +1625,7 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
 
 | State | Appearance |
 |---|---|
-| Active | neutral-accent outlined ring, active bg highlight, text-primary |
+| Active | coral outline and tinted row, text-primary |
 | Inactive | bg-secondary, text-secondary |
 | Hover (inactive) | bg-tertiary |
 | In progress | warning-orange breathing dot; no motion under reduced-motion |

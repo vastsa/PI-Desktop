@@ -32,6 +32,10 @@ since subsetting would have dropped glyphs from user-supplied content.
 
 ## Consequences
 
+Pie Code uses one 192x192 renderer derivative in both themes. The canonical
+source is `apps/desktop/build/icon_1024.png`; `scripts/make-icon.py` emits
+`apps/desktop/src/assets/brand/logo.png`.
+
 - The renderer output drops by roughly seven MiB of JavaScript, font, and PNG
   weight, measured before [ADR 0298](0298-remove-bundled-fonts.md).
 - Minified stack traces need the devtools source view; no sourcemaps are

@@ -100,14 +100,14 @@
   --ds-tile-deep: color-mix(in oklab, var(--gray-0) 8%, transparent);
   --ds-raised: var(--gray-750);
   --ds-raised-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --ds-accent: var(--gray-0);
-  --ds-accent-hover: var(--gray-100);
-  --ds-accent-soft: var(--gray-300);
-  /* Focus rings / resize affordances. Tied to the accent so themes stay monochrome. */
+  --ds-accent: #e88c78;
+  --ds-accent-hover: #f3a491;
+  --ds-accent-soft: #dca294;
+  /* Focus rings and resize affordances follow the active theme's accent. */
   --ds-focus: var(--ds-accent);
   /* Settings fields and shared inset searches keep their built-in tones. */
   --ds-settings-field-bg: #212121;
-  --ds-settings-nav-active: color-mix(in oklab, var(--gray-0) 10%, transparent);
+  --ds-settings-nav-active: color-mix(in oklab, var(--ds-accent) 28%, transparent);
   --ds-field-inset-bg: color-mix(in oklab, var(--ds-text-primary) 5%, transparent);
   --ds-field-inset-focus-bg: color-mix(in oklab, var(--ds-text-primary) 7%, transparent);
   /*
@@ -258,13 +258,11 @@
   --ds-tile-deep: color-mix(in oklab, #1a1c1f 8%, transparent);
   --ds-raised: #ffffff;
   --ds-raised-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  /* Light theme accent inverts: dark ink on pale surfaces. */
-  --ds-accent: #1a1c1f;
-  --ds-accent-hover: #303030;
-  --ds-accent-soft: #5d5d5d;
-  --ds-focus: var(--ds-accent);
+  /* Darker coral keeps the accent readable against pale surfaces. */
+  --ds-accent: #984835;
+  --ds-accent-hover: #803928;
+  --ds-accent-soft: #8c5144;
   --ds-settings-field-bg: #ffffff;
-  --ds-settings-nav-active: color-mix(in oklab, #1a1c1f 12%, #ffffff);
   --ds-field-inset-bg: #f3f3f3;
   /* Issue #341: the light values these fills used to hardcode in overrides. */
   --ds-prose-kbd-fg: #303030;

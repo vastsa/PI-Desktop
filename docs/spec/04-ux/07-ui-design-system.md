@@ -22,7 +22,7 @@ is not provided by this style repair. See
 
 ## Visual baseline (Codex-aligned)
 
-The desktop shell targets a 1:1 visual match with the local Codex desktop client (ChatGPT.app electron-dark): charcoal surfaces (`#181818`), neutral gray scale (not blue-slate), ~275px sidebar, 46px toolbar rhythm, and a floating pill composer. Semantic token names remain stable; values follow the Codex gray system with a **neutral gray accent** (no blue brand accent).
+The desktop shell targets a 1:1 visual match with the local Codex desktop client (ChatGPT.app electron-dark): charcoal surfaces (`#181818`), neutral gray scale (not blue-slate), ~275px sidebar, 46px toolbar rhythm, and a floating pill composer. Pie Code keeps these neutral surfaces and uses a coral accent for interactive controls and selection.
 
 ## 2. Non-goals
 
@@ -73,14 +73,14 @@ selection is suppressed for chrome by default. The selection contract is:
   an equivalent explicit `user-select: text` rule).
 - The Electron renderer sets both `user-select` and `-webkit-user-select`;
   selection rules must not remove focus-visible rings or window drag regions.
-- Copyable selection paint uses the monochrome accent contract via
+- Copyable selection paint uses the theme accent via
   `::selection` (`color-mix` of `--ds-text-primary` at ~18% over the surface,
   text remains `--ds-text-primary`). Browser-default blue highlights are not
   allowed on shell surfaces.
 - `caret-color` and `accent-color` resolve to `--ds-text-primary` /
   `--ds-accent` so native carets and form accents stay on-theme.
-- Focus-visible rings use `color-mix(in oklab, var(--ds-accent) 80%, transparent)`
-  (no white wash that drifts off the neutral ramp).
+- The default focus-visible outline uses `--ds-focus`, which follows the
+  current theme accent. Settings search uses a 2px outline offset by 2px.
 
 ### 3.3 Locale-aware chrome labels
 
@@ -199,9 +199,9 @@ All color references in components use **semantic token names**, never raw hex v
 | `--color-text-muted` | `#5d5d5d` | Codex `gray-500` | Disabled, hints |
 | `--color-border-default` | `rgba(255,255,255,0.08)` | Codex border | Default borders |
 | `--color-border-subtle` | `rgba(255,255,255,0.05)` | Codex border subtle | Subtle separators |
-| `--color-accent` | `#FFFFFF` (dark) / `#1a1c1f` (light) | inverted gray ink | Primary accent, CTA |
-| `--color-accent-hover` | `#EDEDED` (dark) / `#303030` (light) | gray-100 / gray-700 | Accent hover |
-| `--color-accent-soft` | `#AFAFAF` (dark) / `#5d5d5d` (light) | gray-300 / gray-500 | Soft accent, links |
+| `--color-accent` | `#e88c78` (dark) / `#984835` (light) | coral | Primary accent, CTA |
+| `--color-accent-hover` | `#f3a491` (dark) / `#803928` (light) | coral hover | Accent hover |
+| `--color-accent-soft` | `#dca294` (dark) / `#8c5144` (light) | muted coral | Soft accent, links |
 | `--color-success` | `#22C55E` | `text-green-500` | Success, run complete |
 | `--color-warning` | `#F59E0B` | `text-amber-500` | Warning, caution |
 | `--color-error` | `#EF4444` | `text-red-500` | Error, denied |
@@ -223,7 +223,7 @@ Neutral gray scale only — no blue-slate surfaces. Chrome components must consu
 | `--color-text-faint` | `#afafaf` (gray-300) | Placeholder |
 | `--color-border-default` | `color-mix(#1a1c1f 8%, transparent)` | Default borders |
 | `--color-border-subtle` | `color-mix(#1a1c1f 5%, transparent)` | Sidebar edge / dividers |
-| `--color-accent` | `#1a1c1f` | Primary accent, CTA, footer badge (neutral ink) |
+| `--color-accent` | `#984835` | Primary accent, CTA, footer badge |
 | `--color-success` / warning / error | green-500 / orange-500 / red-500 | Status |
 
 **Invariant:** never paint chrome text with raw `gray-0` (`#fff`) under `data-theme="light"`. Use `--ds-text-primary` / `--ds-text-secondary`.
@@ -266,7 +266,7 @@ token rather than introducing a decorative palette:
 
 | State | Semantic color | Shape / motion | Meaning |
 |---|---|---|---|
-| Selected | neutral accent | static outlined ring | current conversation |
+| Selected | coral accent | static outlined ring and tinted row | current conversation |
 | In progress | warning orange | filled dot; two breathing cycles, then steady | agent is producing or executing |
 | Completed | success green | check mark | latest unread task turn completed |
 | Failed | error red | circled alert mark | latest unread task turn failed |
@@ -316,8 +316,8 @@ The following CSS custom properties stub is the canonical bridge between spec to
   --color-text-muted:       #5d5d5d;
   --color-border-default:   #282828;
   --color-border-subtle:    #212121;
-  --color-accent:           #FFFFFF;
-  --color-accent-hover:     #EDEDED;
+  --color-accent:           #e88c78;
+  --color-accent-hover:     #f3a491;
   --color-success:          #22C55E;
   --color-warning:          #F59E0B;
   --color-error:            #EF4444;
@@ -335,8 +335,8 @@ The following CSS custom properties stub is the canonical bridge between spec to
   --color-text-muted:       #94A3B8;
   --color-border-default:   #E2E8F0;
   --color-border-subtle:    #F1F5F9;
-  --color-accent:           #1a1c1f;
-  --color-accent-hover:     #303030;
+  --color-accent:           #984835;
+  --color-accent-hover:     #803928;
   --color-success:          #16A34A;
   --color-warning:          #D97706;
   --color-error:            #DC2626;
@@ -585,7 +585,9 @@ contract.
 Composer elevation (Codex `elevation-prominent`):
 
 - soft: `0 3px 7.5px rgba(0,0,0,0.039)` + `0 0 20px rgba(0,0,0,0.051)` (Codex `#0000000a` / `#0000000d`, both themes)
-- no stroke (D297): the composer lifts by shadow alone; `--ds-elevation-stroke` remains a token for floating layers only
+- The composer has no stroke at rest (D297). When focus is inside, a 2px
+  `--ds-focus` outline marks the composer without changing its size.
+  `--ds-elevation-stroke` remains a token for floating layers only.
 
 Shadow token values (light theme only):
 
@@ -1319,7 +1321,7 @@ Implementation: `components/ui.tsx → SettingsToggle`.
 | CSS class | `.settings-toggle` / `.settings-toggle.on` |
 | Role | `role="switch"` with `aria-checked` |
 | Variants | default, `busy` (`.is-busy`, `aria-busy`, disabled) |
-| Background | neutral accent when on (not green); theme-specific override in `theme-overrides.css` |
+| Background | coral accent when on; theme-specific override in `theme-overrides.css` |
 
 Every boolean on/off control in Settings and editor sheets **must** use
 `SettingsToggle`. Inline `<button role="switch">` with manual class

@@ -51,12 +51,12 @@ test("Windows runtime registers the canonical native application identity", () =
   );
 });
 
-test("Windows packages pin PI-Desktop executable and shortcut names", () => {
-  assert.equal(packageJson.build.win.executableName, "PI-Desktop");
-  assert.equal(packageJson.build.nsis.shortcutName, "PI-Desktop");
+test("Windows packages pin Pie Code executable and shortcut names", () => {
+  assert.equal(packageJson.build.win.executableName, "Pie Code");
+  assert.equal(packageJson.build.nsis.shortcutName, "Pie Code");
 });
 
-test("Windows packages and windows use the canonical PI-Desktop icon", () => {
+test("Windows packages and windows use the canonical app icon", () => {
   assert.equal(packageJson.build.win.icon, "build/icon.ico");
   assert.deepEqual(
     packageJson.build.win.extraResources.find((resource) => resource.to === "app-icon.ico"),
@@ -75,12 +75,17 @@ test("Windows packages and windows use the canonical PI-Desktop icon", () => {
   assert.match(windowSource, /icon: windowsIconPath\(\)/);
 });
 
-test("Linux packages align the desktop entry with the Wayland app identity", () => {
-  assert.equal(packageJson.desktopName, "pi-desktop.desktop");
+test("Linux installs as Pie Code beside the upstream Debian package", () => {
+  assert.equal(packageJson.build.appId, "io.github.w4yne00.piecode");
+  assert.equal(packageJson.build.productName, "Pie Code");
+  assert.equal(packageJson.desktopName, "pie-code.desktop");
+  assert.equal(packageJson.build.linux.executableName, "pie-code");
   assert.equal(packageJson.build.linux.syncDesktopName, true);
+  assert.equal(packageJson.build.deb.packageName, "pie-code");
+  assert.equal(packageJson.build.deb.artifactName, "pie-code_${version}_${arch}.${ext}");
 });
 
-test("macOS development uses the canonical PI-Desktop Dock icon", () => {
+test("macOS development uses the canonical app Dock icon", () => {
   assert.match(
     brandingSource,
     /process\.platform !== "darwin" \|\| !isDevelopmentBuild \|\| !app\.dock/,
@@ -226,8 +231,8 @@ test(
         ),
         "macOS-tray-icon",
       );
-      assert.match(plist, /<string>PI-Desktop<\/string>/);
-      assert.match(plist, /<string>net\.aiuo\.pi-desktop\.dev<\/string>/);
+      assert.match(plist, /<string>Pie Code<\/string>/);
+      assert.match(plist, /<string>io\.github\.w4yne00\.piecode\.dev<\/string>/);
       assert.equal(prepareMacDevelopmentBundle(options), brandedExecutable);
 
       await writeFile(trayIconMacPath, "updated-macOS-tray-icon");

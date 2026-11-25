@@ -9,7 +9,7 @@ const recentSource = await readFile(
   "utf8",
 );
 
-test("design accent tokens are neutral gray, not blue", () => {
+test("design accent tokens use a coral palette for both built-in themes", () => {
   assert.doesNotMatch(stylesSource, /--blue-\d+/);
   assert.doesNotMatch(stylesSource, /#0285ff/i);
   assert.doesNotMatch(stylesSource, /#339cff/i);
@@ -18,27 +18,27 @@ test("design accent tokens are neutral gray, not blue", () => {
 
   assert.match(
     stylesSource,
-    /--ds-accent:\s*var\(--gray-0\)/,
+    /--ds-accent:\s*#e88c78/,
   );
   assert.match(
     stylesSource,
-    /--ds-accent-hover:\s*var\(--gray-100\)/,
+    /--ds-accent-hover:\s*#f3a491/,
   );
   assert.match(
     stylesSource,
-    /--ds-accent-soft:\s*var\(--gray-300\)/,
+    /--ds-accent-soft:\s*#dca294/,
   );
   assert.match(
     stylesSource,
-    /:root\[data-theme="light"\][\s\S]*?--ds-accent:\s*#1a1c1f/,
+    /:root\[data-theme="light"\][\s\S]*?--ds-accent:\s*#984835/,
   );
   assert.match(
     stylesSource,
-    /:root\[data-theme="light"\][\s\S]*?--ds-accent-hover:\s*#303030/,
+    /:root\[data-theme="light"\][\s\S]*?--ds-accent-hover:\s*#803928/,
   );
   assert.match(
     stylesSource,
-    /:root\[data-theme="light"\][\s\S]*?--ds-accent-soft:\s*#5d5d5d/,
+    /:root\[data-theme="light"\][\s\S]*?--ds-accent-soft:\s*#8c5144/,
   );
 });
 

@@ -4,7 +4,7 @@
  * things it unlocks are diagnostics, not preferences.
  */
 import { desktopFeatures } from "../../../../product-features.ts";
-import type { AppSettings } from "@pi-desktop/shared";
+import { APP_NAME, type AppSettings } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { api } from "../../../lib/api";
 import { useAppStore } from "../../../stores/app-store";
@@ -26,7 +26,8 @@ export function AboutSettings({
   return (
     <div className="settings-stack">
       <div className="settings-about-hero">
-        <div className="settings-about-hero-name">{version?.name || "PI-Desktop"}</div>
+        <div className="settings-about-hero-name">{version?.name || APP_NAME}</div>
+        <div className="settings-about-hero-subtitle">{t("settings.aboutTagline")}</div>
         <div className="settings-about-hero-version">
           {t("settings.aboutVersion", { version: version?.version ?? "" })}
         </div>

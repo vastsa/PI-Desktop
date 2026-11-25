@@ -16,11 +16,13 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const APP_NAME = "PI-Desktop";
-const DEV_BUNDLE_ID = "net.aiuo.pi-desktop.dev";
 const BRANDING_SCHEMA = "v4";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESKTOP_ROOT = join(ROOT, "apps", "desktop");
+const { productName: APP_NAME, appId } = JSON.parse(
+  readFileSync(join(DESKTOP_ROOT, "package.json"), "utf8"),
+).build;
+const DEV_BUNDLE_ID = `${appId}.dev`;
 
 function resolvePackagePath(packageName) {
   const require = createRequire(join(DESKTOP_ROOT, "package.json"));
@@ -160,7 +162,7 @@ function run() {
       electronExecutable: electron.executablePath,
       electronVersion: electron.version,
       iconPath: join(DESKTOP_ROOT, "build", "icon.icns"),
-      trayIconPath: join(DESKTOP_ROOT, "build", "icon.png"),
+      trayIconPath: join(DESKTOP_ROOT, "build", "linux-icons", "512x512.png"),
       trayIconMacPath: join(DESKTOP_ROOT, "build", "tray-icon-mac.png"),
       cacheRoot: join(ROOT, ".cache", "electron-dev"),
     });

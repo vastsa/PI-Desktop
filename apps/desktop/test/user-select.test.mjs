@@ -46,7 +46,7 @@ test("copyable surfaces use theme-aware selection and caret colors", () => {
   );
   assert.match(
     globalStyles,
-    /:focus-visible\s*\{[\s\S]*?outline:\s*1\.5px solid color-mix\(in oklab, var\(--ds-accent\) 80%, transparent\)/,
+    /:focus-visible\s*\{[^}]*outline:\s*1\.5px solid var\(--ds-focus\)/,
   );
 });
 

@@ -70,8 +70,7 @@ test("renderer output keeps its size controls", async () => {
     new URL("../src/components/BrandLogo.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(brandLogoSource, /"\.\.\/assets\/brand\/logo-light\.png"/);
-  assert.match(brandLogoSource, /"\.\.\/assets\/brand\/logo-dark\.png"/);
+  assert.match(brandLogoSource, /"\.\.\/assets\/brand\/logo\.png"/);
   assert.doesNotMatch(brandLogoSource, /\.\.\/\.\.\/build\//);
 });
 
@@ -194,7 +193,7 @@ test("packaging keeps only shipped locales and excludes non-runtime artifacts", 
   // in agent-runtime-bundle-package.test.mjs.
   assert.deepEqual(packageJson.build.extraResources, [
     {
-      from: "build/icon.png",
+      from: "build/linux-icons/512x512.png",
       to: "tray-icon.png",
     },
     {

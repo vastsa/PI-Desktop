@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Derive PI-Desktop platform icon resources from the canonical logo.
+"""Derive Pie Code platform icon resources from the canonical logo.
 
 The tracked ``apps/desktop/build/icon_1024.png`` file is the brand source of
 truth. This script preserves that file and emits:
@@ -7,8 +7,9 @@ truth. This script preserves that file and emits:
   apps/desktop/build/icon.iconset/  - all macOS iconset sizes
   apps/desktop/build/icon.icns      - via `iconutil` (macOS only)
   apps/desktop/build/icon.ico       - multi-size Windows application icon
-  apps/desktop/build/icon.png       - 512px Windows/Linux package icon
+  apps/desktop/build/linux-icons/  - 16/24/32/512px Linux icons
   apps/desktop/build/tray-icon-mac.png - transparent macOS template icon
+  apps/desktop/src/assets/brand/logo.png - renderer-sized color icon
 
 Run: python3 scripts/make-icon.py
 """
@@ -19,7 +20,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "apps" / "desktop" / "build"
@@ -53,36 +54,29 @@ def main() -> None:
             (256, 256),
         ],
     )
-    package_icon = BUILD / "icon.png"
-    master.resize((512, 512), Image.LANCZOS).save(package_icon)
+    package_icons = BUILD / "linux-icons"
+    package_icons.mkdir(exist_ok=True)
+    for size in (16, 24, 32, 512):
+        master.resize((size, size), Image.LANCZOS).save(package_icons / f"{size}x{size}.png")
+    renderer_icon = ROOT / "apps" / "desktop" / "src" / "assets" / "brand" / "logo.png"
+    master.resize((192, 192), Image.LANCZOS).save(renderer_icon)
 
-    # macOS menu bar icons are template images: the opaque pixels are tinted
-    # by the system. The application icon has an opaque light tile, so using
-    # it directly would turn that tile into the tray silhouette. Derive the
-    # dark PI mark as a transparent, monochrome image instead.
-    tray_icon = master.convert("L")
+    # macOS tints template icons. Keep only the warm letter and crust,
+    # which have more red than blue, and omit the blue tile.
+    red, _, blue, alpha = master.split()
     tray_alpha = ImageChops.multiply(
-        tray_icon.point(
-            lambda luminance: max(0, min(255, (160 - luminance) * 255 // 80))
-        ),
-        master.getchannel("A"),
+        ImageChops.subtract(red, blue).point(lambda warmth: min(255, warmth * 4)),
+        alpha,
     )
-    # The source artwork also contains a soft outline around its light app
-    # tile. Keep the known PI mark area so that outline cannot leak into the
-    # menu bar template silhouette.
-    mark_clip = Image.new("L", master.size, 0)
-    mark_draw = ImageDraw.Draw(mark_clip)
-    mark_draw.rectangle((120, 115, 850, 800), fill=255)
-    mark_draw.rectangle((120, 115, 250, 250), fill=0)
-    tray_alpha = ImageChops.multiply(tray_alpha, mark_clip)
-    tray_icon_mac = Image.new("RGBA", master.size, (0, 0, 0, 0))
-    tray_icon_mac.putalpha(tray_alpha)
     mark_bounds = tray_alpha.getbbox()
     if mark_bounds is None:
-        raise ValueError("canonical logo does not contain a dark PI mark")
-    mark = tray_icon_mac.crop(mark_bounds).resize((768, 768), Image.LANCZOS)
+        raise ValueError("canonical logo does not contain a warm Pie Code mark")
+    mark = tray_alpha.crop(mark_bounds)
+    mark.thumbnail((768, 768), Image.LANCZOS)
+    template_alpha = Image.new("L", master.size)
+    template_alpha.paste(mark, ((BASE - mark.width) // 2, (BASE - mark.height) // 2))
     tray_icon_mac = Image.new("RGBA", master.size, (0, 0, 0, 0))
-    tray_icon_mac.paste(mark, (128, 128), mark)
+    tray_icon_mac.putalpha(template_alpha)
     tray_icon_mac_path = BUILD / "tray-icon-mac.png"
     tray_icon_mac.save(tray_icon_mac_path)
 
@@ -101,7 +95,7 @@ def main() -> None:
     if iconutil is None:
         print(f"used {SOURCE}")
         print(f"wrote {windows_icon}")
-        print(f"wrote {package_icon}")
+        print(f"wrote {package_icons}")
         print(f"wrote {tray_icon_mac_path}")
         print("skipped icon.icns (iconutil is unavailable)")
         return
@@ -112,7 +106,7 @@ def main() -> None:
     )
     print(f"used {SOURCE}")
     print(f"wrote {windows_icon}")
-    print(f"wrote {package_icon}")
+    print(f"wrote {package_icons}")
     print(f"wrote {tray_icon_mac_path}")
     print(f"wrote {icns}")
 

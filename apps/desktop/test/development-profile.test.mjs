@@ -33,11 +33,10 @@ test("a development build owns a different data directory than the shipped app",
     join(home, DEVELOPMENT_DATA_DIR_NAME),
   );
 
-  // A shipped installation must keep the directory its users already have, so
-  // the split can only have moved the development side.
-  assert.equal(INSTALLATION_DATA_DIR_NAME, ".pi-desktop");
-  assert.equal(DEVELOPMENT_DATA_DIR_NAME, ".pi-desktop-dev");
-  assert.equal(DEVELOPMENT_INSTALLATION_NAME, "PI-Desktop Dev");
+  // Neither Pie Code profile may open the upstream data by default.
+  assert.equal(INSTALLATION_DATA_DIR_NAME, ".pie-code");
+  assert.equal(DEVELOPMENT_DATA_DIR_NAME, ".pie-code-dev");
+  assert.equal(DEVELOPMENT_INSTALLATION_NAME, "Pie Code Dev");
 });
 
 test("PI_DESKTOP_DATA_DIR still overrides either profile", () => {

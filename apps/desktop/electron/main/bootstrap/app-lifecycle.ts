@@ -146,13 +146,13 @@ export function createApplicationLifecycle({
     const resourceRoot = app.isPackaged
       ? process.resourcesPath
       : join(app.getAppPath(), "build");
+    const colorIcon = app.isPackaged
+      ? join(resourceRoot, "tray-icon.png")
+      : join(resourceRoot, "linux-icons", "512x512.png");
     const candidates =
       process.platform === "darwin"
-        ? [
-          join(resourceRoot, "tray-icon-mac.png"),
-          join(resourceRoot, app.isPackaged ? "tray-icon.png" : "icon.png"),
-          ]
-        : [join(resourceRoot, app.isPackaged ? "tray-icon.png" : "icon.png")];
+        ? [join(resourceRoot, "tray-icon-mac.png"), colorIcon]
+        : [colorIcon];
     return candidates.find((candidate) => existsSync(candidate)) ?? null;
   }
 

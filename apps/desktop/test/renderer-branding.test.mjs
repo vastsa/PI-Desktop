@@ -32,11 +32,14 @@ const [
     read("../src/lib/renderer-language.ts"),
   ]);
 
-test("renderer surfaces the PI-Desktop brand instead of the Codex shell brand", () => {
-  assert.match(english, /shellName:\s*"PI-Desktop"/);
-  assert.match(chinese, /shellName:\s*"PI-Desktop"/);
-  assert.match(english, /placeholder:\s*"Ask PI-Desktop to help with anything"/);
-  assert.match(chinese, /placeholder:\s*"让 PI-Desktop 帮你做任何事"/);
+test("renderer surfaces the Pie Code brand and Chinese About subtitle", async () => {
+  const about = await read("../src/features/settings/pages/AboutSettings.tsx");
+  assert.match(english, /shellName:\s*"Pie Code"/);
+  assert.match(chinese, /shellName:\s*"Pie Code"/);
+  assert.match(english, /placeholder:\s*"Ask Pie Code to help with anything"/);
+  assert.match(chinese, /placeholder:\s*"让 Pie Code 帮你做任何事"/);
+  assert.match(chinese, /aboutTagline:\s*"内网 AI 编程工作台"/);
+  assert.match(about, /t\("settings\.aboutTagline"\)/);
   assert.doesNotMatch(english, /shellName:\s*"Codex"/);
   assert.doesNotMatch(chinese, /shellName:\s*"Codex"/);
   // Codex remains a supported external import source, not the app identity.
@@ -46,8 +49,7 @@ test("renderer surfaces the PI-Desktop brand instead of the Codex shell brand", 
 
 test("app chrome uses the shared brand asset without branding the composer input", async () => {
   // Renderer-sized brand marks, not the 1024px electron-builder installer icons.
-  assert.match(brandLogo, /import brandLogoUrlLight from\s*"\.\.\/assets\/brand\/logo-light\.png"/);
-  assert.match(brandLogo, /import brandLogoUrlDark from\s*"\.\.\/assets\/brand\/logo-dark\.png"/);
+  assert.match(brandLogo, /import brandLogoUrl from\s*"\.\.\/assets\/brand\/logo\.png"/);
   assert.doesNotMatch(brandLogo, /\.\.\/\.\.\/build\//);
   assert.match(brandLogo, /export function BrandLogo/);
   assert.match(brandLogo, /src=\{.*brandLogoUrl/);

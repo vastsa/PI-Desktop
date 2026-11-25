@@ -222,8 +222,8 @@
 - **Steps**: 1) Run the tag release workflow. 2) Confirm the arm64 lane ran on
   an `aarch64` runner and that the packaged
   `target/release/pi-desktop-host-core` is an AArch64 binary. 3) Inspect the
-  published Release assets for `PI-Desktop-X.Y.Z-linux-arm64.AppImage`,
-  `pi-desktop_X.Y.Z_arm64.deb`, `pi-desktop-X.Y.Z-aarch64.rpm`,
+  published Release assets for `Pie-Code-X.Y.Z-linux-arm64.AppImage`,
+  `pie-code_X.Y.Z_arm64.deb`, `pie-code-X.Y.Z-aarch64.rpm`,
   `PI-Desktop-X.Y.Z-linux-arm64.asar`, and
   `pi-host-X.Y.Z-linux-arm64.tar.gz` with its `.sha256`. 4) Confirm
   `latest-linux.yml` still lists the x64 AppImage while
@@ -247,14 +247,14 @@
   for installation and launch.
 - **Steps**: 1) Build the Linux targets and inspect the RPM with `rpm -qip` and
   `rpm -qpl`. 2) Confirm the package contains the application archive,
-  host-core, `pi-desktop.desktop`, and the 512px `pi-desktop` icon. 3) Confirm
+  host-core, `pie-code.desktop`, and the 512px `pie-code` icon. 3) Confirm
   the RPM has no global `/usr/lib/.build-id` links. 4) Install the RPM on the
-  Fedora KDE/Wayland machine and launch PI-Desktop from its desktop entry.
+  Fedora KDE/Wayland machine and launch Pie Code from its desktop entry.
   5) Inspect the taskbar grouping and the installed desktop entry.
 - **Expected**: The x64 RPM is produced with the documented name and uploads
-  with the release artifacts. Its desktop entry contains `Icon=pi-desktop` and
-  `StartupWMClass=pi-desktop`; the running Wayland window groups with the
-  PI-Desktop launcher and shows its icon instead of a generic Electron icon.
+  with the release artifacts. Its desktop entry contains `Icon=pie-code` and
+  `StartupWMClass=pie-code`; the running Wayland window groups with the
+  Pie Code launcher and shows its icon instead of a generic Electron icon.
   The package remains notify-and-link for updates, and the bundled Electron
   binaries do not create global build-id links.
 - **Specs linked**: `01-product/01-product-scope.md`,
@@ -264,6 +264,15 @@
 - **Status**: Unit/source-contract covered (`auto-update.test.mjs`,
   `development-branding.test.mjs`, `ci-workflow.test.mjs`); Fedora KDE/Wayland
   installation remains runner validation
+
+## E2E-PIE-003: Pie Code and PI-Desktop coexist on Kylin
+
+- **Status**: Draft
+- **Milestone**: M6+
+- **Steps and expected results**: Run steps 5 and 6 of the
+  [Kylin acceptance procedure](../kylin-arm64-offline-install.md).
+- **Acceptance**: Both apps can run and restart with separate default
+  profiles. The Pie Code name, icon and both theme palettes are legible.
 
 ## E2E-196a: Unsigned macOS debug lane
 

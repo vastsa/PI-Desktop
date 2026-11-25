@@ -6,7 +6,7 @@ set -euo pipefail
 
 RELEASE_DIR="${1:-apps/desktop/release}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PRODUCT_NAME="PI-Desktop"
+PRODUCT_NAME="Pie Code"
 # Accepts either the bare common name ("XingYu Liu (DUV63RKYTW)") or the full
 # certificate label ("Developer ID Application: XingYu Liu (DUV63RKYTW)").
 IDENTITY_NAME="${MAC_SIGNING_IDENTITY:-XingYu Liu (DUV63RKYTW)}"

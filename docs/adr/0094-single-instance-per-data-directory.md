@@ -58,3 +58,9 @@ app and Chromium profile: the `userData` installation lock is retained while
 Chromium `sessionData` may follow the copied browser profile, with no silent
 relocation or reset of existing renderer state. See
 [Custom storage location](custom-storage-location.md).
+
+## Pie Code amendment
+
+Pie Code uses the same locking mechanism with a separate Electron app name
+and default host directory, `~/.pie-code`. It does not adopt or move the
+upstream PI-Desktop profile. Explicit profile overrides still win.

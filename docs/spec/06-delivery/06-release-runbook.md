@@ -510,9 +510,9 @@ publication:
   plugin removes `woff` and `truetype` `src` entries before Vite registers
   them as assets. The bundled Chromium supports `woff2` universally, so those
   faces would be emitted and never served.
-- **Brand marks are renderer-sized.** `src/assets/brand/logo-{light,dark}.png`
-  are the renderer assets. `build/icon_1024.png` and `build/logo_dark.png` are
-  electron-builder installer icons and must not be imported by the renderer.
+- **The brand mark is renderer-sized.** `src/assets/brand/logo.png` is derived
+  from the canonical `build/icon_1024.png`. The renderer must not import the
+  packaging icon directly.
 
 Renderer output measured on 2026-08-26 after applying these three controls,
 against the same tree at `v0.10.8`:
