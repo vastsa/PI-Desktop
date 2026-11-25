@@ -2,7 +2,25 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const enEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-24",
+    highlights: [
+      "Edit bundled role and skill definitions in Modes, organize private agent roles, and scope delegated work to the tools and files each role needs.",
+      "Optionally follow active subagents above the Composer and stop one or all without stopping the coordinator.",
+      "Long-running Bash commands return control after an initial wait and can continue in the background; optionally report results and resume an idle conversation when finished.",
+      "Send selected text and file-line references from the File Manager to the Composer, and paste image files as image attachments.",
+      "Reconnect legacy MCP servers after transient HTTP+SSE failures instead of leaving them unusable.",
+      "Opt into sandboxed Codemode scripts with bounded execution and model helpers, while keeping the feature off by default.",
+      "Configure custom Anthropic-compatible models to replay unsigned thinking blocks; existing provider behavior remains unchanged unless enabled.",
+      "Mistral-compatible Chat Completions requests no longer receive an unsupported OpenAI store field.",
+      "Recent project labels keep their space beside long conversation titles, and projects stay reachable at high zoom.",
+      "Improve Composer file references, image paste, session restoration after compaction, and Windows/macOS window-state recovery.",
+      "Fix configuration sync after one-sided deletion, MCP reconnects, malformed tool paths, and several sidebar, model-picker, and plugin-panel issues.",
+    ],
+  },
+  {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "Turn on OpenAI Fast mode per model and use /fast in a conversation to request priority service; it may use subscription limits faster or cost more per token.",
       "Inline visualizations load faster with reusable chart helpers, and failed scripts now show actionable errors instead of blank cards.",
@@ -11,6 +29,13 @@ export const enEntries: ChangelogEntry[] = [
       "The context ring updates to the compacted estimate as soon as manual or automatic compaction finishes.",
       "With a Chinese IME, slash commands wait for composition to commit and preserve the draft instead of inserting a duplicate slash.",
       "Regenerated prompts keep their position after the latest reply when their archive finishes outside the loaded history.",
+      "Browse the plugin marketplace as one list that loads more as you scroll, sort by recommended, popular, newest, or name, and see how many plugins match each category; the last saved catalog answers when the plugin center is unreachable.",
+      "Every plugin now sits on a bilingual shelf, so the marketplace reads in English or Chinese and filters by one shared category.",
+      "Plugin details now show the publisher, the readme and the safety notes the catalog publishes; they were being dropped when the catalog was read.",
+      "Choose GPT-6.2 Sol and GPT-6.2 Astra with OpenAI, ChatGPT, GitHub Copilot, OpenCode and gateways that publish them, with their published limits and prices.",
+      "Settings now opens as a dialog over the current page, the sidebar puts New task, Scheduled and Plugin market at the top, and a short startup guide helps you add a model and learn the plugin launcher shortcut.",
+      "Choose which sidebar modules to show in Settings → Appearance → Sidebar modules: New task, Scheduled, Plugin market, pinned sessions, Sessions, Projects, their toolbar buttons and the version chip.",
+      "The sidebar's Sessions section is now Recent: every unpinned conversation, newest first, with Load more; the empty home title also shows a dropdown arrow for switching projects.",
     ],
   },
   {
@@ -32,6 +57,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "Copy rendered Mermaid diagrams as SVG text or export them as standalone SVG files, including from README previews.",
       "See what each turn and the whole conversation cost in the context inspector and turn usage capsule, with subscription usage kept apart from pay-as-you-go spend.",
       "Use your own video as the startup animation by dropping one into the startup folder; the interface fades in after it plays.",
       "Let plugins list saved projects and their folders without switching the active session.",

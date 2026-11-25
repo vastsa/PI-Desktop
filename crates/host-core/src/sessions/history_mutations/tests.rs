@@ -120,6 +120,33 @@ fn retract_removes_only_the_named_final_prompt_and_empty_reply_then_retry_is_saf
 }
 
 #[test]
+fn retract_ignores_the_turn_model_system_snapshot() {
+    let (_dir, db, session) = fixture();
+    stopped_turn(&db, &session, &[message("old", "user", "keep")]);
+    let snapshot: UiMessage = serde_json::from_value(json!({
+        "id": "state", "role": "system", "content": "", "createdAt": "2026-10-26T00:00:00Z",
+        "modelSystem": {"version": 1, "beforeMessageId": "pending", "messageJson": json!({
+            "role": "system", "content": "", "timestamp": 1
+        }).to_string()}
+    }))
+    .unwrap();
+    let turn = stopped_turn(
+        &db,
+        &session,
+        &[
+            message("pending", "user", "draft"),
+            snapshot,
+            message("empty", "assistant", ""),
+        ],
+    );
+    let result = retract_pending_prompt(&db, &session, "pending", Some(&turn)).unwrap();
+    assert_eq!(result.reason, None);
+    assert!(result.retracted);
+    assert_eq!(result.removed_count, 3);
+    assert_eq!(ids(&db, &session), ["old"]);
+}
+
+#[test]
 fn retract_refuses_text_thinking_tools_new_user_steering_and_wrong_turn() {
     for (tail, reason) in [
         (message("reply", "assistant", "answer"), "reply_started"),

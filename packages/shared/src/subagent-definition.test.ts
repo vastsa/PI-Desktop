@@ -35,6 +35,27 @@ function definition(
 }
 
 describe("parseSubagentDefinition", () => {
+  it("binds each fallback thinking level to its own role candidate", () => {
+    const document = "---\ndescription: Review\nfallbackModels: [service/first, service/second]\nfallbackThinkingLevels: [omit, high]\n---\nReview.";
+    expect(parse(document)).toMatchObject({ ok: true, definition: { fallbackModels: [
+      { modelId: "first", thinkingLevel: "omit" }, { modelId: "second", thinkingLevel: "high" },
+    ] } });
+    expect(parse(document.replace("omit, high", "omit"))).toMatchObject({ ok: false });
+    expect(parse(document.replace("omit, high", "omit, bogus"))).toMatchObject({ ok: false });
+  });
+
+  it("reads frontmatter from a file saved with a UTF-8 byte-order mark", () => {
+    const result = parse(
+      "\uFEFF---\nname: code-reviewer\ndescription: Reviews a diff.\ntools: [Read, Grep]\n---\nReview it.",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.definition.name).toBe("code-reviewer");
+    expect(result.definition.description).toBe("Reviews a diff.");
+    expect(result.definition.tools).toEqual(["Read", "Grep"]);
+    expect(result.definition.prompt).toBe("Review it.");
+  });
+
   it("reads the document a project would actually write", () => {
     const result = parse(`---
 name: code-reviewer

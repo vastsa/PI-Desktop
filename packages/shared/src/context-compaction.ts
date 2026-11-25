@@ -79,6 +79,7 @@ export function contextCompactionMark(
   const contextTokens = checkpointContextTokens(record.details);
   return {
     id: record.id,
+    createdAt: record.createdAt,
     ...(record.providerId ? { providerId: record.providerId } : {}),
     ...(record.modelId ? { modelId: record.modelId } : {}),
     throughMessageId: record.throughMessageId,

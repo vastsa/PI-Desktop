@@ -260,10 +260,12 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
   assert.match(shutdownSource, /void state\.shutdownPromise\.then\(releaseQuit, releaseQuit\)/);
 });
 
-test("settings writes validate without applying read defaults", () => {
-  assert.match(mainSource, /validateSettingsWrite\(settings\)/);
-  assert.match(mainSource, /host\.call(?:<AppSettings>)?\("settings\.set", validatedSettings\)/);
-  assert.doesNotMatch(mainSource, /host\.call\("settings\.set", normalizedSettings\)/);
+test("settings writes validate without applying read defaults", async () => {
+  const settingsIpc = await readMainModule("ipc/settings-ipc.ts");
+  assert.match(settingsIpc, /const validatedSettings = validateSettingsWrite\(settings\)/);
+  // The write contract concerns the payload, not the host acknowledgement type.
+  assert.match(settingsIpc, /host\.call(?:<[^>\n]+>)?\("settings\.set", validatedSettings\)/);
+  assert.doesNotMatch(settingsIpc, /\("settings\.set", normalizedSettings\)/);
   assert.match(apiSource, /export function validateSettingsWrite/);
   assert.match(apiSource, /invoke\(IPC\.invoke\.settingsSet, validateSettingsWrite\(settings\)\)/);
   assert.match(mainSource, /hasOwnProperty\.call\(value, "defaultCommandShell"\)/);

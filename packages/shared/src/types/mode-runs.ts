@@ -170,4 +170,57 @@ export type ModeDocumentValidation = {
 
 export type ModeDocumentWriteRequest = { id: string; source: string };
 
+/**
+ * `mode.yaml` bundle surface (issue #2544).
+ *
+ * A mode directory with `mode.yaml` is one copyable unit: the map names the
+ * mode's prompt document and its private subagent documents by relative path.
+ * Electron main reads them; the renderer only ever sees texts keyed by the
+ * relative reference the map declared, so it can never address a file outside
+ * the mode directory.
+ */
+export type ModeBundleContents = {
+  /** `mode.yaml` text. */
+  source: string;
+  /** Text of the document `promptFile` names. */
+  prompt: string;
+  /** Private subagent documents keyed by their relative reference. */
+  agents: Record<string, string>;
+};
+
+/** A whole bundle write: nothing is written unless every reference resolves. */
+export type ModeBundleWriteRequest = ModeBundleContents & { id: string };
+
+/** Copy a mode directory; a bundle copy keeps valid relative references. */
+export type ModeCopyRequest = { fromId: string; toId: string };
+
+/**
+ * The only mode-level fields the settings page edits in place. Both live in
+ * `mode.yaml`; neither changes a running delegation.
+ */
+export type ModeBundleSettingsRequest = {
+  id: string;
+  includeGlobalSubagents?: boolean;
+  /** Local skill ids switched off for this mode only. */
+  disabledSkills?: string[];
+};
+
+/** One private skill as Settings lists it: read-only identity plus its switch. */
+export type ModeSkillSummary = { id: string; name: string; enabled: boolean };
+
+/**
+ * `modesSkills`: the mode's own `skills/` folder and what the host found in it.
+ * `exists: false` means the folder has not been created yet; the page offers to
+ * create it by opening it.
+ */
+export type ModeSkillsResult = {
+  modeId: string;
+  directory: string;
+  exists: boolean;
+  skills: ModeSkillSummary[];
+};
+
+/** `modesSkillsOpen`: the folder that was handed to the OS file manager. */
+export type ModeSkillsOpenResult = { directory: string };
+
 export type ModesChangedEvent = { sessionId: string; run: ModeRun | null };

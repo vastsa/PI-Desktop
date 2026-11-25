@@ -1,0 +1,291 @@
+/*
+  Startup overlays — the first-launch guide and the release announcement.
+  Both sit on the shared dialog layer (z 40) like Settings; only one of the
+  three is ever mounted (features/startup/AppOverlayHost).
+*/
+
+.startup-guide-overlay,
+.app-announcement-overlay {
+  z-index: 40;
+}
+
+.app-announcement-dialog {
+  display: flex;
+  width: min(100%, 560px);
+  max-height: min(86vh, 720px);
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  color: var(--ds-text-primary);
+}
+
+/* Fixed frame: the model step embeds the full Settings destination, and the
+   launcher step must not jump in size when the user moves between them. */
+.startup-guide-dialog {
+  display: flex;
+  width: min(100%, 920px);
+  height: min(86vh, 680px);
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  color: var(--ds-text-primary);
+}
+
+.startup-guide-header,
+.app-announcement-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 12px 24px;
+}
+
+.startup-guide-heading {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.startup-guide-progress {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs-plus);
+  font-variant-numeric: tabular-nums;
+}
+
+.startup-guide-heading h2,
+.app-announcement-header h2 {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-heading);
+}
+
+.startup-guide-heading p {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+}
+
+.startup-guide-body,
+.app-announcement-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 24px 16px;
+}
+
+.startup-guide-footer,
+.app-announcement-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--ds-border-subtle);
+  padding: 12px 20px;
+}
+
+.startup-guide-footer > :first-child:not(.startup-guide-actions) {
+  margin-right: auto;
+}
+
+.startup-guide-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.startup-guide-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.startup-guide-hint {
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Launcher step: actions on the left, launcher thumbnail on the right. */
+.startup-guide-launcher {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 32px;
+  min-height: 100%;
+  padding: 8px 0 4px;
+}
+
+.startup-guide-launcher-main {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+}
+
+.startup-guide-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.startup-guide-key-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.startup-guide-key-plus {
+  color: var(--ds-text-muted);
+  font-size: var(--text-md);
+}
+
+/* Keycaps start dimmed and light up once the user presses the shortcut. */
+.startup-guide-keys kbd {
+  display: inline-flex;
+  min-width: 40px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--ds-tile);
+  box-shadow: inset 0 -2px 0 var(--ds-border-subtle);
+  padding: 0 10px;
+  color: var(--ds-text-faint);
+  font-family: inherit;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  transition: background var(--motion-duration-fast) var(--motion-ease-out),
+    color var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.startup-guide-keys.is-active kbd {
+  background: var(--ds-accent);
+  color: var(--ds-bg-primary);
+  box-shadow: inset 0 -2px 0 color-mix(in oklab, var(--ds-bg-primary) 30%, transparent);
+}
+
+.startup-guide-press-status {
+  margin: 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+}
+
+.startup-guide-keys.is-active + .startup-guide-press-status {
+  color: var(--ds-success);
+}
+
+.startup-guide-points {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-inline-start: 18px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+}
+
+.startup-guide-launcher-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.startup-guide-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: var(--ds-tile);
+  padding: 28px 20px;
+}
+
+.startup-guide-preview-panel {
+  display: grid;
+  width: min(100%, 300px);
+  gap: 4px;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-shadow-dialog);
+  padding: 8px;
+}
+
+.startup-guide-preview-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-field-inset-bg);
+  padding: 8px 10px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+.startup-guide-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+}
+
+.startup-guide-preview-row.is-selected {
+  background: var(--ds-bg-active);
+}
+
+.startup-guide-preview-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-xs);
+  background: var(--ds-tile-deep);
+}
+
+.startup-guide-preview-line {
+  height: 8px;
+  flex: 1;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
+}
+
+.startup-guide-preview-row:nth-child(odd) .startup-guide-preview-line {
+  max-width: 60%;
+}
+
+.app-announcement-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 720px) {
+  .startup-guide-launcher {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .startup-guide-preview {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .startup-guide-overlay,
+  .app-announcement-overlay {
+    padding: 12px;
+  }
+
+  .startup-guide-header,
+  .app-announcement-header {
+    padding: 16px 16px 10px;
+  }
+
+  .startup-guide-body,
+  .app-announcement-body {
+    padding: 4px 16px 12px;
+  }
+}

@@ -337,7 +337,7 @@ export const NAMED_ENDPOINT_PRESETS: readonly NamedEndpointPreset[] = [
     baseUrl: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
     apiStyle: "chat_completions",
     labelKey: "settings.presetAlibabaTokenPlanCn",
-    aliases: ["qwen-token-plan-cn"],
+    aliases: ["qwen-token-plan-cn", "qwen-token-plan-individual-cn"],
   },
   {
     id: "xiaomi-token-plan-cn",
@@ -478,6 +478,40 @@ export function zhipuRequestCompat(input: {
   return isZhipuEndpoint(input)
     ? { thinkingFormat: "zai", zaiToolStream: true }
     : undefined;
+}
+
+function isMistralHostname(baseUrl: string | undefined): boolean {
+  const raw = baseUrl?.trim();
+  if (!raw) return false;
+  try {
+    const hostname = new URL(raw).hostname.toLowerCase();
+    return hostname === "mistral.ai" || hostname.endsWith(".mistral.ai");
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a configured row targets Mistral's Chat Completions endpoint. */
+export function isMistralEndpoint(input: {
+  vendorKey?: string;
+  baseUrl?: string;
+}): boolean {
+  if (isMistralHostname(input.baseUrl)) return true;
+  if (addressesPublishedVendorHost(input.baseUrl)) return false;
+  return matchNamedPreset(input)?.id === "mistral";
+}
+
+/**
+ * Mistral's Chat Completions endpoint strictly rejects the OpenAI-only `store`
+ * field with HTTP 422 (`extra_forbidden`, #2539). pi-ai's `openai-completions`
+ * auto-detection does not classify Mistral as non-standard, so suppress `store`
+ * explicitly here.
+ */
+export function mistralRequestCompat(input: {
+  vendorKey?: string;
+  baseUrl?: string;
+}): { supportsStore: false } | undefined {
+  return isMistralEndpoint(input) ? { supportsStore: false } : undefined;
 }
 
 function mentionsDeepSeek(value: string | undefined): boolean {

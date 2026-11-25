@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import type { AgentEventEnvelope, SubagentDefinition } from "@pi-desktop/shared";
-import { createAssistantMessageEventStream, type Message } from "@earendil-works/pi-ai";
+import {
+  createAssistantMessageEventStream, createFauxCore, fauxAssistantMessage, type Message, type TextContent,
+} from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   composeSubagentSystemPrompt,
@@ -396,6 +398,36 @@ describe("SubagentRun event forwarding", () => {
 
     expect(onTurnEnd).toHaveBeenCalledExactlyOnceWith(message);
     expect(events).toEqual([]);
+  });
+});
+
+describe("SubagentRun Responses reports", () => {
+  const commentary: TextContent = {
+    type: "text", text: "I found the dialog.\n",
+    textSignature: JSON.stringify({ v: 1, id: "msg_progress", phase: "commentary" }),
+  };
+
+  function runWithText(...content: TextContent[]) {
+    const { run } = createRun({ provider: { ...provider, apiStyle: "responses" } });
+    const faux = createFauxCore({ api: "openai-responses", provider: provider.id });
+    faux.setResponses([fauxAssistantMessage(content)]);
+    run.agent.streamFunction = faux.streamSimple;
+    return (run as unknown as SubagentRun).run();
+  }
+
+  it("returns only the final answer in the parent's report", async () => {
+    const report = "PermissionDialog.tsx:17 renders the dialog.";
+    const result = await runWithText(commentary, {
+      type: "text", text: report,
+      textSignature: JSON.stringify({ v: 1, id: "msg_report", phase: "final_answer" }),
+    });
+    expect(result).toMatchObject({ status: "completed", report });
+  });
+
+  it("fails without a report when the only text is commentary", async () => {
+    const result = await runWithText(commentary);
+    expect(result).toMatchObject({ status: "failed", error: { code: "SUBAGENT_NO_REPORT" } });
+    expect(result.report).not.toContain(commentary.text.trim());
   });
 });
 

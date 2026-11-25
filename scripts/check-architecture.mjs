@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
+import { findGrowthViolations } from "./architecture-growth.mjs";
+
 const root = process.cwd();
 const sourceRoots = ["apps", "packages", "crates", "scripts"];
 const sourceExtensions = new Set([".js", ".jsx", ".mjs", ".ts", ".tsx", ".rs"]);
@@ -120,6 +122,7 @@ function readAllowlist() {
   return {
     typescript: value.typescript || {},
     rust: value.rust || {},
+    growth: value.growth || {},
   };
 }
 
@@ -132,6 +135,33 @@ function allowlistReason(entries, path) {
 
 function formatEntry(entry) {
   return entry.path + " (" + entry.loc + " LOC)";
+}
+
+function mergeBaseFor(base) {
+  if (!base) return null;
+  try {
+    return git(["merge-base", base, "HEAD"]);
+  } catch {
+    return null;
+  }
+}
+
+function baseLocReader(revision) {
+  if (!revision) return () => null;
+  const tracked = new Set(
+    git(["ls-tree", "-r", "--name-only", revision]).split("\n").filter(Boolean),
+  );
+  return (filePath) => {
+    if (!tracked.has(filePath)) return null;
+    const text = execFileSync("git", ["show", revision + ":" + filePath], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const newlineCount = (text.match(/\n/g) || []).length;
+    return newlineCount + (text.length > 0 && !text.endsWith("\n") ? 1 : 0);
+  };
 }
 
 const { base: requestedBase } = parseArgs();
@@ -199,6 +229,31 @@ for (const entry of largeNewTypeScript) {
   }
 }
 
+const growthBase = mergeBaseFor(base);
+const growthExempt = new Set(
+  Object.keys(allowlist.growth).filter((path) => allowlistReason(allowlist.growth, path)),
+);
+const growthViolations = findGrowthViolations({
+  metrics,
+  baseLocFor: baseLocReader(growthBase),
+  exempt: growthExempt,
+});
+// Oversized-file growth is reported, not blocking, unless strict mode is on.
+// Replaying recent merges showed a hard gate would reject about half of all
+// pull requests, including small bug fixes, so it starts as a visible warning.
+const strictGrowth = process.env.ARCHITECTURE_STRICT_GROWTH === "1";
+const growthMessages = growthViolations.map(
+  (entry) =>
+    formatEntry(entry) +
+    " grew from " +
+    entry.baseLoc +
+    " LOC while above the " +
+    entry.budget +
+    "-LOC budget; move new logic into a domain module or shrink the file" +
+    " (see docs/architecture/README.md)",
+);
+if (strictGrowth) failures.push(...growthMessages);
+
 console.log("Architecture metrics");
 console.log("Source files: " + metrics.length);
 console.log("Total LOC: " + metrics.reduce((total, entry) => total + entry.loc, 0));
@@ -240,11 +295,33 @@ console.log(
   "  New TS/TSX files checked: " +
     (base ? addedFiles.length : "skipped; no usable base"),
 );
+console.log(
+  "  Oversized-file growth checked against: " +
+    (growthBase ? growthBase.slice(0, 12) : "skipped; no usable base"),
+);
+console.log(
+  "  Oversized files that grew: " +
+    (growthBase ? growthViolations.length : "n/a") +
+    (strictGrowth ? " (strict)" : " (warning only)"),
+);
 
 if (largeNewTypeScript.length > 0) {
   console.log("");
   console.log("New large TS/TSX files");
   for (const entry of largeNewTypeScript) console.log("  " + formatEntry(entry));
+}
+
+if (!strictGrowth && growthViolations.length > 0) {
+  console.warn("");
+  console.warn("Oversized files grew (warning)");
+  for (const [index, message] of growthMessages.entries()) {
+    console.warn("  " + message);
+    if (process.env.GITHUB_ACTIONS === "true") {
+      console.log(
+        "::warning file=" + growthViolations[index].path + ",title=Oversized file grew::" + message,
+      );
+    }
+  }
 }
 
 if (failures.length > 0) {

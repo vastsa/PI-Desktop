@@ -6,10 +6,9 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-const [chatSurface, styles, checklist, composer] = await Promise.all([
+const [chatSurface, styles, composer] = await Promise.all([
   read("../src/components/ChatSurface.tsx"),
   loadStyles(),
-  read("../src/components/OnboardingChecklist.tsx"),
   readComposerSource(),
 ]);
 
@@ -24,7 +23,8 @@ test("empty home uses a single scrollable stack instead of dual-grow portals", (
     chatSurface,
     /empty-hero-subtitle|emptySubtitle(?:Temporary)?/,
   );
-  assert.match(chatSurface, /<OnboardingChecklist \/>/);
+  // First-run help moved to the startup guide (issue #2431).
+  assert.doesNotMatch(chatSurface, /OnboardingChecklist/);
   assert.match(chatSurface, /<div className="home-composer-wrap">/);
   assert.doesNotMatch(
     chatSurface,
@@ -60,11 +60,8 @@ test("empty home keeps the primary task surface focused", () => {
   const emptyEnd = chatSurface.indexOf("<SessionPane", emptyStart);
   assert.notEqual(emptyEnd, -1, "the pane branch must follow the empty block");
   const emptyBlock = chatSurface.slice(emptyStart, emptyEnd);
-  const onboardingAt = emptyBlock.indexOf("<OnboardingChecklist />");
   const composerAt = emptyBlock.indexOf("home-composer-wrap");
-  assert.notEqual(onboardingAt, -1);
   assert.notEqual(composerAt, -1);
-  assert.ok(onboardingAt < composerAt, "onboarding must precede composer in markup");
   assert.match(
     emptyBlock,
     /<div className="home-scroll">[\s\S]*?<\/div>\s*<div className="home-composer-wrap">/,
@@ -79,8 +76,6 @@ test("empty home keeps the primary task surface focused", () => {
 test("short windows keep the empty stack scrollable rather than overlapping", () => {
   assert.match(styles, /@media \(max-height:\s*760px\)/);
   assert.match(styles, /@media \(max-height:\s*640px\)/);
-  assert.match(checklist, /home-onboarding-checklist/);
-  assert.doesNotMatch(checklist, /\bmt-6\b/);
 });
 
 test("empty home keeps the composer in a bottom region", () => {

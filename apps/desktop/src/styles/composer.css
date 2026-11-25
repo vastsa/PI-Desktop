@@ -251,10 +251,44 @@
 }
 
 .composer-suggestion-hint {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--ds-text-secondary);
   font-size: var(--text-xs);
   white-space: nowrap;
+}
+
+.composer-suggestion-navigation {
+  display: inline-flex;
+  flex: none;
+  align-self: flex-start;
+  align-items: center;
+  gap: 2px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-xs);
+  pointer-events: auto;
+}
+
+.composer-suggestion-nav-button {
+  display: grid;
+  place-items: center;
+  inline-size: 22px;
+  block-size: 22px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+}
+
+.composer-suggestion-nav-button:hover {
+  color: var(--ds-text-primary);
+}
+
+.composer-suggestion-nav-button:focus-visible {
+  outline: 1px solid var(--ds-accent);
+  outline-offset: -2px;
 }
 
 .composer-mode-chip-face {
@@ -1351,19 +1385,28 @@
   color: var(--ds-warning);
 }
 
+.task-command-detail,
 .task-output {
-  max-height: 180px;
   margin: 0;
   padding: 8px 10px;
-  overflow: auto;
   border-top: 1px solid var(--ds-border-subtle);
   background: var(--ds-bg-inset);
-  color: var(--ds-text-secondary);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: var(--leading-body);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.task-command-detail {
+  display: block;
+  color: var(--ds-text-primary);
+}
+
+.task-output {
+  max-height: 180px;
+  overflow: auto;
+  color: var(--ds-text-secondary);
 }
 
 /* Narrow composer panes: the header cannot hold progress text, the current

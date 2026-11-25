@@ -1858,6 +1858,537 @@ fn project_group_update_switches_the_primary_root() {
 }
 
 #[test]
+fn single_root_replacement_preserves_legacy_project_and_its_owned_data() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let new = dir.path().join("new");
+    std::fs::create_dir(&old).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let source = db.ensure_project(&old.to_string_lossy(), false).unwrap();
+    db.conn()
+        .execute(
+            "INSERT INTO sessions(id,project_id,created_at,updated_at) VALUES('session',?1,1,1)",
+            [source],
+        )
+        .unwrap();
+    db.conn()
+        .execute(
+            "INSERT INTO scheduled_tasks(id,title,prompt,project_id,config_json,created_at,updated_at)
+             VALUES('task','Task','Prompt',?1,json_object('workspacePath',?2),1,1)",
+            params![
+                source,
+                format!(
+                    "{}/",
+                    crate::db::canonical_project_path(&old.to_string_lossy()).unwrap()
+                )
+            ],
+        )
+        .unwrap();
+    db.set_project_memory(&old.to_string_lossy(), "Keep this context")
+        .unwrap();
+    let group = db
+        .list_project_groups()
+        .unwrap()
+        .into_iter()
+        .find(|group| group.legacy)
+        .unwrap();
+
+    std::fs::rename(&old, &new).unwrap();
+    let shadow = db.ensure_project(&new.to_string_lossy(), false).unwrap();
+    db.kv_set(
+        "app",
+        "currentProjectId",
+        &serde_json::json!(shadow.to_string()),
+    )
+    .unwrap();
+    let updated = db
+        .update_project_group(
+            &group.id,
+            "Relocated",
+            &[new.to_string_lossy().into_owned()],
+            Some(&new.to_string_lossy()),
+        )
+        .unwrap();
+
+    let canonical_new = crate::db::canonical_project_path(&new.to_string_lossy()).unwrap();
+    assert_eq!(updated.primary_path, canonical_new);
+    assert_eq!(
+        db.project_path(source).unwrap().as_deref(),
+        Some(canonical_new.as_str())
+    );
+    assert!(db.get_project(shadow).unwrap().is_none());
+    assert_eq!(db.list_projects().unwrap().len(), 1);
+    let owner: i64 = db
+        .conn()
+        .query_row(
+            "SELECT project_id FROM sessions WHERE id='session'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(owner, source);
+    let task_owner: i64 = db
+        .conn()
+        .query_row(
+            "SELECT project_id FROM scheduled_tasks WHERE id='task'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(task_owner, source);
+    let task_workspace: String = db
+        .conn()
+        .query_row(
+            "SELECT json_extract(config_json,'$.workspacePath') FROM scheduled_tasks WHERE id='task'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(task_workspace, canonical_new);
+    assert_eq!(
+        db.get_project_memory(&new.to_string_lossy())
+            .unwrap()
+            .content,
+        "Keep this context"
+    );
+    assert!(db
+        .get_project_memory(&old.to_string_lossy())
+        .unwrap()
+        .content
+        .is_empty());
+    assert_eq!(
+        db.kv_get("app", "currentProjectId").unwrap(),
+        Some(serde_json::json!(source))
+    );
+}
+
+#[test]
+fn single_root_replacement_refuses_a_non_empty_target_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let new = dir.path().join("new");
+    std::fs::create_dir(&old).unwrap();
+    std::fs::create_dir(&new).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group("Source", &[old.to_string_lossy().into_owned()])
+        .unwrap();
+    let source = db.ensure_project(&old.to_string_lossy(), false).unwrap();
+    let target = db.ensure_project(&new.to_string_lossy(), false).unwrap();
+    db.conn()
+        .execute(
+            "INSERT INTO sessions(id,project_id,created_at,updated_at) VALUES('source-session',?1,1,1)",
+            [source],
+        )
+        .unwrap();
+    db.conn()
+        .execute(
+            "INSERT INTO scheduled_tasks(id,title,prompt,config_json,created_at,updated_at)
+             VALUES('target-task','Target','Prompt',json_object('workspacePath',?1),1,1)",
+            [format!(
+                "{}/",
+                crate::db::canonical_project_path(&new.to_string_lossy()).unwrap()
+            )],
+        )
+        .unwrap();
+    std::fs::remove_dir(&old).unwrap();
+
+    let error = db
+        .update_project_group(
+            &group.id,
+            "Source",
+            &[new.to_string_lossy().into_owned()],
+            Some(&new.to_string_lossy()),
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("non-empty project"));
+    assert_eq!(
+        db.project_path(source).unwrap(),
+        Some(group.primary_path.clone())
+    );
+    assert_eq!(
+        db.project_path(target).unwrap(),
+        Some(crate::db::canonical_project_path(&new.to_string_lossy()).unwrap())
+    );
+    assert_eq!(db.list_projects().unwrap().len(), 2);
+    assert_eq!(
+        db.list_project_groups()
+            .unwrap()
+            .into_iter()
+            .find(|candidate| candidate.id == group.id)
+            .unwrap()
+            .primary_path,
+        group.primary_path
+    );
+}
+
+#[test]
+fn single_root_replacement_refuses_orphaned_target_memory() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let new = dir.path().join("new");
+    std::fs::create_dir(&old).unwrap();
+    std::fs::create_dir(&new).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group("Source", &[old.to_string_lossy().into_owned()])
+        .unwrap();
+    let source = db.ensure_project(&old.to_string_lossy(), false).unwrap();
+    let canonical_new = crate::db::canonical_project_path(&new.to_string_lossy()).unwrap();
+    db.kv_set(
+        "projectMemory",
+        &canonical_new,
+        &serde_json::json!({"content":"Independent memory"}),
+    )
+    .unwrap();
+    std::fs::remove_dir(&old).unwrap();
+
+    assert!(db
+        .update_project_group(
+            &group.id,
+            "Source",
+            &[new.to_string_lossy().into_owned()],
+            Some(&new.to_string_lossy()),
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("non-empty project"));
+    assert_eq!(db.project_path(source).unwrap(), Some(group.primary_path));
+    assert_eq!(
+        db.get_project_memory(&new.to_string_lossy())
+            .unwrap()
+            .content,
+        "Independent memory"
+    );
+}
+
+#[test]
+fn single_root_replacement_rolls_back_an_empty_target_delete_on_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let new = dir.path().join("new");
+    std::fs::create_dir(&old).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group("Source", &[old.to_string_lossy().into_owned()])
+        .unwrap();
+    let source = db.ensure_project(&old.to_string_lossy(), false).unwrap();
+    std::fs::rename(&old, &new).unwrap();
+    let target = db.ensure_project(&new.to_string_lossy(), false).unwrap();
+    db.conn()
+        .execute_batch(&format!(
+            "CREATE TRIGGER reject_relocation BEFORE UPDATE OF path ON projects
+             WHEN OLD.id={source} BEGIN SELECT RAISE(ABORT,'blocked'); END;"
+        ))
+        .unwrap();
+
+    assert!(db
+        .update_project_group(
+            &group.id,
+            "Source",
+            &[new.to_string_lossy().into_owned()],
+            Some(&new.to_string_lossy()),
+        )
+        .is_err());
+    assert!(db.get_project(target).unwrap().is_some());
+    assert_eq!(db.project_path(source).unwrap(), Some(group.primary_path));
+}
+
+fn create_project_chat(db: &Database, path: &std::path::Path) -> String {
+    crate::sessions::create_session(
+        db,
+        Some("Existing chat".into()),
+        Some("agent".into()),
+        None,
+        None,
+        Some(path.to_string_lossy().into_owned()),
+    )
+    .unwrap()
+    .id
+}
+
+fn session_project_path(db: &Database, id: &str) -> Option<String> {
+    crate::sessions::session_summary(db, id)
+        .unwrap()
+        .unwrap()
+        .project_path
+}
+
+#[test]
+fn single_root_replacement_keeps_sessions_when_the_old_folder_still_exists() {
+    // Swapping an existing folder for an unrelated one is not a relocation:
+    // the old project keeps its chats and stays reachable on its own.
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let other = dir.path().join("other");
+    std::fs::create_dir(&old).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group("Swap", &[old.to_string_lossy().into_owned()])
+        .unwrap();
+    let source = db.ensure_project(&old.to_string_lossy(), false).unwrap();
+    let session = create_project_chat(&db, &old);
+    db.set_project_memory(&old.to_string_lossy(), "Old context")
+        .unwrap();
+    let canonical_old = group.primary_path.clone();
+    let canonical_other = crate::db::canonical_project_path(&other.to_string_lossy()).unwrap();
+
+    let updated = db
+        .update_project_group(
+            &group.id,
+            "Swap",
+            &[other.to_string_lossy().into_owned()],
+            Some(&other.to_string_lossy()),
+        )
+        .unwrap();
+
+    assert_eq!(updated.primary_path, canonical_other);
+    assert_eq!(
+        db.project_path(source).unwrap().as_deref(),
+        Some(canonical_old.as_str())
+    );
+    assert_eq!(
+        session_project_path(&db, &session).as_deref(),
+        Some(canonical_old.as_str())
+    );
+    assert_eq!(db.project_session_ids(&canonical_old).unwrap(), [session]);
+    assert!(db.project_session_ids(&canonical_other).unwrap().is_empty());
+    assert_eq!(
+        db.get_project_memory(&old.to_string_lossy())
+            .unwrap()
+            .content,
+        "Old context"
+    );
+    assert_eq!(db.list_projects().unwrap().len(), 2);
+    assert!(db
+        .list_project_groups()
+        .unwrap()
+        .iter()
+        .any(|candidate| candidate.legacy && candidate.primary_path == canonical_old));
+}
+
+#[test]
+fn legacy_single_root_replacement_keeps_sessions_when_the_old_folder_still_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let other = dir.path().join("other");
+    std::fs::create_dir(&old).unwrap();
+    std::fs::create_dir(&other).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let source = db.ensure_project(&old.to_string_lossy(), false).unwrap();
+    let session = create_project_chat(&db, &old);
+    let group = db
+        .list_project_groups()
+        .unwrap()
+        .into_iter()
+        .find(|group| group.legacy)
+        .unwrap();
+    let canonical_old = group.primary_path.clone();
+
+    let updated = db
+        .update_project_group(
+            &group.id,
+            "Swap",
+            &[other.to_string_lossy().into_owned()],
+            Some(&other.to_string_lossy()),
+        )
+        .unwrap();
+
+    // Pre-relocation behavior: the legacy record is returned unchanged.
+    assert_eq!(updated.primary_path, canonical_old);
+    assert_eq!(
+        db.project_path(source).unwrap().as_deref(),
+        Some(canonical_old.as_str())
+    );
+    assert_eq!(
+        session_project_path(&db, &session).as_deref(),
+        Some(canonical_old.as_str())
+    );
+    assert_eq!(db.list_projects().unwrap().len(), 2);
+}
+
+#[test]
+fn two_step_stale_root_repair_relocates_the_stale_project() {
+    // #1869 + #2469: the user first saves the replacement next to the stale
+    // root, then saves again with only the replacement.
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let new = dir.path().join("new");
+    std::fs::create_dir(&old).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group("Moved", &[old.to_string_lossy().into_owned()])
+        .unwrap();
+    let canonical_old = group.primary_path.clone();
+    let source = db.ensure_project(&old.to_string_lossy(), false).unwrap();
+    let session = create_project_chat(&db, &old);
+    db.conn()
+        .execute(
+            "INSERT INTO scheduled_tasks(id,title,prompt,project_id,config_json,created_at,updated_at)
+             VALUES('task','Task','Prompt',?1,json_object('workspacePath',?2),1,1)",
+            params![source, canonical_old],
+        )
+        .unwrap();
+    db.set_project_memory(&old.to_string_lossy(), "Keep this context")
+        .unwrap();
+
+    std::fs::rename(&old, &new).unwrap();
+    let canonical_new = crate::db::canonical_project_path(&new.to_string_lossy()).unwrap();
+    let first = db
+        .update_project_group(
+            &group.id,
+            "Moved",
+            &[canonical_old.clone(), new.to_string_lossy().into_owned()],
+            Some(&canonical_new),
+        )
+        .unwrap();
+    assert_eq!(first.roots.len(), 2);
+    let shadow = db.ensure_project(&canonical_new, false).unwrap();
+    assert_ne!(shadow, source);
+
+    let healed = db
+        .update_project_group(
+            &group.id,
+            "Moved",
+            &[new.to_string_lossy().into_owned()],
+            Some(&canonical_new),
+        )
+        .unwrap();
+
+    assert_eq!(healed.id, group.id);
+    assert_eq!(healed.primary_path, canonical_new);
+    assert_eq!(healed.roots.len(), 1);
+    assert!(!healed.detached_paths.contains(&canonical_old));
+    assert_eq!(
+        db.project_path(source).unwrap().as_deref(),
+        Some(canonical_new.as_str())
+    );
+    assert!(db.get_project(shadow).unwrap().is_none());
+    assert_eq!(db.list_projects().unwrap().len(), 1);
+    assert_eq!(
+        session_project_path(&db, &session).as_deref(),
+        Some(canonical_new.as_str())
+    );
+    let task_workspace: String = db
+        .conn()
+        .query_row(
+            "SELECT json_extract(config_json,'$.workspacePath') FROM scheduled_tasks WHERE id='task'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(task_workspace, canonical_new);
+    assert_eq!(
+        db.get_project_memory(&canonical_new).unwrap().content,
+        "Keep this context"
+    );
+    let groups = db.list_project_groups().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].id, group.id);
+}
+
+#[test]
+fn two_step_stale_root_repair_keeps_detach_when_the_replacement_has_chats() {
+    // A replacement that already owns chats is never merged implicitly; the
+    // stale root is detached exactly as before relocation existed.
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("old");
+    let new = dir.path().join("new");
+    std::fs::create_dir(&old).unwrap();
+    std::fs::create_dir(&new).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group(
+            "Pair",
+            &[
+                new.to_string_lossy().into_owned(),
+                old.to_string_lossy().into_owned(),
+            ],
+        )
+        .unwrap();
+    let canonical_new = group.primary_path.clone();
+    let canonical_old = crate::db::canonical_project_path(&old.to_string_lossy()).unwrap();
+    let source = db.ensure_project(&old.to_string_lossy(), false).unwrap();
+    let old_session = create_project_chat(&db, &old);
+    let new_session = create_project_chat(&db, &new);
+    std::fs::remove_dir(&old).unwrap();
+
+    let updated = db
+        .update_project_group(
+            &group.id,
+            "Pair",
+            &[new.to_string_lossy().into_owned()],
+            Some(&canonical_new),
+        )
+        .unwrap();
+    assert_eq!(updated.roots.len(), 1);
+    assert_eq!(
+        db.project_path(source).unwrap().as_deref(),
+        Some(canonical_old.as_str())
+    );
+    assert_eq!(
+        session_project_path(&db, &old_session).as_deref(),
+        Some(canonical_old.as_str())
+    );
+    assert_eq!(
+        session_project_path(&db, &new_session).as_deref(),
+        Some(canonical_new.as_str())
+    );
+    assert_eq!(db.list_projects().unwrap().len(), 2);
+}
+
+#[test]
+fn removing_an_existing_root_with_chats_still_detaches_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let kept = dir.path().join("kept");
+    let removed = dir.path().join("removed");
+    std::fs::create_dir(&kept).unwrap();
+    std::fs::create_dir(&removed).unwrap();
+    let db = Database::open(&dir.path().join("pi.sqlite")).unwrap();
+    let group = db
+        .create_project_group(
+            "Pair",
+            &[
+                kept.to_string_lossy().into_owned(),
+                removed.to_string_lossy().into_owned(),
+            ],
+        )
+        .unwrap();
+    let canonical_kept = group.primary_path.clone();
+    let canonical_removed = crate::db::canonical_project_path(&removed.to_string_lossy()).unwrap();
+    let source = db
+        .ensure_project(&removed.to_string_lossy(), false)
+        .unwrap();
+    let session = create_project_chat(&db, &removed);
+
+    let updated = db
+        .update_project_group(
+            &group.id,
+            "Pair",
+            &[kept.to_string_lossy().into_owned()],
+            None,
+        )
+        .unwrap();
+    assert_eq!(updated.roots.len(), 1);
+    assert_eq!(updated.primary_path, canonical_kept);
+    assert!(!updated.detached_paths.contains(&canonical_removed));
+    assert_eq!(
+        db.project_path(source).unwrap().as_deref(),
+        Some(canonical_removed.as_str())
+    );
+    assert_eq!(
+        session_project_path(&db, &session).as_deref(),
+        Some(canonical_removed.as_str())
+    );
+    assert!(db
+        .list_project_groups()
+        .unwrap()
+        .iter()
+        .any(|candidate| candidate.legacy && candidate.primary_path == canonical_removed));
+}
+
+#[test]
 fn project_group_update_allows_a_root_renamed_away_externally() {
     // #1869: when a group folder is renamed (or unmounted) outside the app,
     // editing the group must still be able to keep the stale root while its

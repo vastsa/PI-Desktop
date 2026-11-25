@@ -25,12 +25,13 @@ companion Desktop branch. It does not connect to user SSH servers or profiles.
 
 ### Paired release for #1711
 
-Version 0.9.1 keeps this repair distinct from the existing v0.9.0 tag.
-Delivery through the companion
-[Desktop PR #1824](https://github.com/vastsa/PI-Desktop/pull/1824) requires a
-plugin release and a bundled update. Tag the accepted plugin commit and
-publish the same runtime bytes to the marketplace; preserve the existing
-v0.9.0 tag.
+Version 0.9.1 keeps this repair distinct from the existing v0.9.0 tag. The
+companion [Desktop PR #1824](https://github.com/vastsa/PI-Desktop/pull/1824)
+merged on 2026-10-27 as `467bc517` and adopted this source as the bundled
+hotfix `0.9.1-pi.1`, so the Desktop repair no longer depends on this repository
+being released. Merging and publishing this branch is a source-synchronisation
+step for the maintainer: tag the accepted commit and publish the same runtime
+bytes to the marketplace, preserving the existing v0.9.0 tag.
 
 Prepare the runtime with `node scripts/prepare-package.mjs`, then run the
 official `pi-plugin check dist/runtime` and `pi-plugin pack dist/runtime`.
@@ -39,7 +40,7 @@ The runtime includes `remote-workspace.js` and
 built view, README and changelog; omitting either new runtime file makes the
 vendored update incomplete.
 
-After publication, Desktop must copy the released runtime, preserve its local
+If this repository publishes a release later, Desktop must copy that runtime, preserve its local
 MIT license and CommonJS marker, and update `UPSTREAM.md` and the bundled
 provenance tests using the real tag, commit, marketplace artifact checksum
 and per-file checksums. Run the cross-repository Electron journey against
@@ -51,38 +52,57 @@ the shipped bundle.
 
 ## 功能
 
+- **加载反馈**：首次读取时按列表、正文、差异、表格或页面显示对应的骨架。快速请求不播放动效；系统启用「减少动态效果」时使用静态占位。同一目录、文件或数据集后台刷新时优先保留已显示的内容，失败时显示错误而不是持续播放动画。
+
+- **多文件标签**：右侧可同时打开多个文档，同一路径再次打开会定位已有标签。同名文件用父目录区分。每个标签独立保留草稿和查看模式；切换标签不会触发放弃提示。保存仅写当前文件，关闭有改动的标签前可选择保存、放弃或取消。Git 差异与文件标签共用内容区，不覆盖编辑草稿。
+
 - **完整目录树**：懒加载、可按层展开、目录在前。每一行的图标随文件类型变化——文件夹、代码、JSON、Markdown、样式、HTML/Vue/Svelte、YAML/TOML、Shell、SQL、图片、压缩包、字体、锁文件等各有自己的字形与配色；`package.json`、`Dockerfile`、`LICENSE`、`.gitignore` 这类特殊文件名优先于扩展名判定。
 - **选中态与悬停态明确区分**：悬停是淡淡的中性底色（只表示鼠标位置）；选中是强调色底 + 左侧强调色竖条 + 前景色文字 + 中等字重，鼠标移开也保持，悬停到选中行上还会再加深一档，不会让人误以为选中丢了。
-- **右键菜单**：按打开方式、创建、文件管理、复制路径、查看变更/在文件夹中显示、刷新分组排序；HTML、HTM 与 XHTML 文件可在「通过…打开」里选择宿主内置浏览器。列表空白处只提供新建与刷新，文件和文件夹按类型显示操作。支持 ↑↓ / Home / End / Enter / Esc；带子菜单的项鼠标移上去即展开，`→` 进入、`←` 返回上一层。
+- **右键菜单**：文件、目录和列表空白处只显示各自适用的操作，删除放在末尾。HTML、HTM 与 XHTML 可在「通过…打开」里选择内置浏览器；菜单保留方向键、Enter 与 Esc 导航。
 - **复制相对路径 / 复制绝对路径**：右键任一文件或文件夹即可。相对路径以当前浏览的文件夹为基准（正斜杠）；绝对路径是能直接贴到别处的完整路径（基点不是主文件夹时按那个文件夹拼）。成功与失败都给一条 toast 并带上复制的内容，不会静默地什么都没发生。
 - **通过…打开（二级子菜单）**：鼠标停在菜单项上即展开，列出**这台机器上真的装了的**程序：系统默认应用，以及 VS Code、Zed、Chrome、Edge 等（装了哪几个就列哪几个），选中就用那个程序打开当前条目。**按文件类型过滤**——编辑器什么都能打开（文件与文件夹都行），浏览器只出现在它真能渲染的网页类文件上（`.html` / `.htm` / `.shtml` / `.xhtml` / `.mhtml` / `.svg` / `.pdf` / `.xml`）：拿 Chrome 打开 `App.tsx` 只会看到一个纯文本加载页，那是噪音，所以干脆不列。探测只在启动时做一次、**按天缓存**（同一台机器同一天里，第二个窗口、第二次启动都直接读那份缓存），并且**不遍历目录**：只读注册表 `App Paths` 与 `StartMenuInternet`、在 `PATH` 上按候选命令名找可执行文件、再对少数固定安装位置各做一次 `stat`，每条都是 O(候选数)。一个程序都没探到时只留「系统默认应用」这一项，不放点了没反应的条目。
 - **左右分栏，左侧列表可收起**：左侧文件列表，右侧内容。中间分隔条可拖拽，宽度会记住；工具栏最左边的按钮可以把左侧整块收起（收起时编辑器占满整个面板，重新展开按原宽度恢复，收起状态会被记住）。宿主请求打开文件时会自动收起，之后你手动展开就一直保持到下一次宿主请求。
 - **项目组里的多文件夹切换**：宿主把一个项目注册成多个本地文件夹（`workspace.get` / 首次握手的 `roots`、`projectId`）时，面板左上角的文件夹名就是切换器——点开是这组 folder 的菜单，标出主文件夹、当前在看的那个打勾；键盘可达（`aria-haspopup` / `aria-expanded`，Escape 与点到外面都能关），树收起时也照常能用。**只有一个文件夹（或老宿主不送组信息）时，头部与以前完全一样**，不留一个点了没反应的入口。切换会把树、展开、选中、搜索与已打开的文件整体重来，并照旧先过「未保存改动」确认——取消就什么都不换。看的是哪个 folder **按项目记住**（宿主给了 `projectId` 就按项目 id，否则按主文件夹路径；记忆里的路径必须命中当前的 `roots` 才被信任，否则退回主文件夹；最多记 20 个项目、按最近写入淘汰），新项目从主文件夹开始。
-- **代码高亮编辑**：CodeMirror 6，行号、查找替换、多光标、括号匹配、代码折叠。按文件名加载对应语言的语法高亮，覆盖 TypeScript/TSX、JavaScript/JSX、JSON、Markdown、CSS/SCSS/Sass/Less、HTML、Vue、XML、YAML、TOML、Properties、Python、Go、Rust、Java、C/C++、C#、Kotlin、Scala、Dart、Objective-C、PHP、Ruby、Lua、Shell、PowerShell、SQL、Dockerfile、Diff。全部随包内置、离线可用，不请求网络。`Ctrl/Cmd+S` 或工具栏按钮保存；**没有改动时不写盘**，保存后光标与滚动位置留在原处（不会跳回开头），界面显示的始终是磁盘上那份内容。焦点不在编辑器里（刚点过工具栏、或停在预览 / 表格 / 树视图）时 `Ctrl/Cmd+S` 同样有效。
+- **代码高亮编辑**：CodeMirror 6，行号、查找替换、多光标、括号匹配、代码折叠；查找 / 替换面板与「跳转到行」对话框的输入框、占位文本与按钮显式跟随插件的亮 / 暗调色板，不会退回 CodeMirror 的白底默认样式。按文件名加载对应语言的语法高亮，覆盖 TypeScript/TSX、JavaScript/JSX、JSON、Markdown、CSS/SCSS/Sass/Less、HTML、Vue、XML、YAML、TOML、Properties、Python、Go、Rust、Java、C/C++、C#、Kotlin、Scala、Dart、Objective-C、PHP、Ruby、Lua、Shell、PowerShell、SQL、Dockerfile、Diff。全部随包内置、离线可用，不请求网络。`Ctrl/Cmd+S` 或工具栏按钮保存；**没有改动时不写盘**，保存后光标与滚动位置留在原处（不会跳回开头），界面显示的始终是磁盘上那份内容。焦点不在编辑器里（刚点过工具栏、或停在预览 / 表格 / 树视图）时 `Ctrl/Cmd+S` 同样有效。
 - **Markdown 预览 / 编辑切换**：打开 `.md` / `.markdown` / `.mdx` 时，工具栏出现「编辑 / 预览」切换。预览支持标题、围栏代码块（带同样的语法高亮）、引用、分隔线、有序/无序/任务列表（按缩进嵌套）、表格（含对齐）、行内 code / 粗体 / 斜体 / 删除线 / 链接 / 图片。切换会记住。
 - **PDF 预览（只读）**：打开 `.pdf` 即可连续上下滚动阅读，支持「单页 / 双页 / 双页（封面单独）」布局、上一页 / 下一页、输入页码跳转、缩放（10%–400%）、适应宽度与 100% 实际大小；适应宽度会跟随面板和分栏尺寸，按当前布局中已知最宽页面组的实际尺寸计算。滚动切页保持比例，封面和末尾落单页不会自动放大；惰性加载发现更宽页面时扩展宽度依据。点击「导航」展开侧栏：**缩略图**定位页面并标记当前页，**目录**展示 PDF 内置的嵌套书签并跳转，**文档信息**展示文件名、体积、页数、标题、作者与日期等元数据；没有内置书签时明确提示。有文字层的 PDF 可以选择并复制文字，并可全文查找（中英文命中高亮与计数、上一个 / 下一个匹配，支持区分大小写、全字匹配和正则表达式三种开关组合；无效正则会提示并清除命中，修正后恢复；Enter / Shift+Enter 跳转、Escape 关闭）；清空查询或关闭后清除高亮。焦点位于 PDF 阅读区时 Ctrl/Cmd+F 打开查找。扫描件显示原始图像，不提供 OCR。PDF.js、Worker、字体映射与图像 / 色彩解码资源全部随包内置，离线可用。主视图缓存邻近页面，缩略图按可见范围渲染并释放不再使用的页资源；窄面板的导航侧栏覆盖显示，跳转后自动收起，也可按 Escape 关闭。切换文件后释放文档与 Worker；单文件上限 **24 MiB**。
 
   正则查找按页在独立 Worker 中执行，不重复解析 PDF；单页运算超过 1 秒或命中超过 10 万个时停止、清除本次命中并显示提示，可简化表达式后继续查找。清空、关闭、切换查找模式或文档会取消旧任务。Worker 无回应时，文档销毁也有 1 秒等待上限，并清理该文档的字体、滤镜和监听。
 - **图片查看**：png / jpg / jpeg / gif / webp / avif / bmp / ico / svg。默认适应窗口，可切「实际大小」；底部显示像素尺寸与文件体积，舞台铺棋盘格，透明区域一眼可见。
 - **音视频播放**：mp4 / m4v / mov / webm / ogv / mkv 用播放器，mp3 / m4a / aac / wav / flac / ogg / opus / weba 用音频条。**不自动播放**；编码或封装不被支持时给明确提示，而不是留一块黑框。
-- **CSV / TSV 表格（分页）**：打开 `.csv` / `.tsv` 就是表格，默认**每页 1000 行**；底部工具条可以翻页（首页/上一页/下一页/末页）、看「当前范围 / 总行数」，也能改每页行数（100–5000，选择会记住）。首行当表头且吸顶，最左一列是行号且吸左，整行悬停高亮，整列都是数字时自动右对齐，被省略号截断的值悬停可看全。**点表头排序**：升序 → 降序 → 取消（回到文件原序）；整列都是数字按数值比，否则按自然序文本比，空值永远沉底。解析支持引号包裹、`""` 转义、字段内换行、CRLF 与参差的行；列数上限 60、解析上限 20 万行，超出会在底部说明。工具栏可切回源码编辑。
+- **CSV / TSV / xlsx 表格（分页）**：打开 `.csv` / `.tsv` 就是表格；`.xlsx` 先在主进程里按只读方式解包，转成同样的表格文本（多张表用表名隔开；不执行宏、不读 `vbaProject.bin`、绝不写回原文件。上限 8 MiB 压缩包、单个部件解压 32 MiB、8 张表、5000 行、60 列、单格 2000 字，超出会在表格上方按界面语言说明，不再往数据里塞一行提示）。工作簿只有**表格**这一种看法：它显示的是派生文本、不是文件字节，所以既没有编辑页签，主进程也拒绝对 `xlsx` / `xlsm` 写入——保存不可能覆盖原文件。日期单元格显示的是 Excel 的序列号，公式单元格显示缓存值（没有缓存值的显示为空）。默认**每页 1000 行**；底部工具条可以翻页（首页/上一页/下一页/末页）、看「当前范围 / 总行数」，也能改每页行数（100–5000，选择会记住）。首行当表头且吸顶，最左一列是行号且吸左，整行悬停高亮，整列都是数字时自动右对齐，被省略号截断的值悬停可看全。**点表头排序**：升序 → 降序 → 取消（回到文件原序）；整列都是数字按数值比，否则按自然序文本比，空值永远沉底。解析支持引号包裹、`""` 转义、字段内换行、CRLF 与参差的行；列数上限 60、解析上限 20 万行，超出会在底部说明。工具栏可切回源码编辑（`.xlsx` 除外，它只有表格）。
 - **JSON 折叠树**：`.json` / `.jsonc` / `.json5` 可切树视图，默认展开两层、单节点最多直接铺 100 个键，长字符串截断（完整值在悬停提示里）。`//` 注释、尾逗号这类非严格 JSON 不会炸面板，只显示「解析失败 + 原因」，源码视图照常可编辑。
 - **SQLite 数据库（只读）**：`.db` / `.sqlite` / `.sqlite3` / `.db3` 打开即用——顶部概览（体积、页大小 × 页数、编码、SQLite 库版本、WAL 提示），「浏览」页签里选表或视图看数据（分页、点表头排序、最左 `rowid`、`NULL` 灰显、BLOB 只显示体积）、「结构」按钮看列与类型/索引/触发器/`CREATE` 原文，以及「SQL」页签里的**只读查询框**（`Ctrl/Cmd+Enter` 运行，可选行数上限，显示耗时与截断提示）。
   这是插件里**唯一能打开大文件**的预览类型：数据库的字节根本不进视图，主进程每次只取一页。
 - **二进制说清楚**：zip / apk / exe 这类没有可预览形态的文件，提示「二进制文件（zip、apk、exe 等），暂不支持预览」，不做魔法识别，也不假装能解压。
-- **文件操作**：新建文件、新建文件夹、重命名、移动到指定目录。
+- **文件操作**：右键新建或重命名，把文件或文件夹拖到目标目录即可移动；拖回根目录无需输入路径。目标同名时不覆盖。搜索框旁的「全部展开 / 全部收起」作用于目录层级，不会关闭正在编辑的文件。
 - **用默认应用打开 / 在文件夹中显示**：文件右键即可（`fs.openDefault` / `fs.reveal`）。这两个动作由宿主执行，权限与范围同内置的 Files 视图。项目里换过文件夹之后，基点不是主文件夹时改送绝对路径——宿主这两条通道只接受工作区相对路径，送相对路径会被按主文件夹解析，两个文件夹里有同名文件就会打开另一个；宿主对「本项目已注册文件夹根」下的绝对路径有对应的窄放行（ADR 0253）。
 - **按文件名搜索**：整个项目范围内分页搜索，点击结果直接跳转并展开到该文件。
 - **宿主请求打开文件**：宿主可以要求视图打开某个文件，两条投递路径（视图入口 URL 的 `?piViewOpen=` 载荷、`view:open` 推送）都已接住，同一条请求重复投递只处理一次。三种路径形态各有各的基准：**项目内相对路径**以主文件夹为基准（当前看的若不是主文件夹，会先切回主文件夹再打开）；**落在同项目另一个 root 下的绝对路径**会先切到包含它的那个 root、再按「相对该 root」打开（祖先目录照旧展开、行照旧高亮，效果与点击搜索结果一致）；**组外的绝对路径**（会话临时目录 / 附件）照旧走 0.4.0 的外部行为——不进树、不高亮任何行、基点不动。打开前照旧走「未保存改动」确认，不会静默丢弃编辑。
 - **git 联动（状态 + 变更内容）**：文件列表里每一行带一个 git 徽标——**绿 `A` 新增**（含未跟踪的新文件）、**琥珀 `M` 已修改**、**红 `D` 已删除**、**蓝 `R` 已重命名**、**紫 `U` 冲突**——文件行尾再给出相对上次提交的增删行数（`+N` / `−N`）；**目录上给的是整棵子树的汇总**（取子树里最值得注意的那个状态 + 受影响文件数），所以不展开也能看出「哪个目录脏了」。悬停能看到完整说法（是否已暂存、是不是未跟踪）。左侧列表顶部一句话概览当前分支与各类变化的文件数（干净时显示「工作区干净」）。
   打开一个有改动的文件后，工具栏出现「变更」按钮（右键菜单里也有「查看变更」），点开是**逐行对照的 unified diff**：新增行绿底、删除行红底、两侧行号、hunk 头保留所在函数名，**已暂存（HEAD → 暂存区）与未暂存（暂存区 → 磁盘）分段标注**；未跟踪的新文件按「全文都是新增」展示，被删除的文件仍能看它删掉了什么。保存之后徽标与差异立刻跟上（主进程那边的状态快照被当场作废）。
-  状态与差异都来自**工作区里真实存在的 git**（只读子命令 `status` / `diff` / `rev-parse`，不写索引、不联网、不碰 `.git/**`）：这样索引格式、rename 检测、`.gitattributes` 的换行与 filters 归一化全都跟着用户的 git 版本走，不会和 `git status` 对不上。**没有 git、当前文件夹不是仓库、git 超时或缺失时，所有标记整体消失**，列目录 / 读 / 写 / 保存 / 删除一条都不受影响。
-- **文件监听（自动刷新）**：文件在本视图之外被改动——外部编辑器、`git checkout`、构建产物、另一个窗口——会在一秒多内被自动发现并**重新读取**，树与列表也跟着刷新（体积、mtime、git 徽标、新建与删除一起跟上），不用再点「刷新」。主进程用 Node 的 `fs.watch` 对**当前浏览的文件夹**开一只递归监听（`persistent: false`，面板不常驻后台；`.git/` 与 `node_modules/` 的事件丢弃，凭据类路径照旧不上报），变化去抖 250ms 后并入有界历史，视图每 1.2 秒取一次增量（宿主没给插件向视图推送的通道，面板不可见时跳过这一轮）。
-  三条边界写清楚：① **没有未保存改动时**才自动重新读取打开的文件；**有未保存改动时只亮一条提示条、绝不覆盖**（静默丢掉刚敲的字是最糟的一种「自动」），提示条上的「重新加载」仍走既有的未保存确认框；② 本插件自己的保存先记一笔，同名事件在 1.5 秒内不算「外部改动」——否则每按一次 `Ctrl+S` 都会把自己的文档重装一遍（光标与滚动位置一起丢）；③ 批量改动时最多顺手刷新 8 个目录，剩下的留给下一次或手动刷新。
-  顶部有一个「自动刷新」开关可以随时关掉（运行时不支持递归监听时整颗按钮禁用并说明原因），**两个手动刷新按钮原样保留**——监听只是省掉那一下点击，从来不是它的替代品。换项目 / 换文件夹时监听跟着换，插件卸载时一并关闭。
+  底部常驻文件与 Git 图标。未安装 Git 时会显示安装指引；普通本地目录可显式初始化，不会自动暂存或上传。仓库顶部可切换「更改 / 历史」；中间按已暂存、工作区与未跟踪分组，底部是分支、同步操作与提交说明。悬停或聚焦文件行，用 `+` 暂存、`−` 取消暂存；输入提交说明后点击勾号或按 Ctrl/Cmd+Enter 提交。点击已暂存或未暂存分组中的文件（包括已删除文件），在右侧打开对应差异预览页签；再次选文件复用这一页签，返回编辑页签保留未保存的草稿。同步菜单支持 Fetch / Fetch From、Pull（仅快进）/ Pull (Rebase)、Push / Push To 和需明确确认的 Force Push（带租约）。使用仓库已配置的标准 HTTPS/SSH 远端，不提供任意命令输入；需要交互式凭据、特殊配置或冲突处理时请使用外部 Git。没有 Git 或不在仓库时仍能浏览、编辑文件。
+- **文件监听（自动刷新）**：本地项目默认开启。外部应用新增或删除文件后，可见目录会自动更新；正常情况下每 400ms 检查一次系统事件。批量改动分批消化，返回面板时重新核对，系统不支持递归监听时改为定期读取可见目录。未展开的目录在展开时读取最新内容。
+  打开的文件如有未保存改动，只提示外部更改，不覆盖编辑器。工具栏显示自动刷新的开关状态，也可随时手动刷新。
 - **编辑 / 预览 / 变更 是一组互斥页签**：打开有 git 变化的文件时，工具栏是同一个 tablist——「变更」与「编辑 / 预览」同组，因此从任何一侧都能点进去、再点回来，内容区**一次只会有一种视图**（0.8.0 时「变更」是 tablist 之外的独立开关，于是「预览 + 变更」能同时成立，两个整块高的视图会压在一起；0.8.1 把判定收进 `lib/pane.ts` 的单值 `contentKind()` 后不可能再发生）。变更页签只对文本文件给出。
 - **忽略规则**：项目里有 `.gitignore` / `.ignore` 就按规则隐藏条目（可用工具栏的眼睛按钮切回显示）；**一个规则文件都没有时，目录树展示全部条目**。
 - **跟随宿主外观**：亮/暗配色与界面语言（中文 / English）跟随 PI-Desktop 主体，编辑器与预览的高亮配色一并跟随。
+
+## 源码选区加入对话
+
+在当前项目的源码编辑器中选中一段文字。复制时会保留原始纯文本，并附带项目路径、文件路径和行号，供支持行引用的宿主识别。宿主支持时，选区右键菜单也会提供「加入对话」。行号从 1 开始，包含起止行。选区刚好结束在下一行开头时，该行不计入。
+
+行引用要求编辑器内容与已保存的文件一致。保存或重新加载后可引用行范围。改动未保存时，复制仍保留普通文本。
+
+宿主通过 `window.pluginBridge.capabilities.composerFileLines` 声明支持右键入口。插件将 `{ workspace, path, start, end }` 传给 `composer.addFileLines`，也将同样的 JSON 写入剪贴板格式 `application/x-pi-desktop-file-lines`。`workspace` 是当前项目路径，`path` 是文件绝对路径。宿主负责验证来源、渲染标签，以及发送后按行读取已保存的文件。
+
+Line references require the host bridge in [PI-Desktop #2129](https://github.com/vastsa/PI-Desktop/pull/2129).
+An eligible view advertises support; each action still checks the active session,
+project, permissions and installed plugin registration. Host rejection reasons
+are shown in the failure toast. `path` may belong to another registered folder
+in the project group and does not have to start with `workspace`.
+Unsaved or externally changed documents show a save/reload hint. If clipboard
+metadata cannot be attached, a toast explains the plain-text fallback.
 
 ## 安装
 
@@ -94,6 +114,23 @@ the shipped bundle.
 装好后打开一个项目，在**右侧工作面板头部的切换菜单 → “Plugin views / 插件视图”** 分组里点击「文件管理器」。
 
 > 这个插件没有命令面板入口，也不注册面板窗口——它只提供一个停靠在右侧栏的视图（`contributes.views`）。宿主没有提供「用命令打开视图」的通道，所以这里也不声明误导性的命令。
+
+### Markdown image previews
+
+Project-relative Markdown images render inline through the existing bounded
+`fm.read` bridge, relative to the Markdown document's directory. Parent segments
+may reach another directory inside the selected root. Root escapes, credential
+paths, symlink escapes and oversized files remain denied by the file reader.
+Missing, unreadable, invalid and unsupported images retain their alt-text
+placeholder. Remote URLs, absolute paths and images beside external documents
+remain placeholders; previewing a document grants no new filesystem or network
+access. Reload the document to refresh its images.
+
+Run `pnpm verify:markdown` in `tests/electron` for the isolated production-view
+journey: decoded relative/encoded images, placeholder fallbacks, document switching,
+reload and external-document isolation. See `tests/electron/README.md` for dependency
+reuse and temporary-profile setup. This is a plugin capability proposal for #11;
+Desktop adoption follows an accepted plugin release.
 
 ## 开发
 
@@ -128,7 +165,7 @@ pnpm typecheck
 pnpm verify        # 项目组 / 路径限制 + 高亮 + Markdown + 查看器 + git + 监听 + PDF
 ```
 
-`pnpm verify` 跑九个不需要 DOM 的校验脚本，用于覆盖「静默失败」的九条链路：
+`pnpm verify` 跑十三个不需要 DOM 的校验脚本，用于覆盖「静默失败」的十三条链路：
 
 - **`verify-roots.mjs`**：断言 `lib/roots.ts` 里那套纯规则——组形状（老宿主退化成单根、名字按
   路径末段补、`primary` 标记与顺序）、记忆键（`p:` / `r:`）、选中的 root（记忆命中才信，指向已被移出
@@ -157,6 +194,8 @@ pnpm verify        # 项目组 / 路径限制 + 高亮 + Markdown + 查看器 + 
 - **`verify-editors.mjs`**：三层。① 解析夹具钉住编辑器探测的几种文本形态——注册表 `App Paths` 的 `(Default)` 取值、`StartMenuInternet` 的 `shell\open\command`（`"C:\…\chrome.exe" -- "%1"` 这种带引号带参数的写法要剥得干净）、`PATH` 上候选文件名的顺序（Windows 只认 `.exe`，排在第一位且只出现一次），以及注册表键名的精确优先 / 前缀兜底（Firefox 的子键带客户端哈希后缀，`FIREFOX.EXE-308046b0af4a39cb` 得能命中）。② 端到端：桩宿主驱动**真实的 `main.js`**，断言 `fm.editors` 的形状、落盘缓存的路径与内容、以及**视图拿不到可执行文件路径**（只给 id 与显示名）这条边界；再起**第二个真进程**读同一份缓存，断言结果一致且缓存文件没有被重写——这就是「一天只探一次、多开共享」要保证的东西。③ 路径守卫：未知编辑器 id、越出根的相对路径、凭据文件、`external` 形态、缺参数全部被拒。最后还有一条**真的启动一次**的用例：把「编辑器」设成 `node` 自己、被打开的是一段小脚本，断语由那个真实子进程写出来——它收到的参数正是被点开那个文件的绝对路径。
 - **`verify-watch.mjs`**：三层。① 噪声与抑制的纯判定：`.git/`、任意层级的 `node_modules/`、凭据路径、本插件原子写的临时文件（`.README.md.<ts>.<rand>.tmp`）都不上报，而同名的真实文件照报；「这是我自己写的吗」这条抑制的记一笔 / 判定。② 端到端：临时目录 + 桩宿主驱动**真实的 `main.js`**，断言**操作系统真的把事件送到了**——外部改 / 外部建 / 外部删都出现在游标增量里、同一游标重复问幂等、`.git/` 与 `node_modules/` 的变化不进增量、**插件自己的保存不进增量**、抑制窗口过后同名改动照旧上报（监听不会慢慢失灵）、换文件夹后监听跟着换、没有项目时报告不可用而不抛错、`onUnload` 之后监听真的停了。③ 视图的判定（`lib/watch.ts` 纯函数）：变化在别处只刷目录、打开的文件被改且无未保存改动才自动重读、有未保存改动只提示不覆盖、刷新目录数有上限、游标落到历史之外时保守处理。
 - **`verify-pdf.mjs`**：桩宿主驱动真实 `main.js`，验证 `.PDF` 大小写识别、base64 字节无损传递、24 MiB 边界与超限处理、空 / 损坏文件进入 PDF 查看器的路径，以及根外路径、符号链接、凭据限制与多文件夹切换；同时校验双页封面 / 末页的稳定宽度、混合尺寸分组、惰性 / 乱序加载及文档间隔离。PDF 的内容路由与只读行为还由 `verify-viewers.mjs` 覆盖；渲染和交互需使用真实浏览器验证。
+- **`verify-context-menu.mjs`**：断言右键菜单的分组、顺序、适用文件类型与内置浏览器入口，不让新增操作静默挤乱已有动作。
+- **`verify-theme.mjs`**：断言 CodeMirror 查找 / 替换面板与「跳转到行」对话框的输入框、占位文本与按钮显式使用插件主题变量，并且**连构建产物 `views/assets/index.js` 一起校验**——防止暗色外观退回白底白字的默认样式，也防止改了 CSS 忘了 `pnpm build`。
 
 PDF 浏览器验收应使用生产构建和离线 `file://` 页面：长文档连续滚动与页面底部可达、页码同步、三种布局与混合横竖页适应宽度、在封面 / 末页的单与双页交界处往返滚动和拖动后缩放不变且渲染事件停止、惰性加载新尺寸后比例稳定、缩略图与嵌套 / 命名书签跳转、无目录提示、页码标签与 Info / XMP 元数据、真实鼠标文字选择、旋转页与特殊页面单位、中文字体映射与扫描件 / CMYK 解码、360px 窄面板、主题与语言、快速切页后缩放、快速切换文件，以及加载 / Worker 失败后的恢复。关闭 PDF 后确认 Worker 和 Blob URL 均释放；浏览器模拟宿主桥通过后，仍需在 PI-Desktop 安装包中检查实际面板交互。
 
@@ -192,14 +231,13 @@ node ../pi-file-manager-smoke-test.cjs
 
 **Markdown 预览的安全做法**：预览**不使用** `dangerouslySetInnerHTML`，而是把 Markdown 解析成 React 元素——节点由 React 转义，结构上不存在注入面，因此也不需要额外的 sanitizer。原因很直接：这个视图的 bridge 通向一个能读写项目文件的插件主进程，预览里的 XSS 就等于任意文件写入。预览中的链接也不会导航（点一下就离开插件页面回不来了），点击只会把地址显示出来。
 
-**不访问网络**：没有 `net.domains`，运行时不发起任何请求。插件数据目录里只放设置（分栏宽度、左侧列表是否收起、显示开关、Markdown 默认视图、每个项目在看哪个 folder）、上面那份审计日志，以及编辑器探测的当日缓存（`editors.json`，只存探测到的程序路径，一天一份）。
+**网络边界**：浏览、预览与历史查询无需网络。显式执行 Git 获取、拉取或推送时，本机 Git 子进程可连接仓库中配置的远端；这不是宿主 `net.fetch` 通道，不会自动同步。插件数据目录里只放设置（分栏宽度、左侧列表是否收起、显示开关、Markdown 默认视图、每个项目在看哪个 folder）、上面那份审计日志，以及编辑器探测的当日缓存（`editors.json`，只存探测到的程序路径，一天一份）。
 
 ## 已知限制
 
 - **删除会先弹确认框**：目录整体递归删除，路径限制与写操作一致（限在当前选中的 folder root 内、拒绝根目录本身与凭据类路径），并记入写入审计；删除不可撤销。
 - **「用默认应用打开」与「在文件夹中显示」只对文件有效**（宿主对目录返回 `INVALID_ARGUMENT`），入口在文件树的右键菜单里。
 - **Markdown 预览里的图片仍是占位块**：`![](path)` 显示成带文件名的占位符。文件级的图片查看走 data URI 已经可用，但预览里的图片要逐张按相对路径去读，本轮没做。原因还是那条：面板以 `file://` 加载，相对路径指向视图自身而不是项目。
-- **文件监听**：宿主只有一条推给视图的通道（`view:open`，用于「打开这个文件」的请求），没有文件变更事件，所以外部改动不是实时的；保存后会刷新目录，工具栏的「从磁盘重新加载」随时可点，用来把别处改动拉进来（当前有未保存改动时会先确认）。
 - **项目外路径只能靠宿主指名**：只有宿主请求打开的文件可以落在项目根之外（会话临时目录 / 附件），并且要视图显式声明 `external`；目录树本身仍然只显示当前项目，插件不会自己去翻项目之外的路径。
 - **一次只看一个文件夹根**：项目注册了多个 folder 时，目录树、搜索、SQLite 与所有路径校验都是相对**当前选中的那个 root** 解析的——要看另一个 folder 就在左上角切过去（切换会重建视图状态）。组里的文件夹不会合并成一棵树：包含基点任何时候都只有一个。
 - **二进制不可预览**：zip / apk / exe / tiff 只给提示——不解压、不列归档内容、不做十六进制查看。TIFF 单独说明：Chromium 解不了它，所以按二进制处理，而不是显示一张破图。

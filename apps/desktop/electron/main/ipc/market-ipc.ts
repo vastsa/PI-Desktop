@@ -46,6 +46,31 @@ export function registerMarketIpc({
     });
   });
 
+  // One page of the marketplace. The host owns normalization, the plugin
+  // center request and the snapshot fallback; the bridge only shapes the
+  // payload so a renderer bug cannot smuggle extra fields to the host.
+  handle(IPC.invoke.marketBrowse, async (payload?: {
+    query?: unknown;
+    category?: unknown;
+    sort?: unknown;
+    seed?: unknown;
+    page?: unknown;
+    pageSize?: unknown;
+  }) => {
+    if (!host) throw new Error("host unavailable");
+    const text = (value: unknown) => (typeof value === "string" ? value : "");
+    const count = (value: unknown) =>
+      typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+    return host.call("market.browse", {
+      query: text(payload?.query),
+      category: text(payload?.category),
+      sort: text(payload?.sort),
+      seed: count(payload?.seed),
+      page: count(payload?.page),
+      pageSize: count(payload?.pageSize),
+    });
+  });
+
   handle(IPC.invoke.marketGetDetail, async (id: string) => {
     if (!host) throw new Error("host unavailable");
     return host.call("market.getDetail", { id });

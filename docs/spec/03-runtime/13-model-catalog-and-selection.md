@@ -412,6 +412,13 @@ configured that value; the Advanced inputs retain the conservative runtime
 limits until the user edits them. Both markers are optional, so old configs
 remain readable and downgrade clients ignore them.
 
+For a saved non-OAuth endpoint, a catalog-owned context window follows the
+cached capacity reported for the exact provider and wire model ID when the
+endpoint still lists the model. Session launch passes this window to the
+runtime for compaction and provider requests. Missing capacity, unlisted
+models, and an unavailable cache fall back to the catalog/binding resolution
+above. Discovery does not change the saved binding or its output cap.
+
 The configured user value remains persisted and visible in Advanced settings, but
 provider safety does not trust an enlarged override beyond a known published
 window. Outbound output caps, automatic compaction, and overflow classification

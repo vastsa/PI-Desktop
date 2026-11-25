@@ -2,6 +2,8 @@ import {
   AgentHost,
   RacpError,
   TRUSTED_MODE_ORIGIN,
+  TRUSTED_BACKGROUND_CONTINUATION,
+  type TrustedBackgroundContinuation,
   type TrustedModeOrigin,
   type ApprovalPort,
   type Principal,
@@ -28,6 +30,7 @@ import type {
   RacpPermissionMode,
 } from "@pi-desktop/shared";
 import { IPC, isGlobalPermissionMode } from "@pi-desktop/shared";
+import { backgroundContinuationRequest } from "./runtime/background-continuations";
 import { modeContinuationRequest } from "./runtime/mode-runs";
 
 type IpcInvoke = (channel: string, args: readonly unknown[]) => Promise<unknown>;
@@ -153,6 +156,8 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         // The in-process invoke keeps object identity, so the mode run origin
         // reaches the prompt handler without any serializable field.
         const modeOrigin = request[TRUSTED_MODE_ORIGIN];
+        const background = request[TRUSTED_BACKGROUND_CONTINUATION];
+        if (background) backgroundContinuationRequest(promptRequest, background);
         const result = (await options.invoke(options.channels.agentPrompt, [
           modeOrigin ? modeContinuationRequest(promptRequest, modeOrigin) : promptRequest,
         ])) as { accepted?: boolean; turnId: string };
@@ -358,6 +363,14 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
      * turns. It never queues: a busy session or queued user input wins, and
      * that turn's settlement continues the run.
      */
+    startBackgroundContinuation(sessionId: string, continuation: TrustedBackgroundContinuation) {
+      return agentHost.startTurn(DESKTOP_PRINCIPAL, {
+        [TRUSTED_BACKGROUND_CONTINUATION]: continuation,
+        sessionId, admission: "reject_if_busy",
+        input: { text: "Background job result ready" },
+        context: { requestId: `background-continuation-${continuation.id}` },
+      });
+    },
     startModeContinuation(sessionId: string, origin: TrustedModeOrigin, content: string) {
       return forIpc(() => agentHost.startTurn(DESKTOP_PRINCIPAL, {
         [TRUSTED_MODE_ORIGIN]: origin,

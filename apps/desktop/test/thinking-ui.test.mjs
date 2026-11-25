@@ -61,6 +61,7 @@ const settingsSource = (
       "../src/components/settings/ProviderSetupDialog.tsx",
       // The picker both credential kinds render owns the thinking chips (D270).
       "../src/components/settings/ModelSelectionPanes.tsx",
+      "../src/components/settings/ModelAdvancedSettings.tsx",
       "../src/components/settings/VendorAccountDialog.tsx",
       "../src/components/settings/useProviderModels.ts",
     ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),

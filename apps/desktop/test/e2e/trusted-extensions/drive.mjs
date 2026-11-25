@@ -251,6 +251,9 @@ check("a model turn refreshes the plugin credential and uses its access token", 
 check("the refresh callback ran in the plugin process", readFileSync(hookPath, "utf8").includes("provider_oauth_refresh"));
 check("refresh credentials never enter model requests", !JSON.stringify(oauthRequest ?? {}).includes("plugin-refresh"));
 
+// Settings is a dialog: close any instance left from the OAuth step first.
+await ui.run(() => document.querySelector('[data-nav="close-settings"]')?.click());
+await ui.until(() => !document.querySelector(".settings-dialog"), null, "Settings dialog to close");
 await ui.click('button[data-nav="settings"]');
 await ui.until(() => Boolean(document.querySelector(".settings-shell-full")), null, "Settings before sign-out");
 const reopenedModels = await ui.run((label) => {
@@ -265,6 +268,21 @@ await ui.until(
   "OAuth account row before sign-out",
 );
 await ui.click(`[data-provider-id="${pluginOAuthId}"] button[aria-haspopup="menu"]`);
+// The row menu must be on top of the Settings dialog, not painted beneath it:
+// a person's pointer has to land on the item itself.
+const menuOnTop = await ui.until(() => {
+  const item = [...document.querySelectorAll('[role="menuitem"]')].find((entry) => entry.textContent?.includes("Sign out"));
+  // Wait until the menu is measured and revealed (`is-open`); before that it
+  // sits hidden at the viewport origin by design.
+  const menu = item?.closest('[role="menu"]');
+  if (!item || !menu?.classList.contains("is-open")) return null;
+  if (getComputedStyle(menu).visibility !== "visible") return null;
+  const box = item.getBoundingClientRect();
+  if (box.width === 0 || box.height === 0) return null;
+  const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+  return { onTop: Boolean(hit && item.contains(hit)), by: hit?.className ?? "nothing" };
+}, null, "OAuth row menu item");
+check("Settings row menu is clickable above the Settings dialog", menuOnTop.onTop, JSON.stringify(menuOnTop));
 const armedSignOut = await ui.run(() => {
   const item = [...document.querySelectorAll('[role="menuitem"]')].find((entry) => entry.textContent?.includes("Sign out"));
   item?.click();

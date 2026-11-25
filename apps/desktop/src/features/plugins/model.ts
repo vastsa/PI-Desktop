@@ -44,6 +44,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "fs.write.workspace": "high",
   "fs.delete.workspace": "high",
   "agent.prompt.inject": "high",
+  "agent.modelContext": "high",
   "agent.tool.register": "high",
   "agent.complete": "high",
   "agent.extension": "high",
@@ -76,6 +77,7 @@ export const PERMISSION_RISK: Record<string, RiskTier> = {
   "mcp.server.remote": "high",
   "background.service": "medium",
   "session.read.own": "medium",
+  "session.observe": "medium",
   "session.update.own": "medium",
   "composer.transform": "medium",
   // Writes user-facing text into a draft the user may send, but only when the

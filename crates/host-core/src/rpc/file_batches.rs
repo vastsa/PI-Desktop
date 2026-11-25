@@ -13,6 +13,49 @@ struct BatchAction {
     ticket: Option<String>,
 }
 
+/// Use the same persisted root before permission and after admission. For a
+/// scoped call, an absent delegate worktree cannot fall back to a different
+/// checkout, and a target path cannot choose a different base for the scope.
+pub(super) fn resolve_root(
+    state: &AppState,
+    call: &ToolsExecuteParams,
+) -> Result<(Option<String>, bool), JsonRpcError> {
+    let delegated = if call.write_scope.is_some() {
+        crate::session_worktrees::delegate::scoped_tool_root(
+            &state.db,
+            &call.session_id,
+            call.delegation_id.as_deref(),
+        )
+    } else {
+        crate::session_worktrees::delegate::tool_root(
+            &state.db,
+            &call.session_id,
+            call.delegation_id.as_deref(),
+        )
+    }
+    .map_err(worktree_rpc::to_rpc)?;
+    if let Some(path) = delegated {
+        return Ok((Some(path.to_string_lossy().into_owned()), true));
+    }
+    let root = if call.write_scope.is_some() {
+        // Unlike the ordinary resolver this does not create scratch, or use
+        // args.path to choose a secondary root in the logical project group.
+        let summary = sessions::session_summary(&state.db, &call.session_id)
+            .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?
+            .ok_or_else(|| rpc_err(1007, "session not found", "SESSION_NOT_FOUND"))?;
+        Some(summary.project_path.ok_or_else(|| {
+            rpc_err(
+                1003,
+                "A scoped write requires a local project workspace",
+                "WORKSPACE_REQUIRED",
+            )
+        })?)
+    } else {
+        resolve_tool_workspace_for_call(state, &call.session_id, &call.args)?
+    };
+    Ok((root, false))
+}
+
 /// Approval/admission may await arbitrary user or tool work. Do not execute
 /// against a root captured before that wait if its persisted binding changed.
 pub(super) fn verify_root(
@@ -27,17 +70,7 @@ pub(super) fn verify_root(
             "TOOL_CONTEXT_CHANGED",
         ));
     }
-    let delegated = crate::session_worktrees::delegate::tool_root(
-        &state.db,
-        &call.session_id,
-        call.delegation_id.as_deref(),
-    )
-    .map_err(worktree_rpc::to_rpc)?;
-    let own = delegated.is_some();
-    let current = match delegated {
-        Some(path) => Some(path.to_string_lossy().into_owned()),
-        None => resolve_tool_workspace_for_call(state, &call.session_id, &call.args)?,
-    };
+    let (current, own) = resolve_root(state, call)?;
     if current.as_deref() != expected {
         return Err(rpc_err(
             1002,

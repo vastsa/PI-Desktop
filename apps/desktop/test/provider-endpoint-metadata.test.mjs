@@ -40,6 +40,7 @@ async function handlersFor(t, row, body) {
 
   const original = globalThis.fetch;
   const calls = [];
+  const cacheWrites = [];
   globalThis.fetch = async (url) => {
     calls.push(String(url));
     return String(url).endsWith("/models") ? jsonResponse(body) : new Response("", { status: 404 });
@@ -52,10 +53,14 @@ async function handlersFor(t, row, body) {
   registerProviderIpc({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
     getHost: () => ({
-      call: async (method) => {
+      call: async (method, params) => {
         if (method === "providers.list") return { providers: [row] };
         if (method === "providers.getSecret") return { value: "sk-secret" };
         if (method === "providers.get") return { provider: row };
+        if (method === "providers.cacheModels") {
+          cacheWrites.push(params);
+          return { models: params.models };
+        }
         return {};
       },
     }),
@@ -75,6 +80,7 @@ async function handlersFor(t, row, body) {
 
   return {
     calls,
+    cacheWrites,
     row,
     result: await listModels({ providerId: row.id, source: "refresh" }),
     /** The hand-typed id channel a picker uses when a user types an id in. */
@@ -149,14 +155,21 @@ test("a model-list capacity report takes precedence over catalog limits", async 
     name: "Relay",
     baseUrl: "https://relay.example/v1",
   });
-  const { result } = await handlersFor(t, row, {
-    data: [{ id: "claude-sonnet-4-5", context_length: 321_000, max_tokens: 12_345 }],
+  const { result, cacheWrites } = await handlersFor(t, row, {
+    data: [
+      { id: "claude-sonnet-4-5", context_length: 321_000, max_tokens: 12_345 },
+      { id: "some-private-model" },
+    ],
   });
 
   const [model] = result.models;
   assert.equal(model.contextWindow, 321_000, "the endpoint reports its actual context window");
   assert.equal(model.maxTokens, 12_345, "the endpoint reports its actual output limit");
   assert.equal(model.catalogSource, "models.dev", "catalog metadata still identifies the model");
+  assert.deepEqual(cacheWrites[0].endpoint, { baseUrl: row.baseUrl, apiStyle: row.apiStyle });
+  assert.equal(cacheWrites[0].models[0].reportedContextWindow, 321_000);
+  assert.equal(cacheWrites[0].models[1].contextWindow, 128_000);
+  assert.equal(cacheWrites[0].models[1].reportedContextWindow, undefined);
 });
 
 test("a hand-typed id on the same relay answers with the same record", async (t) => {
@@ -192,8 +205,8 @@ test("a relay enriches official IDs, strips safe deployment labels, and preserve
   const { result } = await handlersFor(t, row, {
     data: [
       { id: "deepseek-v4-flash" },
-      { id: "mimo-v2.5-pro" },
-      { id: "mimo-v2.5-pro-1m" },
+      { id: "deepseek-v4-pro" },
+      { id: "deepseek-v4-pro-1m" },
       { id: "mimo-v2.5-tts" },
       { id: "gemini-2.5-pro-1m" },
       { id: "claude-sonnet-4-5" },
@@ -208,23 +221,21 @@ test("a relay enriches official IDs, strips safe deployment labels, and preserve
   assert.equal(deepseek.catalogSource, "models.dev");
   assert.equal(deepseek.contextWindow, 1_048_576);
   assert.equal(deepseek.maxTokens, 393_216);
-  // Xiaomi publishes the base id, so both the plain and the `-1m` alias read
-  // the owner's record without rewriting the served wire ID.
-  for (const id of ["mimo-v2.5-pro", "mimo-v2.5-pro-1m"]) {
-    const mimo = byId.get(id);
-    assert.equal(mimo.modelId, id); // lookup never rewrites the served wire ID
-    assert.equal(mimo.catalogSource, "models.dev");
-    assert.equal(mimo.contextWindow, 1_048_576);
-    assert.equal(mimo.maxTokens, 131_072);
+  // DeepSeek's current official listing is the source of truth for both the
+  // base model and its whitelisted context-size deployment label.
+  for (const id of ["deepseek-v4-pro", "deepseek-v4-pro-1m"]) {
+    const model = byId.get(id);
+    assert.equal(model.modelId, id); // lookup never rewrites the served wire ID
+    assert.equal(model.catalogSource, "models.dev");
+    assert.equal(model.contextWindow, 1_048_576);
+    assert.equal(model.maxTokens, 393_216);
   }
 
-  // Matching Xiaomi reseller records agree on the published speech limits.
+  // The refreshed catalog has no Xiaomi-owned TTS record, so relay lookups
+  // must not claim reseller metadata for it.
   const tts = byId.get("mimo-v2.5-tts");
-  assert.equal(tts.source, "discovered");
-  assert.equal(tts.catalogSource, "models.dev");
-  assert.ok(tts.capabilities.includes("audio"));
-  assert.equal(tts.contextWindow, 8_192);
-
+  assert.equal(tts.modelId, "mimo-v2.5-tts");
+  assert.equal(tts.catalogSource, undefined);
   // Google and Vertex now publish matching metadata, so the `-1m` alias can
   // safely use their shared record without changing the served model id.
   const gemini = byId.get("gemini-2.5-pro-1m");

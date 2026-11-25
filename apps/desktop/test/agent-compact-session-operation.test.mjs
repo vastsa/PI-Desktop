@@ -69,6 +69,10 @@ function buildHarness({ hostCall, sidecarCall, resolveSessionMessageInput }) {
     },
     "../composer-mcp": { expandMcpInvocation: () => null },
     "../runtime/mode-runs": { modeContinuationOrigin: () => undefined },
+    "../runtime/background-continuations": {
+      backgroundContinuationOrigin: () => undefined,
+      backgroundCompletionMessage: () => assert.fail("compaction must not deliver a background result"),
+    },
     "../runtime/goal-start": { goalPromptMode: () => null, goalStartRequested: () => false },
     "@pi-desktop/agent-runtime": { expandSlashInvocation: () => null, visionFromModelConfig: () => null },
     "../prompt-attachments": {
@@ -78,6 +82,7 @@ function buildHarness({ hostCall, sidecarCall, resolveSessionMessageInput }) {
     },
     "../session-references": { resolveSessionReferences: async () => [] },
     "../agent-mentions": { resolvePromptAgentMentions: async () => [] },
+    "../runtime/user-message-provenance": { isAutomationRequest: () => false },
     "@pi-desktop/host-runtime": {
       executionFromResponse: () => null,
       resolveSessionMessageInput: admissionTail,

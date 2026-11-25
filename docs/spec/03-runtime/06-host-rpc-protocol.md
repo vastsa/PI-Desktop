@@ -286,7 +286,21 @@ type ToolBudgetHealth = {
   are removed, a `primary` outside `folders` is rejected, roots owned by
   another non-legacy group are rejected, and a root with existing chats cannot
   be detached. Removed roots are retained as suppressed historical paths rather
-  than reappearing as standalone legacy groups.
+  than reappearing as standalone legacy groups. When the old root no longer
+  exists on disk, replacing the only root of a legacy or stored single-root
+  group instead relocates its existing project row: the canonical path and
+  path-scoped memory move while the project id, chats, scheduled tasks, and
+  group id remain stable. An empty shadow row at the new path is absorbed; a
+  target with its own chats, tasks, or memory is rejected, and every database
+  change rolls back together on failure. If the old root still exists, the
+  replacement is an ordinary swap and nothing is relocated. The two-step repair
+  (first save the replacement next to the missing root, then save with only
+  the replacement) relocates the same way when exactly one removed root is
+  missing on disk and owns chats, tasks, or memory and the remaining root's
+  project owns none; otherwise removed roots detach as described above. When
+  the active workspace's project is relocated, the host moves the workspace to
+  the new path exactly as `workspace.set` does (hashline anchors are dropped
+  and `currentProjectId` follows).
 - `project.group.memory.get/set({ groupId, entries })` — reads or normalizes
   shared group memory using the existing 32 KiB entry limit.
 - `project.group.instructions.get/set({ groupId, content })` — reads or stores
@@ -420,7 +434,11 @@ to later refresh and inference; the vendor picker does not collect them.
   project and returns `{ session }` carrying the canonical project path. It
   upserts the project row and updates only `sessions.project_id` and
   `updated_at`; transcript, revisions, artifacts, notifications, and scratch
-  data stay with the session. Blank ids or paths are `INVALID_PARAMS`, an
+  data stay with the session. An explicit `projectPath: null` moves the
+  session out of its project into the temporary group (`project_id` becomes
+  `NULL`, `projectPath` is omitted from the summary); older hosts reject it as
+  `INVALID_PARAMS`. Blank ids, a missing key, or blank paths are
+  `INVALID_PARAMS`, an
   unknown session is `NOT_FOUND`, and a session with a running turn is
   `CONFLICT` so a live agent never switches instruction roots mid-turn.
   An isolated session is refused with `WORKTREE_MOVE_UNSUPPORTED`.
@@ -819,6 +837,10 @@ against a live host, and replaying one after the final row would be wrong.
 ### Marketplace
 - `market.refresh` — fetch and cache the catalog from the configured URL
 - `market.search` / `market.getDetail`
+- `market.browse` — one page of the marketplace from the plugin center's
+  `/api/v1/catalog/search`, fetched off the state lock and cached for 60 s;
+  falls back to paging the local snapshot (`source: "local"`, with
+  `fallbackReason`) instead of failing
 - `market.install` — download, verify (`PLUGIN_INTEGRITY`,
   `PLUGIN_MARKET_*`), and install one catalog release
 - `market.checkUpdates` / `market.applyUpdates`
@@ -841,6 +863,10 @@ against a live host, and replaying one after the final row would be wrong.
   `complete` (default false). Model rows expose optional `discoveryState`
   (`published` / `unlisted`); omission is unknown. Only complete, nonempty
   snapshots reconcile missing discovered rows, without changing configuration.
+  An optional `endpoint` (`baseUrl`, `apiStyle`) guards the read or write
+  against the current saved provider under the Host lock. A mismatch returns
+  no cached models and performs no write. The optional `reportedContextWindow`
+  records capacity from the endpoint response independently of display metadata.
   See provider-config schema for the conservative refresh and consumer rules.
 - `providers.testConnection`
 
@@ -1598,6 +1624,15 @@ backgroundTasks methods remain outside the model proxy.
 | backgroundJobs.wait | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
 | backgroundJobs.stop | sessionId, id, timeoutMs? | BackgroundJobSnapshot |
 
+For a local parent Agent, the runtime can send `yieldAfterInitialWait: true`
+on a `tools.execute` Bash request when no later tool in the same batch is
+waiting behind it. If the process is still running at the 10s wait boundary,
+Host can return a `running` background-job snapshot without an `exitCode`.
+The snapshot also contains `backgroundTaskId` and `commandShellId`. The
+existing `backgroundJobs.*` methods observe and stop the same process. The
+original command timeout still applies, and a timeout after handoff appears
+as a failed job with the timeout diagnostic in its stderr tail.
+
 Each method requires an existing local Agent-mode session. Foreign and missing
 job IDs both return NOT_FOUND. Invalid parameters return INVALID_PARAMS; a
 contract-mode session returns PERMISSION_DENIED. Calls never rebind an existing
@@ -1692,3 +1727,8 @@ continuation. Only the in-process trusted origin and Host claim can do so.
 `session.get` adds display-only message `turnId` from the authoritative message
 index, including bounded windows. Root turns remain separate without synthetic
 user messages; this metadata is not an execution credential.
+
+
+### Background continuation control plane
+
+Main-only methods: `backgroundContinuations.list {}` returns ready `{id, sessionId}` entries in job start order; `claim {sessionId,id,turnId}` atomically starts one intent and returns the original bounded BackgroundJobSnapshot; `consume {sessionId,id}` records terminal tool-result receipt; `cancel {id? ,sessionId?,turnId?}` withdraws matching pending entries (id or sessionId required); `fail {sessionId,id}` records failed dispatch. None is in the model-side proxy allowlist. Only Bash `notifyOnExit: true` creates an intent, with a live source turn, enabled setting and local parent Agent identity. `backgroundTasks.list` adds optional `continuation: pending|started|consumed|cancelled|failed`. Settings writes that disable continuation revoke pending entries atomically. No persisted database schema changes are needed.
