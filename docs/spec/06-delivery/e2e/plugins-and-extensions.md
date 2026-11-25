@@ -2762,6 +2762,29 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   model/context/options inspection, and cross-session module sharing remain
   additional validation.
 
+## E2E-TRUSTED-EXTENSION-external-context-management: An extension takes over context management
+
+- **Preconditions**: An enabled trusted extension calls
+  `pi.setContextManagement("external")` in its factory, trims the history in a
+  `context` handler, and cancels `session_before_compact`. The session model
+  has a small context window.
+- **Steps**: 1) Send a prompt whose raw size is above the model's hard limit.
+  2) Let the first response call a tool so the run builds a follow-up request.
+  3) Repeat with an extension that declares `external` but does not trim.
+  4) Repeat with an extension that declares only after it loaded.
+- **Expected**: Both requests of step 1–2 reach the provider with the trimmed
+  messages, without the `new_context` tool or a context-budget reminder, and no
+  compaction or `CONTEXT_COMPACTION_FAILED` occurs; step 3 fails locally with
+  `CONTEXT_TOO_LARGE` and sends nothing; step 4 keeps native compaction and
+  reports `rejected_registration`.
+- **Specs linked**: `07-plugins/16-trusted-extensions.md` §5;
+  `03-runtime/02-agent-runtime.md`; ADR 0347; issue #2596
+- **Acceptance**: C (conversation & stream), Quality
+- **Milestone**: Post-MVP (R7 v1)
+- **Status**: Automated at runtime level
+  (`packages/agent-runtime/src/extensions/context-management.test.ts`, real
+  extension module and fixture provider over HTTP).
+
 ## E2E-243: Extension commands and UI prompts round-trip through the renderer
 
 - **Preconditions**: An enabled fixture extension registering command `greet`

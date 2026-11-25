@@ -209,7 +209,18 @@ type LoadedExtension = {
   agents: Map<string, RegisteredTrustedExtensionAgent>;
   handlers: Map<string, Handler[]>;
   flags: Map<string, { type: "boolean" | "string"; default?: boolean | string }>;
+  /** `external` once the factory claimed context management (issue #2596). */
+  contextManagement: TrustedExtensionContextManagement;
+  /** True after the factory returned; load-time-only declarations close then. */
+  factorySettled: boolean;
 };
+
+/**
+ * Who manages the model context of a session. `native` keeps Desktop's
+ * automatic compaction; `external` hands it to the extension (spec 16 §5.4).
+ */
+export type TrustedExtensionContextManagement = "native" | "external";
+
 function extensionErrorResult(model: Model<Api>, error: unknown): AssistantMessage {
   return {
     role: "assistant",
@@ -343,6 +354,8 @@ export class TrustedExtensionRunner {
         agents: new Map(),
         handlers: new Map(),
         flags: new Map(),
+        contextManagement: "native",
+        factorySettled: false,
       };
       const reportedStubs = new Set<string>();
       const reportStub = (symbol: string) => {
@@ -397,6 +410,8 @@ export class TrustedExtensionRunner {
         this.report(spec.id, "factory_error", errorMessage(err), undefined, errorStack(err));
         this.reports.set(spec.id, this.errorReport(spec.id));
         continue;
+      } finally {
+        extension.factorySettled = true;
       }
       if (this.closing || signal.aborted) break;
       this.loaded.set(spec.id, extension);
@@ -476,6 +491,13 @@ export class TrustedExtensionRunner {
   }
 
   /** Tools as pi-agent-core sees them (spec §7). */
+  /** Loaded extensions that took over context management, in load order. */
+  getExternalContextManagers(): string[] {
+    return [...this.loaded.values()]
+      .filter((extension) => extension.contextManagement === "external")
+      .map((extension) => extension.spec.id);
+  }
+
   getAgentTools(): AgentTool[] {
     const tools: AgentTool[] = [];
     for (const extension of this.loaded.values()) {
@@ -974,6 +996,30 @@ export class TrustedExtensionRunner {
         });
       },
       getFlag: (name: string) => extension.flags.get(String(name))?.default,
+      // Desktop extension (issue #2596): the declaration shapes the tool
+      // catalog and the request guards of the whole session, so it is only
+      // accepted while the factory runs, before the first turn is built.
+      setContextManagement: (mode: unknown) => {
+        if (mode !== "native" && mode !== "external") {
+          this.report(
+            extension.spec.id,
+            "rejected_registration",
+            'context management must be "native" or "external"',
+            "setContextManagement",
+          );
+          return;
+        }
+        if (extension.factorySettled) {
+          this.report(
+            extension.spec.id,
+            "rejected_registration",
+            "context management can only be declared while the extension loads",
+            "setContextManagement",
+          );
+          return;
+        }
+        extension.contextManagement = mode;
+      },
       exec: (command: string, args: string[], options?: ExtensionExecOptions) =>
         this.exec(extension, command, Array.isArray(args) ? args.map(String) : [], options),
       getActiveTools: () => bridge.getActiveTools(),

@@ -628,6 +628,11 @@ export function classifyAgentError(err: unknown): ClassifiedAgentError {
     // about it (#2494).
     return result("CONTEXT_COMPACTION_FAILED", false, { origin: "local" });
   }
+  if (/^CONTEXT_TOO_LARGE:/.test(rawMessage)) {
+    // The local request guard refused the request before it was sent; a
+    // retry would build the same oversized request again (#2596).
+    return result("CONTEXT_TOO_LARGE", false, { origin: "local" });
+  }
   // Network failures never carry an HTTP status; probe before status logic so
   // "fetch failed" causes don't fall through to the generic bucket. The cause
   // chain is summarized as a coarse category plus the transport errno, so the
