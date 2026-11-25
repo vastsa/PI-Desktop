@@ -11,6 +11,8 @@ export type RendererRecoveryDependencies = Readonly<{
   webContentsDestroyed: boolean;
   reload: () => void;
   log: (details: RendererGoneDetails, reloaded: boolean) => void;
+  /** Fired once when consecutive startup crashes trip the breaker (#2595). */
+  onCrashLoopDetected?: () => void;
 }>;
 
 /**
@@ -20,8 +22,21 @@ export type RendererRecoveryDependencies = Readonly<{
  */
 const CRASH_COOLDOWN_MS = 2_000;
 
+/**
+ * Consecutive crashes without a single successful load before recovery
+ * gives up on reloading: a renderer that dies deterministically at startup
+ * (GPU driver or cache corruption, issue #2595) makes every reload futile,
+ * and the 2s cooldown alone just turns the crash into a visible infinite
+ * loop. The caller decides what a trip means (GPU-fallback relaunch, then
+ * a dialog); the counter resets on every successful load.
+ */
+const CRASH_LOOP_THRESHOLD = 5;
+
 /** Tracks the last reload timestamp per recovery call site. */
 let lastReloadTimestamp = 0;
+
+let consecutiveCrashesWithoutLoad = 0;
+let crashLoopReported = false;
 
 /**
  * Reset internal cooldown state. Exposed exclusively for deterministic tests;
@@ -29,6 +44,13 @@ let lastReloadTimestamp = 0;
  */
 export function _resetCooldownForTest(): void {
   lastReloadTimestamp = 0;
+  consecutiveCrashesWithoutLoad = 0;
+  crashLoopReported = false;
+}
+
+/** A renderer finished loading: the crash streak restarts from zero. */
+export function noteRendererLoaded(): void {
+  consecutiveCrashesWithoutLoad = 0;
 }
 
 /** Reload an unexpectedly exited renderer while its owning app window is live. */
@@ -44,8 +66,22 @@ export function recoverRendererAfterGone(
     !dependencies.windowDestroyed &&
     !dependencies.webContentsDestroyed;
 
-  dependencies.log(details, shouldReload);
-  if (!shouldReload) return false;
+  if (!shouldReload) {
+    dependencies.log(details, false);
+    return false;
+  }
+
+  consecutiveCrashesWithoutLoad += 1;
+  const tripped =
+    consecutiveCrashesWithoutLoad >= CRASH_LOOP_THRESHOLD && !crashLoopReported;
+  if (tripped) crashLoopReported = true;
+  // Once the breaker has tripped, keep logging every crash but stop
+  // reloading: the caller's escalation owns recovery from here.
+  const reloaded = !crashLoopReported;
+
+  dependencies.log(details, reloaded);
+  if (tripped) dependencies.onCrashLoopDetected?.();
+  if (!reloaded) return false;
 
   const now = Date.now();
   const elapsed = now - lastReloadTimestamp;

@@ -3328,6 +3328,11 @@ sklm: {
       dismiss: "關閉",
     },
   },
+  rendererCrash: {
+    title: "PI-Desktop 無法啟動",
+    body: "介面程序在啟動時反覆崩潰，已停止自動重試。記錄資料夾中有詳細資訊；若問題持續，請將記錄回報給我們。",
+    openLogs: "開啟記錄資料夾",
+  },
 } satisfies EnglishCatalog;
 
 export default zhTW;

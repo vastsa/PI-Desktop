@@ -3346,6 +3346,11 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       dismiss: "닫기",
     },
   },
+  rendererCrash: {
+    title: "PI-Desktop를 시작할 수 없습니다",
+    body: "인터페이스가 시작 시 반복해서 충돌하여 자동 재시도를 중지했습니다. 자세한 내용은 로그 폴더에 있습니다. 문제가 계속되면 로그를 공유해 주세요.",
+    openLogs: "로그 폴더 열기",
+  },
 } satisfies EnglishCatalog;
 
 export default ko;
