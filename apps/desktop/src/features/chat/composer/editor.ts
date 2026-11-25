@@ -101,44 +101,39 @@ function isChipElement(node: Node): boolean {
 }
 
 /**
- * Zero-width space that keeps an empty last line caretable. Chromium gives an
- * empty line a box but no caret box, so a caret left after the final break
- * resolves to the line above (#2433). A trailing `<br>` adds the box but also a
- * second caret position below it, which reads as an extra line. A zero-width
- * space gives the line a real caret and nothing else.
- *
- * Chromium can merge the marker into the neighbouring text node, so every read,
- * index and caret path strips the character instead of looking for a node.
+ * Placeholder break that keeps an empty last line laid out and caretable.
+ * Chromium drops the last break of a block — a trailing "\n" and a trailing
+ * `<br>` both end the line above and add none of their own — so a draft that ends
+ * with a newline paints one extra break after it. That break belongs to the
+ * layout, not to the draft: every read, index and caret path counts it as zero
+ * characters. Because it holds no text it cannot be selected, copied or typed,
+ * and it never merges into a neighbouring text node.
  */
-const TAIL_MARKER = "\u200B";
+const TAIL_PLACEHOLDER = "data-composer-tail";
 
-function stripTailMarkers(text: string): string {
-  return text.includes(TAIL_MARKER) ? text.replaceAll(TAIL_MARKER, "") : text;
+function isTailPlaceholder(node: Node): boolean {
+  return (
+    node.nodeType === Node.ELEMENT_NODE &&
+    (node as HTMLElement).tagName === "BR" &&
+    (node as HTMLElement).hasAttribute(TAIL_PLACEHOLDER)
+  );
 }
 
-/** Draft-string length of a text node once its markers are stripped. */
-function markedTextLength(text: string): number {
-  return stripTailMarkers(text).length;
+function createTailPlaceholder(): HTMLBRElement {
+  const br = document.createElement("br");
+  br.setAttribute(TAIL_PLACEHOLDER, "");
+  return br;
 }
 
-/** Draft offset inside a text node → DOM offset, which sits before a marker. */
-function offsetForDraftIndex(text: string, index: number): number {
-  if (!text.includes(TAIL_MARKER)) return index;
-  let seen = 0;
-  for (let offset = 0; offset < text.length; offset += 1) {
-    if (seen === index) return offset;
-    if (text[offset] !== TAIL_MARKER) seen += 1;
-  }
-  return text.length;
+/** Paint the line box an empty last line needs, without adding a character. */
+function paintTailPlaceholder(el: HTMLElement, value: string): void {
+  if (value.endsWith("\n")) el.appendChild(createTailPlaceholder());
 }
 
-/** Paint the marker for a value whose last line is empty. */
-function paintTailMarker(el: HTMLElement, value: string): void {
-  if (value.endsWith("\n")) el.appendChild(document.createTextNode(TAIL_MARKER));
-}
 /** Rendered length of a node in draft-string characters (chip = 1 char). */
 function editorNodeLength(node: Node): number {
-  if (node.nodeType === Node.TEXT_NODE) return markedTextLength(node.nodeValue ?? "");
+  if (isTailPlaceholder(node)) return 0;
+  if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue ?? "").length;
   if (isChipElement(node)) return 1;
   if (node.nodeType === Node.ELEMENT_NODE) {
     const element = node as HTMLElement;
@@ -155,11 +150,12 @@ export function readEditorValue(el: HTMLElement): string {
   let out = "";
   const walk = (node: Node, blockStart: boolean): void => {
     if (node.nodeType === Node.TEXT_NODE) {
-      out += stripTailMarkers(node.nodeValue ?? "");
+      out += node.nodeValue ?? "";
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const element = node as HTMLElement;
+    if (isTailPlaceholder(element)) return;
     if (isChipElement(element)) {
       const token = element.dataset.token ?? "";
       out += isChipTokenChar(token) ? token : "";
@@ -199,8 +195,9 @@ export function editorIndexAt(
     let total = 0;
     const walk = (parent: DocumentFragment | HTMLElement): void => {
       for (const child of Array.from(parent.childNodes)) {
+        if (isTailPlaceholder(child)) continue;
         if (child.nodeType === Node.TEXT_NODE) {
-          total += markedTextLength(child.nodeValue ?? "");
+          total += (child.nodeValue ?? "").length;
         } else if (isChipElement(child) || (child as HTMLElement).tagName === "BR") {
           total += 1;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
@@ -240,13 +237,19 @@ function editorCaretPoint(el: HTMLElement, target: number): { node: Node; offset
     const children = Array.from(parent.childNodes);
     for (let index = 0; index < children.length; index += 1) {
       const child = children[index];
+      if (isTailPlaceholder(child)) {
+        // The draft ends before the placeholder, so the end-of-draft caret sits
+        // at the start of the empty line that placeholder lays out.
+        if (point === null && remaining <= 0) {
+          point = { node: parent, offset: index };
+          return true;
+        }
+        continue;
+      }
       const length = editorNodeLength(child);
       if (child.nodeType === Node.TEXT_NODE) {
         if (point === null && remaining <= length) {
-          // A marker merged into this text node owns the empty line's caret: the
-          // caret named by the end index sits right before it, where Chromium
-          // has a box.
-          point = { node: child, offset: offsetForDraftIndex(child.nodeValue ?? "", remaining) };
+          point = { node: child, offset: remaining };
           return true;
         }
         remaining -= length;
@@ -283,37 +286,26 @@ export function setEditorCaret(el: HTMLElement, index: number): void {
 }
 
 /**
- * Keep the empty last line laid out *and* caretable. Chromium gives an empty
- * line a box but no caret box, so a caret left after the final break resolves to
- * the line above and the next keystroke lands there (#2433). A trailing break
- * adds a box but also a second caret position below it, which reads as an extra
- * line; a zero-width space gives the line a real caret and nothing else.
- * Every read, index and caret path strips the character, so the draft string and
- * its indices are unchanged.
+ * Keep the empty last line laid out and caretable. Chromium drops the last break
+ * of a block, so a draft that ends with a newline paints one extra break after it
+ * and counts that break as zero characters everywhere; that keeps the line count,
+ * the draft string and its indices unchanged, without a character that could be
+ * selected or copied. Text typed into the empty line lands before the placeholder,
+ * and a line with content drops it on the next commit.
  */
-export function syncTailMarker(el: HTMLElement): void {
-  const value = readEditorValue(el);
-  const last = el.lastChild;
-  const lastText = last && last.nodeType === Node.TEXT_NODE ? (last as Text) : null;
-  if (value.endsWith("\n")) {
-    // Chromium merges typed text into the marker's node, so the marker is kept as
-    // a trailing character rather than a node that must stay separate.
-    if (lastText) {
-      if (!(lastText.nodeValue ?? "").endsWith(TAIL_MARKER)) {
-        lastText.nodeValue = `${lastText.nodeValue ?? ""}${TAIL_MARKER}`;
-      }
-    } else {
-      el.appendChild(document.createTextNode(TAIL_MARKER));
-    }
-  } else if (lastText && (lastText.nodeValue ?? "").includes(TAIL_MARKER)) {
-    lastText.nodeValue = stripTailMarkers(lastText.nodeValue ?? "");
+export function syncTailPlaceholder(el: HTMLElement): void {
+  const placeholders = Array.from(
+    el.querySelectorAll<HTMLBRElement>(`br[${TAIL_PLACEHOLDER}]`),
+  );
+  if (readEditorValue(el).endsWith("\n")) {
+    const placeholder = placeholders[0] ?? createTailPlaceholder();
+    // A native edit can leave text after the placeholder while the line is still
+    // empty; the placeholder stays the last node so the line keeps its box.
+    if (el.lastChild !== placeholder) el.appendChild(placeholder);
+    for (const extra of placeholders.slice(1)) extra.remove();
+    return;
   }
-  // A caret that sits on the empty last line is named by draft index so it lands
-  // on the marker instead of after the final break.
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return;
-  if (!el.contains(selection.anchorNode)) return;
-  if (editorSelectionRange(el).start === value.length) setEditorCaret(el, value.length);
+  for (const placeholder of placeholders) placeholder.remove();
 }
 
 /** One glyph per file family on attachment chips, as inline SVG strings. */
@@ -517,7 +509,7 @@ export function paintEditorValue(
     // Chromium needs at least one node for reliable caret placement.
     el.appendChild(document.createTextNode(""));
   }
-  paintTailMarker(el, value);
+  paintTailPlaceholder(el, value);
 }
 
 export function clipboardFiles(data: DataTransfer): File[] {

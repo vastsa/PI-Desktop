@@ -42,7 +42,7 @@ import {
   paintEditorValue,
   readEditorValue,
   setEditorCaret,
-  syncTailMarker,
+  syncTailPlaceholder,
   type ComposerFileReference,
 } from "../editor";
 import type { ComposerPrefill } from "../model";
@@ -306,12 +306,12 @@ export function useComposerDraft({
     editorValueRef.current = nextValue;
   };
 
-  // An empty last line has no caret box of its own, so Chromium resolves a caret
-  // left on it to the neighbouring line; give the line a zero-width marker after
-  // every commit.
+  // An empty last line needs a break of its own: Chromium drops the draft's last
+  // break, so the line would collapse onto the line above. The placeholder holds
+  // no text, and every read and caret path counts it as zero characters.
   useLayoutEffect(() => {
     const element = ref.current;
-    if (element) syncTailMarker(element);
+    if (element) syncTailPlaceholder(element);
   }, [value]);
 
   useLayoutEffect(() => {
@@ -407,7 +407,7 @@ export function useComposerDraft({
     updateCursor(start);
   };
 
-  /** Enter inserts a bare newline text node so the draft round-trips. */
+  /** Enter inserts exactly one newline; Chromium would add a second one. */
   const insertNewlineInEditor = () => {
     const element = ref.current;
     if (!element) return;
@@ -416,9 +416,11 @@ export function useComposerDraft({
     const range = selection.getRangeAt(0);
     if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return;
     const { start } = editorSelectionRange(element);
+    // Chromium's own `insertLineBreak` also adds a placeholder newline after the
+    // caret, which reaches the draft as one empty line too many (#2555), so the
+    // break is inserted here as the single newline the draft model stores.
     range.deleteContents();
-    const node = document.createTextNode("\n");
-    range.insertNode(node);
+    range.insertNode(document.createTextNode("\n"));
     setEditorCaret(element, start + 1);
     commitEditorDom();
   };

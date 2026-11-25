@@ -4812,17 +4812,20 @@ as well as its DOM, so submission and draft caching retain the path. Deleted
 reference history is local to the current draft/workspace and is cleared on send;
 pasting a private-use character alone must not restore an attachment. The input owns and disposes the native event listeners.
 
-An empty last line keeps its own caret. Chromium gives a line that holds nothing a
-box but no caret box, so a caret left after the final line break resolves to the
-line above and types the next keystroke there. A trailing break adds the box but
-also a second caret position below it, which reads as one line too many; the
-editor therefore paints a zero-width space on that line, places an end-of-draft
-caret on the character when the draft ends in a newline, and re-syncs it after
-every commit. Every read, index and caret path strips the character — Chromium can
-merge it into the neighbouring text node — so the draft string, its indices and
-the caret's position in it are unchanged, and the marker is removed as soon as
-the line holds text. A middle empty line needs none: the break that ends it
-already gives it a caret box.
+An empty last line keeps its own caret. Chromium drops the last break of a block:
+a draft that ends in a newline paints no line of its own, and a caret left there
+resolves to the line above and types the next keystroke there. The editor paints a
+placeholder break — `<br data-composer-tail>` — after that newline, and every read,
+index and caret path counts it as zero characters. The placeholder carries no
+text, so it cannot be selected, copied or typed, never merges into a neighbouring
+text node, and the draft string and its indices are unchanged; the end-of-draft
+caret sits before the placeholder, on the empty line, and the placeholder is
+removed as soon as the line holds text. The editor also owns the break itself:
+Chromium inserts the break plus a placeholder newline after the caret, which
+reached the draft as one empty line too many, so a native `insertLineBreak` or
+`insertParagraph` is prevented and the editor inserts a single newline. A middle
+empty line keeps its existing behavior; the placeholder only covers the line that
+ends the draft.
 
 ### Dialog long-text containment
 

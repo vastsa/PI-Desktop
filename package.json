@@ -42,6 +42,7 @@
     "test:e2e:composer-occlusion": "node scripts/e2e-theme-surfaces.mjs --dock-mask-only",
     "test:e2e:composer-autocomplete": "node scripts/e2e-composer-autocomplete.mjs",
     "test:e2e:composer-ime-slash": "node scripts/e2e-composer-ime-stack.mjs",
+    "test:e2e:composer-tail-line": "node scripts/e2e-composer-tail-line.mjs",
     "test:e2e:model-discovery-state": "node scripts/e2e-model-discovery-state.mjs",
     "test:e2e:composer-model-selection": "node scripts/e2e-composer-model-selection.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
