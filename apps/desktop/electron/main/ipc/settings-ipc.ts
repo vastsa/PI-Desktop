@@ -7,7 +7,7 @@ import type { AppSettings } from "@pi-desktop/shared";
 import { currentSystemProxyRelayUrl } from "../network-proxy";
 
 const CACHE_WARMING_SETTINGS = [
-  "codemodeEnabled", "computerUse", "scheduledTasksEnabled",
+  "codemodeEnabled", "computerUse", "scheduledTasksEnabled", "inlineVisualizations",
   "backgroundJobContinuationEnabled", "defaultCommandShell", "jevEnabled",
   "defaultProviderId", "defaultModelId", "defaultMode", "language",
   "imageGeneration", "imageGenerationModels",

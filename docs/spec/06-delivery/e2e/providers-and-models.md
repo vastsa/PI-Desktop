@@ -48,6 +48,8 @@ Render the normal Composer toolbar for an active remote session that denies Stop
    and editing the active custom prompt stops warming. Verify a paid request
    can pass the waiting threshold while failing the idle threshold. Change a
    mode or request-affecting setting and confirm the old candidate is cleared.
+   Toggle inline visualizations while a candidate is pending and confirm the
+   previous prompt is not replayed.
 
 ## E2E-USAGE-explicit-zero-cache
 

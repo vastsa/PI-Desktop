@@ -110,6 +110,15 @@ test("saved prompt settings invalidate before resolving without overriding a lat
     ["agent.invalidateCacheWarming", { all: true }], true, false,
     ["agent.invalidateCacheWarming", { all: true }],
   ]);
+
+  effects.length = 0;
+  await set({ inlineVisualizations: true });
+  await set({ inlineVisualizations: true });
+  await set({ inlineVisualizations: false });
+  assert.deepEqual(effects, [
+    ["agent.invalidateCacheWarming", { all: true }],
+    ["agent.invalidateCacheWarming", { all: true }],
+  ]);
 });
 
 test("only committed classifier secret changes invalidate warming", async () => {

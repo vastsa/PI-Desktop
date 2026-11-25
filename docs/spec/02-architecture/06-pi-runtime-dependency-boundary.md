@@ -85,6 +85,8 @@ user-initiated request can consume premium request quota. Apply Pi's
 active-turn savings estimate while waiting for subagents and its idle
 estimate after the turn settles. Successful changes to modes, skills,
 subagents, and settings that alter the request discard previous candidates.
+This includes the inline visualizations switch, which changes whether the
+visualization skill and output directory are advertised in the prompt.
 
 Use the effective request's known TTL and skip a cache that covers the
 30-minute window. For official OpenAI Responses models supporting prompt-cache
