@@ -57,6 +57,7 @@ import {
   mainWindowBackgroundOptions,
 } from "../window-background";
 import { recoverRendererAfterGone } from "../renderer-recovery";
+import { installWindowStateSync } from "../window-state-sync";
 
 function windowsIconPath(): string | undefined {
   if (process.platform !== "win32") return undefined;
@@ -685,6 +686,7 @@ export async function createWindow({
       maximized: window.isMaximized(),
     });
   };
+  installWindowStateSync(window, sendMaximized, windowBoundsSettleMs);
 
   // After a restore/unmaximize (or leaving fullscreen) the OS puts the window
   // back to its normal bounds. Those bounds can sit outside the current work
@@ -720,9 +722,7 @@ export async function createWindow({
     windowState.workPanelBaseBounds = { ...appliedBounds };
     windowState.workPanelLastAppliedBounds = { ...appliedBounds };
   };
-  // Custom window controls (Windows/Linux) need maximize state to swap the
-  // maximize/restore glyph.
-  window.on("maximize", sendMaximized);
+  // Windows/Linux window controls use maximize state for the restore glyph.
   if (process.platform !== "darwin") {
     // Native-runner E2E fixture: establish the initial native state before
     // the renderer mounts, then let WindowControls query it through IPC.

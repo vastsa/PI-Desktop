@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 pub(crate) mod continuations;
 pub(crate) mod jobs;
+pub(crate) mod yielded;
 
 use crate::tools;
 use serde::Serialize;
@@ -365,13 +366,31 @@ fn register_spawned_task(
     runner: tools::SpawnedToolRunner,
     on_changed: Arc<dyn Fn() + Send + Sync>,
 ) -> BackgroundTask {
+    let (task, stop_rx) = register_task(
+        registry,
+        session_id,
+        command,
+        command_shell_id,
+        Instant::now(),
+    );
+    tokio::spawn(supervise(task.clone(), runner, stop_rx, on_changed));
+    task
+}
+
+fn register_task(
+    registry: &mut BackgroundTaskRegistry,
+    session_id: &str,
+    command: &str,
+    command_shell_id: &str,
+    started_at: Instant,
+) -> (BackgroundTask, watch::Receiver<bool>) {
     let (stop, stop_rx) = watch::channel(false);
     let task = BackgroundTask {
         id: uuid::Uuid::new_v4().to_string(),
         session_id: session_id.to_string(),
         command: command.to_string(),
         command_shell_id: command_shell_id.to_string(),
-        started_at: Instant::now(),
+        started_at,
         shared: Arc::new(Mutex::new(TaskShared {
             state: BackgroundTaskState::Running,
             exit_code: None,
@@ -387,8 +406,7 @@ fn register_spawned_task(
     registry.order.push(task.id.clone());
     registry.tasks.insert(task.id.clone(), task.clone());
     registry.prune_finished();
-    tokio::spawn(supervise(task.clone(), runner, stop_rx, on_changed));
-    task
+    (task, stop_rx)
 }
 
 /// Drain pipes into the shared rings, honour the stop signal, and record the

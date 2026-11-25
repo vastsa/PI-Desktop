@@ -49,6 +49,7 @@ export * from "./rpc-timeouts.js";
 export * from "./rpc-limits.js";
 export * from "./ndjson.js";
 export * from "./subagent-definition.js";
+export * from "./subagent-style.js";
 export * from "./mode-definition.js";
 export * from "./mode-definition-parse.js";
 export * from "./subagent-presets.js";

@@ -3660,6 +3660,27 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Status**: Automated by `apps/desktop/test/plugin-mcp.test.mjs` (held-open
   reply case); no live app process required.
 
+## E2E-MCP-HTTP-legacy-SSE — An HTTP+SSE-only server connects through the compatibility path (issue #2528)
+
+- **Preconditions**: A local mock server speaks only the 2024-11-05 HTTP+SSE
+  transport: `GET /mcp` opens an event stream and announces
+  `/messages?session=…`; `POST /mcp` answers `405` (repeat with `404` and
+  `400`). No provider credentials needed.
+- **Steps**: Configure the server with the `http` transport and an
+  `authorization` header; connect, discover the tools, and call one. Close the
+  client. Repeat with an endpoint on another origin, with `401` from the POST,
+  and with a server that rejects both POST and GET.
+- **Expected**: Handshake, discovery, and the call succeed over the event
+  stream, every message goes to the announced endpoint with the configured
+  header, and closing the client ends the stream. A cross-origin endpoint is
+  refused before any message is posted, `401` does not fall back, and a server
+  speaking neither transport reports the original `HTTP_ERROR` status.
+- **Specs**: 07-plugins/01-plugin-system §12.2; ADR 0038.
+- **Acceptance**: HTTP transport integration and the main-process MCP handshake.
+- **Milestone**: Maintenance.
+- **Status**: Automated by `apps/desktop/test/mcp-legacy-sse.test.mjs`; no live
+  app process required.
+
 ## E2E-IME-escape: Composition cancellation preserves drafts
 
 - **Steps**: Edit a user message; type a draft; dispatch composing Escape and Cmd/Ctrl+Enter. Open global search and dispatch composing Escape from its input. Repeat with legacy keyCode 229, then ordinary Escape and retry shortcuts.

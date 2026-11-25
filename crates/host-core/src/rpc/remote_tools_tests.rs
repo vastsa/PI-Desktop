@@ -344,6 +344,31 @@ async fn approved_remote_write_is_dispatched_only_after_local_permission_resolut
     );
 }
 
+#[tokio::test]
+async fn write_scope_is_not_dropped_by_either_remote_tool_entry_point() {
+    let (dir, state, tx, mut rx) = fixture();
+    let (_path, session_id) = create(&state, &tx).await;
+    let mut params = json!({
+        "sessionId":session_id,"toolCallId":"scoped-remote","toolName":"Write",
+        "mode":"agent","args":{"path":"forbidden.txt","content":"not written"},
+        "writeScope":["."],
+    });
+    for method in ["tools.execute", "tools.workspaceExecute"] {
+        params["path"] = json!(dir.path());
+        let error = tokio::time::timeout(
+            Duration::from_secs(2),
+            handle_request(state.clone(), method, params.clone(), tx.clone()),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert_eq!(error.data.unwrap()["errorCode"], "WRITE_SCOPE_UNAVAILABLE");
+    }
+    assert!(rx.try_recv().is_err());
+    assert!(state.lock().await.remote_execs.is_empty());
+    assert!(!dir.path().join("forbidden.txt").exists());
+}
+
 /// ADR 0329: a remote-host project cannot host an isolated session; the
 /// probe says why and creation is refused before a session exists.
 #[tokio::test]

@@ -53,6 +53,9 @@ jobs:
           ARCHITECTURE_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
         run: node scripts/check-architecture.mjs
 
+      - name: Unit-test the architecture checks
+        run: node --test scripts/architecture-growth.test.mjs
+
       - name: Unit-test the Pi patch checks
         run: node --test scripts/pi-patch-hash.test.mjs
 
@@ -188,6 +191,11 @@ jobs:
 
       - name: Run provider optional client certificate E2E
         run: xvfb-run --auto-servernum pnpm test:e2e:provider-client-certificate
+
+      - name: Run image model settings Electron tests
+        run: |
+          xvfb-run --auto-servernum node --test apps/desktop/test/image-generation-row-empty-state.test.mjs
+          xvfb-run --auto-servernum node scripts/e2e-image-generation-ui.mjs
 
       - name: Run browser capture/resize E2E
         run: |

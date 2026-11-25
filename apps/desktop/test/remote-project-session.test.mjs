@@ -82,6 +82,7 @@ test("host project groups keep their rows keyed by the remote project id", () =>
   const groups = groupRemoteProjectSessions(
     [remote("ssh-two"), remote()],
     (a, b) => 0,
+    "recent",
   );
   const group = groups.find(
     (entry) => entry.project.key === remoteProjectKey("ssh-one", "project"),
@@ -217,8 +218,10 @@ test("remote project groups share sorted visible order with range selection", ()
   const a1 = { ...remote(), id: "a1", title: "Zulu" };
   const b1 = { ...remote("ssh-two"), id: "b1", title: "Other host" };
   const a2 = { ...remote(), id: "a2", title: "Alpha" };
-  const groups = groupRemoteProjectSessions([a1, b1, a2], (left, right) =>
-    left.title.localeCompare(right.title),
+  const groups = groupRemoteProjectSessions(
+    [a1, b1, a2],
+    (left, right) => left.title.localeCompare(right.title),
+    "recent",
   );
   assert.deepEqual(
     groups.map((group) => group.sessions.map((session) => session.id)),
@@ -227,6 +230,41 @@ test("remote project groups share sorted visible order with range selection", ()
   assert.deepEqual(
     groups.flatMap((group) => group.sessions.map((session) => session.id)),
     ["a2", "a1", "b1"],
+  );
+});
+
+test("remote group order follows the project sort, not the session array order", () => {
+  const older = {
+    ...remote(),
+    id: "old",
+    remoteProjectId: "p-old",
+    updatedAt: "2026-11-14T15:00:00Z",
+  };
+  const newer = {
+    ...remote(),
+    id: "new",
+    remoteProjectId: "p-new",
+    updatedAt: "2026-11-16T05:00:00Z",
+  };
+  const byTitle = (left, right) => left.id.localeCompare(right.id);
+  // The host may list the sessions of the project that was just opened first.
+  // Group order comes from the sort mode, so selecting a conversation cannot
+  // move its project above another one.
+  const openedFirst = groupRemoteProjectSessions([newer, older], byTitle, "recent");
+  const openedLast = groupRemoteProjectSessions([older, newer], byTitle, "recent");
+  assert.deepEqual(
+    openedFirst.map((group) => group.project.projectId),
+    ["p-new", "p-old"],
+  );
+  assert.deepEqual(
+    openedLast.map((group) => group.project.projectId),
+    ["p-new", "p-old"],
+  );
+  assert.deepEqual(
+    groupRemoteProjectSessions([newer, older], byTitle, "name").map(
+      (group) => group.project.projectId,
+    ),
+    ["p-new", "p-old"],
   );
 });
 

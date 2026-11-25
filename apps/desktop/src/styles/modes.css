@@ -267,6 +267,47 @@
   white-space: pre;
 }
 
+/* --- Grouped tabs inside the settings content area (issue #2544) ---------- */
+
+.modes-settings-tabs {
+  padding: 8px 12px;
+}
+
+.modes-settings-tab-field,
+.modes-settings-tab-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.modes-settings-tab-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.modes-settings-fallbacks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.modes-settings-fallback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modes-settings-fallback > :first-child,
+.modes-settings-fallback > :nth-child(2) {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .modes-settings-validation {
   display: flex;
   flex-direction: column;

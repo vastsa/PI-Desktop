@@ -30,6 +30,7 @@ type ActivityItemsProps = {
 
 type ActivityItemBlockProps = Omit<ActivityItemsProps, "items" | "delegateItems" | "delegationStatuses" | "delegationTimings"> & {
   block: RenderBlock<AssistantActivityItem>;
+  groupDelegates: boolean;
   topologyItem?: AssistantActivityItem;
   delegateItems?: DelegationActivityItem[];
   delegationStatuses?: ReadonlyMap<string, SubagentOutcome>;
@@ -37,7 +38,7 @@ type ActivityItemBlockProps = Omit<ActivityItemsProps, "items" | "delegateItems"
 };
 
 const ActivityItemBlock = memo(function ActivityItemBlock({
-  block, isActive, live, topologyItem,
+  block, isActive, live, groupDelegates, topologyItem,
   delegateItems, delegationStatuses, delegationTimings, onUserInteraction,
   collapseThinking,
 }: ActivityItemBlockProps) {
@@ -45,7 +46,7 @@ const ActivityItemBlock = memo(function ActivityItemBlock({
     // The topology predicate narrows to all tools, but a false result can still
     // be an ordinary tool. Do not exclude tools from the remaining branches.
     const delegation = Boolean(isDelegationActivityItem(item));
-    if (delegation) {
+    if (groupDelegates && delegation) {
       if (item !== topologyItem || !delegateItems) return null;
       return <SubagentTopology
         key="subagent-topology"
@@ -72,7 +73,7 @@ const ActivityItemBlock = memo(function ActivityItemBlock({
         imagesInTurn
         message={item.message}
         onUserInteraction={onUserInteraction}
-        {...(item.delegate ? { delegate: item.delegate } : {})}
+        {...(!delegation && item.delegate ? { delegate: item.delegate } : {})}
       />;
     }
     if (item.kind === "hostedSearch") return <HostedSearchRow
@@ -106,6 +107,7 @@ export const ActivityItems = memo(function ActivityItems({ items, ...context }: 
       block={block}
       isActive={context.isActive}
       live={context.live}
+      groupDelegates={topologyItem !== undefined}
       topologyItem={ownsTopology ? topologyItem : undefined}
       delegateItems={ownsTopology ? context.delegateItems : undefined}
       delegationStatuses={ownsTopology ? context.delegationStatuses : undefined}

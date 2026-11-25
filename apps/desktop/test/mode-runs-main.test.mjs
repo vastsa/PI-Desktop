@@ -404,7 +404,8 @@ test("a user mode whose name differs from its directory is read, saved and delet
 
     const removed = await catalog.remove("review");
     assert.ok(!removed.modes.some((mode) => mode.id === "review"));
-    assert.deepEqual(await readdir(dir), []);
+    assert.deepEqual(await readdir(join(dir, "my-review")), ["templates"]);
+    assert.equal(await readFile(join(dir, "my-review", "templates", "notes.md"), "utf8"), "notes\n");
     await assert.rejects(catalog.remove("review"), { errorCode: "MODE_NOT_FOUND" });
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -7,10 +7,29 @@ export {
   builtinModeSource,
   loadModeDefinitions,
   MAX_USER_MODES,
-  parseStrictModeYaml,
-  splitModeDocument,
+  modeDocumentPath,
+  parseUserModeDocument,
 } from "./mode-definitions.js";
-export type { LoadedModeDefinitions, UserModeDocument } from "./mode-definitions.js";
+export type {
+  LoadedModeDefinitions,
+  UserModeBundle,
+  UserModeBundleFile,
+  UserModeDocument,
+} from "./mode-definitions.js";
+export { parseStrictModeYaml, splitModeDocument } from "./mode-yaml.js";
+export type { SplitDocument, YamlResult } from "./mode-yaml.js";
+export {
+  MODE_BUNDLE_KEYS,
+  parseModeBundle,
+  readModeBundleReferences,
+  renameModeBundle,
+} from "./mode-definitions-bundle.js";
+export type {
+  ModeBundleFile,
+  ModeBundleReferences,
+  ModeBundleReferencesResult,
+  ParsedModeBundle,
+} from "./mode-definitions-bundle.js";
 export { COMPLETE_STAGE_TOOL_NAME } from "./modes/complete-stage-tool.js";
 export { modePolicyLevel } from "./modes/mode-policy.js";
 export * from "./runtime.js";

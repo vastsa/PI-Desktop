@@ -10353,6 +10353,7 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(names).toContain("Read");
     expect(names).not.toContain("Task");
     expect(names).not.toContain("TaskWait");
+    expect(names).not.toContain("TaskSend");
     expect(names).not.toContain("ToolSearch");
     expect(names).not.toContain("new_context");
     expect(names).not.toContain("asktool");
@@ -10538,7 +10539,7 @@ describe("DesktopAgentRuntime subagents", () => {
       await runtime.prompt("A new turn.");
       resolveGrant({ ...provider, modelId: "new-model", modelConfig: undefined });
       const expired = await pending;
-      expect(expired.details.error).toContain("not available for delegation");
+      expect(expired.details.error).toContain("parent turn ended");
       host.call.mockRejectedValue(new Error("model is not enabled for delegation"));
       const denied = await taskTool(runtime).execute("revoked", { agent: "explorer", task: "Search.", model: "new/new-model" });
       expect(denied.details.error).toContain("not available for delegation");
@@ -10697,7 +10698,7 @@ describe("DesktopAgentRuntime subagents", () => {
     expect((runtime as any).subagentProvider(explorer).modelId).toBe("local-model");
     expect((runtime as any).subagentProvider(pinned).modelId).toBe("remote-model");
 
-    const readOnly = ((runtime as any).subagentGuidance(explorer) as string[]).join(
+    const readOnly = ((runtime as any).subagentGuidance(explorer.tools) as string[]).join(
       "\n\n",
     );
     expect(readOnly).toContain("prefer Read, Grep, and Glob");
@@ -10708,7 +10709,7 @@ describe("DesktopAgentRuntime subagents", () => {
     expect(readOnly).not.toContain("use Edit for one small unique replacement");
     expect(readOnly).toContain("Use project rules.");
 
-    const withShell = ((runtime as any).subagentGuidance(pinned) as string[]).join(
+    const withShell = ((runtime as any).subagentGuidance(pinned.tools) as string[]).join(
       "\n\n",
     );
     expect(withShell).toContain("bash");
@@ -11141,6 +11142,7 @@ describe("DesktopAgentRuntime subagents", () => {
   it("converges through TaskWait with reports and statuses", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     subagentRuns.calls.length = 0;
+    subagentRuns.deferred = false;
     subagentRuns.result = {
       agentName: "explorer",
       status: "failed",
@@ -11817,7 +11819,7 @@ describe("DesktopAgentRuntime subagents", () => {
       source: "builtin",
     };
     const host = {
-      call: vi.fn((method: string) => {
+      call: vi.fn((method: string, _params?: unknown) => {
         if (method === "project.instructions.resolve") {
           return Promise.resolve(undefined);
         }
@@ -11845,7 +11847,8 @@ describe("DesktopAgentRuntime subagents", () => {
       "tools.execute",
       expect.objectContaining({ permissionScope: "accept-edits" }),
     );
-    expect((runtime as any).delegatePermissionScopes.has("read-1")).toBe(false);
+    await runtimeTool(runtime, "Read").execute("read-1", { path: "src/app.ts" });
+    expect(host.call.mock.lastCall?.[1]).not.toHaveProperty("permissionScope");
 
     // Definitions without a permission stay unwrapped: the delegate's tools
     // are the catalog's own tools, so their RPC carries no scope.
@@ -15214,7 +15217,8 @@ describe("isolated-session subagent worktrees (ADR 0329)", () => {
     expect(calls(host, "tools.execute").at(-1)).toEqual(
       expect.objectContaining({ delegationId }),
     );
-    expect((runtime as any).delegateWorktrees.size).toBe(0);
+    await tool(runtime, "Write").execute("write-1", { path: "a.txt", content: "parent" });
+    expect(calls(host, "tools.execute").at(-1)).not.toHaveProperty("delegationId");
 
     expect(calls(host, "worktree.delegate.settle")).toEqual([
       { sessionId: "session-1", delegationId, merge: true },

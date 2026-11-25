@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "net.aiuo.pi-desktop";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.24.0-beta.1";
+export const APP_VERSION = "0.24.0-beta.2";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -269,6 +269,17 @@ export const IPC = {
     modesRunControl: "pi-desktop/modes/run/control",
     modesRunUpdate: "pi-desktop/modes/run/update",
     modesRunResolve: "pi-desktop/modes/run/resolve",
+    /**
+     * New-format `mode.yaml` bundle surface (issue #2544): read every document a
+     * map references, write them all or none, copy a whole mode directory, and
+     * the mode's own `skills/` folder.
+     */
+    modesBundleRead: "pi-desktop/modes/bundle/read",
+    modesBundleWrite: "pi-desktop/modes/bundle/write",
+    modesCopy: "pi-desktop/modes/copy",
+    modesBundleSettings: "pi-desktop/modes/bundle/settings",
+    modesSkills: "pi-desktop/modes/skills",
+    modesSkillsOpen: "pi-desktop/modes/skills/open",
     /**
      * List every paired remote `pi-host` this desktop knows, redacted so no
      * device token reaches the renderer. See ADR 0286 (R2b pairing UX).

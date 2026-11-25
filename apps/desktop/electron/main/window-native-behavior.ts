@@ -15,17 +15,14 @@ export function nativeWindowMinimumSize(
   };
 }
 
-/** Protect a maximized window without disabling native zoom/fullscreen controls. */
+/** Keep the edges locked while a Windows window is maximized. */
 export function installMaximizedWindowGuard(
   window: BrowserWindow,
   platform: NodeJS.Platform,
 ): () => void {
-  // Linux does not expose cancellable will-move/will-resize events. Its window
-  // manager owns the maximized hit regions and drag-to-restore behavior.
-  if (platform !== "darwin" && platform !== "win32") return () => {};
-  // macOS reports isMaximized() during the zoom animation, before its saved
-  // normal frame is stable. Only protect the settled maximize event, or the
-  // animation itself can be cancelled and the normal frame corrupted.
+  // AppKit routes both edge dragging and Zoom/Restore through will-resize.
+  // On macOS and Linux the window manager owns the resize gesture.
+  if (platform !== "win32") return () => {};
   let settledMaximized = window.isMaximized();
   const maximize = () => { settledMaximized = true; };
   const unmaximize = () => { settledMaximized = false; };

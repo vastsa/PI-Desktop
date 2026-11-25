@@ -162,6 +162,29 @@ export async function saveComposerPasteFiles(
 }
 
 /**
+ * Decide, in order, which native disk files can be copied as image
+ * attachments within the same per-file and batch bounds that
+ * importComposerFiles enforces. Files that do not fit are left for the
+ * caller's metadata-only reference flow instead of failing the whole paste.
+ */
+export function selectImportableComposerImages(
+  files: ReadonlyArray<{ path: string; size: number }>,
+): boolean[] {
+  let count = 0;
+  let totalBytes = 0;
+  return files.map(({ path, size }) => {
+    const name = basename(path);
+    if (!isImageFile(name, mimeTypeForPath(path))) return false;
+    if (count >= MAX_FILES || size > MAX_FILE_BYTES || totalBytes + size > MAX_TOTAL_BYTES) {
+      return false;
+    }
+    count += 1;
+    totalBytes += size;
+    return true;
+  });
+}
+
+/**
  * Copy native-picker selections into the owning session scratch directory.
  * The renderer only receives the resulting safe paths; source paths never
  * become prompt references, so arbitrary files remain inside the attachment

@@ -1,7 +1,7 @@
 import { clipboard } from "electron";
 import { registerSidebarPreferencesIpc } from "./sidebar-preferences-ipc";
 import { readComposerClipboardDirectories } from "../composer-clipboard-directories";
-import { referenceComposerFiles } from "../composer-file-references";
+import { pasteComposerClipboardFiles } from "../composer-file-references";
 import { BrowserWindow, dialog, shell, type OpenDialogOptions } from "electron";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
@@ -618,8 +618,8 @@ export function registerWorkspaceIpc({
       }
       const paths = consumeComposerPickerSelection(input.token, event.sender.id);
       if (input.reference === true) {
-        if (!session.session.projectPath || session.session.remoteWorkspace) throw new Error("local file references require a local project");
-        return { files: await referenceComposerFiles(dataDir, sessionId, session.session.projectPath, paths) };
+        const localProject = session.session.remoteWorkspace ? undefined : session.session.projectPath;
+        return { files: await pasteComposerClipboardFiles(dataDir, sessionId, localProject, paths) };
       }
       return {
         files: await importComposerFiles(

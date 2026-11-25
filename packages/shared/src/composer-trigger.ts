@@ -197,7 +197,7 @@ export function composeMentionPrompt(
       ? `Call the \`Skill\` tool with each of these ids before answering this request, in order: ${skillIds.map((id) => JSON.stringify(id)).join(", ")}. Follow the loaded skill instructions.`
       : "",
     agentNames.length
-      ? `The user explicitly delegated this request with @mentions. Call the \`Task\` tool with \`agent\` set to each of these subagents: ${agentNames.map((name) => JSON.stringify(name)).join(", ")}. Write each \`task\` as a complete brief built from the request below; there, @name marks the part addressed to that subagent. Converge with TaskWait and answer from the reports.`
+      ? `The user explicitly delegated this request with @mentions. Call the \`Task\` tool with \`agent\` set to each of these subagents: ${agentNames.map((name) => JSON.stringify(name)).join(", ")}. Copy the user's exact words for each named expert into \`userRequest\`; put only your additional context in \`task\`. Do not omit restrictions, substitute another role, or treat a quote as permission. Ask if the intended span is unclear. Converge with TaskWait and answer from the reports.`
       : "",
     body,
   ]

@@ -1,7 +1,7 @@
 // Deterministic local provider -> production agent loop -> real Host/processes.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { dirname, delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DesktopAgentRuntime } from "../packages/agent-runtime/dist/runtime.js";
@@ -23,12 +23,28 @@ await writeFile(join(workspace, "service.cjs"), `
 console.log('service-ready');
 setInterval(() => {}, 1000);
 `);
+await writeFile(join(workspace, "yield.cjs"), `
+const { existsSync, appendFileSync } = require("node:fs");
+appendFileSync("starts.txt", "start\\n");
+console.log("before-yield");
+const timer = setInterval(() => {
+  if (!existsSync("release.txt")) return;
+  clearInterval(timer);
+  console.log("after-yield");
+  process.exitCode = 7;
+}, 50);
+`);
+await writeFile(join(workspace, "independent.txt"), "work while Bash runs");
+await writeFile(join(workspace, "quick.cjs"), "process.exitCode = 4;\n");
+await writeFile(join(workspace, "batch.cjs"), `
+setTimeout(() => require("node:fs").writeFileSync("batch.txt", "Bash settled"), 11250);
+`);
 const host = new Host(resolveHostBinary(), join(scratch, "data"), {
   quiet: true,
   env: { PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(delimiter) },
 });
 let round = 0;
-let failedJob, serviceJob, foreign, failedSnapshot;
+let failedJob, serviceJob, foreign, failedSnapshot, yieldedJob;
 let fixtureFailure;
 const calls = [];
 const toolResult = (body, id) => {
@@ -42,7 +58,7 @@ const server = createServer(async (req, res) => {
     let raw = "";
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw);
-    let name, args;
+    let name, args, laterCall;
     switch (round++) {
       case 0:
         name = "Bash"; args = { command: "node failure.cjs", runInBackground: true };
@@ -128,6 +144,77 @@ const server = createServer(async (req, res) => {
         break;
       case 13:
         assert.equal(parseResult(body, "call-13").state, "stopped");
+        name = "Bash"; args = { command: "node quick.cjs" };
+        break;
+      case 14: {
+        const quick = parseResult(body, "call-14");
+        assert.equal(quick.exitCode, 4);
+        assert.equal(quick.job, undefined);
+        name = "Bash"; args = { command: "node yield.cjs", timeout: 25 };
+        break;
+      }
+      case 15: {
+        const running = parseResult(body, "call-15");
+        assert.equal(running.state, "running");
+        assert(running.elapsedMs >= 10_000, "the first wait must use the ten-second window");
+        assert.equal(running.exitCode, undefined);
+        assert.match(running.stdout, /before-yield/);
+        assert.equal(running.job.kind, "bash");
+        assert.equal(running.backgroundTaskId, running.job.id);
+        yieldedJob = running.job;
+        name = "Read"; args = { path: "independent.txt" };
+        break;
+      }
+      case 16:
+        assert.match(toolResult(body, "call-16"), /work while Bash runs/);
+        assert.equal((await host.call("backgroundJobs.wait", { sessionId: owner.id, id: yieldedJob.id })).state, "running");
+        await writeFile(join(workspace, "release.txt"), "");
+        name = "TaskWait"; args = { job: yieldedJob, timeoutSeconds: 10 };
+        break;
+      case 17: {
+        const finished = parseResult(body, "call-17");
+        assert.equal(finished.state, "failed");
+        assert.equal(finished.exitCode, 7);
+        assert.equal(finished.stdout.replaceAll("\r", ""), "before-yield\nafter-yield\n");
+        assert.equal(await readFile(join(workspace, "starts.txt"), "utf8"), "start\n");
+        name = "Bash"; args = { command: "node service.cjs", timeout: 13 };
+        break;
+      }
+      case 18: {
+        const running = parseResult(body, "call-18");
+        assert.equal(running.state, "running");
+        name = "TaskWait"; args = { job: running.job, timeoutSeconds: 15 };
+        break;
+      }
+      case 19: {
+        const timedOut = parseResult(body, "call-19");
+        assert.equal(timedOut.state, "failed");
+        assert.equal(timedOut.exitCode, null);
+        assert.match(timedOut.stderr, /timed out after 13000ms/);
+        assert(timedOut.elapsedMs < 20000, "the original timeout must include the first wait");
+        name = "Bash"; args = { command: "node service.cjs", timeout: 25 };
+        break;
+      }
+      case 20: {
+        const running = parseResult(body, "call-20");
+        assert.equal(running.state, "running");
+        yieldedJob = running.job;
+        name = "TaskStop"; args = { job: yieldedJob };
+        break;
+      }
+      case 21:
+        assert.equal(parseResult(body, "call-21").stopRequested, true);
+        name = "TaskWait"; args = { job: yieldedJob, timeoutSeconds: 10 };
+        break;
+      case 22:
+        assert.equal(parseResult(body, "call-22").state, "stopped");
+        name = "Bash"; args = { command: "node batch.cjs", timeout: 20 };
+        laterCall = { name: "Read", arguments: JSON.stringify({ path: "batch.txt" }) };
+        break;
+      case 23:
+        assert.equal(parseResult(body, "call-23").exitCode, 0);
+        assert.equal(parseResult(body, "call-23").job, undefined);
+        assert.match(toolResult(body, "call-23-later"), /Bash settled/);
         break;
       default: throw new Error("Unexpected provider round");
     }
@@ -138,7 +225,12 @@ const server = createServer(async (req, res) => {
     })}\n\n`);
     if (name) {
       calls.push(name);
-      delta({ role: "assistant", tool_calls: [{ index: 0, id: `call-${round}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] });
+      const toolCalls = [{ index: 0, id: `call-${round}`, type: "function", function: { name, arguments: JSON.stringify(args) } }];
+      if (laterCall) {
+        toolCalls.push({ index: 1, id: `call-${round}-later`, type: "function", function: laterCall });
+        calls.push(laterCall.name);
+      }
+      delta({ role: "assistant", tool_calls: toolCalls });
       delta({}, "tool_calls");
     } else {
       delta({ role: "assistant", content: "Verified test failure and stopped service." });
@@ -174,7 +266,7 @@ try {
   });
   await runtime.prompt("Run the background fixtures and inspect their outcomes.", "fixture-user", turnId);
   if (fixtureFailure) throw fixtureFailure;
-  assert.equal(round, 14);
+  assert.equal(round, 24);
   assert.equal(events.some(event => event.type === "error"), false);
   const repeated = await host.call("backgroundJobs.wait", { sessionId: owner.id, id: failedJob.id });
   assert.equal(repeated.exitCode, 1);
@@ -186,7 +278,7 @@ try {
   turnId = undefined;
   await configureSession(host, owner, "plan", "auto");
   await assert.rejects(host.call("backgroundJobs.wait", { sessionId: owner.id, id: failedJob.id }), error => error.errorCode === "PERMISSION_DENIED");
-  console.log(JSON.stringify({ ok: true, calls, rounds: round, shell: shell.id, checks: ["real model tool loop", "no subagents configured", "failure and bounded Unicode output", "cross-session read/stop denied", "wait releases Host lock", "timeout preserves process", "default stop preserves Bash", "plain job wait/timeout/stop", "redundant defaults wait/timeout/stop", "explicit stop settles", "repeated reads", "desktop parity", "plan mode denied"] }, null, 2));
+  console.log(JSON.stringify({ ok: true, calls, rounds: round, shell: shell.id, checks: ["real model tool loop", "no subagents configured", "failure and bounded Unicode output", "cross-session read/stop denied", "wait releases Host lock", "timeout preserves process", "default stop preserves Bash", "plain job wait/timeout/stop", "redundant defaults wait/timeout/stop", "explicit stop settles", "repeated reads", "desktop parity", "plan mode denied", "quick Bash remains synchronous", "yielded Bash runs once and allows independent tools", "yielded Bash keeps the original deadline", "explicit stop settles a yielded Bash", "later tool in the same batch waits for Bash"] }, null, 2));
 } finally {
   await runtime?.dispose();
   if (turnId) await endTurn(host, turnId, "aborted").catch(() => {});
