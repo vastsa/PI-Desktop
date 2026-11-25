@@ -223,10 +223,11 @@ async function runTurn({ invoke }, providerId, enabled) {
       .map((message) => String(message.content));
     assert.ok(results.some((result) => result.includes(untouched)));
     if (ppt) {
-      const bash = results.find((result) => result.includes("Created deck:")) ?? "";
-      assert.ok(bash.split("Source deck:")[0].includes(`Slide 1\n中文标题\n${newBody}\n\nSlide 2\n新建第二页\n可编辑正文`),
+      const bash = JSON.parse(results.find((result) => result.includes("Created deck:")) ?? "{}");
+      assert.equal(bash.exitCode, 0, "The PowerPoint command sequence must succeed.");
+      assert.ok(bash.stdout.split("Source deck:")[0].includes(`Slide 1\n中文标题\n${newBody}\n\nSlide 2\n新建第二页\n可编辑正文`),
         "The Agent must see text from both slides of the created deck.");
-      assert.ok(bash.split("Edited deck:")[1]?.includes(`Slide 1\n原件首页\n${after}，保留后缀\n\nSlide 2\n${untouched}\n${before}`),
+      assert.ok(bash.stdout.split("Edited deck:")[1]?.includes(`Slide 1\n原件首页\n${after}，保留后缀\n\nSlide 2\n${untouched}\n${before}`),
         "The Agent must see the edited first slide and untouched second slide in the saved copy.");
     }
   }
