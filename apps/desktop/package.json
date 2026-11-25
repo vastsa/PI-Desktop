@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.23.0",
+  "version": "0.23.1",
   "desktopName": "pie-code.desktop",
   "private": true,
   "description": "Pie Code — Ars longa, vita brevis.",
@@ -30,6 +30,7 @@
     "dist:mac": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && electron-builder --mac --publish never",
     "dist:win": "pnpm run build:deps && pnpm run build:host-release && pnpm run bundle:runtime && electron-vite build && node ../../scripts/build-desktop-release.mjs win",
     "dist:linux": "pnpm run build:linux-host-release && pnpm run package:linux",
+    "dist:kylin": "test -n \"${PI_CODE_OFFICE_RUNTIME_DIR:?Set PI_CODE_OFFICE_RUNTIME_DIR to the staged ARM64 Office Runtime}\" && pnpm run dist:linux --linux deb --arm64",
     "package:linux": "node ../../scripts/check-linux-host-glibc.mjs && pnpm run build:deps && pnpm run bundle:runtime && electron-vite build && electron-builder --linux --publish never"
   },
   "dependencies": {
@@ -86,7 +87,7 @@
   "build": {
     "appId": "io.github.w4yne00.piecode",
     "productName": "Pie Code",
-    "afterPack": "../../scripts/bundle-models-dev-catalog.mjs",
+    "afterPack": "../../scripts/bundle-desktop-resources.mjs",
     "directories": {
       "output": "release"
     },

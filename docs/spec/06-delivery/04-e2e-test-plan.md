@@ -201,6 +201,12 @@ identify the platform validation still needed.
 
 ## 8. Traceability Matrix
 
+The Pie Code maintenance line runs `E2E-PIE-OFFICE-WORD` against a Kylin
+ARM64 Debian installation with only loopback networking. It covers
+extension enablement, authorized Word operations, independent DOCX
+readback, and disablement after restart. See
+[the Kylin acceptance runbook](kylin-arm64-offline-install.md#offline-office--word).
+
 | Acceptance | Scenarios |
 |---|---|
 | C / E / Security / Quality — Gemini work setup | E2E-LIVE-VOICE-gemini-work-schema |

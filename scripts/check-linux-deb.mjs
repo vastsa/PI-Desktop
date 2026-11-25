@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { MIN_LINUX_GLIBC, formatGlibcVersion, hostGlibcWithinFloor, maxNeededGlibc } from "../apps/desktop/electron/main/linux-glibc.ts";
 import { ModelsDevCatalog } from "../apps/desktop/electron/main/models-dev-catalog.ts";
+import { verifyOfflineOfficeRuntime } from "./bundle-offline-office.mjs";
 
-const [arch, deb, ...extra] = process.argv.slice(2);
+const [arch, deb, officeFlag, ...extra] = process.argv.slice(2);
 const targets = { arm64: { deb: "arm64", elf: 183 }, x64: { deb: "amd64", elf: 62 } };
-if (!Object.hasOwn(targets, arch) || !deb || extra.length) {
-  throw new Error("Usage: node scripts/check-linux-deb.mjs <arm64|x64> <package.deb>");
+if (!Object.hasOwn(targets, arch) || !deb || extra.length ||
+  (officeFlag !== undefined && (arch !== "arm64" || officeFlag !== "--with-offline-office"))) {
+  throw new Error("Usage: node scripts/check-linux-deb.mjs <arm64|x64> <package.deb> [--with-offline-office]");
 }
 
 function inspect(command, args) {
@@ -47,6 +49,19 @@ try {
   const { productName, linux: { executableName } } = pkg.build;
   const app = path.join(root, "opt", productName);
   const required = new Set([executableName, "resources/bin/pi-desktop-host-core"]);
+  const runtime = path.join(app, "resources/office-runtime");
+  const officePlugin = path.join(app, "resources/plugins/pie.offline-office");
+  if (officeFlag || existsSync(runtime) || existsSync(officePlugin)) {
+    if (arch !== "arm64") throw new Error("Offline Office requires an ARM64 Debian package.");
+    await verifyOfflineOfficeRuntime(runtime);
+    for (const file of ["manifest.json", "main.cjs", "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py"]) {
+      if (!existsSync(path.join(officePlugin, file))) {
+        throw new Error(`Missing bundled Offline Office plugin file: ${file}`);
+      }
+    }
+    required.add("resources/office-runtime/node/bin/node");
+    required.add("resources/office-runtime/python/bin/python3.12");
+  }
   if (!existsSync(path.join(app, "resources/app.asar"))) throw new Error("Missing app.asar");
   const catalog = new ModelsDevCatalog({ catalogPath: path.join(app, "resources/models.dev/api.json") });
   await catalog.loadLocal();

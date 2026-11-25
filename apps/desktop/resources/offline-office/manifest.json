@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "pie.offline-office",
+  "name": "Offline Office",
+  "version": "0.1.0",
+  "description": "Create, extract and save a copy of Word documents with the bundled offline runtime.",
+  "i18n": {
+    "zh-CN": {
+      "name": "离线办公",
+      "description": "使用随包运行时离线新建、提取和另存 Word 文档。"
+    }
+  },
+  "main": "main.cjs",
+  "enabledByDefault": false,
+  "permissions": ["agent.prompt.inject"],
+  "contributes": {
+    "skills": [{ "id": "word", "path": "word/SKILL.md" }]
+  }
+}

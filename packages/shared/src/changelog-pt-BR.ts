@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    version: "0.23.1",
+    date: "2026-11-25",
+    highlights: ["Ative o Office offline em Extensões no Kylin ARM64 para criar documentos do Word, extrair texto ou salvar uma cópia."],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [

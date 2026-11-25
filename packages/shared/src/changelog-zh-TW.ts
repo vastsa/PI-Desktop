@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const zhTWEntries: ChangelogEntry[] = [
   {
+    version: "0.23.1",
+    date: "2026-11-25",
+    highlights: ["在麒麟 ARM64 版的「擴充功能」中啟用離線辦公，即可離線建立 Word 文件、擷取正文或另存副本。"],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [

@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
+    version: "0.23.1",
+    date: "2026-11-25",
+    highlights: ["Kylin ARM64의 확장 기능에서 오프라인 오피스를 켜면 Word 문서를 만들거나, 텍스트를 추출하거나, 복사본을 저장할 수 있습니다."],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [
