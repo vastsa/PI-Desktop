@@ -739,13 +739,18 @@ async function main() {
       });
       const ids = (messages) => messages.map((message) => message.id);
 
-      // One live branch, archived twice: the second archive must refresh the
-      // reference, not mint a variant.
+      // Regenerate seeds a revision before active-branch saves refresh it.
       const first = randomUUID();
       const firstAnswer = randomUUID();
       const laterAnswer = randomUUID();
-      await append(user(first, "first prompt", first, 1, 1));
-      await append(assistant(firstAnswer, "first answer"));
+      const firstBranch = [
+        user(first, "first prompt", first, 1, 1),
+        assistant(firstAnswer, "first answer"),
+      ];
+      for (const message of firstBranch) await append(message);
+      const seeded = await host.call("session.saveRevision", {
+        sessionId, rootUserId: first, messages: firstBranch, makeActive: true,
+      });
       const archived = await host.call("session.saveActiveRevision", { sessionId });
       await append(assistant(laterAnswer, "a later answer on the same branch"));
       const refreshed = await host.call("session.saveActiveRevision", { sessionId });
@@ -790,7 +795,8 @@ async function main() {
       });
 
       const checks = {
-        "archives the live branch as revision 1": archived.saved?.activeRevision === 1,
+        "seeds revision 1 before saving the live branch": seeded.revision?.revisionIndex === 1,
+        "the first save keeps revision 1 active": archived.saved?.activeRevision === 1,
         "a second archive refreshes instead of minting": refreshed.saved?.archived === false,
         "still one variant after the refresh": refreshed.saved?.revisionCount === 1,
         "the live branch was written as a reference": references.length >= 2,
