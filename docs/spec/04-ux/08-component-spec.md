@@ -2828,14 +2828,18 @@ as a conversation:
 └──────────────────────────────────────────────┘
 ```
 
-- The tab is a message list, not a card: every `Task` call of the resume
-  chain renders its `task` argument as a user row (the main transcript's user
-  bubble), and the delegate's thinking, tool, and answer rows under that call
-  render with the same message-list language, so a follow-up prompt reads as
-  the next user turn.
-- The composer at the foot is a disabled two-row textarea whose placeholder
-  says subagents are driven by the main agent and cannot take input; the tab
-  is display-only and has no send path.
+- Every `Task` call in the resume chain starts its own turn: the task prompt
+  is a user bubble, followed by the shared assistant process and answer.
+  Settings → Conversation controls the same three layouts, thinking visibility,
+  and automatic folding as in MainChat. A turn has at most one outer process,
+  activity groups where the selected layout allows them, and individual tool
+  and thinking details. The final answer stays outside the process. Search
+  reveals the matching levels; manual choices are scoped to each tab and session.
+- The footer reuses the main composer shell with a localized read-only notice.
+  The latest Task’s recorded model and thinking level are passive labels,
+  omitted when unknown. There is no editor, send path, composer slot, or mode,
+  permission, or model picker. A running delegate can still be stopped without
+  stopping the parent or any other delegate.
 - Tab labels carry the agent name captured when the tab opened, with a
   strip-order `#n` suffix when the same name occurs more than once; a
   localization fallback covers a delegate with no name.

@@ -639,12 +639,18 @@ window; opening a normal panel afterward must still work.
   3. Click the second (resumed) `explorer` node. Verify a second tab opens
      labeled `explorer#2`, both tabs coexist, and each can be activated,
      drag-reordered, and closed via ×, middle-click, or Delete.
-  4. In the resumed tab, verify the conversation reads `user: first prompt`,
-     delegate rows, `user: follow-up prompt`, delegate rows — the same
-     message-list language as the main transcript (user bubbles, tool rows,
-     thinking rows, markdown answers).
-  5. Verify the composer at the foot is a disabled two-row textarea whose
-     placeholder reads the read-only hint, in every supported locale.
+  4. In the resumed tab, verify that the two Task prompts each start a turn
+     with its own process disclosure and visible answer. Switch among Flat,
+     Commands first, and Fully folded in Settings → Conversation. Verify the
+     same layout updates live in both transcripts, without a new response.
+     Check reasoning visibility, automatic folding, and that reopening a
+     process restores manually opened child rows. Search for a tool result
+     in a collapsed group and verify its owning tab reveals the match.
+  5. Verify the footer matches the main composer shell, but offers only the
+     localized read-only hint, recorded model/reasoning metadata when known,
+     and Stop while the delegate is stoppable. It has no picker, editable
+     field, plug-in slot, attachment control, or send action. Stop a running
+     delegate and verify the request names only that delegate.
   6. Wait for the failed delegate to settle, open its tab, and verify the
      ended tab persists until manually closed.
   7. Switch to another session and back. Verify the tabs are restored per
@@ -652,13 +658,15 @@ window; opening a normal panel afterward must still work.
 - **Expected**: No auto-open on delegate start; N subagents = N coexisting
   closable tabs with deduplicated `name#n` labels; the tab body is the
   delegation's user/assistant message stream with follow-up prompts as user
-  turns; the composer is disabled with the in-field hint and has no send
-  path; ended delegates' tabs persist until closed; tabs are session-scoped.
+  turns; the footer is display-only except for an explicitly scoped stop;
+  ended delegates’ tabs persist until closed; tabs and disclosure choices
+  are independent of the main transcript and of other delegates.
 - **Specs linked**: `04-ux/08-component-spec.md` (delegation tab),
   `04-ux/09-interaction-patterns.md` (work panel tabs)
 - **Acceptance**: Quality
 - **Milestone**: M6
-- **Status**: Draft
+- **Status**: Renderer user path automated in `apps/desktop/test/subagent-conversation-user-path.test.mjs`;
+  full work-panel tab lifecycle remains a manual scenario.
 
 ## E2E-119: Parallel subagents report back without entering the parent's context
 
