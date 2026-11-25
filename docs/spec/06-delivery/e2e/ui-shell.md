@@ -257,10 +257,12 @@
 - **Preconditions**: App running in dark and light themes; plugins page and a
   chat with markdown links/blockquotes available.
 - **Steps**: 1) Inspect focus rings, primary buttons, toggles, selected
-  session ring, plugin market primary CTAs. 2) Open an assistant answer with
+  session ring, plugin market primary CTAs, and Tab into the Settings search.
+  2) Open an assistant answer with
   links and a blockquote. 3) Switch theme and re-check.
 - **Expected**: Interactive accent, markdown links/rules, and plugin primary
-  actions use coral in dark mode and deeper coral in light mode. The plugins
+  actions use coral in dark mode and deeper coral in light mode. A solid
+  coral outline marks keyboard focus on the Settings search. The plugins
   installed/market UI (tabs, search, cards, permission modal, and primary /
   secondary buttons) uses only `--ds-*` tokens with no blue-slate fallbacks in
   either theme; button surfaces and ink remain visible in dark mode. Semantic

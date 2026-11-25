@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../product-features.ts";
 import {
   type CSSProperties,
   lazy,
@@ -276,7 +277,7 @@ export function AppShell() {
               )}
 
               <Suspense fallback={<RoutePending />}>
-                {page === "scheduled" ? (
+                {desktopFeatures.scheduledTasks && page === "scheduled" ? (
                   <div className="route-surface route-page">
                     <ScheduledPage />
                   </div>
@@ -343,7 +344,7 @@ export function AppShell() {
         <AppOverlayHost active={!showSplash} />
         <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
         <ToastHost anchorElement={toastAnchor} />
-        <LiveVoiceStatusHost />
+        {desktopFeatures.voice && <LiveVoiceStatusHost />}
         <PluginRendererHost />
         <ExtensionPromptHost />
       </>

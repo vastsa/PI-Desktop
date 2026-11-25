@@ -110,6 +110,7 @@ export type UpdaterOptions = {
   /** Overrides for tests. */
   platform?: NodeJS.Platform;
   isPackaged?: boolean;
+  enabled?: boolean;
   distribution?: WindowsDistribution;
 };
 
@@ -119,6 +120,7 @@ export class AppUpdaterController {
   private readonly getLocale: () => string | null | undefined;
   private readonly platform: NodeJS.Platform;
   private readonly isPackaged: boolean;
+  private readonly enabled: boolean;
   private readonly env: NodeJS.ProcessEnv;
   private readonly distribution?: WindowsDistribution;
   private readonly defaultPreference: UpdatePreference;
@@ -197,6 +199,7 @@ export class AppUpdaterController {
         : undefined);
     this.platform = platform;
     this.isPackaged = isPackaged;
+    this.enabled = options.enabled ?? true;
     this.env = process.env;
     this.distribution = distribution;
     this.defaultPreference = resolveDefaultUpdatePreference(
@@ -206,7 +209,7 @@ export class AppUpdaterController {
       distribution,
     );
     this.preference = this.defaultPreference;
-    this.automaticSupported = supportsAutomaticUpdates(
+    this.automaticSupported = this.enabled && supportsAutomaticUpdates(
       platform,
       isPackaged,
       this.env,
@@ -214,13 +217,13 @@ export class AppUpdaterController {
     this.readUpdateSettings = options.readUpdateSettings;
     this.persistLastNotifiedVersion = options.persistLastNotifiedVersion;
     this.persistDismissedVersion = options.persistDismissedVersion;
-    const mode = resolveUpdateModePolicy(
+    const mode = this.enabled ? resolveUpdateModePolicy(
       platform,
       isPackaged,
       this.env,
       distribution,
       this.preference,
-    );
+    ) : "disabled";
     const defaultCacheBasePath = defaultUpdateCacheBasePath({
       platform,
       env: process.env,
@@ -342,13 +345,13 @@ export class AppUpdaterController {
       preference,
       this.automaticSupported,
     );
-    const mode = resolveUpdateModePolicy(
+    const mode = this.enabled ? resolveUpdateModePolicy(
       this.platform,
       this.isPackaged,
       this.env,
       this.distribution,
       effectivePreference,
-    );
+    ) : "disabled";
     const preferenceChanged =
       effectivePreference !== this.preference || mode !== previousMode;
     this.preference = effectivePreference;
@@ -597,7 +600,7 @@ export class AppUpdaterController {
   async check(options: { manual?: boolean } = {}): Promise<UpdateState> {
     await this.ensureSettingsLoaded();
     if (this.state.mode === "disabled") {
-      throw new Error("updates are disabled in development builds");
+      throw new Error("online updates are disabled");
     }
     if (
       this.state.status === "checking" ||
@@ -686,6 +689,7 @@ export class AppUpdaterController {
   }
 
   async openReleases(): Promise<void> {
+    if (!this.enabled) throw new Error("online updates are disabled");
     const url = parseAllowedExternalUrl(RELEASES_URL);
     if (!url) throw new Error("DISALLOWED_EXTERNAL_URL");
     await shell.openExternal(url);

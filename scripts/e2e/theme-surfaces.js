@@ -174,6 +174,16 @@ globalThis.themeSurfacesProbe = async (theme, custom) => {
         contrast(rgba(style.outlineColor), rgba(surface)) < 3) {
       failures.push("primary action lacks its visible coral keyboard focus");
     }
+    const search = document.querySelector(".settings-search");
+    search.focus();
+    const searchStyle = getComputedStyle(search);
+    const searchOutline = rgba(searchStyle.outlineColor);
+    if (!search.matches(":focus-visible") || searchStyle.outlineStyle === "none" ||
+        parseFloat(searchStyle.outlineWidth) < 2 ||
+        String(searchOutline) !== String(rgba(coral)) ||
+        contrast(searchOutline, values.rail.rgba) < 3) {
+      failures.push("settings search lacks its visible coral keyboard focus");
+    }
     const activeSession = values.activeSession = sample(".thread-item.active");
     const [r, g, b, alpha] = activeSession.rgba;
     if (r <= g || r <= b || alpha < 50) failures.push("active session lacks its coral selection");

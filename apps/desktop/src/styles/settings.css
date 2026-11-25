@@ -155,7 +155,8 @@
 }
 
 .settings-search:focus {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 28%, transparent);
+  outline: 2px solid var(--ds-focus);
+  outline-offset: 2px;
 }
 
 .settings-nav-scroll {

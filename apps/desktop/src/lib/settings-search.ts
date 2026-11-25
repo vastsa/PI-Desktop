@@ -11,6 +11,8 @@
  * because no card order makes two subjects one page.
  */
 
+import { desktopFeatures } from "../../product-features.ts";
+
 export type SettingsTabId =
   | "appearance"
   | "chat"
@@ -102,8 +104,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.sidebarSessionTime",
       "settings.sidebarModules",
       "settings.sidebarModule.newTask",
-      "settings.sidebarModule.scheduled",
-      "settings.sidebarModule.pluginMarket",
+      ...(desktopFeatures.scheduledTasks ? ["settings.sidebarModule.scheduled"] : []),
+      desktopFeatures.onlineServices ? "settings.sidebarModule.pluginMarket" : "nav.plugins",
       "settings.sidebarModule.pinnedSessions",
       "settings.sidebarModule.sessions",
       "settings.sidebarModule.sessionSort",
@@ -210,9 +212,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.commandShell",
       "settings.infiniteProviderRetry",
       "settings.infiniteProviderRetryDesc",
-      "settings.scheduledTasks",
-      "settings.scheduledTasksDesc",
-      "computerUse.title",
+      ...(desktopFeatures.scheduledTasks ? ["settings.scheduledTasks", "settings.scheduledTasksDesc"] : []),
+      ...(desktopFeatures.computerUse ? ["computerUse.title"] : []),
     ],
   },
   {
@@ -426,8 +427,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.startupGuide",
       "settings.logs",
       "settings.feedback",
-      "updates.title",
-      "updates.preferenceTitle",
+      ...(desktopFeatures.onlineServices ? ["updates.title", "updates.preferenceTitle"] : []),
       "settings.developer",
       "settings.developerMode",
       "settings.devTools",
@@ -455,6 +455,7 @@ export function visibleSettingsNav(
 ): SettingsNavEntry[] {
   return SETTINGS_NAV.filter(
     (entry) =>
+      (entry.id !== "voice" || desktopFeatures.voice) &&
       (entry.developerOnly !== true || developerMode) &&
       (entry.developmentOnly !== true || includeDevelopmentOnly),
   );

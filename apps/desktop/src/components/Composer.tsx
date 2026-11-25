@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../product-features.ts";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import { inheritedSessionModelBinding } from "../lib/session-model";
 import {
@@ -484,7 +485,7 @@ export function Composer({
   // Keep the legacy listener for already-started or IPC-owned Dictation, but
   // the Composer no longer exposes a Dictation control or overlay.
   useVoiceInput({
-    enabled: localToolsAllowed && import.meta.env.DEV && !!settings?.voice?.enabled,
+    enabled: desktopFeatures.voice && localToolsAllowed && import.meta.env.DEV && !!settings?.voice?.enabled,
     onTranscriptionComplete: (text) => {
       const current = readLiveDraft();
       if (!current.trim()) {

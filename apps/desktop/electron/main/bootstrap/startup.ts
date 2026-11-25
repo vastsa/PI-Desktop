@@ -1,4 +1,5 @@
-import { app, BrowserWindow, crashReporter, Menu, safeStorage } from "electron";
+import { app, BrowserWindow, crashReporter, Menu, safeStorage, session } from "electron";
+import { desktopFeatures } from "../../../product-features.ts";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { createScheduledRunner } from "../runtime/scheduled-runner";
 import { onConfirmedQuit } from "./confirmed-quit";
@@ -135,6 +136,9 @@ export type StartupDependencies = {
  * composition root through `StartupState` and dependency callbacks.
  */
 export function registerApplicationStartup(deps: StartupDependencies): void {
+  if (!desktopFeatures.onlineServices) {
+    app.commandLine.appendSwitch("disable-background-networking");
+  }
   // Electron only accepts scheme privileges before the app is ready, and this
   // runs from the composition root, before the `whenReady` promise can settle.
   registerPluginSchemes();
@@ -191,6 +195,20 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
     // create a window, a tray, or a child process on top of the running app.
     if (!hasSingleInstanceLock) return;
     applyDevelopmentBranding();
+    if (!desktopFeatures.onlineServices) {
+      // Some Chromium contexts initialize their dictionaries before preferences
+      // can be changed. They must never fall back to the public CDN.
+      if (process.platform !== "darwin") {
+        session.defaultSession.setSpellCheckerDictionaryDownloadURL("file:///pie-code-offline-dictionaries/");
+      }
+      const disableSpellcheck = (created: typeof session.defaultSession) => {
+        if (process.platform !== "darwin") created.setSpellCheckerLanguages([]);
+        created.setSpellCheckerEnabled(false);
+      };
+      // An off preference alone does not clear the Linux dictionary list.
+      app.on("session-created", disableSpellcheck);
+      disableSpellcheck(session.defaultSession);
+    }
 
     // A Chromium-process crash from a previous run left a minidump, and nothing
     // else would ever mention it. Report one durable line per new dump set,
@@ -320,20 +338,17 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       });
     }
     if (!bootError) planUiProbe.install();
-    const scheduledRunner = createScheduledRunner({
-      getHost,
-      execute: (id) => invokeIpc(IPC.invoke.scheduledExecute, [id, true]),
-      report: (error) => logger.app("runtime", "warn", "scheduled task dispatch failed", { data: String(error) }),
-    });
-    scheduledRunner.start();
-    logger.app("runtime", "info", "scheduled runner started");
-    // Stop only on a committed quit: a cancelled quit confirmation keeps the
-    // app running, and a runner stopped from `before-quit` would stay silent
-    // until restart (issue #2048).
-    onConfirmedQuit(() => {
-      scheduledRunner.stop();
-      logger.app("runtime", "info", "scheduled runner stopped", { data: "app-quit" });
-    });
+    if (desktopFeatures.scheduledTasks) {
+      const scheduledRunner = createScheduledRunner({
+        getHost,
+        execute: (id) => invokeIpc(IPC.invoke.scheduledExecute, [id, true]),
+        report: (error) => logger.app("runtime", "warn", "scheduled task dispatch failed", { data: String(error) }),
+      });
+      scheduledRunner.start();
+      logger.app("runtime", "info", "scheduled runner started");
+      // A cancelled quit confirmation must not stop the runner (issue #2048).
+      onConfirmedQuit(() => scheduledRunner.stop());
+    }
     if (!bootError && state.agentHostBridge) {
       // Restore the persisted turn queue now that host-core answers. Restored
       // entries stay held until a controller attaches (D375).

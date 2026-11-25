@@ -4,6 +4,7 @@ import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, readdirSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { MIN_LINUX_GLIBC, formatGlibcVersion, hostGlibcWithinFloor, maxNeededGlibc } from "../apps/desktop/electron/main/linux-glibc.ts";
+import { ModelsDevCatalog } from "../apps/desktop/electron/main/models-dev-catalog.ts";
 
 const [arch, deb, ...extra] = process.argv.slice(2);
 const targets = { arm64: { deb: "arm64", elf: 183 }, x64: { deb: "amd64", elf: 62 } };
@@ -47,6 +48,11 @@ try {
   const app = path.join(root, "opt", productName);
   const required = new Set([executableName, "resources/bin/pi-desktop-host-core"]);
   if (!existsSync(path.join(app, "resources/app.asar"))) throw new Error("Missing app.asar");
+  const catalog = new ModelsDevCatalog({ catalogPath: path.join(app, "resources/models.dev/api.json") });
+  await catalog.loadLocal();
+  const { fetchedAt, modelCount, lastError } = catalog.getStatus();
+  if (!fetchedAt) throw new Error(lastError ?? "Packaged models.dev snapshot has no fetch date");
+  console.log(`Verified packaged models.dev catalog: ${modelCount} models, fetched ${fetchedAt}.`);
   const desktopFile = readFileSync(path.join(root, "usr/share/applications", pkg.desktopName), "utf8");
   for (const line of [
     `Name=${productName}`,

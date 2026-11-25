@@ -3,6 +3,27 @@
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Packaging, boot, hardening, storage, configuration sync, power, and platform integration.
 > Scenario template, gates, and traceability live in the plan.
 
+## E2E-PIE-CODE-offline-workbench
+
+- **Preconditions:** Built desktop, Host binary, and an isolated app profile.
+- **Steps:** Run `pnpm test:e2e:pie-code-offline`. Boot with only local fixture
+  services and a rejecting proxy. Load the bundled catalog, exercise disabled
+  channels, open a local project, discover models, and send a prompt using a
+  manually entered model ID. Have the agent read a file from that project,
+  connect to the local MCP fixture, and open Plugins and Add Provider. Open the
+  model picker with a previously enabled public provider, then edit and save
+  an existing intranet provider with a known vendor identity.
+- **Expected:** The local file reaches the model and the turn completes. No
+  default outbound request reaches the rejecting proxy or the market sentinel.
+  Local MCP discovers its tool; the desktop shows installed plugins and its
+  custom endpoint. The existing intranet URL and key stay with the local
+  service. Agent and Host do not offer scheduled tools, and a stale call is
+  denied without changing the saved task. A separate request confirms the
+  proxy detects blocked traffic.
+- **Qualification:** The proxy result is a smoke check. Use process-tree
+  network tracing and qualify package upgrades on the
+  [isolated ARM64 Kylin image](../kylin-arm64-offline-install.md).
+
 ## Windows background process snapshot clock
 
 - **Preconditions:** Isolated Windows Host and a synthetic background task.

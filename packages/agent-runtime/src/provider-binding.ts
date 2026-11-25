@@ -264,7 +264,7 @@ function providerRequestTransport(provider: RuntimeProviderConfig) {
   return nativeWebSearchTransport({
     apiStyle,
     baseUrl,
-    enabled: provider.modelConfig?.webSearch === true,
+    enabled: process.env.PI_DESKTOP_DISABLE_HOSTED_SEARCH !== "1" && provider.modelConfig?.webSearch === true,
   });
 }
 
@@ -449,6 +449,7 @@ export function buildProviderModel(
     provider: provider.extensionAgentKey ? provider.id : (provider.vendorKey?.trim() || provider.id),
     baseUrl,
     webSearch:
+      process.env.PI_DESKTOP_DISABLE_HOSTED_SEARCH !== "1" &&
       resolveNativeWebSearch({
         wireApi: binding.api,
         modelWebSearch: catalogModel.webSearch,

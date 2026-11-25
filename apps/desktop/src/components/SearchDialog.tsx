@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../product-features.ts";
 import { OverlayBackdrop } from "./ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -208,7 +209,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return PAGE_ENTRIES.filter((entry) =>
-      (entry.page !== "scheduled" || scheduledTasksEnabled) &&
+      (entry.page !== "scheduled" || (desktopFeatures.scheduledTasks && scheduledTasksEnabled)) &&
       t(entry.labelKey).toLowerCase().includes(q));
   }, [query, t, scheduledTasksEnabled]);
 

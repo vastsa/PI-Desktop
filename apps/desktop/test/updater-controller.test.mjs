@@ -19,8 +19,10 @@ class FakeUpdater extends EventEmitter {
   nextVersion = "0.16.1";
   downloadStarts = [];
   cancellations = [];
+  checks = 0;
 
   async checkForUpdates() {
+    this.checks += 1;
     this.emit("checking-for-update");
     const info = {
       version: this.nextVersion,
@@ -49,7 +51,7 @@ class FakeUpdater extends EventEmitter {
   quitAndInstall() {}
 }
 
-function createController({ updater, settings = {}, persist = async () => {} }) {
+function createController({ updater, settings = {}, persist = async () => {}, enabled }) {
   const logger = { app: () => {} };
   const sent = [];
   const controller = new AppUpdaterController({
@@ -58,12 +60,31 @@ function createController({ updater, settings = {}, persist = async () => {} }) 
     currentVersion: "0.16.0",
     platform: "darwin",
     isPackaged: true,
+    enabled,
     autoUpdater: updater,
     readUpdateSettings: async () => settings,
     persistDismissedVersion: persist,
   });
   return { controller, sent };
 }
+
+test("a packaged Pie Code app cannot enable GitHub updates with a saved preference", async () => {
+  const updater = new FakeUpdater();
+  const { controller } = createController({
+    updater, enabled: false, settings: { updatePreference: "automatic" },
+  });
+  try {
+    controller.setPreference("automatic");
+    controller.startAutoCheck();
+    assert.equal(controller.getState().mode, "disabled");
+    await assert.rejects(controller.check({ manual: true }), /online updates are disabled/);
+    await assert.rejects(controller.openReleases(), /online updates are disabled/);
+    assert.equal(updater.checks, 0);
+    assert.equal(updater.autoInstallOnAppQuit, false);
+  } finally {
+    controller.dispose();
+  }
+});
 
 test("dismissing an in-app update cancels its download and disables install on quit", async () => {
   const updater = new FakeUpdater();

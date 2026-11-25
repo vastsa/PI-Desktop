@@ -7,6 +7,7 @@
  * restores the previous choice. Settings itself has no switch here: hiding it
  * would remove the only visible way back.
  */
+import { desktopFeatures } from "../../../product-features.ts";
 import { useTranslation } from "react-i18next";
 import {
   SIDEBAR_MODULES,
@@ -34,8 +35,10 @@ export function SidebarModulesSettings({
   return (
     <SettingsCard title={t("settings.sidebarModules")}>
       {SIDEBAR_MODULES.map((module) => {
+        if (module.id === "scheduled" && !desktopFeatures.scheduledTasks) return null;
         const parent = "parent" in module ? module.parent : undefined;
-        const label = t(`settings.sidebarModule.${module.id}`);
+        const label = t(module.id === "pluginMarket" && !desktopFeatures.onlineServices
+          ? "nav.plugins" : `settings.sidebarModule.${module.id}`);
         // The Scheduled entry only exists while scheduled tasks are on.
         const unavailable =
           (parent !== undefined && !sidebarModuleEnabled(modules, parent)) ||

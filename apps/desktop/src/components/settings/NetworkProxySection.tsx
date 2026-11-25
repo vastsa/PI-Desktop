@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../product-features.ts";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
@@ -246,28 +247,30 @@ export function NetworkProxySection({
                 }}
               />
             </SettingsRow>
-            <SettingsRow title={t("settings.proxyTest")}>
-              <div className="settings-proxy-control">
-                <Button
-                  variant="secondary"
-                  disabled={testState === "busy"}
-                  onClick={() => void runTest()}
-                >
-                  {testState === "busy" ? t("settings.proxyTesting") : t("settings.proxyTest")}
-                </Button>
-                {testState === "ok" || testState === "fail" ? (
-                  <span
-                    className={cx(
-                      "settings-command-shell-state",
-                      testState === "fail" && "error",
-                    )}
-                    role="status"
+            {desktopFeatures.onlineServices && (
+              <SettingsRow title={t("settings.proxyTest")}>
+                <div className="settings-proxy-control">
+                  <Button
+                    variant="secondary"
+                    disabled={testState === "busy"}
+                    onClick={() => void runTest()}
                   >
-                    {testMessage}
-                  </span>
-                ) : null}
-              </div>
-            </SettingsRow>
+                    {testState === "busy" ? t("settings.proxyTesting") : t("settings.proxyTest")}
+                  </Button>
+                  {testState === "ok" || testState === "fail" ? (
+                    <span
+                      className={cx(
+                        "settings-command-shell-state",
+                        testState === "fail" && "error",
+                      )}
+                      role="status"
+                    >
+                      {testMessage}
+                    </span>
+                  ) : null}
+                </div>
+              </SettingsRow>
+            )}
           </>
         ) : null}
 

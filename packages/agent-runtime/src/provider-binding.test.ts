@@ -1325,6 +1325,22 @@ describe("buildProviderModel native web search capability", () => {
     expect(completions.api).toBe("openai-completions");
     expect(completions.webSearch).toBeUndefined();
   });
+
+  it("does not send a saved search opt-in from the offline desktop", () => {
+    vi.stubEnv("PI_DESKTOP_DISABLE_HOSTED_SEARCH", "1");
+    try {
+      const model = buildProviderModel({
+        ...keyedProvider,
+        vendorKey: "openai-codex",
+        apiStyle: "openai_codex_responses",
+        modelConfig: configuredModel,
+      });
+      expect(model.api).toBe("openai-codex-responses");
+      expect(model.webSearch).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("GitHub Copilot transport identity", () => {

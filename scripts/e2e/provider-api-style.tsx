@@ -243,8 +243,9 @@ globalThis.providerApiStyleProbe = async (reasoningOnly = false) => {
       await until(() => discoveries.length > beforeStepfunDiscovery, "StepFun discovery");
       const discovery = discoveries.at(-1)!;
       assert(discovery.baseUrl === "https://api.stepfun.com/step_plan/v1" &&
+        discovery.presetId === "stepfun-plan" &&
         discovery.apiStyle === "anthropic_messages" && discovery.apiKey === "stepfun-fixture-key",
-        `${locale}: StepFun discovery used the wrong route or credentials`);
+        `${locale}: StepFun discovery used the wrong preset, route, or credentials`);
       const stepfunCheckbox = () => [...document.querySelectorAll<HTMLInputElement>('.provider-models-row input[type="checkbox"]')]
         .find((input) => input.closest("label")?.textContent?.includes("step-5-preview"));
       await until(() => Boolean(stepfunCheckbox()?.checked && !stepfunCheckbox()!.disabled),
@@ -302,8 +303,8 @@ globalThis.providerApiStyleProbe = async (reasoningOnly = false) => {
       const beforeLocalDiscovery = discoveries.length;
       await until(() => discoveries.length > beforeLocalDiscovery, "local no-auth discovery");
       const localProbe = discoveries.at(-1)!;
-      assert(localProbe.baseUrl === "http://127.0.0.1:11434/v1" && !localProbe.apiKey,
-        `${locale}: local model discovery included an API key`);
+      assert(localProbe.baseUrl === "http://127.0.0.1:11434/v1" && !localProbe.apiKey &&
+        !localProbe.presetId, `${locale}: local discovery sent a key or named preset`);
       await until(
         () => Boolean(document.querySelector<HTMLInputElement>(".provider-models-row input")),
         "local model discovery result",

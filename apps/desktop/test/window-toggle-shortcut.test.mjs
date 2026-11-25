@@ -178,7 +178,7 @@ test("stored legacy overrides are folded where each process reads them", () => {
 });
 
 test("settings lists one toggle row and formats it from the shared catalog", () => {
-  assert.match(sectionSource, /KEYBOARD_SHORTCUTS\.filter\(\(shortcut\) => shortcut\.group === group\)/);
+  assert.match(sectionSource, /visibleShortcuts\.filter\(\(shortcut\) => shortcut\.group === group\)/);
   assert.match(sectionSource, /resolveKeybinding\(shortcut, settings\.keybindings, platform\)/);
   assert.doesNotMatch(sectionSource, /closeWindow|summonWindow/);
   assert.match(settingsSource, /<KeyboardShortcutsSection/);

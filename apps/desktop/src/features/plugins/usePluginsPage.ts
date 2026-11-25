@@ -1,3 +1,4 @@
+import { desktopFeatures } from "../../../product-features.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../stores/app-store";
@@ -52,7 +53,7 @@ export function usePluginsPage() {
   const currentProjectPath = useAppStore((s) => s.workspace?.path ?? null);
 
   const {
-    tab,
+    tab: storedTab,
     setTab,
     installedQuery,
     setInstalledQuery,
@@ -63,6 +64,7 @@ export function usePluginsPage() {
     sort,
     setSort,
   } = usePluginBrowseState();
+  const tab = desktopFeatures.onlineServices ? storedTab : "installed";
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const {
     market,
@@ -247,6 +249,7 @@ export function usePluginsPage() {
   // host keeps the last valid catalog for offline use, so a failed check is
   // intentionally silent and never hides the installed list.
   useEffect(() => {
+    if (!desktopFeatures.onlineServices) return;
     void (async () => {
       try {
         await api.marketCheckUpdates(false);
@@ -324,6 +327,7 @@ export function usePluginsPage() {
    * review API fails this read alone — install and update never depend on it.
    */
   useEffect(() => {
+    if (!desktopFeatures.onlineServices) return;
     const ids = [
       ...new Set([...plugins.map((plugin) => plugin.id), ...market.map((item) => item.id)]),
     ];
@@ -363,6 +367,7 @@ export function usePluginsPage() {
    * map empty and the cards render exactly as they did before this feature.
    */
   useEffect(() => {
+    if (!desktopFeatures.onlineServices) return;
     const ids = [
       ...new Set([...plugins.map((plugin) => plugin.id), ...market.map((item) => item.id)]),
     ];
@@ -410,10 +415,9 @@ export function usePluginsPage() {
   }, [plugins]);
 
   const stats = useMemo(() => {
-    let updates = 0;
-    for (const plugin of plugins) {
-      if (plugin.updateAvailable) updates += 1;
-    }
+    const updates = desktopFeatures.onlineServices
+      ? plugins.filter((plugin) => plugin.updateAvailable).length
+      : 0;
     return { total: plugins.length, updates };
   }, [plugins]);
 
@@ -732,8 +736,10 @@ export function usePluginsPage() {
   };
 
   const overflowActions = [
-    { key: "checkUpdates", run: checkUpdates },
-    { key: "applyAutoUpdates", run: applyAutoUpdates },
+    ...(desktopFeatures.onlineServices ? [
+      { key: "checkUpdates", run: checkUpdates },
+      { key: "applyAutoUpdates", run: applyAutoUpdates },
+    ] : []),
     { key: "installPackage", run: installPackage },
     { key: "loadDev", run: loadDev },
     { key: "importExtension", run: importExtension },

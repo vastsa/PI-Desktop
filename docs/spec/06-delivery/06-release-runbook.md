@@ -108,7 +108,7 @@ Surfaces in scope:
 
 | Surface | Requirement |
 |---|---|
-| `apps/desktop/resources/models.dev/api.json` | Refreshed from https://models.dev/api.json before tagging; the release workflow packages this snapshot unchanged |
+| `apps/desktop/resources/models.dev/api.json` | Refreshed before tagging; each Debian package build fetches and dates its own snapshot |
 | `packages/shared/src/changelog-en.ts` | Newest-first English entries (source of truth, ADR 0009) |
 | `packages/shared/src/changelog-zh-CN.ts`, `changelog-zh-TW.ts`, `changelog-tr.ts`, `changelog-de.ts`, `changelog-es.ts`, `changelog-fr.ts`, `changelog-ko.ts`, `changelog-pt-BR.ts` | Same version set and highlight counts as English; a newly shipped locale is also registered in `packages/shared/src/changelog.ts` |
 | `packages/shared/src/changelog.test.ts` | Version added at the top of the newest-first list |
@@ -119,16 +119,18 @@ Surfaces in scope:
 
 Blocking steps:
 
-1. Refresh `apps/desktop/resources/models.dev/api.json` **before** tagging:
+1. Refresh the checked-in catalog **before** tagging for builds that do not produce a Debian package:
 
    ```bash
    curl -fsSL https://models.dev/api.json -o apps/desktop/resources/models.dev/api.json
    ```
 
    The version-bump script does not fetch this catalog. The release preflight
-   checks that the snapshot is a valid provider catalog, and the tagged tree
-   determines what artifacts ship. A no-op refresh (already current) still
-   counts. Do not treat a minified one-line JSON diff as absent.
+   checks that the snapshot is a valid provider catalog. Debian packaging
+   fetches the current catalog over HTTPS, validates it using the desktop
+   parser, and records its UTC fetch time inside the package. A failed fetch
+   or unusable catalog fails packaging. The Debian package check reports the
+   fetch time and model count from the packaged file.
 2. Edit `packages/shared/src/changelog-en.ts` **before**
    `node scripts/release.mjs <version>` / `git tag`:
    - Add a **newest-first** entry under `en` and every shipped product locale

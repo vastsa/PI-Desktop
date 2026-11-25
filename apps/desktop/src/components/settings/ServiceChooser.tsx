@@ -30,6 +30,7 @@ export type ServiceChooserProps = {
   /** The service the form was showing, marked when the user comes back. */
   current?: string;
   disabled?: boolean;
+  showNamedServices?: boolean;
   onPickService: (id: string) => void;
   onPickSubscription?: (vendor: OAuthVendor) => void;
   /** Offers the classifier group; a new service, never an existing row. */
@@ -48,6 +49,7 @@ export function ServiceChooser({
   vendors,
   current,
   disabled = false,
+  showNamedServices = true,
   onPickService,
   onPickSubscription,
   showClassifiers = false,
@@ -60,8 +62,8 @@ export function ServiceChooser({
   const gridRef = useRef<HTMLDivElement>(null);
 
   const serviceOptions = useMemo(
-    () => [customServiceOption(t), ...namedServiceOptions(t)],
-    [t],
+    () => [customServiceOption(t), ...(showNamedServices ? namedServiceOptions(t) : [])],
+    [showNamedServices, t],
   );
   const subscriptionOptions = useMemo<SubscriptionOption[]>(
     () =>

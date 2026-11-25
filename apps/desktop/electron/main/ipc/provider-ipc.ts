@@ -1,13 +1,17 @@
 import {
   IPC,
   ErrorCodes,
+  NAMED_ENDPOINT_PRESETS,
+  canonicalEndpointUrl,
   inferEndpointProfile,
   normalizeApiStyle,
+  parseEndpointInput,
   type ModelBinding,
   type ModelInfo,
   type ProviderReorderInput,
   type OAuthRespondInput,
 } from "@pi-desktop/shared";
+import { desktopFeatures } from "../../../product-features.ts";
 import { OAUTH_AUTH_KIND, type VendorOAuth } from "../oauth";
 import { probeProviderEndpoint } from "../model-discovery";
 import {
@@ -341,6 +345,7 @@ export function registerProviderIpc({
         | string
           | {
             providerId?: string;
+            presetId?: string;
             baseUrl?: string;
             apiKey?: string;
             apiStyle?: string;
@@ -358,8 +363,11 @@ export function registerProviderIpc({
       const provider = req.providerId
         ? providers.find((p) => p.id === req.providerId)
         : undefined;
-      if (provider) modelsDevCatalog.configureAccount(provider);
       const baseUrl = (req.baseUrl ?? provider?.baseUrl ?? "").trim();
+      // A draft origin is not authorized to receive the saved key or headers.
+      const needsSavedEndpoint = !desktopFeatures.onlineServices && provider && req.baseUrl && req.source !== "cache" &&
+        parseEndpointInput(baseUrl)?.origin !== parseEndpointInput(provider.baseUrl ?? "")?.origin;
+      if (provider) modelsDevCatalog.configureAccount(provider);
       const apiStyle = req.apiStyle ?? provider?.apiStyle ?? "chat_completions";
       /*
         Static endpoint resolution, the same layer the settings dialog uses:
@@ -379,6 +387,13 @@ export function registerProviderIpc({
       // stays the key for cache writes: the cache belongs to the saved endpoint,
       // not to a suggestion.
       let endpointBaseUrl = profile?.effectiveBaseUrl ?? baseUrl;
+      const preset = profile && NAMED_ENDPOINT_PRESETS.find((candidate) =>
+        (req.presetId !== undefined
+          ? candidate.id === req.presetId
+          : req.baseUrl === undefined && candidate.vendorKey === provider?.vendorKey) &&
+        candidate.apiStyle === apiStyle &&
+        canonicalEndpointUrl(candidate.baseUrl) === canonicalEndpointUrl(endpointBaseUrl)
+      );
       /*
         Which publisher's metadata this row is read against.
 
@@ -388,16 +403,16 @@ export function registerProviderIpc({
         from a model name. An unknown host keeps `custom`, where the catalog
         only answers an unambiguous id — metadata missing beats metadata wrong.
       */
-      const catalogVendorKey =
+      const catalogVendorKey = preset?.vendorKey ?? (
         provider?.vendorKey && provider.vendorKey !== "custom"
           ? provider.vendorKey
-          : (profile?.providerKey ?? "custom");
-
+          : (profile?.providerKey ?? "custom")
+      );
 
       // Cache hydration must stay fast; the renderer already requests a live
       // refresh after it has painted the cached list. Live requests load the
       // shared models.dev snapshot once; cache reads use only local files.
-      if (req.source === "cache") {
+      if (req.source === "cache" || needsSavedEndpoint) {
         await modelsDevCatalog.loadLocal();
       } else {
         await modelsDevCatalog.ensureLoaded();
@@ -518,6 +533,18 @@ export function registerProviderIpc({
           );
         return [...discovered, ...extra];
       };
+
+      const configuredFallback = () => {
+        const fallbackModelId = provider?.models?.[0]?.id ?? provider?.defaultModelId;
+        const fallback = fallbackModelId
+          ? [decorate({ modelId: fallbackModelId, displayName: fallbackModelId })]
+          : [];
+        return withConfiguredBindings(fallback);
+      };
+
+      if (needsSavedEndpoint) {
+        return { models: configuredFallback(), source: "fallback" as const, error: "PROVIDER_ENDPOINT_CHANGED" };
+      }
 
       const cacheForCurrentProvider = async (models: unknown[], complete: boolean) => {
         if (!provider || req.source === "cache") return;
@@ -692,17 +719,18 @@ export function registerProviderIpc({
         }
       }
 
-      // The endpoint published nothing usable (no /models route, an auth error,
-      // or an empty list). The catalog is the fallback, not the primary source.
-      // The list is the service's own published set, so a key that can call an
-      // embedding or image endpoint sees it here too; nothing is preselected
-      // from those, and `recommendModels` still picks chat models only.
-      const catalogModels = modelsDevCatalog.modelsForProvider({
-        vendorKey: catalogVendorKey,
-        baseUrl: endpointBaseUrl,
-        providerId: provider?.id ?? "",
-        includeNonChat: true,
-      });
+      // A public catalog can describe a custom endpoint's IDs, but cannot
+      // establish availability when that endpoint did not answer discovery.
+      const hasAccountCatalog = provider?.authKind === OAUTH_AUTH_KIND
+        && provider.vendorKey && provider.vendorKey !== "custom";
+      const catalogModels = preset || hasAccountCatalog
+        ? modelsDevCatalog.modelsForProvider({
+            vendorKey: catalogVendorKey,
+            baseUrl: endpointBaseUrl,
+            providerId: provider?.id ?? "",
+            includeNonChat: true,
+          })
+        : [];
       if (catalogModels.length > 0) {
         return {
           models: withConfiguredBindings(
@@ -714,13 +742,18 @@ export function registerProviderIpc({
         };
       }
 
+      if (cachedModels.length > 0) {
+        return {
+          models: withConfiguredBindings(cachedModels.map((model) => decorate(model))),
+          source: "cache" as const,
+          ...resolution,
+          error: discoveryError,
+        };
+      }
+
       // Last resort: the provider's configured model, so pickers stay usable
       // for gateways without a /models endpoint.
-      const fallbackModelId = provider?.models?.[0]?.id ?? provider?.defaultModelId;
-      const fallback = fallbackModelId
-        ? [decorate({ modelId: fallbackModelId, displayName: fallbackModelId })]
-        : [];
-      return { models: withConfiguredBindings(fallback), source: "fallback", ...resolution, error: discoveryError };
+      return { models: configuredFallback(), source: "fallback", ...resolution, error: discoveryError };
     },
   );
 

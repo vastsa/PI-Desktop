@@ -4,6 +4,9 @@
 
 The plugin marketplace is a **distribution layer**, not a runtime core.
 
+The Pie Code edition ships local plugin management and package import. It
+does not expose or call the online plugin, MCP, or skill marketplaces.
+
 Principle:
 
 > Get the local plugin system working first, then integrate the marketplace.

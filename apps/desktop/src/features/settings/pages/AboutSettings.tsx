@@ -3,6 +3,7 @@
  * a problem (logs, bug report). The Developer card stays here because the
  * things it unlocks are diagnostics, not preferences.
  */
+import { desktopFeatures } from "../../../../product-features.ts";
 import { APP_NAME, type AppSettings } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { api } from "../../../lib/api";
@@ -34,11 +35,17 @@ export function AboutSettings({
           protocol {version?.protocolVersion} · host {version?.hostVersion}
         </div>
       </div>
-      <UpdatesRow
-        currentVersion={version?.version}
-        settings={settings}
-        saveSettings={saveSettings}
-      />
+      {desktopFeatures.onlineServices ? (
+        <UpdatesRow
+          currentVersion={version?.version}
+          settings={settings}
+          saveSettings={saveSettings}
+        />
+      ) : (
+        <SettingsCard title={t("updates.title")}>
+          <SettingsRow title={t("settings.offlineUpdateInstructions")}>{null}</SettingsRow>
+        </SettingsCard>
+      )}
       <SettingsCard>
         <SettingsRow
           title={t("settings.startupGuide")}

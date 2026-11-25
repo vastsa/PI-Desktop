@@ -1001,6 +1001,7 @@ export const api = {
    */
   listProviderModels: (input: {
     providerId?: string;
+    presetId?: string;
     baseUrl?: string;
     apiKey?: string;
     apiStyle?: string;

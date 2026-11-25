@@ -61,6 +61,7 @@
     "test:e2e:anthropic-oauth-identity": "node scripts/e2e-anthropic-oauth-identity.mjs",
     "test:e2e:oauth-retry": "node --test apps/desktop/test/anthropic-oauth-retry.test.mjs",
     "test:e2e:boot": "node scripts/e2e-electron-boot.mjs",
+    "test:e2e:pie-code-offline": "node scripts/e2e-pie-code-offline.mjs",
     "test:e2e:startup-animation": "node scripts/e2e-startup-animation.mjs",
     "test:e2e:todos": "node scripts/e2e-todo-checklist.mjs",
     "test:e2e:provider-model-layout": "node scripts/e2e-provider-model-layout.mjs",

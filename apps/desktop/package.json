@@ -86,6 +86,7 @@
   "build": {
     "appId": "io.github.w4yne00.piecode",
     "productName": "Pie Code",
+    "afterPack": "../../scripts/bundle-models-dev-catalog.mjs",
     "directories": {
       "output": "release"
     },

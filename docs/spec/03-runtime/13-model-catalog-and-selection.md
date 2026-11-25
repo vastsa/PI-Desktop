@@ -11,6 +11,13 @@ Therefore:
 3. OpenAI-compatible gateways are first-class
 4. Search is global across enabled providers
 
+On the Pie Code maintenance branch, **Add service** offers custom endpoints
+and locally installed plugin providers. Built-in public endpoint presets,
+subscription sign-in, the Jev classifier, and provider-hosted web search are
+unavailable. The bundled models.dev snapshot is read-only at runtime and is
+renewed with the installation package. A configured service still owns its
+live model list, and a manually entered model ID remains usable.
+
 ## 2. Selection UX
 
 Model configuration is **discovery-first**: the AI service is the authority on
@@ -130,12 +137,16 @@ contract changes are required.
    equivalent). A non-empty answer wins, is enriched per model through
    `modelsDevCatalog.findModel`, replaces what the model cache held for that
    provider, and is reported as `source: "remote"`.
-3. Only if the endpoint published nothing usable —no route, an auth error, or an
-   empty list— does `modelsForProvider` supply the vendor's published models,
-   reported as `source: "catalog"` together with any discovery error so the UI
-   can say the service did not answer. This result is **not** cached, so a
-   catalog guess never becomes indistinguishable from a real probe.
-4. Last resort: the provider's configured model, `source: "fallback"`.
+3. For a named preset, if the endpoint published nothing usable (no route, an
+   auth error, or an empty list), `modelsForProvider` supplies the preset's
+   published models. The settings form identifies the selected preset, and the
+   endpoint and API format must match before fallback is allowed. The result is
+   reported as `source: "catalog"` with any discovery error and is not cached.
+4. For custom endpoints, the catalog supplies metadata only. On discovery
+   failure, use the saved endpoint's discoveries (`source: "cache"`) and
+   configured IDs. With no discovery cache, offer the configured IDs
+   (`source: "fallback"`) and keep manual entry available. A failed live probe
+   is reported even when cached models stay visible.
 
 An OAuth vendor account skips step 2 — it has no key to probe with, and pi-ai
 already knows which models the subscription allows.
@@ -285,6 +296,13 @@ If user selects model tagged without tools while in Agent mode:
 - do not hard-block (vendor tags may be incomplete)
 
 ## 6. Refresh behavior
+
+Remote catalog refresh in this section applies to upstream PI-Desktop.
+Pie Code keeps its bundled metadata. Its model picker reads cached and
+configured models without probing saved endpoints. Model settings can still
+discover from the configured service. Editing a saved provider keeps its
+address rather than adopting a named preset; a changed origin must be saved
+before discovery can use the provider's credentials.
 
 The bundled models.dev snapshot is the startup baseline. Startup reads no
 remote catalog and uses no ambient credentials. `providers.refreshModelCatalog`

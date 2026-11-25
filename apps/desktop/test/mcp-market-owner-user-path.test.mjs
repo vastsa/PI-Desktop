@@ -18,9 +18,14 @@ import { initReactI18next } from "react-i18next";
 import { catalogs, flattenCatalog } from "@pi-desktop/i18n";
 import { BUILTIN_MCP_CATALOG, IPC } from "@pi-desktop/shared";
 import { AgentMcpPage } from "../../apps/desktop/src/components/settings/AgentMcpPage";
+import { desktopFeatures } from "../../apps/desktop/product-features";
+
 import { McpMarketPanel } from "../../apps/desktop/src/components/settings/McpMarketPanel";
 import { ToastHost } from "../../apps/desktop/src/components/Toast";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
+
+// The standalone market fixture keeps covering upstream ownership behavior.
+desktopFeatures.onlineServices = true;
 
 const projectPath = "/projects/market-owner-a";
 const otherProjectPath = "/projects/market-owner-b";

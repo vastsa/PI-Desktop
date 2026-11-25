@@ -13,8 +13,11 @@ first-release delivery procedure.
 1. Use the `pie-code-linux-arm64-deb` artifact from Linux package validation.
    If the workflow is unavailable, build on an ARM64 Linux runner with Docker
    using `pnpm --filter @pi-desktop/desktop run dist:linux --linux deb --arm64`.
-   Run `node scripts/check-linux-deb.mjs arm64 <package.deb>` on the result.
-   Keep the candidate commit, build and inspection output, and package together.
+   Run `node scripts/check-linux-deb.mjs arm64 <package.deb>` on the build
+   host, with workspace dependencies installed and `pnpm build:js` completed.
+   The packager needs access to models.dev and records the catalog fetch time
+   inside the package. Keep the candidate commit, inspection output (including
+   the catalog date), and package together.
    The optional microphone binaries are reported separately and are outside this
    candidate's scope.
 2. On the target, record `uname -m`, `getconf GNU_LIBC_VERSION`, and
@@ -35,13 +38,57 @@ first-release delivery procedure.
    shows a known file from its tree. Save the result with the candidate
    commit, package filename, and target OS image. Do not mark the candidate
    qualified if any step has not run.
-5. With an upstream `pi-desktop` package installed on the same test account,
-   confirm both package identities still report `install ok installed` and
-   launch both menu entries. Create a distinct local session and set a
+5. Install a Kylin-compatible PI-Desktop baseline package on the same test
+   machine. Record its source and version alongside the Pie Code candidate;
+   distinguish a rebuilt compatible package from an official upstream release.
+   Confirm both package identities report `install ok installed` and launch
+   both through their system application menu entries. Create a distinct local session and set a
    different theme in each app. Quit both, launch both again, and verify
    that each restores its own settings and session without seeing the other's.
    Use default data directories under a disposable home for this check.
 6. Open About in Pie Code and check the name and Simplified Chinese tagline
    “内网 AI 编程工作台”. Check the installed launcher icon at 16, 24 and
-   32 pixels on the Kylin desktop. In both built-in themes, check the primary
-   action, a selected item and the focus indicator reached by keyboard.
+   32 pixels on the Kylin desktop and record each size. In both built-in
+   themes, check the primary action, a selected item, and the focus indicator
+   when reaching the Settings search by Tab.
+
+7. With public networking still disconnected, use an isolated app profile and
+   a disposable Git project. In Settings → Model configuration, confirm the
+   bundled catalog shows a model count and the recorded fetch time. Add a
+   custom OpenAI-compatible service on the local machine or intranet. Verify
+   the discovered IDs are the endpoint's, leave the API key blank for a
+   no-auth service, and add another ID the service accepts but does not list.
+8. In that project, select the manually entered ID and send a coding task in
+   Ask mode. Observe
+   model output before the turn finishes. Verify the file is unchanged while
+   edit approval is pending; approve the edit and the local test command,
+   then inspect the passing test result and the change in the desktop review
+   panel. Start a second streaming turn and stop it from the composer. Restart
+   the app in the same profile and reopen the first turn and its saved results.
+   Verify that no more text appears in the stopped turn after cancellation.
+
+For Pie Code, check the same package identity and architecture when replacing
+an existing installation. Quit the app and install the newer internally
+distributed package with `sudo dpkg -i ./<newer-package>.deb`. Restart and
+verify the version, existing settings, and saved sessions. The app does not
+check GitHub or download its own update.
+
+Run the offline workbench scenario on the installed candidate as a normal
+desktop user in a Linux network namespace with only loopback enabled. Prepare
+Node.js, the scenario sources and built shared package, and `strace` before
+disconnecting. In that namespace, capture socket calls from the desktop and
+all children; a TCP connection or datagram send counts even when it fails.
+Chromium's UDP route lookup does not send a packet and is reported separately:
+
+```sh
+export PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code'
+export PI_DESKTOP_HOST_BIN='/opt/Pie Code/resources/bin/pi-desktop-host-core'
+strace -f -yy -s 0 -e trace=connect,sendto,sendmsg,sendmmsg,write,writev -o /tmp/pie-workbench.trace \
+  node scripts/e2e-pie-code-offline.mjs --require-isolated-network
+node scripts/e2e-pie-code-offline.mjs --check-egress-trace /tmp/pie-workbench.trace
+```
+
+Verify the tracer separately with a direct test connection to the reserved
+address `192.0.2.1` in the same isolated namespace; the trace checker must
+reject it. Record the two results with the actual candidate package. A
+loopback proxy alone can miss direct connections from child processes.

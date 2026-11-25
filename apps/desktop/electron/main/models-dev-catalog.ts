@@ -129,8 +129,9 @@ export type ModelsDevCatalogStatus = {
 };
 
 export type ModelsDevCatalogOptions = {
-  /** Checked-in/release-packaged api.json; never a user-data path. */
+  /** Checked-in catalog or dated release snapshot; never a user-data path. */
   catalogPath: string;
+  allowRemoteRefresh?: boolean;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   now?: () => number;
@@ -1416,6 +1417,7 @@ export class ModelsDevCatalog {
   private readonly timeoutMs: number;
   private readonly now: () => number;
   private readonly catalogPath: string;
+  private readonly allowRemoteRefresh: boolean;
   private localLoadAttempted = false;
   private localLoadPromise: Promise<boolean> | undefined;
   private readonly operationModels: MutableModels;
@@ -1428,6 +1430,7 @@ export class ModelsDevCatalog {
     this.timeoutMs = options.timeoutMs ?? MODELS_DEV_TIMEOUT_MS;
     this.now = options.now ?? (() => Date.now());
     this.catalogPath = options.catalogPath;
+    this.allowRemoteRefresh = options.allowRemoteRefresh ?? true;
     this.operationModels = createModels({
       modelsStore: new InMemoryModelsStore(),
       authContext: { env: async () => undefined, fileExists: async () => false },
@@ -1462,7 +1465,13 @@ export class ModelsDevCatalog {
     this.localLoadPromise = (async () => {
       try {
         const raw = JSON.parse(await readFile(this.catalogPath, "utf8")) as unknown;
-        const parsed = parseModelsDevCatalog(raw);
+        const snapshot = asRecord(raw);
+        const bundled = snapshot !== null && Object.hasOwn(snapshot, "fetchedAt");
+        const fetchedAt = bundled ? nonEmptyString(snapshot.fetchedAt) : undefined;
+        if (bundled && (!fetchedAt || !Number.isFinite(Date.parse(fetchedAt)))) {
+          throw new Error("models.dev snapshot has an invalid fetch date");
+        }
+        const parsed = parseModelsDevCatalog(bundled ? snapshot.catalog : raw);
         if (parsed.length === 0) throw new Error("models.dev snapshot contained no providers");
         this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
         // Replacing the provider map invalidates the derived lookup index.
@@ -1471,6 +1480,7 @@ export class ModelsDevCatalog {
         this.lookupMemo.clear();
         this.loaded = true;
         this.source = "bundled";
+        this.fetchedAt = fetchedAt;
         this.lastError = undefined;
       } catch (error) {
         this.loaded = false;
@@ -1492,6 +1502,7 @@ export class ModelsDevCatalog {
 
   /** Refresh the in-memory snapshot for the current process; never writes user data. */
   async refresh(): Promise<boolean> {
+    if (!this.allowRemoteRefresh) return false;
     if (this.loadPromise) return this.loadPromise;
     this.loadPromise = (async () => {
       const controller = new AbortController();

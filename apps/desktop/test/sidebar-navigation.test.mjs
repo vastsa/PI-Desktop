@@ -45,11 +45,11 @@ test("home sidebar exposes only the supported destination entries", async () => 
     ["new-task", "scheduled", "plugins"],
   );
   assert.deepEqual(
-    [...footer.matchAll(/data-nav="([^"]+)"/g)].map((match) => match[1]),
+    [...new Set([...footer.matchAll(/data-nav="([^"]+)"/g)].map((match) => match[1]))],
     ["settings", "build"],
   );
-  assert.match(primary, /t\("nav\.pluginMarket"\)/);
-  assert.match(primary, /usePluginBrowseState\.getState\(\)\.setTab\("market"\)/);
+  assert.match(primary, /desktopFeatures\.onlineServices \? "nav\.pluginMarket" : "nav\.plugins"/);
+  assert.match(primary, /setTab\(desktopFeatures\.onlineServices \? "market" : "installed"\)/);
   assert.match(primary, /settings\?\.scheduledTasksEnabled !== false/);
   assert.doesNotMatch(sidebarSource + navigationSource, /data-nav="projects"/);
   assert.doesNotMatch(sidebarSource + navigationSource, /t\("nav\.scheduled"\)/);
