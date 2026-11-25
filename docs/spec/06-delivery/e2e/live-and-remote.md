@@ -762,17 +762,17 @@ user's running instance.
 
 - **Preconditions:** Fresh Desktop profile with projects A and B; a real phone
   on the selected private LAN. Repeat on iOS Safari and Android Chrome.
-- **Steps:** Choose the interface and start. Open **Add device**, copy the shown
-  `http://` address, and enter the displayed code on the phone. Do not click
-  another Desktop control. Open a local project and a temporary conversation,
-  then add project C on Desktop. Test an expired code, a second redemption,
-  five wrong attempts and the keyboard flow. Stop, quit and relaunch Desktop.
+- **Steps:** Start on a private interface. Open **Add device**, copy the address
+  and code, then try pasting six digits with spaces or full-width digits. Scan
+  a fresh QR with the phone camera and submit the prefilled code. Open a project
+  and a temporary conversation; add project C on Desktop. Repeat with cookies
+  blocked, wrong and expired codes, and rapid duplicate submit. Stop and restart.
 - **Expected:** No listener by default and no project data before pairing.
-  The valid code immediately connects the phone and lists the device on
-  Desktop. No approval or per-device grants are required; A, B, C and
-  temporary conversations are available. Closing the tab does not sign out.
-  Invalid, expired or redeemed codes fail. Stopping invalidates credentials and
-  releases the port; restarting requires pairing again.
+  A scan opens the bound origin and clears its fragment without submitting;
+  a valid code connects on one submit. The desktop lists the device without
+  extra approval. A, B, C and temporary conversations are available. Invalid,
+  expired or redeemed codes fail, and blocked cookies show a specific error.
+  Stopping invalidates credentials and releases the port; restart requires pairing.
 - **Acceptance:** A, E; W01, W06.
 
 ### E2E-270: Organize projects and sessions without stealing navigation

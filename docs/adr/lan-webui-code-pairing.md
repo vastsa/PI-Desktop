@@ -24,6 +24,10 @@ and CSRF validation, and memory-only credentials. Pairing does not issue an
 owner or SSH principal or grant generic IPC. Resource eligibility, the remote
 `ask` ceiling, and Desktop-only tool and plan approvals are unchanged.
 
+The optional QR encodes only the bound address and the one-time code in a URL
+fragment. The browser removes the fragment locally and requires an explicit
+submit, so loading or previewing the scanned URL cannot consume the code.
+
 ## Consequences
 
 Anyone who obtains an active code can pair without another prompt. Display it

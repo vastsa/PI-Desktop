@@ -216,6 +216,52 @@
   border-top: 1px solid var(--ds-border-subtle);
 }
 
+.lan-pair-content {
+  display: grid;
+  align-items: start;
+  gap: 16px;
+}
+
+.lan-pair-scan {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+}
+
+.lan-pair-scan p {
+  margin: 0;
+}
+
+.lan-pair-qr {
+  display: block;
+  width: 112px;
+  aspect-ratio: 1;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+/* A fixed light quiet zone keeps the code readable in both themes. */
+.lan-pair-qr rect { fill: var(--ds-qr-background); }
+.lan-pair-qr path { fill: var(--ds-qr-foreground); }
+
+@media (min-width: 560px) {
+  .lan-pair-content:has(> .lan-pair-scan) {
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+
+  .lan-pair-scan {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .lan-pair-qr { width: 136px; }
+}
+
 .lan-pair-steps {
   display: grid;
   gap: 20px;

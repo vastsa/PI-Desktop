@@ -37,8 +37,14 @@ const journey = String.raw`(async () => {
 
   // Pair with the code shown on Desktop.
   const code = await wait(() => document.getElementById("pair-code"), "pair form");
-  code.value = window.__code;
-  document.querySelector(".pair button[type=submit]").click();
+  code.value = "123";
+  const form = document.querySelector(".pair");
+  const submit = form.querySelector("button[type=submit]");
+  submit.click();
+  await wait(() => /six digits|六位数字/.test(document.getElementById("pair-status").textContent), "client input validation");
+  code.value = Array.from(window.__code, (digit) => String.fromCharCode(digit.charCodeAt(0) + 0xfee0)).join(" ");
+  submit.click();
+  form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
   // Redeeming the code connects immediately, without a second Desktop action.
   await wait(() => rowByTitle("Alpha"), "projects");
@@ -88,16 +94,19 @@ const journey = String.raw`(async () => {
   document.querySelector("main > button.link").click();
   await wait(() => document.getElementById("pair-code"), "sign-out returns to pairing");
   result.polledApproval = performance.getEntriesByType("resource").some((entry) => new URL(entry.name).pathname === "/pair/status");
+  result.pairRequests = performance.getEntriesByType("resource").filter((entry) => new URL(entry.name).pathname === "/pair").length;
   return JSON.stringify(result);
 })()`;
 
-test("a phone pairs by code, uses projects and temporary conversations, and signs out", { timeout: 60_000 }, async (t) => {
+async function runPhone(t, script, { scan = false, blockCookie = false } = {}) {
   const { electronBinary } = resolveElectronBinary();
   const fake = desktop();
   const server = createLanServer({ handler: fake.workspace, assets: await assets() });
   const { port } = await server.start("127.0.0.1", 0);
   server.issueCode();
   const code = server.code().value;
+  const origin = `http://127.0.0.1:${port}`;
+  const entry = `${origin}/${scan ? `#pair=${code}` : ""}`;
   const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? tmpdir(), "lan-webui-ui-"));
   t.after(async () => {
     await server.stop();
@@ -111,9 +120,15 @@ app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ show: false, width: 390, height: 844, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   try {
-    await window.loadURL(${JSON.stringify(`http://127.0.0.1:${port}/`)});
-    await window.webContents.executeJavaScript("window.__code = '${code}';");
-    const output = await window.webContents.executeJavaScript(${JSON.stringify(journey)});
+    if (${blockCookie}) {
+      window.webContents.session.webRequest.onHeadersReceived({ urls: [${JSON.stringify(`${origin}/pair`)}] }, (details, reply) => {
+        const responseHeaders = Object.fromEntries(Object.entries(details.responseHeaders ?? {}).filter(([key]) => key.toLowerCase() !== "set-cookie"));
+        reply({ responseHeaders });
+      });
+    }
+    await window.loadURL(${JSON.stringify(entry)});
+    await window.webContents.executeJavaScript(${JSON.stringify(`window.__code = ${JSON.stringify(code)};`)});
+    const output = await window.webContents.executeJavaScript(${JSON.stringify(script)});
     process.stdout.write("RESULT " + output + "\\n");
     app.exit(0);
   } catch (error) {
@@ -133,7 +148,11 @@ app.whenReady().then(async () => {
   assert.equal(exitCode, 0, stderr);
   const line = stdout.split("\n").find((entry) => entry.startsWith("RESULT "));
   assert.ok(line, stdout + stderr);
-  const result = JSON.parse(line.slice(7));
+  return { result: JSON.parse(line.slice(7)), fake, server };
+}
+
+test("a phone pairs with a formatted paste, uses projects and conversations, and signs out", { timeout: 60_000 }, async (t) => {
+  const { result, fake, server } = await runPhone(t, journey);
 
   assert.match(result.projects[0], /^(Temporary conversations|临时会话)$/);
   assert.deepEqual(result.projects.slice(1), ["Alpha", "Beta"]);
@@ -152,5 +171,73 @@ app.whenReady().then(async () => {
   assert.equal(result.smallTargets, 0);
   assert.equal(result.backHash, "#/p/g-a");
   assert.equal(result.polledApproval, false);
+  assert.equal(result.pairRequests, 1, "invalid input and a duplicate submit did not reach the listener");
   assert.equal(server.devices().length, 0, "browser sign-out revoked its device");
+});
+
+const scanJourney = String.raw`(async () => {
+  const field = () => document.getElementById("pair-code");
+  async function wait(check) {
+    const deadline = performance.now() + 5000;
+    while (performance.now() < deadline) {
+      if (check()) return;
+      await new Promise(requestAnimationFrame);
+    }
+    throw new Error("Scanned code did not advance the pairing flow");
+  }
+  await wait(() => field()?.value === window.__code && !location.hash);
+  const other = window.__code === "000000" ? "111111" : "000000";
+  location.hash = "#pair=" + other;
+  await wait(() => field()?.value === other && !location.hash);
+  location.hash = "#pair=" + window.__code;
+  await wait(() => field()?.value === window.__code && !location.hash);
+  const submittedEarly = performance.getEntriesByType("resource").some((entry) => new URL(entry.name).pathname === "/pair");
+  document.querySelector('.pair button[type="submit"]').click();
+  await wait(() => [...document.querySelectorAll(".row-title")].some((row) => row.textContent === "Alpha"));
+  return JSON.stringify({ submittedEarly, fragment: location.hash });
+})()`;
+
+test("a scanned fragment prefills and clears without redeeming the code until submit", { timeout: 60_000 }, async (t) => {
+  const { result, server } = await runPhone(t, scanJourney, { scan: true });
+  assert.deepEqual(result, { submittedEarly: false, fragment: "" });
+  assert.equal(server.devices().length, 1);
+});
+
+const rejectedCookieJourney = String.raw`(async () => {
+  const deadline = performance.now() + 5000;
+  const input = () => document.getElementById("pair-code");
+  while (!input()?.value && performance.now() < deadline) await new Promise(requestAnimationFrame);
+  document.querySelector('.pair button[type="submit"]').click();
+  while (performance.now() < deadline) {
+    const status = document.getElementById("pair-status")?.textContent;
+    if (/cookies|Cookie/.test(status ?? "")) return JSON.stringify({ prompted: true, cleared: input().value === "" });
+    await new Promise(requestAnimationFrame);
+  }
+  throw new Error("A rejected session cookie did not show an actionable pairing error");
+})()`;
+
+test("a browser that rejects the session cookie gets an actionable pairing error", { timeout: 60_000 }, async (t) => {
+  const { result, server } = await runPhone(t, rejectedCookieJourney, { scan: true, blockCookie: true });
+  assert.deepEqual(result, { prompted: true, cleared: true });
+  assert.equal(server.code(), null, "the one-time code was accepted, not retried");
+});
+
+test("a legacy pending response tells the user to restart the desktop", { timeout: 60_000 }, async (t) => {
+  const script = String.raw`(async () => {
+    const field = () => document.getElementById("pair-code");
+    const deadline = performance.now() + 5000;
+    while (!field() && performance.now() < deadline) await new Promise(requestAnimationFrame);
+    const request = window.fetch.bind(window);
+    window.fetch = (path, options) => path === "/pair"
+      ? Promise.resolve(Response.json({ state: "pending" })) : request(path, options);
+    field().value = window.__code;
+    document.querySelector('.pair button[type="submit"]').click();
+    while (performance.now() < deadline) {
+      const status = document.getElementById("pair-status")?.textContent ?? "";
+      if (/Restart PI-Desktop|重启 PI-Desktop/.test(status)) return JSON.stringify(true);
+      await new Promise(requestAnimationFrame);
+    }
+    throw new Error("Missing restart guidance for the old pairing response");
+  })()`;
+  assert.equal((await runPhone(t, script)).result, true);
 });

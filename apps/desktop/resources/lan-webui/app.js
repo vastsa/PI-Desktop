@@ -82,7 +82,7 @@
     }
     if (!response.ok) {
       const code = data?.code || "FAILED";
-      if (response.status === 401 && path.startsWith("/v1/")) {
+      if (response.status === 401 && path.startsWith("/v1/") && state.me) {
         state.me = null;
         closeEvents();
         showPair();
@@ -111,6 +111,11 @@
     else location.hash = hash;
   };
   window.addEventListener("hashchange", () => {
+    const prefill = takePairingCode();
+    if (prefill && !state.me) {
+      showPair("", prefill);
+      return;
+    }
     state.route = parseRoute();
     render();
   });
@@ -439,11 +444,21 @@
   }
 
   // ---------- pairing ----------
-  function showPair(message) {
+  function takePairingCode() {
+    if (!location.hash.startsWith("#pair=")) return "";
+    const value = /^#pair=([0-9]{6})$/.exec(location.hash)?.[1] ?? "";
+    history.replaceState(history.state, "", location.pathname + location.search);
+    return value;
+  }
+
+  function showPair(message, prefill = "") {
     closeEvents();
-    const code = el("input", { id: "pair-code", class: "code", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", required: true });
+    const code = el("input", {
+      id: "pair-code", class: "code", inputmode: "numeric", autocomplete: "one-time-code",
+      maxlength: "32", required: true, value: prefill, "aria-describedby": "pair-status",
+    });
     const label = el("input", { id: "pair-label", maxlength: "60", value: /iPhone|iPad|Android/.exec(navigator.userAgent)?.[0] || "Browser" });
-    const status = el("p", { class: "hint", role: "status", text: message || "" });
+    const status = el("p", { id: "pair-status", class: "hint", role: "status", text: message || "" });
     const submit = el("button", { type: "submit", class: "primary", text: t("pairSubmit") });
     const form = el("form", { class: "pair" }, [
       el("h1", { text: t("pairTitle") }),
@@ -454,11 +469,24 @@
     ]);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (submit.disabled) return;
+      const value = code.value.normalize("NFKC").replace(/[\s-]+/g, "");
+      if (!/^[0-9]{6}$/.test(value)) {
+        status.textContent = t("pairFormat");
+        code.focus();
+        return;
+      }
+      code.value = value;
       submit.disabled = true;
       status.textContent = t("pairConnecting");
       try {
-        await api("POST", "/pair", { code: code.value.trim(), label: label.value.trim() });
-        await start();
+        const result = await api("POST", "/pair", { code: value, label: label.value.trim() });
+        if (result?.state !== "paired") {
+          status.textContent = t("pairRestart");
+          submit.disabled = false;
+          return;
+        }
+        await start("", true);
       } catch (error) {
         submit.disabled = false;
         const codeName = error instanceof ApiError ? error.code : "FAILED";
@@ -466,9 +494,9 @@
       }
     });
     show(form);
-    code.focus();
+    if (prefill) submit.focus();
+    else code.focus();
   }
-
 
   async function signOut() {
     try {
@@ -480,12 +508,13 @@
     showPair();
   }
 
-  async function start() {
+  async function start(prefill = "", justPaired = false) {
     try {
       state.me = await api("GET", "/v1/me");
     } catch (error) {
-      if (!(error instanceof ApiError && error.code === "UNAUTHORIZED")) showPair(errorText(error instanceof ApiError ? error.code : "FAILED"));
-      else showPair();
+      const code = error instanceof ApiError ? error.code : "FAILED";
+      const message = code === "UNAUTHORIZED" ? justPaired ? t("pairCookieBlocked") : "" : errorText(code);
+      showPair(message, prefill);
       return;
     }
     state.route = parseRoute();
@@ -494,5 +523,5 @@
   }
 
   document.title = t("appTitle");
-  void start();
+  void start(takePairingCode());
 })();

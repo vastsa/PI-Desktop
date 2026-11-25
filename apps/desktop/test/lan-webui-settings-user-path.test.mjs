@@ -66,7 +66,7 @@ window.piDesktop = {
         break;
       case "issueCode":
         issueCount++;
-        view.code = { value: ["000012", "134209", "512309"][issueCount - 1], expiresAt: Date.now() + (issueCount === 1 ? -1000 : 300_000) };
+        view.code = { value: ["000012", "034209", "512309"][issueCount - 1], expiresAt: Date.now() + (issueCount === 1 ? -1000 : 300_000) };
         break;
       case "revoke":
         view.devices = view.devices.filter((item) => item.id !== action.id);
@@ -147,8 +147,14 @@ window.lanSettingsProbe = async () => {
   await wait(() => title() === lanEn.pairTitle && dialog().textContent.includes(lanEn.codeExpired), "expired pairing code");
   check(fitsDialog(), "pairing fits a narrow dark window");
   check(dialog().textContent.includes(lanEn.pairDescription), "the code dialog discloses its access");
+  check(!q(".lan-pair-qr") && !button(lanEn.copyCode), "expired codes cannot be copied or scanned");
   click(button(lanEn.newCode, dialog()));
-  await wait(() => q(".lan-code")?.textContent === "134209", "replacement code");
+  await wait(() => q(".lan-code")?.textContent === "034209" && q(".lan-pair-qr"), "replacement code and QR");
+  const qr = q(".lan-pair-qr");
+  const firstPath = q("path", qr)?.getAttribute("d");
+  check(firstPath && qr.getAttribute("aria-label") === lanEn.pairQrLabel && fitsDialog(), "scannable code fits the dark window");
+  click(button(lanEn.copyCode, dialog()));
+  await wait(() => button(lanEn.copied, dialog()), "code clipboard feedback");
   await wait(() => dialog().contains(document.activeElement), "focus in pair dialog");
   press("Escape");
   await wait(() => !dialog() && document.activeElement === button(lanEn.addDevice), "Escape returns focus");
@@ -156,6 +162,8 @@ window.lanSettingsProbe = async () => {
   click(button(lanEn.addDevice));
   await wait(() => q(".lan-code")?.textContent === "512309", "fresh code when opened again");
   check(fitsDialog() && !dialog().querySelector('input[type="checkbox"]'), "pairing fits the light window without permission controls");
+  const nextPath = q(".lan-pair-qr path")?.getAttribute("d");
+  check(nextPath && nextPath !== firstPath, "the QR changes with the new code");
   q(".lan-dialog-close", dialog()).focus();
   check(!press("Tab", true) && document.activeElement === button(lanEn.newCode, dialog()), "Shift+Tab stays in the pairing dialog");
   view.devices.push({ id: "device", label: "iPhone", lastActiveAt: Date.now() });
@@ -227,7 +235,7 @@ app.whenReady().then(async () => {
       { kind: "issueCode" }, { kind: "issueCode" }, { kind: "issueCode" },
       { kind: "revoke", id: "device" }, { kind: "stop" },
     ],
-    copied: ["http://192.168.1.20:38180"],
+    copied: ["http://192.168.1.20:38180", "034209"],
     remainingListeners: 0,
   });
 });

@@ -44,13 +44,16 @@ numbers refer to the [WebUI acceptance catalog](../06-delivery/e2e/live-and-remo
    rebinding) or whose `Origin` is foreign, requires a CSRF token on every
    authenticated mutation, and serves a restrictive CSP. Adding HTTPS later must
    not change the browser API.
-3. Once the listener is on, **Add device** shows the address and a one-time
-   6-digit code. The dialog discloses that the code grants access to the local
-   WebUI, including temporary conversations and supported changes. A valid
+3. Once the listener is on, **Add device** shows the address and a copyable
+   one-time 6-digit code. For a LAN address, Desktop generates a QR code locally.
+   Scanning opens the browser with the code prefilled, not submitted. The
+   dialog discloses access to local and temporary conversations and supported changes. A valid
    code immediately issues the device cookie; no additional Desktop approval
    or permission configuration is required. No project data is sent before
    pairing. Each code lasts five minutes at most and is invalidated after use
-   or five failed attempts. Only Desktop can generate a code. A QR code is deferred.
+   or five failed attempts. Only Desktop can generate a code. The browser accepts
+   pasted digits with spaces, dashes or full-width forms and does not consume
+   attempts for malformed input or duplicate submits while pairing.
 4. Devices shows the label and last activity of each paired browser. **Remove**
    and browser sign-out invalidate that device's cookie and streams. Turning
    off closes the listener and signs out every device; a subsequent start
@@ -216,7 +219,9 @@ Use a Host-issued `HttpOnly`, host-only, `SameSite=Strict` session cookie
 (12 hours; no `Secure` flag because the MVP is HTTP), exact Host/Origin
 validation, and CSRF tokens for authenticated mutations. Device credentials live
 only in Desktop memory: stopping the service or quitting Desktop signs every
-device out. No credentials in URLs, local storage or logs. Serve assets locally
+device out. No session credentials in URLs, local storage or logs. A QR may
+include the one-time code in a fragment; the browser removes it before sending
+requests, and submits it only in the pairing POST body. Serve assets locally
 under a restrictive CSP; never cache authenticated data (`no-store`). Logs
 record only start/stop and failure codes, not prompts, history, codes or
 cookies. Bound request bodies (300 KiB), prompts (256 KiB), pages (50 items)
@@ -278,7 +283,7 @@ settings) and `apps/desktop/src/features/lan-webui/lan-catalog-sync.ts`
 
 | Area | Delivered | Not yet |
 |---|---|---|
-| W01 | Off by default; interface + port; direct one-time-code pairing; remove devices; stop signs everyone out | QR code; HTTPS (deliberately deferred) |
+| W01 | Off by default; interface + port; one-time-code pairing with copy and QR; remove devices; stop signs everyone out | HTTPS (deliberately deferred) |
 | W02/W03 | Local projects and temporary conversations; search; archived filter; rename, pin, archive/restore with revision conflicts; new session in the explicit project | Reuse of an existing empty session |
 | W04 | Paged history; live assistant text; send; queue; cancel queued; stop the named turn; “waiting on Desktop” for approvals and input | Answering ordinary questions from the browser; model label is the raw model id |
 | W05 | Idempotency keys for every mutation; SSE change notices with refetch; reconnect banner | Cursor-based replay (refetch is used instead) |
