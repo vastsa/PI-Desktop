@@ -1116,6 +1116,10 @@ Execution requires an agent-level mode or stage:
   from a private role's primary pin requires explicit approval for that task,
   in addition to model availability. Each fallback may select its own thinking
   level. Neither the bundle nor a task can change the parent session model.
+  Electron Main keeps the bundle in the catalog and complete Host snapshots.
+  The sidecar receives the mode's execution definition without bundle metadata
+  on prompt dispatch and run release; resolved skill and subagent catalogs
+  travel separately on launch.
   When a model key is not pre-resolved, the runtime asks Electron main to resolve it
   on-demand via the `provider.resolveSubagentModel` RPC. The started `Task`
   result details record the effective `modelId` and resolved `thinkingLevel`

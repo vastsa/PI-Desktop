@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ModeDocumentValidation, ModeSkillsResult } from "@pi-desktop/shared";
 import { Badge, Button, Field, Input, SegmentedControl, Textarea } from "../../components/ui";
@@ -13,13 +14,11 @@ import {
   bundleDraftDirty,
   bundleDraftFrom,
   bundleReferencesChanged,
-  bundleScalar,
   disabledSkillsAfterToggle,
   modeDocumentFormat,
   modeSettingsTabs,
   newBundleDraft,
   newBundleProblem,
-  openDocumentLabel,
   setBundleList,
   type ModeBundleDraft,
   type ModeDocumentFormat,
@@ -39,24 +38,7 @@ import { ModeTab, SkillsTab, SubagentsTab } from "./ModeBundleTabs";
 import { useModeSourceValidation } from "./use-mode-source-validation";
 import "../../styles/modes.css";
 
-/**
- * Settings → Modes (ADR mode-definitions, issue #2544).
- *
- * One mode at a time, in three tabs inside the existing settings content area:
- *
- * - **Mode** — the mode's own definition and the `includeGlobalSubagents`
- *   switch. A new-format mode edits `mode.yaml` and its prompt document; a
- *   legacy mode keeps the single Markdown editor it always had, unchanged.
- * - **Subagents** — the mode's private role documents, each with its own tools,
- *   primary model, ordered fallbacks and thinking levels. The mode itself never
- *   gets a model setting.
- * - **Skills** — the mode's `skills/` folder, a button that opens it, and one
- *   switch per skill. No create, import, edit or delete.
- *
- * Everything is written through Electron main, so this page never touches a
- * file. A read or save that a newer open overtakes is dropped, which is what
- * keeps a stale selection from applying the previous mode's documents.
- */
+/** Settings → Modes owns the catalog, detail navigation, and shared draft. */
 
 /** The document open in the editor; `saved: false` is a new or duplicated one. */
 type OpenDocument = {
@@ -77,6 +59,7 @@ const ID_PROBLEM_KEYS: Record<NewModeIdProblem, string> = {
 
 const TAB_LABEL_KEYS: Record<ModeSettingsTab, string> = {
   mode: "modes.settings.tabMode",
+  prompt: "modes.settings.promptTitle",
   subagents: "modes.settings.tabSubagents",
   skills: "modes.settings.tabSkills",
 };
@@ -104,6 +87,7 @@ export function ModesSettingsPage() {
   const readTicket = useRef(0);
   const skillsTicket = useRef(0);
   const tabsId = useId();
+  const pageHeading = useRef<HTMLHeadingElement>(null);
   const { armed, setArmed } = useArmedDelete();
   const editable = !!open;
   const removable = !!open && open.saved && (!open.builtin || !!open.filePath);
@@ -130,8 +114,12 @@ export function ModesSettingsPage() {
     return () => { readTicket.current += 1; };
   }, []);
 
+  const openId = open?.id;
+  const formOpen = idForm !== null;
+  useEffect(() => {
+    if (!formOpen) pageHeading.current?.focus();
+  }, [openId, formOpen]);
   const entries = settingsModeEntries(catalog);
-  const promptFile = bundleDraft ? bundleScalar(bundleDraft.source, "promptFile") ?? "" : "";
   const discardAllowed = () => !dirty || window.confirm(t("modes.settings.discardConfirm"));
 
   /** Read one mode's documents, tagged so a stale answer is dropped. */
@@ -188,6 +176,17 @@ export function ModesSettingsPage() {
 
   const openEntry = (modeId: string) => {
     if (modeId !== busyModeId && discardAllowed()) void loadMode(modeId);
+  };
+
+  const backToCatalog = () => {
+    if (!discardAllowed()) return;
+    readTicket.current += 1;
+    setLoading(false);
+    setIdForm(null);
+    setOpen(null);
+    setRoleSelection(null);
+    setSkills(null);
+    setArmed(null);
   };
 
   const idProblem = idForm ? newModeIdProblem(idForm.value.trim(), catalog) : null;
@@ -398,24 +397,16 @@ export function ModesSettingsPage() {
   }));
 
   return (
-    <div className="settings-stack" data-testid="modes-settings">
-      <SettingsCard
-        title={t("modes.settings.listTitle")}
-        action={
-          <Button size="sm" disabled={controlsDisabled} onClick={() => setIdForm({ purpose: "new", value: "" })}>
-            {t("modes.settings.newMode")}
-          </Button>
-        }
-      >
-        {catalog ? (
-          <div className="modes-settings-directory">
-            <span className="settings-row-title">{t("modes.settings.directory")}</span>
-            <span className="modes-settings-path" data-testid="modes-directory">
-              {catalog.directory}
-            </span>
+    <div className="settings-stack modes-settings-page" data-testid="modes-settings">
+      {idForm ? (
+        <>
+          <div className="modes-settings-breadcrumb">
+            <Button size="sm" variant="ghost" onClick={backToCatalog}>
+              <ChevronLeft size={14} aria-hidden="true" />
+              {t("modes.settings.listTitle")}
+            </Button>
           </div>
-        ) : null}
-        {idForm ? (
+        <SettingsCard title={t(idForm.purpose === "new" ? "modes.settings.newMode" : "modes.settings.duplicate")}>
           <ModeIdForm
             t={t}
             form={idForm}
@@ -423,96 +414,91 @@ export function ModesSettingsPage() {
             disabled={controlsDisabled}
             onChange={(value) => setIdForm({ ...idForm, value })}
             onSubmit={() => void submitIdForm()}
-            onCancel={() => setIdForm(null)}
+            onCancel={() => { setIdForm(null); }}
           />
-        ) : null}
-        <div className="modes-settings-list" role="list" aria-label={t("modes.settings.listTitle")}>
-          {entries.map((entry) => {
-            const diagnostic = modeEntryDiagnostic(catalog, entry);
-            const selected = !!open && open.id === entry.id && !entry.reserved;
+        </SettingsCard>
+        </>
+      ) : !open ? (
+        <>
+          <div className="modes-settings-page-head">
+            <h2 ref={pageHeading} tabIndex={-1}>{t("modes.settings.listTitle")}</h2>
+            <Button size="sm" variant="primary" disabled={controlsDisabled} onClick={() => setIdForm({ purpose: "new", value: "" })}>
+              {t("modes.settings.newMode")}
+            </Button>
+          </div>
+          {(["builtin", "user"] as const).map((source) => {
+            const group = entries.filter((entry) => entry.source === source);
+            if (!group.length) return null;
+            const title = t(source === "builtin" ? "modes.settings.builtin" : "modes.settings.user");
             return (
-              <div role="listitem" key={modeEntryKey(entry)}>
-                <button
-                  type="button"
-                  className="modes-settings-row"
-                  aria-current={selected || undefined}
-                  aria-disabled={entry.reserved || busyModeId === entry.id || undefined}
-                  title={entry.reserved ? t("modes.settings.reservedHint") : entry.description || undefined}
-                  data-mode-id={entry.id}
-                  onClick={() => void (entry.reserved ? undefined : openEntry(entry.id))}
-                >
-                  <span className="modes-settings-row-copy">
-                    <span>{entry.label || entry.id}</span>
-                    <span className="modes-settings-row-id">{entry.id}</span>
-                    {diagnostic.errors[0] ? (
-                      <span className="modes-settings-row-diagnostic">{diagnostic.errors[0]}</span>
-                    ) : null}
-                  </span>
-                  <span className="modes-settings-row-badges">
-                    <Badge>{t(entry.source === "builtin" ? "modes.settings.builtin" : "modes.settings.user")}</Badge>
-                    {entry.customized ? <Badge>{t("modes.settings.customized")}</Badge> : null}
-                    {entry.staged ? <Badge>{t("modes.settings.staged")}</Badge> : null}
-                    {entry.reserved ? (
-                      <Badge tone="warning">{t("modes.settings.reserved")}</Badge>
-                    ) : !entry.available ? (
-                      <Badge tone="error">{t("modes.settings.unavailable")}</Badge>
-                    ) : null}
-                  </span>
-                </button>
-              </div>
+              <SettingsCard key={source} title={title}>
+                <div className="modes-settings-list" role="list" aria-label={title}>
+                  {group.map((entry) => {
+                    const diagnostic = modeEntryDiagnostic(catalog, entry);
+                    return (
+                      <div role="listitem" key={modeEntryKey(entry)}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="modes-settings-row"
+                          aria-disabled={entry.reserved || busyModeId === entry.id || undefined}
+                          title={diagnostic.errors[0] ?? (entry.reserved ? t("modes.settings.reservedHint") : undefined)}
+                          data-mode-id={entry.id}
+                          onClick={() => { if (!entry.reserved) openEntry(entry.id); }}
+                        >
+                          <span className="modes-settings-row-copy">{entry.label || entry.id}</span>
+                          {entry.customized && <Badge>{t("modes.settings.customized")}</Badge>}
+                          {entry.staged && <Badge>{t("modes.settings.staged")}</Badge>}
+                          {entry.reserved ? <Badge tone="warning">{t("modes.settings.reserved")}</Badge>
+                            : !entry.available ? <Badge tone="error">{t("modes.settings.unavailable")}</Badge> : null}
+                          <ChevronRight size={14} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </SettingsCard>
             );
           })}
-        </div>
-      </SettingsCard>
-
-      {open ? (
-        <SettingsCard
-          title={openLabel}
-          caption={openDocumentLabel(open, open.format)}
-          action={
+          {catalog?.directory && <div className="modes-settings-path" data-testid="modes-directory">{catalog.directory}</div>}
+        </>
+      ) : (
+        <>
+          <div className="modes-settings-breadcrumb">
+            <Button size="sm" variant="ghost" onClick={backToCatalog}>
+              <ChevronLeft size={14} aria-hidden="true" />
+              {t("modes.settings.listTitle")}
+            </Button>
+          </div>
+          <div className="modes-settings-page-head">
+            <h2 ref={pageHeading} tabIndex={-1}>{openLabel}</h2>
             <div className="modes-settings-editor-actions">
               <Button size="sm" variant="ghost" disabled={controlsDisabled || (isBundle && !open.saved)} onClick={() => setIdForm({ purpose: "duplicate", value: "" })}>
                 {t("modes.settings.duplicate")}
               </Button>
-              {removable ? (
+              {removable && (
                 <Button size="sm" variant="ghost" disabled={controlsDisabled} onClick={() => void remove()}>
                   {open.builtin
                     ? t(armed === open.id ? "modes.settings.restoreConfirm" : "modes.settings.restore")
                     : t(armed === open.id ? "modes.settings.deleteConfirm" : "modes.settings.delete")}
                 </Button>
-              ) : null}
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={controlsDisabled || !dirty || saveBlocked}
-                onClick={() => void save()}
-              >
+              )}
+              <Button size="sm" variant="primary" disabled={controlsDisabled || !dirty || saveBlocked} onClick={() => void save()}>
                 {busy ? t("modes.settings.saving") : t("modes.settings.save")}
               </Button>
             </div>
-          }
-        >
+          </div>
           <div className="modes-settings-tabs" data-testid="modes-tabs" data-mode-id={open.id}>
             <SegmentedControl
               value={activeTab}
-              onChange={(next) => setTab(next)}
+              onChange={(next) => { setTab(next); setRoleSelection(null); }}
               options={tabOptions}
               label={openLabel}
               disabled={loading}
               role="tablist"
             />
           </div>
-          {open.builtin && !isBundle ? (
-            <p className="modes-settings-hint">
-              {t("modes.settings.builtinHint", { id: open.id })}
-            </p>
-          ) : null}
-        </SettingsCard>
-      ) : (
-        <p className="modes-settings-hint">{t("modes.settings.empty")}</p>
-      )}
-
-      {open && tabOptions.map(({ value, id, controls }) => (
+          {tabOptions.map(({ value, id, controls }) => (
         <div
           key={value}
           id={controls}
@@ -521,11 +507,11 @@ export function ModesSettingsPage() {
           hidden={activeTab !== value}
           className={activeTab === value ? "settings-stack" : undefined}
         >
-          {value === activeTab && value === "mode" && (isBundle ? (
+          {value === activeTab && (value === "mode" || value === "prompt") && (isBundle ? (
             bundleDraft && <ModeTab
               draft={bundleDraft}
               setDraft={setBundleDraft}
-              promptFile={promptFile}
+              section={value}
               disabled={controlsDisabled}
             />
           ) : (
@@ -560,7 +546,9 @@ export function ModesSettingsPage() {
             />
           )}
         </div>
-      ))}
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -591,7 +579,7 @@ function ModeIdForm({
         onSubmit();
       }}
     >
-      <Field label={t("modes.settings.newModeId")} hint={t("modes.settings.idInvalid")}>
+      <Field label={t("modes.settings.newModeId")}>
         <Input
           value={form.value}
           autoFocus

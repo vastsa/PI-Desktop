@@ -23,6 +23,7 @@ import type {
 } from "@pi-desktop/shared";
 import type { ModeCatalogService } from "./mode-catalog";
 import { goalPromptMode } from "./goal-start";
+import { toSidecarModeDefinition, type SidecarModeDefinition } from "./mode-sidecar-definition";
 
 type HostCaller = { call<T = unknown>(method: string, params?: unknown): Promise<T> };
 
@@ -63,7 +64,7 @@ function totalTokens(usage: MessageUsage | undefined): number {
 /** Sidecar `agent.modeTurnNotice` payload (without session and turn ids). */
 export type ModeTurnNotice =
   | { runId: string; action: "closeout" }
-  | { runId: string; action: "release"; mode: string; modeDefinition?: ModeDefinition };
+  | { runId: string; action: "release"; mode: string; modeDefinition?: SidecarModeDefinition };
 
 export type ModeRunCoordinator = ReturnType<typeof createModeRunCoordinator>;
 
@@ -276,7 +277,7 @@ export function createModeRunCoordinator(deps: {
             const returnDefinition = await deps.catalog.definition(returnTo);
             // A deleted return mode falls back to Agent, as settleReturn does.
             const mode = returnDefinition || isPlainMode(returnTo) ? returnTo : "agent";
-            const modeDefinition = mode === returnTo ? returnDefinition : undefined;
+            const modeDefinition = mode === returnTo && returnDefinition ? toSidecarModeDefinition(returnDefinition) : undefined;
             await deps.notifyTurn(request.sessionId, turnId, {
               runId: request.runId,
               action: "release",
