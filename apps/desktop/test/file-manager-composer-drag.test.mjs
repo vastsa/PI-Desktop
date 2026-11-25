@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { mkdtemp, mkdir, realpath, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,11 +30,13 @@ async function fixture(t) {
   };
   const record = { id: "pi.file-manager", version: "0.9.1", enabled: true };
   let afterRegistryRead = () => {};
+  let afterSessionRead = () => {};
   let session = { projectPath: workspace };
   const host = {
     async call(method, params) {
       if (method === "session.get") {
         assert.deepEqual(params, { id: active.sessionId, messageLimit: 1, contentLimit: 1 });
+        afterSessionRead();
         return { session };
       }
       assert.equal(method, "plugins.list");
@@ -57,6 +59,7 @@ async function fixture(t) {
     begin: (candidate = path) => drag.begin(123, { workspace, path: candidate }),
     drop: (token, sessionId = active.sessionId) => drag.drop({ token, sessionId }),
     setAfterRegistryRead: (action) => { afterRegistryRead = action; },
+    setAfterSessionRead: (action) => { afterSessionRead = action; },
     setHostSession: (next) => { session = next; },
     setVisibilityCheck: (check) => { isVisible = check; },
     expire: () => { now += 61_000; },
@@ -87,6 +90,16 @@ test("a File Manager view closed during reference creation leaves no stored refe
   f.setVisibilityCheck(() => !existsSync(directory) || readdirSync(directory).length === 0);
   assert.equal(await f.drop(token), null);
   assert.deepEqual(await readdir(directory), []);
+});
+
+test("a source removed after drop path resolution is rejected without an error", async (t) => {
+  const f = await fixture(t);
+  f.setAfterSessionRead(() => f.setVisibilityCheck(() => {
+    unlinkSync(f.path);
+    return true;
+  }));
+  assert.equal(await f.drop(f.begin()), null);
+  assert.deepEqual((await readdir(f.root)).sort(), ["outside.txt", "project"]);
 });
 
 test("the Host-owned session blocks remote, isolated, missing and relocated chats", async (t) => {

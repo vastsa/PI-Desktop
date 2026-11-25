@@ -14,13 +14,15 @@ const DRAG_TTL_MS = 60_000;
 type Target = NonNullable<ReturnType<typeof fileManagerComposerTarget>>;
 type DropSession = Pick<SessionSummary, "projectPath" | "remoteWorkspace" | "worktree">;
 
+function isUnavailablePath(error: NodeJS.ErrnoException) {
+  return ["ENOENT", "ENOTDIR", "EACCES", "EPERM", "ELOOP"].includes(error.code ?? "");
+}
+
 async function resolveDragFile(path: string): Promise<string | null> {
   try {
     return (await lstat(path)).isFile() ? await realpath(path) : null;
   } catch (error) {
-    if (["ENOENT", "ENOTDIR", "EACCES", "EPERM", "ELOOP"].includes((error as NodeJS.ErrnoException).code ?? "")) {
-      return null;
-    }
+    if (isUnavailablePath(error as NodeJS.ErrnoException)) return null;
     throw error;
   }
 }
@@ -84,7 +86,11 @@ export function createFileManagerComposerDrag(
       const canonicalPath = await resolveDragFile(path);
       if (!canonicalPath || context.getHost() !== host || !isCurrent() ||
           !fileLinePathInProject(path, projectPath, canonicalPath)) return null;
-      const [reference] = await referenceComposerFiles(dataDir, sessionId, projectPath, [canonicalPath]);
+      const [reference] = await referenceComposerFiles(dataDir, sessionId, projectPath, [canonicalPath])
+        .catch((error: NodeJS.ErrnoException) => {
+          if ((error.path === canonicalPath || error.path === projectPath) && isUnavailablePath(error)) return [];
+          throw error;
+        });
       if (!reference) return null;
       if (reference.path === canonicalPath && context.getHost() === host &&
           isCurrent() && fileLinePathInProject(path, projectPath, canonicalPath)) return reference;
