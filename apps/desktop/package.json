@@ -265,6 +265,9 @@
     "deb": {
       "packageName": "pie-code",
       "artifactName": "pie-code_${version}_${arch}.${ext}",
+      "fpm": [
+        "build/linux-icons/512x512.png=/usr/share/pixmaps/pie-code.png"
+      ],
       "depends": [
         "libc6 (>= 2.31)",
         "libgtk-3-0",

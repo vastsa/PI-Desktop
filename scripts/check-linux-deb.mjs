@@ -62,11 +62,18 @@ try {
   ]) {
     if (!desktopFile.split(/\r?\n/).includes(line)) throw new Error(`Missing desktop entry: ${line}`);
   }
-  for (const size of [16, 24, 32, 512]) {
+  for (const size of [16, 24, 32, 48, 64, 96, 512]) {
     const icon = path.join(root, "usr/share/icons/hicolor", `${size}x${size}`, "apps", `${executableName}.png`);
+    if (!existsSync(icon)) throw new Error(`Missing launcher icon at ${size}x${size}: ${icon}`);
     const png = readFileSync(icon);
     if (png.readUInt32BE(16) !== size || png.readUInt32BE(20) !== size) {
       throw new Error(`Invalid launcher icon size: ${icon}`);
+    }
+    if (size === 512) {
+      const fallback = path.join(root, "usr/share/pixmaps", `${executableName}.png`);
+      if (!existsSync(fallback) || !png.equals(readFileSync(fallback))) {
+        throw new Error(`Missing or mismatched UKUI launcher fallback icon: ${fallback}`);
+      }
     }
   }
 

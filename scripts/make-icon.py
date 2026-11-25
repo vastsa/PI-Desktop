@@ -7,7 +7,7 @@ truth. This script preserves that file and emits:
   apps/desktop/build/icon.iconset/  - all macOS iconset sizes
   apps/desktop/build/icon.icns      - via `iconutil` (macOS only)
   apps/desktop/build/icon.ico       - multi-size Windows application icon
-  apps/desktop/build/linux-icons/  - 16/24/32/512px Linux icons
+  apps/desktop/build/linux-icons/  - 16/24/32/48/64/96/512px Linux icons
   apps/desktop/build/tray-icon-mac.png - transparent macOS template icon
   apps/desktop/src/assets/brand/logo.png - renderer-sized color icon
 
@@ -56,7 +56,7 @@ def main() -> None:
     )
     package_icons = BUILD / "linux-icons"
     package_icons.mkdir(exist_ok=True)
-    for size in (16, 24, 32, 512):
+    for size in (16, 24, 32, 48, 64, 96, 512):
         master.resize((size, size), Image.LANCZOS).save(package_icons / f"{size}x{size}.png")
     renderer_icon = ROOT / "apps" / "desktop" / "src" / "assets" / "brand" / "logo.png"
     master.resize((192, 192), Image.LANCZOS).save(renderer_icon)

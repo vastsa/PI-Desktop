@@ -49,10 +49,15 @@ first-release delivery procedure.
    Use default data directories under a disposable home for this check.
 6. Check the Pie Code name and the subtitle “Ars longa, vita brevis.” on the
    startup screen and in About. Switch the app language and confirm the
-   subtitle still matches. Check the installed launcher icon at 16, 24 and
-   32 pixels on the Kylin desktop and record each size. In both built-in
-   themes, check the primary action, a selected item, and the focus indicator
-   when reaching the Settings search by Tab.
+   subtitle still matches. From the application menu, create a desktop
+   shortcut and pin Pie Code to the taskbar. Quit the app and verify that all
+   three launchers show the Pie Code icon and reopen the app. Compare the
+   desktop shortcut with neighboring apps at the normal, large, and huge
+   desktop icon settings. Check the 16, 24, and 32 pixel menu and taskbar icons.
+   The Debian package ships native 48, 64, and 96 pixel desktop icons in
+   `hicolor`, plus `/usr/share/pixmaps/pie-code.png` when theme lookup fails.
+   In both built-in themes, check the primary action, a selected item, and
+   the focus indicator when reaching the Settings search by Tab.
 
 7. With public networking still disconnected, use an isolated app profile and
    a disposable Git project. In Settings → Model configuration, confirm the
@@ -79,8 +84,10 @@ first-release delivery procedure.
 For Pie Code, check the same package identity and architecture when replacing
 an existing installation. Quit the app and install the newer internally
 distributed package with `sudo dpkg -i ./<newer-package>.deb`. Restart and
-verify the version, existing settings, and saved sessions. The app does not
-check GitHub or download its own update.
+verify the version, existing settings, and saved sessions. After signing out
+and back in to reload the desktop and panel, verify that the existing desktop
+shortcut and taskbar pin show the Pie Code icon without recreating them. The
+app does not check GitHub or download its own update.
 
 Run the offline workbench scenario on the installed candidate as a normal
 desktop user in a Linux network namespace with only loopback enabled. Prepare
