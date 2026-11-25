@@ -11730,10 +11730,14 @@ mod update_settings_tests {
     #[test]
     fn foreground_cache_warming_settings_require_boolean() {
         for value in [json!(null), json!("true"), json!(1), json!([]), json!({})] {
-            assert!(validate_settings_value(&json!({"foregroundCacheWarmingEnabled": value})).is_err());
+            assert!(
+                validate_settings_value(&json!({"foregroundCacheWarmingEnabled": value})).is_err()
+            );
         }
         for enabled in [true, false] {
-            assert!(validate_settings_value(&json!({"foregroundCacheWarmingEnabled": enabled})).is_ok());
+            assert!(
+                validate_settings_value(&json!({"foregroundCacheWarmingEnabled": enabled})).is_ok()
+            );
         }
     }
 
