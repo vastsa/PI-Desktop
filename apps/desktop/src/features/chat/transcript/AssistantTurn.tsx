@@ -11,23 +11,10 @@ import type {
 } from "@pi-desktop/shared";
 import { formatCompactTokenCount } from "@pi-desktop/shared";
 import {
-  reuseReadonlyMap,
   type AssistantTurnEntry,
   type TranscriptEntry,
 } from "../../../lib/assistant-turns";
-import {
-  collectDelegationStatuses,
-  collectDelegationTimings,
-} from "../../../lib/subagent-topology";
-import {
-  segmentTurnProcess,
-  type TurnProcessRunSegment,
-} from "../../../lib/turn-process";
 import { sessionAllows } from "../../../lib/remote-session-safety";
-import { resolveShowThinking } from "../../../lib/thinking-visibility";
-import { resolveTranscriptDisplayMode } from "../../../lib/transcript-display-mode";
-import { reviewChangeFromMessage } from "../../../lib/workspace-review";
-import { cachedVisibleProcessSteps } from "../../../lib/transcript-activity-summary";
 import { useSlotSessionId } from "../../../plugins/renderer-slots/use-slots";
 import { useAppStore } from "../../../stores/app-store";
 import { IconBranch, IconReview } from "../../../components/icons";
@@ -38,10 +25,7 @@ import {
   MessageTimestamp,
 } from "./shared";
 import { activityItemsEqual } from "./ActivityGroup";
-import { GeneratedImages } from "./GeneratedImages";
 import { MessageRow } from "./MessageRow";
-import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
-import { ToolRow } from "./ToolRow";
 import { assistantTurnMenuItems } from "./menu-items";
 import {
   useChatTextActions,
@@ -52,8 +36,7 @@ import {
   getAssistantTurnContent,
   reuseReferences,
 } from "../../../lib/transcript-summary";
-import { AssistantTurnParts } from "./AssistantTurnParts";
-import { TurnProcess } from "./TurnProcess";
+import { AssistantTurnBody } from "./AssistantTurnBody";
 import { ActionSlotSide } from "./ActionBarSlots";
 import { EntryExtraStack } from "./EntryExtraStack";
 import { TurnChangesCard } from "./TurnChangesCard";
@@ -247,31 +230,6 @@ export const TranscriptTail = memo(function TranscriptTail({
   transcriptEntryEqual(previous.entry, next.entry)
 );
 
-/**
- * A `Bash`/run call rendered on its own, outside every process and activity
- * disclosure. It stays visible with all disclosures collapsed, and its own
- * detail stays closed until the user opens it.
- */
-const StandaloneRunRow = memo(function StandaloneRunRow({
-  segment,
-}: {
-  segment: TurnProcessRunSegment;
-}) {
-  // A review-backed edit is one tool-level row. It cannot become a run row
-  // today, but keeping the branch here prevents a future alias from rendering
-  // both the file header and the generic tool header.
-  const reviewed = reviewChangeFromMessage(segment.item.message) !== null;
-  return (
-    <div className="turn-run-row" data-run-row="true">
-      {reviewed ? (
-        <ReviewChangeCard message={segment.item.message} asToolRow />
-      ) : (
-        <ToolRow imagesInTurn message={segment.item.message} />
-      )}
-    </div>
-  );
-});
-
 export const AssistantTurn = memo(function AssistantTurn({
   entry,
   isActive,
@@ -302,10 +260,6 @@ export const AssistantTurn = memo(function AssistantTurn({
     ? slotMessage("assistant", { ...actionMessage, content }) : undefined,
   [complete, actionMessage, content]);
   const streaming = isActive && summary.streaming;
-  // The same preference the nested levels read: hidden reasoning is not a
-  // visible step of the turn's process.
-  const showThinking = useAppStore((state) => resolveShowThinking(state.settings));
-  const hideThinking = !showThinking;
   /*
     The turn owns the menu for its whole subtree, the answer rows it renders
     included: Regenerate and Branch act on the turn's answer message, so a menu
@@ -335,65 +289,9 @@ export const AssistantTurn = memo(function AssistantTurn({
     });
   };
 
-  // Collect delegation statuses across ALL activity parts of this turn so that
-  // a TaskWait in one part can inform the Task cards in a different part.
   const toolsRef = useRef(summary.tools);
   const tools = reuseReferences(toolsRef.current, summary.tools);
   toolsRef.current = tools;
-  const generatedImages = useMemo(() => tools
-    .filter((message) => message.toolName === "GenerateImages")
-    .map((message) => <GeneratedImages key={message.id} message={message} />), [tools]);
-  // Delegation status/timing depends on actual tool messages, never on thinking
-  // or text and never on a Task's attached child transcript identity.
-  const delegationItems = useMemo(() => tools.map((message) => ({ kind: "tool" as const, message })), [tools]);
-  const rawDelegationStatuses = useMemo(
-    () => collectDelegationStatuses(delegationItems, { turnLive: isActive || delegationsLive === true }),
-    [delegationItems, isActive, delegationsLive],
-  );
-  const rawDelegationTimings = useMemo(
-    () => collectDelegationTimings(delegationItems),
-    [delegationItems],
-  );
-  const statusesRef = useRef(rawDelegationStatuses);
-  const timingsRef = useRef(rawDelegationTimings);
-  const turnDelegationStatuses = reuseReadonlyMap(
-    statusesRef.current,
-    rawDelegationStatuses,
-  );
-  const turnDelegationTimings = reuseReadonlyMap(
-    timingsRef.current,
-    rawDelegationTimings,
-    (left, right) =>
-      left.startedAt === right.startedAt && left.completedAt === right.completedAt,
-  );
-  statusesRef.current = turnDelegationStatuses;
-  timingsRef.current = turnDelegationTimings;
-  const { process, responses } = summary;
-  // Read at render time, never at entry-build time: the projection cache is keyed
-  // by messages and compactions only, so a grouping decision made there would
-  // stay stale until new messages arrived. Segmenting here makes the preference
-  // apply on the next paint.
-  const displayMode = useAppStore((state) => resolveTranscriptDisplayMode(state.settings));
-  const segments = useMemo(
-    () => segmentTurnProcess(process, displayMode),
-    [process, displayMode],
-  );
-  // The one disclosure exists if it reveals anything at all. This uses the same
-  // helper the activity rows use: progress text counts, completed thinking is
-  // hidden under the preference, and a live reasoning indicator still counts.
-  // Content facts come from the per-message cache, so a streaming delta reads
-  // only its own message body rather than every earlier one.
-  const visibleSteps = useMemo(
-    () => cachedVisibleProcessSteps(process, hideThinking, isActive),
-    [process, hideThinking, isActive],
-  );
-  // The live tail is the turn's actual last part. A process chunk opens and
-  // reports live state only while it owns that part, so a superseded thinking
-  // chunk cannot keep a false "Thinking" header once a Bash call or a separate
-  // streamed answer takes over the turn.
-  const activePart = isActive ? entry.parts.at(-1) : undefined;
-  const partContext = { isActive, activePart, runtimeActivity, turnDelegationStatuses, turnDelegationTimings };
-
   return (
     <div
       className={`message-row assistant assistant-turn${streaming ? " streaming" : ""}`}
@@ -404,30 +302,12 @@ export const AssistantTurn = memo(function AssistantTurn({
       aria-label={t("chat.assistantMessage")}
     >
       <div className="message-col">
-        {process.length > 0 ? (
-          <TurnProcess
-            turnId={entry.id}
-            processParts={process}
-            turnParts={entry.parts}
-            visibleSteps={visibleSteps}
-            isActive={isActive}
-            failed={summary.hasError}
-            activity={runtimeActivity}
-          >
-            {segments.map((segment) => {
-              if (segment.kind === "run") {
-                return <StandaloneRunRow key={`run-${segment.key}`} segment={segment} />;
-              }
-              return (
-                <AssistantTurnParts key={`process-${segment.key}`} parts={segment.parts} {...partContext} />
-              );
-            })}
-          </TurnProcess>
-        ) : null}
-        {/* The answer stays outside the process disclosure: it is what the turn
-            produced, not part of what it did. */}
-        <AssistantTurnParts parts={responses} {...partContext} />
-        {generatedImages}
+        <AssistantTurnBody
+          entry={entry}
+          isActive={isActive}
+          delegationsLive={delegationsLive}
+          runtimeActivity={runtimeActivity}
+        />
         {/* Mounted with the reply slots, so a streaming turn never grows it;
             plugin entry extras stay beneath it. */}
         {slotReply ? <TurnChangesCard tools={tools} /> : null}
