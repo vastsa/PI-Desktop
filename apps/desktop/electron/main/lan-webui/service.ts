@@ -3,7 +3,6 @@ import {
   IPC,
   type LanAdminAction,
   type LanAdminView,
-  type LanGrants,
   type LanInterface,
 } from "@pi-desktop/shared";
 import { onLanAgentEvent } from "./agent-tap";
@@ -29,19 +28,6 @@ export function listLanInterfaces(source = networkInterfaces()): LanInterface[] 
   return result;
 }
 
-function validGrants(value: unknown): LanGrants {
-  const input = (value && typeof value === "object" ? value : {}) as Partial<Record<keyof LanGrants, unknown>>;
-  const projectIds = Array.isArray(input.projectIds)
-    ? input.projectIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length < 200)
-    : [];
-  return {
-    projectIds,
-    temporary: input.temporary === true,
-    chat: input.chat === true,
-    organize: input.organize === true,
-  };
-}
-
 export function createLanWebUiService(deps: {
   workspace: Omit<LanWorkspaceDeps, "organization" | "notifyDesktop">;
   dataDir: string;
@@ -60,19 +46,19 @@ export function createLanWebUiService(deps: {
   const offAgent = onLanAgentEvent((envelope) => workspace.ingest(envelope));
   const offWrites = organization.onRendererWrite(() => workspace.catalogChanged());
   let server: ReturnType<typeof createLanServer> | null = null;
-  let lastError: string | null = null;
   let address: string | null = null;
   let port: number | null = null;
+  const notifyAdmin = () => deps.sendToRenderer(IPC.event.lanWebUiChanged, null);
 
   const ensureServer = () => {
-    server ??= createLanServer({ handler: workspace, assets: deps.assets() });
+    server ??= createLanServer({ handler: workspace, assets: deps.assets(), onChange: notifyAdmin });
     return server;
   };
 
-  async function view(): Promise<LanAdminView> {
+  async function view(error: string | null = null): Promise<LanAdminView> {
+    const projects = await workspace.operatorProjects().catch(() => []);
     const current = server;
     const running = current?.running() === true;
-    const projects = await workspace.operatorProjects().catch(() => []);
     return {
       running,
       origin: running ? current!.origin() : null,
@@ -83,12 +69,11 @@ export function createLanWebUiService(deps: {
       devices: running ? current!.devices() : [],
       interfaces: listLanInterfaces(),
       projects,
-      error: lastError,
+      error,
     };
   }
 
   async function admin(action: LanAdminAction): Promise<LanAdminView> {
-    lastError = null;
     try {
       switch (action?.kind) {
         case "state":
@@ -101,6 +86,7 @@ export function createLanWebUiService(deps: {
           address = bound.address;
           port = bound.port;
           deps.log("info", "lan webui started", { port: bound.port });
+          notifyAdmin();
           break;
         }
         case "stop":
@@ -108,12 +94,16 @@ export function createLanWebUiService(deps: {
           address = null;
           port = null;
           deps.log("info", "lan webui stopped");
+          notifyAdmin();
           break;
         case "issueCode":
           ensureServer().issueCode();
           break;
         case "confirm":
-          ensureServer().confirm(String(action.id), validGrants(action.grants));
+          ensureServer().confirm(String(action.id), action.grants);
+          break;
+        case "update":
+          ensureServer().update(String(action.id), action.grants);
           break;
         case "deny":
           server?.deny(String(action.id));
@@ -131,8 +121,8 @@ export function createLanWebUiService(deps: {
       const code = error instanceof LanError
         ? error.code
         : (error as { code?: unknown })?.code === "EADDRINUSE" ? "PORT_IN_USE" : "FAILED";
-      lastError = code;
       if (!(error instanceof LanError)) deps.log("warn", "lan webui action failed", { kind: action?.kind, code });
+      return view(code);
     }
     return view();
   }

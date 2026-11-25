@@ -24,10 +24,22 @@ const SESSION_COOKIE = "pi_lan";
 const PENDING_COOKIE = "pi_lan_pending";
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-type Device = LanDevice & { token: string; csrf: string; streams: Set<ServerResponse>; idempotent: Map<string, Promise<unknown>> };
+type RememberedOperation = { grants: LanGrants; result: Promise<unknown> };
+type Device = LanDevice & { token: string; csrf: string; streams: Set<ServerResponse>; idempotent: Map<string, RememberedOperation> };
 type Pending = LanPairing & { secret: string; deviceId: string | null };
 
 const secret = () => randomBytes(32).toString("base64url");
+
+function cleanGrants(value: unknown): LanGrants {
+  const input = (value && typeof value === "object" ? value : {}) as Partial<Record<keyof LanGrants, unknown>>;
+  const projectIds = Array.isArray(input.projectIds)
+    ? [...new Set(input.projectIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length < 200))]
+    : [];
+  const temporary = input.temporary === true;
+  if (!projectIds.length && !temporary) throw new LanError(400, "INVALID_SCOPE");
+  return { projectIds, temporary, chat: input.chat === true, organize: input.organize === true };
+}
+
 const sameSecret = (a: string, b: string) => {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
@@ -113,6 +125,11 @@ export function createLanServer(options: {
 
   const access = (device: Device): LanAccess => ({ deviceId: device.id, ...device.grants });
 
+  function requireCurrentGrants(device: Device, grants: LanGrants) {
+    if (!devices.has(device.id)) throw new LanError(401, "UNAUTHORIZED");
+    if (device.grants !== grants) throw new LanError(409, "CONFLICT");
+  }
+
   /** DNS rebinding and cross-site request guard; not a TLS check. */
   const sameOrigin = (request: IncomingMessage) => {
     if (request.headers.host !== host) return false;
@@ -132,15 +149,17 @@ export function createLanServer(options: {
   }
 
   async function pair(request: IncomingMessage, response: ServerResponse) {
-    prune();
     const body = await readBody(request);
+    prune();
     const supplied = typeof body.code === "string" ? body.code.trim() : "";
     const label = (typeof body.label === "string" ? body.label.trim() : "").slice(0, LABEL_MAX) || "Browser";
     if (!code) throw new LanError(403, "PAIRING_CLOSED");
     if (!sameSecret(code.value, supplied)) {
       code.attempts += 1;
-      if (code.attempts >= CODE_ATTEMPTS) code = null;
-      changed();
+      if (code.attempts >= CODE_ATTEMPTS) {
+        code = null;
+        changed();
+      }
       throw new LanError(403, "PAIRING_FAILED");
     }
     if (pending.size >= MAX_PENDING) throw new LanError(429, "RATE_LIMITED");
@@ -187,9 +206,10 @@ export function createLanServer(options: {
   async function broadcast(change: LanChange) {
     for (const device of devices.values()) {
       if (!device.streams.size) continue;
+      const grants = device.grants;
       let reveal = false;
       if (change.sessionId) reveal = await options.handler.mayReveal(access(device), change.sessionId).catch(() => false);
-      if (!devices.has(device.id)) continue;
+      if (!devices.has(device.id) || device.grants !== grants) continue;
       for (const stream of device.streams) {
         const filter = (stream as ServerResponse & { lanSession?: string | null }).lanSession ?? null;
         if (filter && change.sessionId !== filter) continue;
@@ -203,6 +223,7 @@ export function createLanServer(options: {
   async function api(request: IncomingMessage, response: ServerResponse, url: URL) {
     const device = deviceFor(request);
     if (!device) throw new LanError(401, "UNAUTHORIZED");
+    const grants = device.grants;
     device.lastActiveAt = now();
     const method = request.method === "POST" ? "POST" : "GET";
     if (url.pathname === "/v1/me" && method === "GET") {
@@ -223,21 +244,29 @@ export function createLanServer(options: {
     if (method === "GET" && sessionEvents) {
       const sessionId = decodeURIComponent(sessionEvents[1]!);
       if (!(await options.handler.mayReveal(access(device), sessionId))) throw new LanError(404, "NOT_FOUND");
+      requireCurrentGrants(device, grants);
       return events(device, request, response, sessionId);
     }
     const body = method === "POST" ? await readBody(request) : {};
+    requireCurrentGrants(device, grants);
     const lanRequest: LanRequest = { method, path: url.pathname, query: url.searchParams, body, access: access(device) };
     const rawKey = request.headers["idempotency-key"];
     const key = typeof rawKey === "string" && /^[A-Za-z0-9_-]{8,80}$/.test(rawKey) ? rawKey : null;
     let result: Promise<unknown>;
     if (method === "POST" && key) {
-      const remembered = device.idempotent.get(`${url.pathname}:${key}`);
+      const cacheKey = `${url.pathname}:${key}`;
+      const remembered = device.idempotent.get(cacheKey);
       if (remembered) {
-        result = remembered;
+        // A retry from an earlier grant must neither return its result nor execute again.
+        if (remembered.grants !== grants) throw new LanError(409, "CONFLICT");
+        result = remembered.result;
       } else {
         result = options.handler.handle(lanRequest, key);
-        device.idempotent.set(`${url.pathname}:${key}`, result);
-        result.catch(() => device.idempotent.delete(`${url.pathname}:${key}`));
+        const entry = { grants, result };
+        device.idempotent.set(cacheKey, entry);
+        result.catch(() => {
+          if (device.idempotent.get(cacheKey) === entry) device.idempotent.delete(cacheKey);
+        });
         while (device.idempotent.size > MAX_IDEMPOTENT) {
           device.idempotent.delete(device.idempotent.keys().next().value as string);
         }
@@ -246,8 +275,7 @@ export function createLanServer(options: {
       result = options.handler.handle(lanRequest, null);
     }
     const value = await result;
-    // A device revoked while the request ran gets no data back.
-    if (!devices.has(device.id)) throw new LanError(401, "UNAUTHORIZED");
+    requireCurrentGrants(device, grants);
     sendJson(response, 200, value);
   }
 
@@ -335,6 +363,7 @@ export function createLanServer(options: {
     issueCode(): { value: string; expiresAt: number } {
       if (!server) throw new LanError(409, "NOT_RUNNING");
       code = { value: String(randomInt(0, 1_000_000)).padStart(6, "0"), expiresAt: now() + CODE_TTL_MS, attempts: 0 };
+      changed();
       return { value: code.value, expiresAt: code.expiresAt };
     },
 
@@ -354,6 +383,7 @@ export function createLanServer(options: {
 
     /** Desktop confirmation: the only path that turns a pending browser into a device. */
     confirm(id: string, grants: LanGrants): void {
+      prune();
       const entry = pending.get(id);
       if (!entry || entry.deviceId) throw new LanError(404, "NOT_FOUND");
       if (devices.size >= MAX_DEVICES) throw new LanError(429, "RATE_LIMITED");
@@ -361,12 +391,7 @@ export function createLanServer(options: {
         id: randomUUID(),
         label: entry.label,
         lastActiveAt: now(),
-        grants: {
-          projectIds: [...new Set(grants.projectIds.filter((value) => typeof value === "string"))],
-          temporary: grants.temporary === true,
-          chat: grants.chat === true,
-          organize: grants.organize === true,
-        },
+        grants: cleanGrants(grants),
         token: secret(),
         csrf: secret(),
         streams: new Set(),
@@ -374,6 +399,19 @@ export function createLanServer(options: {
       };
       devices.set(device.id, device);
       entry.deviceId = device.id;
+      changed();
+    },
+
+    /** Keep device identity but reauthorize its next request and subscriptions. */
+    update(id: string, grants: LanGrants): void {
+      const device = devices.get(id);
+      if (!device) throw new LanError(404, "NOT_FOUND");
+      const next = cleanGrants(grants);
+      const current = device.grants;
+      if (next.temporary === current.temporary && next.chat === current.chat && next.organize === current.organize
+        && next.projectIds.length === current.projectIds.length && next.projectIds.every((id) => current.projectIds.includes(id))) return;
+      device.grants = next;
+      closeStreams(device);
       changed();
     },
 

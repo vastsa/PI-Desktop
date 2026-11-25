@@ -86,6 +86,8 @@ export type LanAdminAction =
   | { kind: "state" | "stop" | "issueCode" }
   | { kind: "start"; address: string; port: number }
   | { kind: "confirm"; id: string; grants: LanGrants }
+  /** Change what an already paired device may see and do. */
+  | { kind: "update"; id: string; grants: LanGrants }
   | { kind: "deny" | "revoke"; id: string }
   /** The renderer applied organization patches up to `seq`. */
   | { kind: "ack"; seq: number };

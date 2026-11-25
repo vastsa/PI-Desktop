@@ -119,7 +119,19 @@
   function openEvents() {
     closeEvents();
     const source = new EventSource("/v1/events");
-    source.addEventListener("open", () => (offline.hidden = true));
+    source.addEventListener("open", async () => {
+      try {
+        // Permission edits close the old stream. Refresh grants as well as data
+        // when the browser reconnects with the same device credential.
+        const me = await api("GET", "/v1/me");
+        if (state.events !== source) return;
+        state.me = me;
+        offline.hidden = true;
+        scheduleRefresh();
+      } catch (error) {
+        if (state.events === source) fail(error);
+      }
+    });
     source.addEventListener("error", () => {
       offline.textContent = t("offline");
       offline.hidden = false;

@@ -44,17 +44,22 @@ numbers refer to the [WebUI acceptance catalog](../06-delivery/e2e/live-and-remo
    rebinding) or whose `Origin` is foreign, requires a CSRF token on every
    authenticated mutation, and serves a restrictive CSP. Adding HTTPS later must
    not change the browser API.
-3. Desktop displays the copyable address and, on request, a 6-digit one-time
-   code. Enter it on the page; Desktop then lists the pending device by its
-   label. No catalog or history is sent until the user confirms locally and
-   chooses the grants and scopes below. Each code is valid for at most five
-   minutes and a single device; five failed attempts invalidate it. A browser
-   cannot request a fresh code. A QR code of the origin is deferred.
-4. In the same settings section show paired device label, last activity, scopes,
-   and **Revoke** / **Turn off for all devices**. The browser has **Disconnect
-   this device** (sign out), distinct from closing the tab. Revocation or sign-out
-   invalidates its cookie and live streams. Turning off closes the listener and
-   invalidates all WebUI grants; turning it back on requires fresh pairing.
+3. Once the listener is on, the connection card shows a copyable address and
+   the Devices card shows pending requests and paired devices. **Add device**
+   opens a two-step dialog with the address, one-time 6-digit code and expiry.
+   A new request while the dialog is open advances it to the grant review;
+   requests already waiting can be reviewed or denied from the Devices card.
+   No catalog or history is sent until the user confirms locally and chooses
+   at least one project or Temporary scope. Each code lasts at most five
+   minutes, is single-use, and expires after five failed attempts. Only the
+   Desktop can generate a replacement code. A QR code is deferred.
+4. Device rows show the label, last activity and access summary. **Permissions**
+   edits scopes and actions without pairing again. The listener closes existing
+   streams and does not return pending or cached results under the old grants.
+   The browser refetches its access and view when it reconnects. **Remove** and
+   browser sign-out invalidate that device's cookie and streams. Turning off
+   closes the listener and invalidates every pairing; turning it back on
+   requires fresh pairing. Closing a browser tab is not sign-out.
 5. Minimizing or hiding Desktop does not stop the service. Phone backgrounding,
    Wi-Fi loss or closing a tab is not a stop or approval command. Locking the
    computer grants no new authority: new pairing and manual approvals still
@@ -69,6 +74,11 @@ wrong/expired code, desktop refusal, revoked device or desktop offline. A phone
 unable to reach the Host cannot diagnose why; offer the address and local
 network checks, not a false claim that the desktop quit. Never open firewall or
 router ports, use UPnP, or set up a tunnel automatically.
+
+Desktop administration stays on the main-window-only LAN admin IPC channel.
+The `update` action replaces grants for an existing device; the payload-free
+`lanWebUiChanged` event asks the renderer to refetch after listener, pairing or
+device changes. Neither is available through the browser API.
 
 ## 3. Projects and sessions (W02, W03)
 
@@ -266,21 +276,22 @@ is part of this product increment.
 
 Code: `apps/desktop/electron/main/lan-webui/` (listener, pairing, scope checks,
 workspace edge, organization owner), `apps/desktop/resources/lan-webui/` (phone
-page), `apps/desktop/src/components/settings/LanWebUiSection.tsx` (Desktop
+page), `apps/desktop/src/features/lan-webui/LanWebUiSection.tsx` (Desktop
 settings) and `apps/desktop/src/features/lan-webui/lan-catalog-sync.ts`
 (applies browser edits to the open Desktop sidebar without navigating).
 
 | Area | Delivered | Not yet |
 |---|---|---|
-| W01 | Off by default; interface + port; one-time code; Desktop confirm with grants; revoke; sign out; stop signs everyone out | QR code; HTTPS (deliberately deferred) |
+| W01 | Off by default; interface + port; guided pairing with local grant review; edit or remove devices; sign out; stop signs everyone out | QR code; HTTPS (deliberately deferred) |
 | W02/W03 | Shared-project and temporary scopes; search; archived filter; rename, pin, archive/restore with revision conflicts; new session in the explicit project | Reuse of an existing empty session |
 | W04 | Paged history; live assistant text; send; queue; cancel queued; stop the named turn; “waiting on Desktop” for approvals and input | Answering ordinary questions from the browser; model label is the raw model id |
 | W05 | Idempotency keys for every mutation; SSE change notices with refetch; reconnect banner | Cursor-based replay (refetch is used instead) |
-| W06 | Non-owner principal under the remote `ask` ceiling; plan/goal and remote sessions read-only or hidden | Idle (30 min) session expiry |
+| W06 | Non-owner principal under the remote `ask` ceiling; plan/goal and remote sessions read-only or hidden | Idle (30 min) session expiry; canceling already queued work on scope loss |
 | W07 | Phone-first layout, 44 px targets, English and Simplified Chinese, IME-safe Enter | Screen-reader and large-catalog qualification |
 | W08 | Existing names, pins and archives keep working; browser edits survive stale sidebar writes | — |
 
 Automated coverage: `apps/desktop/test/lan-webui-organization.test.mjs`,
-`lan-webui-user-path.test.mjs` (real HTTP listener, fake Desktop) and
+`lan-webui-user-path.test.mjs` (real HTTP listener, fake Desktop),
 `lan-webui-browser-user-path.test.mjs` (Electron Chromium at phone size driving
-the shipped page).
+the shipped page), and `lan-webui-settings-user-path.test.mjs` (Desktop System
+settings in isolated Electron, with a fixture preload boundary).

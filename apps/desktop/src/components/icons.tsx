@@ -57,6 +57,7 @@ import {
   MessageSquare,
   MessageSquarePlus,
   Monitor,
+  Smartphone,
   Moon,
   MoreHorizontal,
   Music,
@@ -98,6 +99,7 @@ import {
   Video,
   Volume2,
   Webhook,
+  Wifi,
   Workflow,
   Wrench,
   X,
@@ -245,6 +247,8 @@ export const IconServer = icon(Server);
 export const IconSun = icon(Sun);
 export const IconMoon = icon(Moon);
 export const IconMonitor = icon(Monitor);
+export const IconSmartphone = icon(Smartphone);
+export const IconWifi = icon(Wifi);
 export const IconPet = icon(PawPrint);
 export const IconSnapshot = icon(RotateCw);
 export const IconGear = icon(Settings);

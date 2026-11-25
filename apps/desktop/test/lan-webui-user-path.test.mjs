@@ -3,9 +3,9 @@ import test from "node:test";
 import { request } from "node:http";
 import { browser, createLanServer, desktop } from "./helpers/lan-webui-fixture.mjs";
 
-async function setup(t, grants) {
+async function setup(t, grants, wrapHandler = (workspace) => workspace) {
   const fake = desktop();
-  const server = createLanServer({ handler: fake.workspace, assets: new Map([["/index.html", { type: "text/html", body: "<p>ok</p>" }]]) });
+  const server = createLanServer({ handler: wrapHandler(fake.workspace), assets: new Map([["/index.html", { type: "text/html", body: "<p>ok</p>" }]]) });
   const { port } = await server.start("127.0.0.1", 0);
   t.after(async () => {
     await server.stop();
@@ -150,4 +150,47 @@ test("temporary conversations need their own grant", async (t) => {
   const created = await phone.request("POST", "/v1/sessions", { projectId: null });
   assert.equal(created.status, 200);
   assert.deepEqual(calls.find(([c]) => c === "create")[1], [{}], "no project is inherited");
+});
+
+test("editing a device applies the new grants without returning data from the old scope", { timeout: 10_000 }, async (t) => {
+  const prepared = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  t.after(() => release.resolve());
+  const { phone, server, calls } = await setup(t, {
+    projectIds: ["g-a", "g-b"], temporary: false, chat: true, organize: true,
+  }, (workspace) => ({
+    ...workspace,
+    async handle(request, key) {
+      const result = await workspace.handle(request, key);
+      if (request.path === "/v1/sessions/s-a1") {
+        prepared.resolve();
+        await release.promise;
+      }
+      return result;
+    },
+  }));
+  const id = server.devices()[0].id;
+  assert.throws(() => server.update(id, { projectIds: [], temporary: false, chat: true, organize: true }), { code: "INVALID_SCOPE" });
+  const mutation = { "Idempotency-Key": "device-edit-create" };
+  assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-a" }, mutation)).status, 200);
+  const stream = await phone.events("/v1/sessions/s-a1/events", t.signal);
+  assert.equal(stream.status, 200);
+  const reader = stream.body.getReader();
+  assert.equal((await reader.read()).done, false);
+  const inFlight = phone.request("GET", "/v1/sessions/s-a1");
+  await prepared.promise;
+
+  server.update(id, { projectIds: ["g-b"], temporary: false, chat: false, organize: false });
+  release.resolve();
+  assert.deepEqual(await inFlight, { status: 409, body: { code: "CONFLICT" } });
+  assert.equal((await reader.read()).done, true, "editing grants closes the subscribed stream");
+  assert.equal((await phone.events("/v1/sessions/s-a1/events", t.signal)).status, 404);
+  assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-a" }, mutation)).status, 409);
+  assert.equal(calls.filter(([channel]) => channel === "create").length, 1);
+
+  const me = await phone.request("GET", "/v1/me");
+  assert.deepEqual(me.body.access, { deviceId: id, projectIds: ["g-b"], temporary: false, chat: false, organize: false });
+  assert.deepEqual((await phone.request("GET", "/v1/projects")).body.items.map((project) => project.id), ["g-b"]);
+  assert.equal((await phone.request("GET", "/v1/sessions/s-a1")).status, 404);
+  assert.equal((await phone.request("POST", "/v1/sessions", { projectId: "g-b" })).status, 403);
 });

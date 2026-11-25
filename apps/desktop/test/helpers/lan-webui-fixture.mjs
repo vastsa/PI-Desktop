@@ -110,9 +110,10 @@ export function desktop() {
 export function browser(origin) {
   const jar = new Map();
   let csrf = "";
+  const cookie = () => [...jar].map(([key, value]) => `${key}=${value}`).join("; ");
   const request = async (method, path, body, extra = {}) => {
     const headers = { Accept: "application/json", ...extra };
-    if (jar.size) headers.Cookie = [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+    if (jar.size) headers.Cookie = cookie();
     if (method === "POST") {
       headers["Content-Type"] = "application/json";
       if (csrf && !("X-CSRF-Token" in extra)) headers["X-CSRF-Token"] = csrf;
@@ -129,6 +130,7 @@ export function browser(origin) {
   };
   return {
     request,
+    events: (path, signal) => fetch(`${origin}${path}`, { headers: { Cookie: cookie() }, signal }),
     async signIn() {
       const me = await request("GET", "/v1/me");
       csrf = me.body.csrf;

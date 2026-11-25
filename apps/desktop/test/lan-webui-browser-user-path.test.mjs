@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -80,7 +81,29 @@ const journey = String.raw`(async () => {
   return JSON.stringify(result);
 })()`;
 
-test("a phone pairs, organizes, creates and sends through the real page", { timeout: 60_000 }, async (t) => {
+const afterGrantEdit = String.raw`(async () => {
+  const waitForRow = async (label) => {
+    const deadline = performance.now() + 10_000;
+    while (performance.now() < deadline) {
+      const row = [...document.querySelectorAll(".row")].find((item) => item.querySelector(".row-title")?.textContent === label);
+      if (row) return row;
+      await new Promise(requestAnimationFrame);
+    }
+    throw new Error("Missing row after grant edit: " + label);
+  };
+  const project = await waitForRow("Beta");
+  const projectTitles = [...document.querySelectorAll(".row-title")].map((item) => item.textContent);
+  project.querySelector(".row-main").click();
+  const session = await waitForRow("Second root chat");
+  return {
+    projectTitles,
+    canOrganize: Boolean(session.querySelector(".row-more")),
+    canCreate: Boolean(document.querySelector("main > button.primary")),
+    pairingShown: Boolean(document.getElementById("pair-code")),
+  };
+})()`;
+
+test("a phone pairs, organizes, chats and follows updated grants through the real page", { timeout: 60_000 }, async (t) => {
   const { electronBinary } = resolveElectronBinary();
   const fake = desktop();
   const server = createLanServer({ handler: fake.workspace, assets: await assets() });
@@ -102,6 +125,7 @@ test("a phone pairs, organizes, creates and sends through the real page", { time
   await writeFile(join(temp, "main.cjs"), `
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
+const { once } = require("node:events");
 app.setPath("userData", path.join(__dirname, "profile"));
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ show: false, width: 390, height: 844, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
@@ -109,7 +133,11 @@ app.whenReady().then(async () => {
     await window.loadURL(${JSON.stringify(`http://127.0.0.1:${port}/`)});
     await window.webContents.executeJavaScript("window.__code = ${code};");
     const output = await window.webContents.executeJavaScript(${JSON.stringify(journey)});
-    process.stdout.write("RESULT " + output + "\\n");
+    const edited = once(process.stdin, "data");
+    process.stdout.write("EDIT_GRANTS\\n");
+    await edited;
+    const afterEdit = await window.webContents.executeJavaScript(${JSON.stringify(afterGrantEdit)});
+    process.stdout.write("RESULT " + JSON.stringify({ ...JSON.parse(output), afterEdit }) + "\\n");
     app.exit(0);
   } catch (error) {
     process.stderr.write(String(error && error.stack || error) + "\\n");
@@ -117,12 +145,22 @@ app.whenReady().then(async () => {
   }
 });
 `);
-  const child = spawn(electronBinary, [join(temp, "main.cjs")], { env: { ...process.env, ELECTRON_ENABLE_LOGGING: "0" } });
+  const env = { ...process.env, ELECTRON_ENABLE_LOGGING: "0" };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const child = spawn(electronBinary, [join(temp, "main.cjs")], { env, signal: t.signal });
   let stdout = "";
   let stderr = "";
-  child.stdout.on("data", (chunk) => (stdout += chunk));
+  let edited = false;
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+    if (edited || !stdout.includes("EDIT_GRANTS\n")) return;
+    edited = true;
+    const [device] = server.devices();
+    if (device) server.update(device.id, { projectIds: ["g-b"], temporary: false, chat: false, organize: false });
+    child.stdin.end("updated");
+  });
   child.stderr.on("data", (chunk) => (stderr += chunk));
-  const exitCode = await new Promise((resolve) => child.on("close", resolve));
+  const [exitCode] = await once(child, "close");
   assert.equal(exitCode, 0, stderr);
   const line = stdout.split("\n").find((entry) => entry.startsWith("RESULT "));
   assert.ok(line, stdout + stderr);
@@ -143,4 +181,5 @@ app.whenReady().then(async () => {
   assert.equal(result.horizontalScroll, false);
   assert.equal(result.smallTargets, 0);
   assert.equal(result.backHash, "#/p/g-a");
+  assert.deepEqual(result.afterEdit, { projectTitles: ["Beta"], canOrganize: false, canCreate: false, pairingShown: false });
 });

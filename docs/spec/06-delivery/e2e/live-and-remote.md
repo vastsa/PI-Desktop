@@ -762,16 +762,18 @@ user's running instance.
 
 - **Preconditions:** Fresh Desktop profile with projects A and B; a real phone
   on the selected private LAN. Repeat on iOS Safari and Android Chrome.
-- **Steps:** Check the initial listener state. Choose the interface and start;
-  open the shown `http://` address on the phone, show a code on Desktop, enter
-  it, and confirm access to A on Desktop. Close/reopen the tab; hide Desktop;
-  then stop the service, quit and relaunch Desktop.
+- **Steps:** Choose the interface and start. Open **Add device**, copy the shown
+  `http://` address, and enter the displayed code on the phone. In the review
+  dialog, select A and allow the request. Open and close the dialog with the
+  keyboard, regenerate an expired code, and deny a separate waiting request.
+  Close/reopen the tab, hide Desktop, then stop, quit and relaunch Desktop.
 - **Expected:** No listener by default and no project data before confirmation.
-  The paired device sees A only; an expired, reused or five-times-wrong code
-  fails. Hiding Desktop/closing the tab does not sign out. Stopping closes
-  streams, invalidates cookies and releases the port; after relaunch the
-  service is off, and a new start requires new pairing. An occupied port or
-  isolated Wi-Fi produces actionable guidance, not a silent rebind.
+  A new request advances to review without polling or user refresh. The
+  approval action requires a scope; the paired device sees A only. An expired,
+  reused or five-times-wrong code fails. Hiding Desktop/closing the tab does not
+  sign out. Stopping closes streams, invalidates cookies and releases the port;
+  restarting requires pairing again. An occupied port or isolated Wi-Fi
+  produces actionable guidance, not a silent rebind.
 - **Acceptance:** A, E; W01, W06.
 
 ### E2E-270: Organize projects and sessions without stealing navigation
@@ -850,15 +852,18 @@ user's running instance.
   clock, a second interface and an allowed and a disallowed browser origin.
 - **Steps:** Exercise catalog, deep links, history, search/counts, commands and
   SSE with those identities. Check wrong Origin/Host, absent CSRF, expired
-  cookies, pairing throttles and rejected admin/owner operations. Remove A
-  while a stream, a queued turn and an in-flight catalog request exist. Sign
-  out/revoke devices and change the desktop network. Inspect fixture logs/cache.
+  cookies, pairing throttles and rejected admin/owner operations. In **Permissions**,
+  replace A with B and switch to View only while a stream, a queued turn and an
+  in-flight catalog request exist. Remove the device and change the desktop
+  network. Inspect fixture logs/cache.
 - **Expected:** No out-of-scope metadata, events or writes, even for known IDs;
   View cannot mutate. No generic owner/SSH exemption or raw RPC, no leaked
-  credentials/content in logs or persistent browser caches. Lost scope closes
-  affected streams and cancels its pending queued work; an old cookie or late
-  response cannot recover it. Expiry is not extended by a heartbeat. No
-  connection on other interfaces or automatic sharing on the new network.
+  credentials/content in logs or persistent browser caches. Permission edits
+  do not require re-pairing and the browser reflects the new access after
+  reconnecting. Lost scope closes affected streams and cancels its pending
+  queued work; a late or cached reply under the old grants cannot recover it.
+  Expiry is not extended by a heartbeat. No connection on other interfaces or
+  automatic sharing on the new network.
 - **Acceptance:** D, E; W01, W02, W06.
 
 ### E2E-275: Preserve an existing desktop profile and disable cleanly

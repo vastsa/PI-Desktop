@@ -10,7 +10,7 @@ import type { AppSettings, ShortcutPlatform } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { SettingsToggle } from "../../../components/ui";
 import { NetworkProxySection } from "../../../components/settings/NetworkProxySection";
-import { LanWebUiSection } from "../../../components/settings/LanWebUiSection";
+import { LanWebUiSection } from "../../lan-webui/LanWebUiSection";
 import { CloseBehaviorSection } from "../developer-sections";
 import { SettingsCard, SettingsRow } from "../primitives";
 import { StorageSettingsSection } from "../StorageSettingsSection";

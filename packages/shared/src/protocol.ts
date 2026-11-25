@@ -509,6 +509,8 @@ export const IPC = {
   },
   event: {
     lanWebUiCatalogChanged: "pi-desktop/lan-webui/catalogChanged",
+    /** LAN WebUI listener, pairing or device list changed; refetch the admin view. */
+    lanWebUiChanged: "pi-desktop/lan-webui/changed",
     pluginChanged: "pi-desktop/event/pluginChanged",
     /** Progress of an install or update, while it is still running. */
     pluginInstallProgress: "pi-desktop/plugin/event/installProgress",
