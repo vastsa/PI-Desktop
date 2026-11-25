@@ -332,6 +332,7 @@ export function registerProviderIpc({
       throw new Error("providerId required");
     }
     await vendorOAuth.deleteAccount(providerId);
+    await onProviderInvalidated?.(providerId);
     return { ok: true };
   });
   handle(

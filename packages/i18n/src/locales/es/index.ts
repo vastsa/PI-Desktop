@@ -1763,6 +1763,8 @@ sklm: {
     "noResults": "No hay configuraciones coincidentes",
     "enterToSend": "Ingresar para enviar",
     "enterToSendDesc": "Desactivado: presione ⌘/Ctrl+Entrar para enviar.",
+    foregroundCacheWarming: "Mantener activa la caché de instrucciones (experimental)",
+    foregroundCacheWarmingDesc: "Mientras la conversación actual esté en primer plano, se envían solicitudes ocasionales para mantener su caché. Estas solicitudes consumen la cuota del proveedor.",
     backgroundJobContinuation: "Continuar tras tareas en segundo plano",
     backgroundJobContinuationDesc: "Permitir reanudar la conversación local al terminar las pruebas o compilaciones solicitadas, con los permisos actuales. Desactivado por defecto. Desactivarlo cancela las continuaciones pendientes, no los procesos.",
     codemode: "Scripts de Codemode",

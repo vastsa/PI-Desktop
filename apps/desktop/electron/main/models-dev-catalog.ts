@@ -1564,7 +1564,10 @@ export class ModelsDevCatalog {
     if (transport) {
       const transcript = transcriptConfigFromPi(transport);
       baseline = { ...baseline, transcriptBinding: transcript.transcriptBinding,
-        compat: { ...baseline.compat, ...transcript.compat } };
+        compat: { ...baseline.compat, ...transcript.compat },
+        ...(transport.promptCache && apiMatches(input.baseUrl, transport.baseUrl)
+          ? { promptCache: transport.promptCache } : {}),
+      };
     }
     if (!binding) return baseline;
     const limits = resolveBindingLimits(baseline, binding);
