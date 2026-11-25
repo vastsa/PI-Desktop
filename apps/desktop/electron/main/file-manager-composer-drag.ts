@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { normalizeProjectPath, type SessionSummary } from "@pi-desktop/shared";
-import { referenceComposerFiles } from "./composer-file-references.ts";
+import { discardComposerFileReference, referenceComposerFiles } from "./composer-file-references.ts";
 import {
   checkFileManagerComposerRegistry,
   fileLinePathInProject,
@@ -85,8 +85,11 @@ export function createFileManagerComposerDrag(
       if (!canonicalPath || context.getHost() !== host || !isCurrent() ||
           !fileLinePathInProject(path, projectPath, canonicalPath)) return null;
       const [reference] = await referenceComposerFiles(dataDir, sessionId, projectPath, [canonicalPath]);
-      return reference?.path === canonicalPath && context.getHost() === host &&
-        isCurrent() && fileLinePathInProject(path, projectPath, canonicalPath) ? reference : null;
+      if (!reference) return null;
+      if (reference.path === canonicalPath && context.getHost() === host &&
+          isCurrent() && fileLinePathInProject(path, projectPath, canonicalPath)) return reference;
+      await discardComposerFileReference(dataDir, reference.localReference);
+      return null;
     },
   };
 }

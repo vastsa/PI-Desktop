@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, mkdir, realpath, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,9 +43,10 @@ async function fixture(t) {
     },
   };
   let now = 0;
+  let isVisible = () => true;
   const drag = createFileManagerComposerDrag({
     plugins: { getLoaded: () => loaded },
-    pluginViews: { isVisibleViewSender: (id, key) => id === 123 && key === "pi.file-manager/manager" },
+    pluginViews: { isVisibleViewSender: (id, key) => id === 123 && key === "pi.file-manager/manager" && isVisible() },
     pluginSession: selection,
     pluginActiveInProject: () => true,
     getHost: () => host,
@@ -56,6 +58,7 @@ async function fixture(t) {
     drop: (token, sessionId = active.sessionId) => drag.drop({ token, sessionId }),
     setAfterRegistryRead: (action) => { afterRegistryRead = action; },
     setHostSession: (next) => { session = next; },
+    setVisibilityCheck: (check) => { isVisible = check; },
     expire: () => { now += 61_000; },
   };
 }
@@ -75,6 +78,15 @@ test("the trusted File Manager drop yields a single reusable metadata-only file 
   assert.equal(await drop(token), null);
   assert.deepEqual(await resolveComposerFileReference(root, workspace, path, reference.localReference), reference);
   assert.deepEqual((await readdir(root)).sort(), ["composer-file-references", "outside.txt", "project"]);
+});
+
+test("a File Manager view closed during reference creation leaves no stored reference", async (t) => {
+  const f = await fixture(t);
+  const directory = join(f.root, "composer-file-references");
+  const token = f.begin();
+  f.setVisibilityCheck(() => !existsSync(directory) || readdirSync(directory).length === 0);
+  assert.equal(await f.drop(token), null);
+  assert.deepEqual(await readdir(directory), []);
 });
 
 test("the Host-owned session blocks remote, isolated, missing and relocated chats", async (t) => {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 import { ErrorCodes, type ComposerPastedFile } from "@pi-desktop/shared";
 import { importComposerFiles, mimeTypeForPath, selectImportableComposerImages } from "./composer-paste.ts";
@@ -21,7 +21,7 @@ export async function referenceComposerFiles(
   sessionId: string,
   projectPath: string,
   paths: string[],
-): Promise<ComposerPastedFile[]> {
+): Promise<Array<ComposerPastedFile & { localReference: string }>> {
   if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) throw new Error("invalid session id");
   if (paths.length > 20) throw new Error("too many referenced files (maximum 20)");
   const project = await realpath(projectPath);
@@ -39,6 +39,13 @@ export async function referenceComposerFiles(
     await writeFile(join(root, `${localReference}.json`), JSON.stringify(record), { flag: "wx", mode: 0o600 });
     return { path, name: basename(path), kind: "file" as const, mimeType: mimeTypeForPath(path), size, localReference };
   }));
+}
+
+/** Discard a record that Main created but never returned to the composer. */
+export async function discardComposerFileReference(dataDir: string, localReference: string): Promise<void> {
+  if (!UUID.test(localReference)) throw new Error("invalid file reference id");
+  const root = await referenceRoot(dataDir);
+  await rm(join(root, `${localReference}.json`), { force: true });
 }
 
 /**
