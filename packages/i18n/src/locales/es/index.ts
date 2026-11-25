@@ -854,6 +854,8 @@ export const es = {
     "planning": "Planificación",
     "approvalRegion": "Aprobación del plan",
     "readyAnnouncement": "Plan listo. El plan está abierto en el Panel de Trabajo.",
+    "revisionPrompt": "¿Qué te gustaría cambiar?",
+    "sendRevision": "Enviar cambios solicitados",
     "chooseApprovalMode": "Elegir modo de aprobación",
     "ask": "Preguntar",
     "acceptEdits": "Aceptar ediciones",

@@ -863,6 +863,8 @@ export const ko = {
     planning: "계획 중",
     approvalRegion: "계획 승인",
     readyAnnouncement: "계획이 준비되었습니다. 작업 패널에서 계획을 열었습니다.",
+    revisionPrompt: "어떤 부분을 수정할까요?",
+    sendRevision: "수정 요청 보내기",
     chooseApprovalMode: "승인 모드 선택",
     ask: "묻기",
     acceptEdits: "편집 허용",

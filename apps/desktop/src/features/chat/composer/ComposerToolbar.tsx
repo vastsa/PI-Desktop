@@ -14,7 +14,7 @@ import { modeErrorMessage } from "../../modes/mode-run-model";
 import { ComposerPermissionPicker } from "./ComposerPermissionPicker";
 import { ContextUsageInspector } from "../../../components/ContextUsageInspector";
 import { ComposerControlSlots } from "./ComposerControlSlots";
-import { TooltipButton } from "../../../components/ui";
+import { Button, TooltipButton } from "../../../components/ui";
 import {
   IconArrowUp,
   IconPlus,
@@ -58,6 +58,7 @@ export type ComposerToolbarProps = {
   contextUsage: ContextUsage | null;
   value: string;
   modelReady: boolean;
+  revisingPlan?: boolean;
   sendBlocked: boolean;
   composerTransforms: PluginComposerTransformMeta[];
   activeTransformKey: string | null;
@@ -100,6 +101,7 @@ export function ComposerToolbar({
   contextUsage,
   value,
   modelReady,
+  revisingPlan,
   sendBlocked,
   composerTransforms,
   activeTransformKey,
@@ -243,7 +245,18 @@ export function ComposerToolbar({
             <IconUndo2 size={15} aria-hidden="true" />
           </TooltipButton>
         ) : null}
-        {runActive && !hasDraftContent ? (
+        {revisingPlan ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            data-testid="send-plan-revision"
+            disabled={!hasDraftContent || sendBlocked || !modelReady}
+            onClick={() => void submit()}
+          >
+            {t("plan.sendRevision")}
+          </Button>
+        ) : runActive && !hasDraftContent ? (
           <TooltipButton
             type="button"
             className="stop-btn"

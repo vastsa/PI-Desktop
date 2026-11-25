@@ -75,6 +75,7 @@ export function createQueueSlice({
   | "refreshQueuedPrompts"
   | "applyQueueChanged"
   | "sendPrompt"
+  | "sendPlanRevision"
   | "steerPrompt"
 > {
   const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
@@ -380,6 +381,30 @@ export function createQueueSlice({
           { variant: "error" },
         );
         return false;
+      }
+    },
+
+    sendPlanRevision: async (proposal, content, draft) => {
+      const { id, sessionId, turnId, toolCallId, version } = proposal;
+      const session = get().sessions.find((row) => row.id === sessionId);
+      const key = `revision:${id}`;
+      if (!session || session.mode !== "plan" || isRemoteSession(session) || session.source === "pi-native") return false;
+      if (!sessionAllows(session, "canPrompt") || (draft?.fileReferences.length && !sessionAllows(session, "canAttach"))) return false;
+      if (!content.trim() || proposal.kind === "goal" || get().pendingPlans[sessionId]?.id !== id) return false;
+      if (get().runningSessions[sessionId] || pendingSubmissions.has(key)) return false;
+      pendingSubmissions.add(key);
+      try {
+        const result = await get().resolvePlan({ proposalId: id, sessionId, turnId, toolCallId, version, action: "reject" });
+        // A concurrent approval can win the shared resolution request.
+        if (result.proposal.status !== "rejected" || result.state !== "planning") return false;
+        if (get().runningSessions[sessionId] || get().planCheckpoints[sessionId]?.id !== id ||
+            get().sessions.find((row) => row.id === sessionId)?.mode !== "plan") return false;
+        return await get().sendPrompt(content, draft, sessionId);
+      } catch (error) {
+        get().showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+        return false;
+      } finally {
+        pendingSubmissions.delete(key);
       }
     },
 

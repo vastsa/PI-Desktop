@@ -54,7 +54,7 @@ test("composer send/stop button follows draft content and the visible session's 
   // switches to Stop only when that session is running and the draft is empty.
   const submitSlot =
     composerRight.match(
-      /\{runActive && !hasDraftContent \? \([\s\S]*?\) : \([\s\S]*?\)\}/,
+      /runActive && !hasDraftContent \? \([\s\S]*?\) : \([\s\S]*?\)\}/,
     )?.[0] ?? "";
   assert.ok(submitSlot.length > 0, "single submit slot implementation not found");
   assert.match(submitSlot, /className="stop-btn"/);
@@ -91,7 +91,7 @@ test("composer send/stop button follows draft content and the visible session's 
     /className="stop-btn"[\s\S]*?\) : null\}[\s\S]*?className="send-btn"/,
     "Stop must not render beside an always-present Send button",
   );
-  assert.match(composer, /const inputBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
+  assert.match(composer, /const inputBlocked = approvalBlocksInput \|\| pasting \|\| nativeInputBlocked;/);
   assert.match(composer, /const controlsBlocked = approvalPending \|\| nativeSession \|\| !sessionAllows\(capabilitySession, "canConfigureModel"\);/);
   assert.match(composer, /contentEditable=\{!inputBlocked\}/);
   assert.match(composer, /disabled=\{controlsBlocked\}/);
