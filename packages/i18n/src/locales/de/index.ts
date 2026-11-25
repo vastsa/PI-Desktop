@@ -1120,7 +1120,7 @@ export const de = {
     "imageModel": "Bildgenerierungsmodell",
     "imageModelUnset": "Nicht konfiguriert",
     "imageModelUnavailable": "Derzeit nicht verfügbar",
-    "imageModelNoneAvailable": "Kein Bildmodell verfügbar. Markieren Sie in den Einstellungen eines Anbieters ein Modell als zur Bilderzeugung fähig.",
+    "imageModelNoneAvailable": "Kein Bildmodell verfügbar. Wählen Sie in den Modelleinstellungen eines Anbieters „$t(settings.setImageModel)“.",
     "imageModelSaveFailed": "Bildmodell konnte nicht gespeichert werden.",
     "clearImageModel": "Löschen",
     "setImageModel": "Als Bildmodell festlegen",

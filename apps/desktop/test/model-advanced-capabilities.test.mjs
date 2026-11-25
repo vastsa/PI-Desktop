@@ -94,7 +94,7 @@ test("the capability row carries no explanatory copy or extra controls", () => {
 });
 
 
-test("image generation selection hides the summary when nothing can be chosen", () => {
+test("image generation marking lives with attachment capabilities and uses shared candidates", () => {
   assert.match(
     pickerSource,
     /className="provider-chosen-capability-rows">[\s\S]*?settings\.setImageModel/,
@@ -110,12 +110,6 @@ test("image generation selection hides the summary when nothing can be chosen", 
   // only while no list was ever saved, plus a signed-in vendor account's image
   // model — now lives in the shared helper, pinned by image-generation-default.test.mjs.
   assert.ok(imageModelRowSource.includes("imageGenerationPickerCandidates("));
-  assert.match(imageModelRowSource, /if \(!options\.some\(\(option\) => !option\.disabled\)\) return null;/);
-  // With no candidates the row must still render, so the GenerateImages
-  // error pointer lands on a visible setting instead of a dead end (#2563).
-  assert.match(imageModelRowSource, /if \(candidates\.length === 0\) \{/);
-  assert.match(imageModelRowSource, /imageModelNoneAvailable/);
-  assert.match(imageModelRowSource, /imageModelUnavailable/);
 });
 
 test("the Composer model rows use the provider binding for vision badges", () => {

@@ -32,30 +32,12 @@ export function ImageGenerationModelRow({
   // selection (an explicitly cleared list is not resurrected), a missing list
   // falls back to the legacy single binding, and a signed-in vendor account
   // offers the image model it answers with. The settings page validates the
-  // user's choice against this same list, so every row shown here is selectable.
+  // user's choice against this same list.
   const candidates = imageGenerationPickerCandidates(
     settings.imageGenerationModels,
     binding,
     providers,
   );
-  // The row never disappears, not even with nothing to pick (#2563): the
-  // built-in GenerateImages error sends the user here, and a hidden row
-  // turned that pointer into a dead end.
-  if (candidates.length === 0) {
-    return (
-      <div className="settings-row model-default-row model-image-row">
-        <div className="settings-row-copy model-default-copy">
-          <div className="settings-row-title model-default-label">{t("settings.imageModel")}</div>
-          <div className="settings-row-detail model-default-value">
-            <span className="model-default-empty" role="status">
-              {t("settings.imageModelNoneAvailable")}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const activeCandidate = binding
     ? candidates.find((candidate) =>
       candidate.providerId === binding.providerId &&
@@ -81,9 +63,14 @@ export function ImageGenerationModelRow({
       disabled: !available,
     };
   });
-  // Disabled rows are not choices. With none left, the summary stays hidden
-  // instead of showing a checked model the user can no longer pick.
-  if (!options.some((option) => !option.disabled)) return null;
+  const runnableCount = options.filter((option) => !option.disabled).length;
+  // Keep the setting reachable from GenerateImages errors even when there is
+  // nothing to pick (#2563). Distinguish missing setup from unavailable models.
+  const status = candidates.length === 0
+    ? "settings.imageModelNoneAvailable"
+    : activeCandidate || runnableCount === 0
+      ? "settings.imageModelUnavailable"
+      : "settings.imageModelUnset";
   const checkedId = valid && activeCandidate ? imageModelOptionId(activeCandidate) : "";
 
   return (
@@ -99,12 +86,12 @@ export function ImageGenerationModelRow({
             </>
           ) : (
             <span className="model-default-empty" role="status">
-              {t(activeCandidate ? "settings.imageModelUnavailable" : "settings.imageModelUnset")}
+              {t(status)}
             </span>
           )}
         </div>
       </div>
-      {onChange && (options.filter((option) => !option.disabled).length > 1 || !checkedId) ? (
+      {onChange && runnableCount > 0 && (runnableCount > 1 || !checkedId) ? (
         <SettingsMenuSelect
           className="model-image-selector settings-model-select"
           label={t("settings.imageModel")}

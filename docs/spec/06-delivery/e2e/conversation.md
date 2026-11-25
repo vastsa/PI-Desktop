@@ -375,8 +375,9 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   image checkbox. Cancel once, repeat and Save, then reopen settings and editor.
 - **Expected:** Cancel preserves both configurations. Save removes the model and
   its image candidate and clears the image default, even when another image
-  candidate remains on this or another provider. The settings summary therefore
-  shows the unavailable state until the user explicitly chooses a new default.
+  candidate remains on this or another provider. The image model row remains
+  visible: it shows **Not configured** with a picker when another candidate is
+  runnable, or an empty-state hint without a picker when no candidates remain.
   An unaffected chat default stays unchanged; a removed chat default still falls
   back to the first configured model. Reload preserves results.
 - **Specs:** 03-runtime/21-image-generation. **Acceptance:** B.
@@ -388,27 +389,30 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Preconditions:** Isolated desktop profile and workspace, built image feature,
   local chat and OpenAI Images HTTP fixtures; no live provider credentials.
 - **Steps:** Open Models settings with no image model configured; verify the image
-  summary row is absent. Open a provider's Advanced model settings and verify
-  **Set as image model** is grouped with the image/document attachment
-  capabilities and can be checked for multiple models. Save, use the image
-  summary menu to choose one marked model as the default, then submit a
-  two-image request through the composer and edit the first output through a
+  model row shows the no-candidates hint without a picker. Open a provider's
+  Advanced model settings and verify **Set as image model** is grouped with
+  the image/document attachment capabilities and can be checked for multiple
+  models. Save, choose a marked model from the image summary menu, then submit
+  a two-image request through the composer and edit the first output through a
   follow-up message. Collapse tool details.
-- **Expected:** After saving, the image summary appears with a 12px default-row
-  gap and lists all marked candidates, the selected default is changeable
-  without changing the chat default, decoded image previews stay outside
-  collapsed process details, multipart source upload is used for editing,
+- **Expected:** After saving, the image summary keeps its 12px default-row gap
+  and lists all marked candidates in the picker. Changing the image default does
+  not change the chat default, decoded image previews stay outside collapsed
+  process details, multipart source upload is used for editing,
   originals are preserved, and no image HTTP request occurs while unconfigured.
-- **Settings interactions:** The unconfigured state renders no image summary.
-  Mark candidates in the attachment capability group, save, and select one
-  from the summary menu. An existing missing/disabled candidate shows only
-  Currently unavailable. Covered in `scripts/e2e-image-generation-ui.mjs`.
+- **Settings interactions:** Mark candidates in the attachment capability group,
+  save, and select one from the summary menu. A missing or disabled default
+  shows **Currently unavailable**; another runnable candidate remains selectable.
+  When all marked models are unavailable, the row still shows **Currently
+  unavailable**, without a picker. Covered in `scripts/e2e-image-generation-ui.mjs`
+  and `apps/desktop/test/image-generation-row-empty-state.test.mjs`.
 - **Image model deselection (#826):** With one provider and one model marked
   for images, uncheck it in the provider editor. Cancel must preserve the image
   default; Save must clear both its candidate and default binding. Reopen settings
-  and the editor: the image row stays hidden, the checkbox stays unchecked, and
-  the model can be selected as the chat default. Covered in English and Chinese
-  by `scripts/e2e-image-generation-ui.mjs` with an API-boundary fixture.
+  and the editor: the image row shows the no-candidates hint without a picker,
+  the checkbox stays unchecked, and the model can be the chat default. Covered
+  in English and Chinese by `scripts/e2e-image-generation-ui.mjs` with an
+  API-boundary fixture.
 - **Conversation selection:** Every marked image provider/model is absent from
   default and Composer candidates. Other providers retain same-ID models. An
   existing session pinned to any marked image binding is rejected before
