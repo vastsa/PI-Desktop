@@ -125,6 +125,23 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return { id: group.id, label, pinned, archived, revision: revision(label, pinned, archived) };
   }
 
+  /**
+   * Folder-named legacy projects often share a name (several `apps`). Add the
+   * parent folder name to repeated labels; never the absolute path.
+   */
+  function distinctViews(list: ProjectGroupRecord[], meta: LanMeta) {
+    const entries = list.map((group) => ({ group, view: projectView(group, meta) }));
+    const counts = new Map<string, number>();
+    for (const { view } of entries) counts.set(view.label, (counts.get(view.label) ?? 0) + 1);
+    for (const entry of entries) {
+      if ((counts.get(entry.view.label) ?? 0) < 2) continue;
+      const parts = normalizeProjectKey(entry.group.primaryPath).split("/").filter(Boolean);
+      const parent = parts.length > 1 ? parts[parts.length - 2] : "";
+      if (parent) entry.view = { ...entry.view, label: `${entry.view.label} · ${parent}` };
+    }
+    return entries;
+  }
+
   /** Root path → group id, so a session can be attributed to one project. */
   function rootIndex(list: ProjectGroupRecord[]): Map<string, ProjectGroupRecord> {
     const index = new Map<string, ProjectGroupRecord>();
@@ -206,9 +223,8 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     const meta = deps.organization.read();
     const archivedOnly = query.get("archived") === "1";
     const q = (query.get("q") ?? "").trim();
-    const list = (await groups())
-      .filter((group) => access.projectIds.includes(group.id))
-      .map((group) => ({ group, view: projectView(group, meta) }))
+    const list = distinctViews(await groups(), meta)
+      .filter(({ group }) => access.projectIds.includes(group.id))
       .filter(({ view }) => view.archived === archivedOnly && matches(view.label, q))
       .sort((a, b) => Number(b.view.pinned) - Number(a.view.pinned) || b.group.lastOpenedAt - a.group.lastOpenedAt)
       .map(({ view }) => view);
@@ -411,10 +427,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     /** Operator-only list for the Desktop pairing dialog. */
     async operatorProjects(): Promise<Array<{ id: string; label: string }>> {
       const meta = deps.organization.read();
-      return (await groups()).map((group) => {
-        const view = projectView(group, meta);
-        return { id: view.id, label: view.label };
-      });
+      return distinctViews(await groups(), meta).map(({ view }) => ({ id: view.id, label: view.label }));
     },
 
     async handle(request: LanRequest, key: string | null): Promise<unknown> {

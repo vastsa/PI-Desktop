@@ -134,6 +134,15 @@ test("scope, grants and request guards fail closed", async (t) => {
   assert.equal(server.devices().length, 0);
 });
 
+test("projects with the same name are told apart without exposing paths", async (t) => {
+  const fake = desktop();
+  fake.groups.push({ id: "g-a2", name: "Alpha", primaryPath: "/elsewhere/clone/a", roots: [{ path: "/elsewhere/clone/a", name: "a", position: 0 }], pinned: false, lastOpenedAt: 0, createdAt: 0, updatedAt: 0 });
+  t.after(() => fake.workspace.dispose());
+  const labels = (await fake.workspace.operatorProjects()).map((p) => p.label);
+  assert.deepEqual(labels, ["Alpha · work", "Beta", "Remote", "Alpha · clone"].filter((l) => l !== "Remote"));
+  assert.equal(labels.some((l) => l.includes("/")), false);
+});
+
 test("temporary conversations need their own grant", async (t) => {
   const { phone, calls } = await setup(t, { projectIds: [], temporary: true, chat: true, organize: false });
   assert.deepEqual((await phone.request("GET", "/v1/sessions?projectId=__temporary__")).body.items.map((s) => s.id), ["s-tmp"]);

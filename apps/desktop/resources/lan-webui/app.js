@@ -42,6 +42,8 @@
     for (const child of [].concat(children)) if (child) node.append(child);
     return node;
   }
+  // DOM replaceChildren() turns null into the text "null"; drop empty slots first.
+  const show = (...nodes) => app.replaceChildren(...nodes.filter(Boolean));
   let toastTimer = null;
   function notify(message) {
     toast.textContent = message;
@@ -240,7 +242,7 @@
       }));
     }
     const empty = !list.children.length ? el("p", { class: "empty", text: filters.q ? t("noMatches") : t("noProjects") }) : null;
-    app.replaceChildren(
+    show(
       header(t("projects")),
       toolbar((patch) => { Object.assign(filters, patch); render(); }, filters),
       list,
@@ -284,7 +286,7 @@
           },
         })
       : null;
-    app.replaceChildren(
+    show(
       header(title, "#/projects"),
       toolbar((patch) => { Object.assign(filters, patch); render(); }, filters),
       create,
@@ -364,7 +366,7 @@
     // Preserve focus and the unsent draft across live refreshes.
     const focused = document.activeElement?.id === "composer-input";
     const selection = focused ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
-    app.replaceChildren(head, conversation.modelLabel ? el("p", { class: "row-meta", text: conversation.modelLabel }) : null, messages, ...notices, queue, composer);
+    show(head, conversation.modelLabel ? el("p", { class: "row-meta", text: conversation.modelLabel }) : null, messages, ...notices, queue, composer);
     if (focused) {
       const input = document.getElementById("composer-input");
       input?.focus();
@@ -456,7 +458,7 @@
         status.textContent = codeName === "PAIRING_CLOSED" ? t("pairClosed") : codeName === "PAIRING_FAILED" ? t("pairFailed") : errorText(codeName);
       }
     });
-    app.replaceChildren(form);
+    show(form);
     code.focus();
   }
 

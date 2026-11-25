@@ -103,7 +103,7 @@ export function desktop() {
       return {};
     },
   });
-  return { workspace, calls, turns, activeTurns, queue, meta, sessions };
+  return { workspace, calls, turns, activeTurns, queue, meta, sessions, groups };
 }
 
 /** A tiny cookie-keeping browser against the real HTTP listener. */

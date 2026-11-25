@@ -48,6 +48,7 @@ const journey = String.raw`(async () => {
   await wait(() => rowByTitle("Fix login"), "sessions");
   result.sessions = [...document.querySelectorAll(".row-title")].map((n) => n.textContent);
   result.projectHash = location.hash;
+  result.strayText = [document.getElementById("app").innerText];
 
   // Organize from the row menu: pin.
   rowByTitle("Fix login").querySelector(".row-more").click();
@@ -66,6 +67,7 @@ const journey = String.raw`(async () => {
   await wait(() => document.querySelectorAll(".msg").length >= 2 && input.isConnected === false || document.getElementById("composer-input")?.value === "", "sent");
   result.messages = [...document.querySelectorAll(".msg")].map((n) => n.className.split(" ")[1]);
   result.leaked = document.body.textContent.includes("/secret/path");
+  result.strayText.push(document.getElementById("app").innerText);
 
   // Phone layout: no horizontal scroll and touch-sized controls.
   result.horizontalScroll = document.documentElement.scrollWidth > window.innerWidth;
@@ -137,6 +139,7 @@ app.whenReady().then(async () => {
   assert.equal(fake.turns[0].params.sessionId, "s-new-1");
   assert.ok(result.messages.includes("user") && result.messages.includes("assistant"));
   assert.equal(result.leaked, false);
+  for (const text of result.strayText) assert.doesNotMatch(text, /\bnull\b|undefined/, "no placeholder text leaks into the page");
   assert.equal(result.horizontalScroll, false);
   assert.equal(result.smallTargets, 0);
   assert.equal(result.backHash, "#/p/g-a");
