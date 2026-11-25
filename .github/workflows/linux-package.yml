@@ -41,15 +41,19 @@ jobs:
           pnpm --filter @pi-desktop/desktop run dist:linux -- --${{ matrix.arch }}
 
       - name: Verify the Debian package
-        run: node scripts/check-linux-deb.mjs "${{ matrix.arch }}" apps/desktop/release/*.deb
+        run: |
+          deb=(apps/desktop/release/*.deb)
+          test "${#deb[@]}" -eq 1
+          node scripts/check-linux-deb.mjs "${{ matrix.arch }}" "${deb[0]}"
+          mv -- "${deb[0]}" "${deb[0]%.deb}_generic.deb"
 
-      - name: Upload Debian candidate
+      - name: Upload generic Debian package
         uses: actions/upload-artifact@v7
         with:
-          name: pie-code-linux-${{ matrix.arch }}-deb
+          name: pie-code-linux-${{ matrix.arch }}-generic-deb
           if-no-files-found: error
           retention-days: 7
-          path: apps/desktop/release/*.deb
+          path: apps/desktop/release/*_generic.deb
 
       - name: Install RPM inspection tools
         if: matrix.arch == 'x64'

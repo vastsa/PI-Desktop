@@ -27,6 +27,27 @@
   network traffic, and package upgrades on the
   [isolated ARM64 Kylin image](../kylin-arm64-offline-install.md).
 
+## E2E-PIE-OFFICE-WORD: Offline Word on Kylin ARM64
+
+- **Preconditions**: Qualify the dedicated Office Debian candidate on Kylin
+  V10 SP1 ARM64 with a clean profile, no public network, and a loopback model.
+- **Steps**: Inspect and install the recorded Debian artifact. Open Extensions
+  in English, enable Offline Office, and use the Word skill from an Agent
+  session. Confirm Bash waits for approval, then create, extract, and save a
+  copy. Try writing to the original and to an existing copy. Disable the
+  extension, restart, and open a new session.
+- **Expected**: The extension starts disabled and shows its English name.
+  Word uses the bundled interpreters. Independent DOCX readback confirms
+  Chinese text, formatting, and untouched paragraphs. Failed writes leave
+  both original and existing files unchanged. New sessions no longer see
+  the skill after disabling and restarting.
+- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--word),
+  [Plugin manifest schema](../../07-plugins/02-plugin-manifest-schema.md#31-localized-labels-i18n).
+- **Acceptance criterion**: A, C, E, G, Quality.
+- **Milestone**: M6+ (Pie Code 0.23.1).
+- **Status**: Automated. Record the result against the exact candidate
+  Debian package for each release.
+
 ## Windows background process snapshot clock
 
 - **Preconditions:** Isolated Windows Host and a synthetic background task.

@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    version: "0.23.1",
+    date: "2026-11-25",
+    highlights: ["Word belgeleri oluşturmak, metni ayıklamak veya bir kopya kaydetmek için Kylin ARM64 sürümünde Uzantılar bölümünden Çevrimdışı Ofis’i etkinleştirin."],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [

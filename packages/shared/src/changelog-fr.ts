@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    version: "0.23.1",
+    date: "2026-11-25",
+    highlights: ["Activez Office hors connexion dans Extensions sur Kylin ARM64 pour créer un document Word, extraire son texte ou enregistrer une copie."],
+  },
+  {
     version: "0.23.0",
     date: "2026-11-19",
     highlights: [

@@ -100,11 +100,12 @@ test("a silent service is reported as a timeout", async () => {
   const { fetch } = recordingFetch(
     (_url, init) =>
       new Promise((_resolve, reject) => {
+        // A fake fetch has no socket to keep Node's unref'ed abort timer alive.
+        const watchdog = setTimeout(() => reject(new Error("the probe did not abort the request")), 1_000);
         init.signal.addEventListener("abort", () => {
-          const error = new Error("aborted");
-          error.name = "TimeoutError";
-          reject(error);
-        });
+          clearTimeout(watchdog);
+          reject(init.signal.reason);
+        }, { once: true });
       }),
   );
   const result = await probeJevApiKey(KEY, { fetchImpl: fetch, timeoutMs: 20 });

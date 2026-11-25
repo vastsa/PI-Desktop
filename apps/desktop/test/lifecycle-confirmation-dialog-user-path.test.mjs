@@ -81,7 +81,7 @@ window.lifecycleDialogProbe = async () => {
   let dialog = document.querySelector('[role="dialog"]');
   check(dialog.getAttribute("aria-modal") === "true", "dialog is not modal");
   check(dialog.getAttribute("aria-labelledby") && dialog.getAttribute("aria-describedby"), "dialog lacks accessible labels");
-  check(document.querySelector("h2").textContent === "Quit PI-Desktop?", "quit title is incorrect");
+  check(document.querySelector("h2").textContent === "Quit Pie Code?", "quit title is incorrect");
   check(document.querySelector("h2").textContent !== document.querySelector("p").textContent, "title and body are duplicated");
   check(activeButtonName() === "Cancel", "Cancel is not the initial focus target");
   flushSync(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
@@ -111,7 +111,7 @@ window.lifecycleDialogProbe = async () => {
   await until(() => document.querySelector('[role="dialog"]'), "close behavior dialog did not render");
   await settle();
   dialog = document.querySelector('[role="dialog"]');
-  check(document.querySelector("h2").textContent === "Keep PI-Desktop running in the background?", "close title is incorrect");
+  check(document.querySelector("h2").textContent === "Keep Pie Code running in the background?", "close title is incorrect");
   check(dialog.querySelectorAll("button").length === 3, "close behavior does not offer all three choices");
   const overlay = document.querySelector(".lifecycle-confirmation-overlay");
   const pointer = (type) => new PointerEvent(type, {
@@ -133,7 +133,7 @@ window.lifecycleDialogProbe = async () => {
 
   request("close-behavior", "close-quit");
   await until(() => document.querySelector('[role="dialog"]'), "close behavior dialog did not reopen for quit");
-  clickButton("Quit PI-Desktop");
+  clickButton("Quit Pie Code");
   check(responses.at(-1).choice === "quit", "first-close Quit choice was not returned");
   await settle();
   flushSync(() => rootNode.unmount());

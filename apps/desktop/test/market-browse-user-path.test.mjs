@@ -159,19 +159,20 @@ window.marketProbe = async () => {
   await until(() => lastCall().sort === "name" && settled(), "name sort not requested");
   await scrollEnd();
   await until(() => browseCalls.some((c) => c.sort === "name" && c.page === 2), "name page two not requested");
+  // The prior scroll can expose the new sentinel as soon as popular page one renders.
+  failNext = (c) => c.sort === "popular" && c.page === 2;
   await click(byText(".plugins-sort-btn", label("sortPopular")), "popular sort missing");
-  await until(() => lastCall().sort === "popular" && lastCall().page === 1 && settled(), "popular not requested");
-  check(lastCall().page === 1 || browseCalls.at(-2)?.page === 1, "sorting must restart the list");
   // Popular is Plugin 1, 2, 3… in order; any name-sorted card from the stale
   // page would break that run.
   const popularRun = () => cards().every((name, i) => name === "Plugin " + (i + 1));
+  await until(() => cards().length === 24 && popularRun(), "popular first page did not render");
+  check(pages((c) => c.sort === "popular")[0] === 1, "sorting must restart the list");
   releaseNamePage();
   await new Promise((r) => setTimeout(r, 150));
   await frame();
   check(popularRun(), "a stale next page joined the new list: " + cards().slice(0, 30).join(","));
 
   // A failed page pauses automatic loading until the user retries.
-  failNext = (c) => c.sort === "popular" && c.page === 2;
   await scrollEnd();
   const retry = () => byText(".plugins-load-more button", label("loadMoreRetry"));
   await until(() => retry(), "retry did not appear");
@@ -197,13 +198,13 @@ window.marketProbe = async () => {
   await type("plugin 1");
   await until(() => lastCall().query === "plugin 1", "first search not sent");
   await type("plugin 2");
-  await until(() => lastCall().query === "plugin 2" && settled(), "second search did not settle");
-  const latest = cards().join(",");
+  const latest = ["Plugin 2", ...Array.from({ length: 10 }, (_, i) => "Plugin " + (20 + i))].join(",");
+  // A request can be recorded before React commits its rows (or aria-busy).
+  await until(() => cards().join(",") === latest, "second search did not render: " + latest);
   releaseSearch();
   await new Promise((r) => setTimeout(r, 100));
   await frame();
   check(cards().join(",") === latest, "stale search replaced the latest: " + cards().join(","));
-  check(cards().includes("Plugin 2") && cards().includes("Plugin 20") && !cards().includes("Plugin 1"), "wrong results " + latest);
   return { passed: true, requests: browseCalls.length };
 };
 `;
