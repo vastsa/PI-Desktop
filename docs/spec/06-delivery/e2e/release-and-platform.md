@@ -48,6 +48,23 @@
 - **Status**: Automated. Record the result against the exact candidate
   Debian package for each release.
 
+## E2E-PIE-OFFICE-PPT: Offline PowerPoint on Kylin ARM64
+
+- **Preconditions:** Install the inspected Office Debian candidate on Kylin
+  V10 SP1 ARM64. Use a clean application profile and an isolated network
+  namespace with a loopback model.
+- **Steps:** Enable Offline Office in Extensions and load its PowerPoint
+  Skill from an Agent session. Approve Bash to create and extract one deck,
+  then save and extract a copy of a separate deck after editing its first slide.
+  Use filenames containing Chinese characters and spaces.
+- **Expected:** Extraction reaches the session. The new file opens with
+  editable slide text. The edited copy contains the first-slide change;
+  the second slide, the other package parts and the input file are unchanged.
+- **Specs linked:** [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--powerpoint).
+- **Acceptance criterion:** A, C, E, G, Quality.
+- **Milestone:** M6+ (Pie Code 0.23.1).
+- **Status:** Automated. Record the result against the exact candidate Debian package.
+
 ## Windows background process snapshot clock
 
 - **Preconditions:** Isolated Windows Host and a synthetic background task.

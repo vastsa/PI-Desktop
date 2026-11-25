@@ -127,7 +127,8 @@ Before building, stage the approved ARM64 Office Runtime 1.0.2
 `python-runtime`, `python-dependencies`, and `node-runtime` layers into one
 directory on a case-sensitive Linux filesystem, preserving permissions and
 relative links that resolve inside it. Into `node/lib/node_modules`, overlay the complete `node_modules` from the locked
-docx 9.16.0 build. Retain the source manifest as
+docx 9.16.0 build. Keep python-pptx 1.0.2 and its bundled dependencies
+in the Python layer for PowerPoint. Retain the source manifest as
 `metadata/runtime-source.json`, the Node dependency lock as
 `metadata/package-lock.json`, and the components' licenses. Set
 `PI_CODE_OFFICE_RUNTIME_DIR` to the absolute path of this staging directory.
@@ -143,7 +144,7 @@ node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
 ```
 
 The package check inspects the extracted payload and uses its own Node and
-Python to create and extract a sample Word document. Keep the exact Office
+Python to create and extract sample Word and PowerPoint files. Keep the exact Office
 Debian package, the candidate commit, the package inspection output, and the
 Kylin run output together. Link those results in the PR or release record;
 generic CI artifacts and results from a different package do not qualify.
@@ -169,3 +170,29 @@ and save a new file. The skill reads the main part of transitional and
 Strict DOCX files. Tabs and other layout markers interrupt literal matches.
 Replacement text inherits the first matched run's formatting. Existing output files, including the source, are never
 overwritten.
+
+## Offline Office — PowerPoint
+
+The same Offline Office extension exposes `pie.offline-office/ppt`. In a
+local Agent session, the skill uses the normal Bash approval flow and the
+packaged Python. It creates `.pptx` files with editable title and body text,
+and extracts text in slide order from shapes, groups and tables. Image text,
+chart content, embedded objects and speaker notes are outside scope. The
+reader accepts presentations up to 256 MiB after ZIP expansion.
+
+The skill can replace a unique literal within one paragraph on a selected
+slide and save it to a new file. The replacement uses the first matched
+run's formatting. The input and all other package parts stay unchanged;
+existing destination files are rejected.
+
+With the same installed candidate and network isolation as for Word, run:
+
+```sh
+PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
+  node scripts/e2e-offline-office-word.mjs --ppt
+```
+
+Verify that the session creates and extracts an editable two-slide deck,
+then saves and reads back an edit to the first slide of a separate deck.
+Both filenames contain Chinese characters and spaces. The test compares
+the original bytes and every package part outside the edited slide.

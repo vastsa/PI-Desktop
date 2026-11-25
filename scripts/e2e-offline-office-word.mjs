@@ -11,6 +11,9 @@ import { IPC } from "../packages/shared/dist/protocol.js";
 import { waitFor } from "./e2e/wait.mjs";
 
 const appBin = process.env.PI_CODE_E2E_APP_BIN;
+const [option, ...extraOptions] = process.argv.slice(2);
+assert.ok(!extraOptions.length && (option === undefined || option === "--ppt"), "Expected no argument or --ppt.");
+const ppt = option === "--ppt";
 assert.ok(appBin, "Set PI_CODE_E2E_APP_BIN to the installed Pie Code binary.");
 assert.equal(process.platform + "/" + process.arch, "linux/arm64");
 assert.ok(Object.values(networkInterfaces()).flat().every((address) => address.internal),
@@ -20,17 +23,21 @@ const root = await mkdtemp(join(tmpdir(), "pie-office-e2e-"));
 const workspace = join(root, "project");
 const resources = join(dirname(appBin), "resources");
 const python = join(resources, "office-runtime/python/bin/python3.12");
-const launcher = join(resources, "plugins/pie.offline-office/word/word.sh");
-const id = "pie.offline-office/word";
-const model = "offline-word-fixture";
-const created = "新建 样例.docx";
-const original = "原始 样例.docx";
-const edited = "另存 样例.docx";
-const marker = "OFFLINE_WORD_FIXTURE_COMPLETE";
+const skill = ppt ? "ppt" : "word";
+const extension = ppt ? "pptx" : "docx";
+const skillDir = join(resources, "plugins", "pie.offline-office", skill);
+const launcher = join(skillDir, `${skill}.sh`);
+const id = `pie.offline-office/${skill}`;
+const model = `offline-${skill}-fixture`;
+const created = `新建 样例.${extension}`;
+const original = `原始 样例.${extension}`;
+const edited = `另存 样例.${extension}`;
+const marker = `OFFLINE_${skill.toUpperCase()}_FIXTURE_COMPLETE`;
 const requests = [];
 const before = "跨格式文字";
 const after = "替换内容";
-const untouched = "不修改的中文段落";
+const untouched = ppt ? "不修改的第二页" : "不修改的中文段落";
+const newBody = "新建正文含中文";
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
 let connected;
 let desktop;
@@ -51,30 +58,40 @@ const provider = createServer(async (req, res) => {
     const system = request.messages.filter((message) => ["system", "developer"].includes(message.role));
     const enabled = JSON.stringify(system).includes(id);
     const tools = request.tools.map((tool) => tool.function.name);
-    const skill = request.messages.find((message) => message.role === "tool" &&
+    const skillResult = request.messages.find((message) => message.role === "tool" &&
       String(message.content).includes("Location: ") && String(message.content).includes(id));
     let tool;
-    if (enabled && !skill) {
+    if (enabled && !skillResult) {
       assert.ok(tools.includes("Skill"));
       tool = { name: "Skill", arguments: JSON.stringify({ id }) };
-    } else if (skill && !request.messages.some((message) =>
+    } else if (skillResult && !request.messages.some((message) =>
       message.tool_calls?.some((call) => call.function.name === "Bash"))) {
-      const location = /Location: ([^\n]+\/SKILL\.md)/.exec(String(skill.content))?.[1];
-      assert.equal(location, join(resources, "plugins/pie.offline-office/word/SKILL.md"));
-      const word = "/bin/sh " + quote(join(dirname(location), "word.sh"));
-      const command = [
-        `${word} create ${quote(created)} '中文标题' < body.txt`,
-        `${word} extract ${quote(original)}`,
-        `${word} replace ${[original, edited, before, after].map(quote).join(" ")}`,
-      ].join(" && ");
+      const location = /Location: ([^\n]+\/SKILL\.md)/.exec(String(skillResult.content))?.[1];
+      assert.equal(location, join(skillDir, "SKILL.md"));
+      const office = "/bin/sh " + quote(join(dirname(location), `${skill}.sh`));
+      const edit = ppt ? [original, edited, "1", before, after] : [original, edited, before, after];
+      const command = (ppt ? [
+        `${office} create -- ${quote(created)} < slides.json`,
+        "printf '%s\\n' 'Created deck:'",
+        `${office} extract -- ${quote(created)}`,
+        "printf '%s\\n' 'Source deck:'",
+        `${office} extract -- ${quote(original)}`,
+        `${office} replace -- ${edit.map(quote).join(" ")}`,
+        "printf '%s\\n' 'Edited deck:'",
+        `${office} extract -- ${quote(edited)}`,
+      ] : [
+        `${office} create ${quote(created)} '中文标题' < body.txt`,
+        `${office} extract ${quote(original)}`,
+        `${office} replace ${edit.map(quote).join(" ")}`,
+      ]).join(" && ");
       assert.ok(tools.includes("Bash"));
       tool = { name: "Bash", arguments: JSON.stringify({ command }) };
     }
     const delta = tool ? { role: "assistant", tool_calls: [{
-      index: 0, id: "word_" + tool.name, type: "function", function: tool,
+      index: 0, id: `${skill}_${tool.name}`, type: "function", function: tool,
     }] } : { role: "assistant", content: marker };
     const frame = (change, reason) => "data: " + JSON.stringify({
-      id: "word-fixture", object: "chat.completion.chunk", created: 1, model,
+      id: model, object: "chat.completion.chunk", created: 1, model,
       choices: [{ index: 0, delta: change, finish_reason: reason }],
     }) + "\n\n";
     res.writeHead(200, { "Content-Type": "text/event-stream" });
@@ -182,9 +199,9 @@ async function selectOffice({ evaluate }, enabled) {
 async function runTurn({ invoke }, providerId, enabled) {
   requests.length = 0;
   const { session } = await invoke(IPC.invoke.sessionCreate, {
-    title: "Word fixture", projectPath: workspace, mode: "agent", providerId, modelId: model,
+    title: `${skill} fixture`, projectPath: workspace, mode: "agent", providerId, modelId: model,
   });
-  await invoke(IPC.invoke.agentPrompt, { sessionId: session.id, content: "Perform the offline Word fixture.", permissionMode: "ask" });
+  await invoke(IPC.invoke.agentPrompt, { sessionId: session.id, content: `Perform the offline ${skill} fixture.`, permissionMode: "ask" });
   if (enabled) {
     let permission;
     await waitFor(async () => {
@@ -199,18 +216,45 @@ async function runTurn({ invoke }, providerId, enabled) {
   await waitFor(async () => {
     if (modelError) throw modelError;
     return JSON.stringify(await invoke(IPC.invoke.sessionGet, session.id)).includes(marker);
-  }, 25_000, "Word turn completion", 150);
+  }, 25_000, `${skill} turn completion`, 150);
   assert.equal(JSON.stringify(requests[0]?.messages).includes(id), enabled);
   if (enabled) {
-    assert.ok(requests.some(({ messages }) => messages.some((message) =>
-      message.role === "tool" && JSON.stringify(message.content).includes(untouched))));
+    const results = requests.at(-1).messages.filter((message) => message.role === "tool")
+      .map((message) => String(message.content));
+    assert.ok(results.some((result) => result.includes(untouched)));
+    if (ppt) {
+      const bash = results.find((result) => result.includes("Created deck:")) ?? "";
+      assert.ok(bash.split("Source deck:")[0].includes(`Slide 1\n中文标题\n${newBody}\n\nSlide 2\n新建第二页\n可编辑正文`),
+        "The Agent must see text from both slides of the created deck.");
+      assert.ok(bash.split("Edited deck:")[1]?.includes(`Slide 1\n原件首页\n${after}，保留后缀\n\nSlide 2\n${untouched}\n${before}`),
+        "The Agent must see the edited first slide and untouched second slide in the saved copy.");
+    }
   }
 }
 
-try {
-  await mkdir(workspace);
-  await writeFile(join(workspace, "body.txt"), "新建正文含中文\n");
-  const py = (script, ...args) => execFileSync(python, ["-I", "-B", "-X", "utf8", "-c", script, ...args], { cwd: workspace });
+const py = (script, ...args) => execFileSync(python, ["-I", "-B", "-X", "utf8", "-c", script, ...args], { cwd: workspace });
+
+async function prepareOfficeFiles() {
+  if (ppt) {
+    await writeFile(join(workspace, "slides.json"), JSON.stringify([
+      { title: "中文标题", body: newBody }, { title: "新建第二页", body: "可编辑正文" },
+    ]));
+    py(`from pptx import Presentation
+import sys
+deck = Presentation()
+slide = deck.slides.add_slide(deck.slide_layouts[1])
+slide.shapes.title.text = "原件首页"
+para = slide.placeholders[1].text_frame.paragraphs[0]
+para.add_run().text = "跨格式"
+para.runs[0].font.bold = True
+para.add_run().text = "文字，保留后缀"
+slide = deck.slides.add_slide(deck.slide_layouts[1])
+slide.shapes.title.text = ${JSON.stringify(untouched)}
+slide.placeholders[1].text = ${JSON.stringify(before)}
+deck.save(sys.argv[1])`, original);
+    return;
+  }
+  await writeFile(join(workspace, "body.txt"), `${newBody}\n`);
   py(`from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -232,25 +276,29 @@ for key, value in {"alignment": "center", "relativeTo": "margin", "leader": "non
 p.add_run()._r.append(tab)
 p.add_run("乙")
 doc.save(sys.argv[1])`, original);
-  const originalBytes = await readFile(join(workspace, original));
+}
 
-  provider.listen(0, "127.0.0.1");
-  await once(provider, "listening");
-  const app = await boot();
-  const row = async (current) => (await current.invoke(IPC.invoke.pluginList)).plugins.find((plugin) => plugin.id === "pie.offline-office");
-  assert.equal((await row(app))?.bundled, true);
-  assert.equal((await row(app))?.enabled, false);
-  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
-  await app.invoke(IPC.invoke.projectSet, workspace);
-  const { provider: configured } = await app.invoke(IPC.invoke.providersCreate, {
-    name: "Word fixture", vendorKey: "custom", baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
-    authKind: "none", apiStyle: "chat_completions", defaultModelId: model, models: [bindingForCustomModel(model)],
-  });
-  await selectOffice(app, true);
-  await waitFor(async () => (await app.invoke(IPC.invoke.composerCommands)).commands.some((command) => command.skillId === id),
-    15_000, "Office Word skill registration", 150);
-  await runTurn(app, configured.id, true);
+async function verifyOfficeFiles(originalBytes) {
   assert.deepEqual(await readFile(join(workspace, original)), originalBytes);
+  if (ppt) {
+    py(`from pptx import Presentation
+from zipfile import ZipFile
+import sys
+created, original, edited = sys.argv[1:]
+new, copy = Presentation(created), Presentation(edited)
+assert [(s.shapes.title.text, s.placeholders[1].text) for s in new.slides] == [
+    ("中文标题", ${JSON.stringify(newBody)}), ("新建第二页", "可编辑正文")]
+assert len(copy.slides) == 2 and copy.slides[0].shapes.title.text == "原件首页"
+assert copy.slides[0].placeholders[1].text == "${after}，保留后缀"
+assert copy.slides[0].placeholders[1].text_frame.paragraphs[0].runs[0].font.bold
+assert copy.slides[1].shapes.title.text == ${JSON.stringify(untouched)}
+assert copy.slides[1].placeholders[1].text == ${JSON.stringify(before)}
+with ZipFile(original) as a, ZipFile(edited) as b:
+    assert a.namelist() == b.namelist()
+    assert [part for part in a.namelist() if a.read(part) != b.read(part)] == ["ppt/slides/slide1.xml"]
+`, created, original, edited);
+    return;
+  }
   py(`from docx import Document
 from zipfile import ZipFile
 import sys
@@ -280,13 +328,35 @@ with ZipFile(original) as a, ZipFile(edited) as b:
     assert.throws(() => tool("create", name, "Not a new document"), /Output already exists/);
     assert.deepEqual(await readFile(join(workspace, name)), bytes);
   }
+}
 
+try {
+  await mkdir(workspace);
+  await prepareOfficeFiles();
+  const originalBytes = await readFile(join(workspace, original));
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const app = await boot();
+  const row = async (current) => (await current.invoke(IPC.invoke.pluginList)).plugins.find((plugin) => plugin.id === "pie.offline-office");
+  assert.equal((await row(app))?.bundled, true);
+  assert.equal((await row(app))?.enabled, false);
+  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
+  await app.invoke(IPC.invoke.projectSet, workspace);
+  const { provider: configured } = await app.invoke(IPC.invoke.providersCreate, {
+    name: `${skill} fixture`, vendorKey: "custom", baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
+    authKind: "none", apiStyle: "chat_completions", defaultModelId: model, models: [bindingForCustomModel(model)],
+  });
+  await selectOffice(app, true);
+  await waitFor(async () => (await app.invoke(IPC.invoke.composerCommands)).commands.some((command) => command.skillId === id),
+    15_000, `Office ${skill} skill registration`, 150);
+  await runTurn(app, configured.id, true);
+  await verifyOfficeFiles(originalBytes);
   await selectOffice(app, false);
   await stop();
   const restarted = await boot();
   assert.equal((await row(restarted))?.enabled, false);
   await runTurn(restarted, configured.id, false);
-  console.log("PASS: offline Word extension enablement, Bash approval, DOCX creation, extraction, copy readback, and disablement after restart");
+  console.log(`PASS: offline ${skill} extension enablement, Bash approval, ${extension} creation, extraction, copy readback, and disablement after restart`);
 } catch (error) {
   console.error(log.slice(-6000));
   const pluginLog = await readFile(join(root, "data/logs/app/plugin.log"), "utf8").catch(() => "");

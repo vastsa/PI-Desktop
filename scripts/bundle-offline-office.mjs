@@ -44,25 +44,32 @@ export async function verifyOfflineOfficeRuntime(runtime) {
     const installed = JSON.parse(await readFile(join(runtime, "node/lib", relative, "package.json"), "utf8"));
     if (installed.version !== locked.version) throw new Error(`Office Runtime version mismatch: ${relative}`);
   }
-  for (const module of ["lxml", "docx"]) {
+  for (const module of ["lxml", "docx", "pptx", "PIL", "xlsxwriter"]) {
     await access(join(runtime, "python/lib/python3.12/site-packages", module, "__init__.py"));
   }
   await access(join(runtime, "metadata/runtime-source.json"));
 }
 
 export async function smokeTestOfflineOffice(resources) {
-  const launcher = join(resources, "plugins", "pie.offline-office", "word", "word.sh");
+  const pluginDir = join(resources, "plugins", "pie.offline-office");
   const workspace = await mkdtemp(join(tmpdir(), "pie-office-smoke-"));
   const text = "离线办公验证";
-  const output = "Word smoke.docx";
-  const run = (args, input) => execFileSync("/bin/sh", [launcher, ...args], {
-    cwd: workspace, encoding: "utf8", input, stdio: "pipe", timeout: 30_000,
-  });
+  const check = (skill, label, output, createArgs, input, expected) => {
+    const launcher = join(pluginDir, skill, `${skill}.sh`);
+    const run = (args, input) => execFileSync("/bin/sh", [launcher, ...args], {
+      cwd: workspace, encoding: "utf8", input, stdio: "pipe", timeout: 30_000,
+    });
+    try {
+      run(["create", output, ...createArgs], input);
+      if (run(["extract", output]) !== expected) throw new Error(`Unexpected ${label} readback.`);
+    } catch (error) {
+      throw new Error(`Office ${label} package smoke test failed: ${error.message}`, { cause: error });
+    }
+  };
   try {
-    run(["create", output, ""], text + "\n");
-    if (run(["extract", output]) !== text + "\n") throw new Error("Unexpected DOCX readback.");
-  } catch (error) {
-    throw new Error(`Office Word package smoke test failed: ${error.message}`, { cause: error });
+    check("word", "Word", "Word smoke.docx", [""], `${text}\n`, `${text}\n`);
+    check("ppt", "PowerPoint", "PPT smoke.pptx", [], JSON.stringify([{ title: text, body: "Editable" }]),
+      `Slide 1\n${text}\nEditable\n`);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

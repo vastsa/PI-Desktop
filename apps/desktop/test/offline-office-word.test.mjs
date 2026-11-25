@@ -46,8 +46,9 @@ async function withOfficeFixture(run) {
     await put("metadata/runtime-source.json", "{}");
     await put("metadata/package-lock.json", JSON.stringify({ packages: { "node_modules/docx": docx } }));
     await put("node/lib/node_modules/docx/package.json", JSON.stringify(docx));
-    await put("python/lib/python3.12/site-packages/lxml/__init__.py", "");
-    await put("python/lib/python3.12/site-packages/docx/__init__.py", "");
+    for (const module of ["lxml", "docx", "pptx", "PIL", "xlsxwriter"]) {
+      await put(`python/lib/python3.12/site-packages/${module}/__init__.py`, "");
+    }
     await cp(plugin, join(root, "plugins", "pie.offline-office"), { recursive: true });
     await run({ root, runtime, put });
   } finally {
