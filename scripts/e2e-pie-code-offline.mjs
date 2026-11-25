@@ -79,6 +79,7 @@ const mcpPrompt = "Read the intranet fixture marker.";
 const mcpMarker = "intranet-mcp-tool-result";
 const mcpFinished = "Intranet tool call completed";
 const modelRequests = [];
+const mcpModelRequests = [];
 const blocked = [];
 const marketRequests = [];
 const mcpRequests = [];
@@ -131,6 +132,7 @@ const provider = createServer(async (req, res) => {
   modelRequests.push(request);
   const latestPrompt = request.messages.findLast((message) => message.role === "user");
   const isMcpTurn = JSON.stringify(latestPrompt?.content ?? "").includes(mcpPrompt);
+  if (isMcpTurn) mcpModelRequests.push(request);
   const sawTool = request.messages.at(-1)?.role === "tool";
   const toolName = isMcpTurn ? mcpTool : "read";
   const tool = request.tools?.find((entry) => entry.function?.name?.toLowerCase() === toolName);
@@ -452,6 +454,12 @@ try {
   await click(".send-btn");
   await until(() => evaluate(`document.querySelector(".permission-card")?.innerText.includes(${JSON.stringify(mcpTool)})`),
     "permission card for the MCP tool");
+  const firstMcpRequest = mcpModelRequests[0];
+  assert.deepEqual(
+    firstMcpRequest?.tools?.map((tool) => tool.function?.name).filter((name) => /^mcp_/i.test(name ?? "")),
+    [mcpTool],
+    "First MCP turn request must expose only the selected MCP tool",
+  );
   assert.ok(!mcpRequests.includes("tools/call"), "MCP ran before approval");
   await clickText(".permission-card button", "Allow once");
   await until(async () => JSON.stringify(await invoke(IPC.invoke.sessionGet, session.id)).includes(mcpFinished),
@@ -473,8 +481,6 @@ try {
     return body?.getClientRects().length && body.innerText.includes(${JSON.stringify(mcpMarker)});
   })()`), "expand successful MCP tool row");
   assert.equal(mcpRequests.filter((method) => method === "tools/call").length, 1);
-  const mcpModelRequests = modelRequests.slice(modelRequests.indexOf(second) + 1);
-  assert.ok(mcpModelRequests.some((request) => request.tools?.some((tool) => tool.function?.name === mcpTool)));
   assert.ok(mcpModelRequests.some((request) => request.messages?.some((message) =>
     message.role === "tool" && JSON.stringify(message.content).includes(mcpMarker))));
 
