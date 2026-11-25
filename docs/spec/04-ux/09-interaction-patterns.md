@@ -136,8 +136,8 @@ recency only breaks ties between equally relevant matches.
 - Frameless minimize, maximize/restore, and close controls remain outside the
   drag region. Maximize state is queried on mount and updated from native
   maximize/unmaximize events. Fullscreen enter/exit also rechecks native
-  maximize state after the transition settles, so macOS caption dragging and
-  the restore affordance reflect the actual window state.
+  maximize state after the transition settles so the restore affordance
+  reflects the actual window state.
 - Windows/Linux explicit minimize actions use native minimize and keep the
   taskbar entry. On Windows, clicking the focused window's taskbar button also
   uses native minimize and keeps the taskbar entry; clicking it again
@@ -2037,12 +2037,10 @@ This does not prevent state changes — it makes them instant.
 - On Windows a maximized main window rejects manual edge resizing and retains
   native drag-to-restore. AppKit owns edge resizing and Zoom/Restore on macOS.
   Both use the same cancellable resize event, so cancelling it would also block
-  restoration of the window's original frame. The macOS shell temporarily disables
-  CSS caption dragging and handles caption double-click as Restore; normal
-  windows retain native double-click behavior. The inherited `--window-drag-region`
-  marker distinguishes caption text from explicit no-drag controls. Do not use
-  `setMovable(false)`: it prevents native double-click restore in parts of the
-  inset titlebar. Native zoom/green controls, fullscreen, and programmatic bounds
+  restoration of the window's original frame. A zoomed, non-fullscreen macOS
+  window keeps its native caption regions for dragging within and between
+  displays. Titlebar buttons remain clickable and caption double-click follows
+  the system preference. Native zoom/green controls, fullscreen, and programmatic bounds
   remain enabled. Linux retains compositor-owned maximized geometry and
   drag-to-restore.
 - A settled cross-display move refreshes the native minimum without enlarging a

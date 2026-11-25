@@ -2714,13 +2714,13 @@ and translucent windows: a 1440 DIP display's half-width minimum must allow a
 window below 800 DIP. Zoom/Restore must return the window to its original
 position and size, and AppKit must be able to resize its edges.
 `node scripts/e2e-window-controls.mjs`
-then covers the built shell: maximized caption regions must compute to no-drag,
-and a double-click must restore through the real preload/IPC and unlock the
-normal caption. Native fullscreen enter/exit must also leave renderer maximize
-state synchronized after the AppKit transition settles, including when the
-native event precedes the final maximize flag. `maximized-window-chrome.test.mjs`
-and `window-state-sync.test.mjs` cover late-query/event races, fullscreen
-resync, repeated clicks, no-drag controls and cleanup.
+checks the built shell's caption and button drag regions while zoomed. Starting
+from zoomed, non-fullscreen state, drag empty titlebar space down on the same
+display. Repeat across two displays and verify the window stays where it is
+dropped. With system titlebar double-click set to zoom, double-click to zoom
+and restore. Titlebar buttons remain clickable. Native fullscreen enter/exit
+must still report the settled maximize state when the native event precedes
+the final flag (`window-state-sync.test.mjs`).
 Windows covers maximize/restore with the same production guard; Linux keeps
 its compositor-owned geometry. Unit tests cover cancellable edge events and
 listener cleanup (`window-native-behavior.test.mjs`).

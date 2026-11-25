@@ -59,7 +59,7 @@ app.whenReady().then(async () => {
     assert.equal(window.isMaximized(), true);
     assert.equal(window.isResizable(), true, "native restore/green button is not disabled");
     if (process.platform === "darwin") {
-      assert.equal(window.isMovable(), true, "native zoom remains available; renderer owns caption locking");
+      assert.equal(window.isMovable(), true, "a zoomed macOS window remains movable");
       assert.equal(window.isMaximizable(), true, "green button remains available");
     }
     await transition(window, () => window.unmaximize(), "unmaximize");
