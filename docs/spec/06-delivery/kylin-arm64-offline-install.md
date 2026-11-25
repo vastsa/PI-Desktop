@@ -66,6 +66,13 @@ first-release delivery procedure.
    panel. Start a second streaming turn and stop it from the composer. Restart
    the app in the same profile and reopen the first turn and its saved results.
    Verify that no more text appears in the stopped turn after cancellation.
+9. For optional intranet MCP, open Settings → MCP → Add and choose HTTP
+   endpoint. Enter the name and full MCP URL supplied by the Milku or other
+   internal service operator. Save, reopen the server, and choose Test
+   connection to see the available tools. In a project session using the
+   internal model, choose a harmless tool from the composer's `/mcp:` entries.
+   In Ask mode, approve it once and expand the tool row to check its result.
+   Steps 7–8 must also work in a profile with no MCP servers configured.
 
 For Pie Code, check the same package identity and architecture when replacing
 an existing installation. Quit the app and install the newer internally

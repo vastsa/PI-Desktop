@@ -9,19 +9,22 @@
 - **Steps:** Run `pnpm test:e2e:pie-code-offline`. Boot with only local fixture
   services and a rejecting proxy. Load the bundled catalog, exercise disabled
   channels, open a local project, discover models, and send a prompt using a
-  manually entered model ID. Have the agent read a file from that project,
-  connect to the local MCP fixture, and open Plugins and Add Provider. Open the
-  model picker with a previously enabled public provider, then edit and save
-  an existing intranet provider with a known vendor identity.
-- **Expected:** The local file reaches the model and the turn completes. No
-  default outbound request reaches the rejecting proxy or the market sentinel.
-  Local MCP discovers its tool; the desktop shows installed plugins and its
-  custom endpoint. The existing intranet URL and key stay with the local
-  service. Agent and Host do not offer scheduled tools, and a stale call is
-  denied without changing the saved task. A separate request confirms the
-  proxy detects blocked traffic.
-- **Qualification:** The proxy result is a smoke check. Use process-tree
-  network tracing and qualify package upgrades on the
+  manually entered model ID. Have the agent read a project file before any MCP
+  is configured. Open Plugins and Add Provider, then edit and save an existing
+  intranet provider with a known vendor identity. In Settings → MCP, add the
+  local HTTP fixture and test the connection. Return to the project session,
+  select the MCP tool with its slash command, and approve the call in Ask mode.
+- **Expected:** The file reaches the model without any MCP traffic. The MCP
+  editor discovers the tool, the endpoint receives no call before approval and
+  one call after it, and the result reaches both the transcript and the model.
+  No default outbound request reaches the rejecting proxy or the market
+  sentinel. The desktop shows installed plugins and the custom provider option;
+  the existing intranet URL and key stay with the local service. Agent and Host
+  do not offer scheduled tools, and a stale call is denied without changing the
+  saved task. A separate request confirms the proxy detects blocked traffic.
+- **Qualification:** The fixture covers the desktop integration with local test
+  endpoints. Qualify actual intranet models and MCP services, process-tree
+  network traffic, and package upgrades on the
   [isolated ARM64 Kylin image](../kylin-arm64-offline-install.md).
 
 ## Windows background process snapshot clock
