@@ -212,3 +212,19 @@ test("runMcpImport reports an `already exists` upsert as skipped, not failed", a
   assert.equal(result.imported.length, 1);
   assert.equal(result.failed.length, 0);
 });
+
+test("runMcpImport invalidates cache warming after a write even if disabling fails", async () => {
+  const writes = [];
+  const result = await runMcpImport(async (method) => {
+    if (method === "mcp.list") return { servers: [] };
+    writes.push(method);
+    if (method === "mcp.setEnabled") throw new Error("Disable failed");
+    return { server: { id: "fixture" } };
+  }, {
+    level: "global",
+    items: [{ id: "fixture", source: "claude", sourcePath: "/fixture", transport: "stdio", command: "fixture", disabled: true }],
+  }, async () => { writes.push("invalidate-cache"); });
+  assert.deepEqual(writes, ["mcp.upsert", "invalidate-cache", "mcp.setEnabled"]);
+  assert.equal(result.imported.length, 0);
+  assert.equal(result.failed.length, 1);
+});

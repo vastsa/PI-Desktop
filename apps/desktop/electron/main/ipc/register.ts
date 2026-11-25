@@ -507,12 +507,13 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
 
 
+  const invalidateCacheWarming = async () => {
+    await getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined);
+  };
   registerMcpIpc({
     registrar,
     getHost,
-    invalidateCacheWarming: async () => {
-      await getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined);
-    },
+    invalidateCacheWarming,
     userMcp,
     oauth: mcpOAuth,
     currentWorkspacePath,
@@ -542,6 +543,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   registerAgentImportIpc({
     registrar,
     getHost,
+    invalidateCacheWarming,
     sendToRenderer,
     refreshUserMcp,
     currentWorkspacePath,
