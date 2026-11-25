@@ -70,6 +70,12 @@ const model = "fixture-discovered";
 const manualModel = "fixture-manual";
 const marker = "offline-local-file-marker";
 const finished = "Read finished without internet";
+const mcpName = "local_echo";
+const mcpTool = "mcp_intranet_local_echo";
+const mcpCallId = "call_intranet_mcp";
+const mcpPrompt = "Read the intranet fixture marker.";
+const mcpMarker = "intranet-mcp-tool-result";
+const mcpFinished = "Intranet tool call completed";
 const modelRequests = [];
 const blocked = [];
 const marketRequests = [];
@@ -93,12 +99,20 @@ const provider = createServer(async (req, res) => {
     const message = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     mcpRequests.push(message.method);
     if (message.id === undefined) return res.writeHead(202).end();
-    const result = message.method === "initialize" ? {
+    const reply = { jsonrpc: "2.0", id: message.id };
+    if (message.method === "initialize") return json({ ...reply, result: {
       protocolVersion: message.params.protocolVersion,
       capabilities: { tools: {} },
       serverInfo: { name: "Internal MCP fixture", version: "1" },
-    } : { tools: [{ name: "local_echo", inputSchema: { type: "object" } }] };
-    return json({ jsonrpc: "2.0", id: message.id, result });
+    } });
+    if (message.method === "ping") return json({ ...reply, result: {} });
+    if (message.method === "tools/list") return json({ ...reply, result: {
+      tools: [{ name: mcpName, inputSchema: { type: "object", properties: {} } }],
+    } });
+    if (message.method === "tools/call" && message.params.name === mcpName) return json({ ...reply, result: {
+      content: [{ type: "text", text: mcpMarker }],
+    } });
+    return json({ ...reply, error: { code: -32601, message: "Unexpected MCP request" } });
   }
   if (req.url === "/v1/models") {
     if (req.headers.authorization === "Bearer " + savedKey) savedDiscoveryRequests++;
@@ -113,15 +127,18 @@ const provider = createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   const request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   modelRequests.push(request);
-  const sawTool = request.messages.some((message) => message.role === "tool");
-  const read = request.tools?.find((tool) => tool.function?.name?.toLowerCase() === "read");
+  const latestPrompt = request.messages.findLast((message) => message.role === "user");
+  const isMcpTurn = JSON.stringify(latestPrompt?.content ?? "").includes(mcpPrompt);
+  const sawTool = request.messages.at(-1)?.role === "tool";
+  const toolName = isMcpTurn ? mcpTool : "read";
+  const tool = request.tools?.find((entry) => entry.function?.name?.toLowerCase() === toolName);
   const delta = sawTool
-    ? { role: "assistant", content: finished }
+    ? { role: "assistant", content: isMcpTurn ? mcpFinished : finished }
     : {
         role: "assistant",
         tool_calls: [{
-          index: 0, id: "call_local_read", type: "function",
-          function: { name: read?.function.name ?? "read", arguments: JSON.stringify({ path: "note.txt" }) },
+          index: 0, id: isMcpTurn ? mcpCallId : "call_local_read", type: "function",
+          function: { name: tool?.function.name ?? toolName, arguments: JSON.stringify(isMcpTurn ? {} : { path: "note.txt" }) },
         }],
       };
   const frame = (change, reason) => "data: " + JSON.stringify({
@@ -146,7 +163,7 @@ const { appDir, electronBinary } = installed
   : { ...assertDesktopBuild(), ...resolveElectronBinary() };
 const hostBinary = resolveHostBinary();
 const scratch = await realpath(await mkdtemp(join(tmpdir(), "pie-code-offline-")));
-const workspace = join(scratch, "project");
+const workspace = join(scratch, "offline-test-project");
 let app;
 let socket;
 let output = "";
@@ -185,6 +202,7 @@ try {
   });
   try {
     await setupHost.start();
+    await setupHost.call("workspace.set", { path: workspace });
     await setupHost.call("settings.set", {
       closeBehavior: "quit",
       language: "en",
@@ -281,7 +299,7 @@ try {
   };
   const clickText = (selector, label) => until(() => evaluate(
     "(() => { const button = Array.from(document.querySelectorAll(" + JSON.stringify(selector) + "))" +
-    ".find(el => el.textContent.trim() === " + JSON.stringify(label) + ");" +
+    ".find(el => !el.disabled && el.textContent.trim() === " + JSON.stringify(label) + ");" +
     "if (!button) return false; button.click(); return true; })()",
   ), label);
   await until(async () => (await wire(IPC.invoke.appGetVersion)).data?.hostVersion, "healthy host");
@@ -319,17 +337,11 @@ try {
   const [first, second] = modelRequests.filter((request) => typeof request === "object");
   assert.equal(first.model, manualModel);
   assert.ok(first.tools.every((tool) => !/^ScheduledTask/i.test(tool.function?.name ?? "")));
+  assert.ok(first.tools.every((tool) => !/^mcp_/i.test(tool.function?.name ?? "")));
   assert.ok(second.messages.some((message) =>
     message.role === "tool" && JSON.stringify(message.content).includes(marker)));
   assert.ok(modelRequests.includes("models"));
-  const { server } = await invoke(IPC.invoke.mcpUpsert, {
-    id: "offline-fixture", label: "Internal MCP fixture",
-    transport: "http", url: providerUrl + "/mcp", enabled: false,
-  });
-  assert.equal(server.url, providerUrl + "/mcp");
-  const mcp = await invoke(IPC.invoke.mcpTest, { id: server.id });
-  assert.equal(mcp.status.state, "ready", JSON.stringify(mcp.status));
-  assert.ok(mcpRequests.includes("tools/list"));
+  assert.deepEqual(mcpRequests, [], "Coding without MCP contacted the MCP fixture");
 
   await evaluate("document.querySelector('[data-surface=startup-guide] button[aria-label=Skip]')?.click()");
   await until(() => evaluate("Boolean(document.querySelector('.composer-model-thinking-chip'))"), "model picker");
@@ -362,6 +374,80 @@ try {
   assert.equal(await evaluate(
     "Array.from(document.querySelectorAll('.settings-nav-item')).some(el => el.textContent.includes('Voice'))",
   ), false);
+  await clickText(".provider-setup-dialog button", "Cancel");
+
+  // Configure the HTTP MCP server through the same editor used for Milku.
+  const click = (selector) => until(() => evaluate(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el || el.disabled) return false;
+    el.click();
+    return true;
+  })()`), selector);
+  const fill = (selector, value) => until(() => evaluate(`(() => {
+    const input = document.querySelector(${JSON.stringify(selector)});
+    if (!input) return false;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`), selector);
+  await clickText(".settings-nav-item", "MCP");
+  await until(() => evaluate(
+    "document.querySelector('.agent-capability-project-select .settings-menu-select-trigger-label')?.textContent === 'offline-test-project'",
+  ), "isolated project selected in MCP settings");
+  await clickText(".settings-content button", "Add");
+  await clickText(".ext-sheet [role=radio]", "HTTP endpoint");
+  await fill('.ext-sheet input[placeholder="Context7"]', "Intranet");
+  await fill('.ext-sheet input[placeholder="https://mcp.example.com/sse"]', providerUrl + "/mcp");
+  await clickText(".ext-sheet button", "Save");
+  await click('.settings-content button[aria-label="Edit Intranet"]');
+  const mcpReady = () => evaluate(`document.querySelector(".ext-sheet [role=status].is-ready")?.innerText.includes(${JSON.stringify(mcpName)})`);
+  const discoveries = () => mcpRequests.filter((method) => method === "tools/list").length;
+  await until(mcpReady, "initial MCP connection after saving");
+  const initialDiscoveries = discoveries();
+  await clickText(".ext-sheet button", "Test connection");
+  await until(() => discoveries() > initialDiscoveries && mcpReady(),
+    "MCP connection and discovered tool in settings");
+  await click(".ext-sheet-close");
+  await click(".settings-dialog-close");
+  await click(`[data-sidebar-session-row="${session.id}"]`);
+  await until(() => evaluate("Boolean(document.querySelector('.composer-input[contenteditable=true]'))"), "session composer");
+  await click('.composer-permission button[aria-haspopup="menu"]');
+  await clickText('.composer-permission-menu button[role="menuitemradio"]', "Ask every time");
+  await until(() => evaluate("document.querySelector('.composer-permission .mode-chip')?.innerText.trim() === 'Ask every time'"),
+    "session permission mode is Ask");
+  await evaluate(`(() => {
+    const composer = document.querySelector(".composer-input");
+    composer.focus();
+    document.execCommand("insertText", false, ${JSON.stringify(`/mcp:intranet:${mcpName} ${mcpPrompt}`)});
+  })()`);
+  await click(".send-btn");
+  await until(() => evaluate(`document.querySelector(".permission-card")?.innerText.includes(${JSON.stringify(mcpTool)})`),
+    "permission card for the MCP tool");
+  assert.ok(!mcpRequests.includes("tools/call"), "MCP ran before approval");
+  await clickText(".permission-card button", "Allow once");
+  await until(async () => JSON.stringify(await invoke(IPC.invoke.sessionGet, session.id)).includes(mcpFinished),
+    "completed MCP turn");
+  const toolRow = `.tool-row.status-success[data-message-id="${mcpCallId}"]`;
+  await until(() => evaluate(`(() => {
+    const row = document.querySelector(${JSON.stringify(toolRow)});
+    if (!row) return false;
+    for (const selector of [".turn-process", ".process-activity-group", ".tool-row"]) {
+      const toggle = row.closest(selector)?.querySelector(
+        ':scope > button[aria-expanded=false], :scope > .tool-row-head > button[aria-expanded=false]',
+      );
+      if (toggle && !toggle.disabled) {
+        toggle.click();
+        return false;
+      }
+    }
+    const body = row.querySelector(".tool-row-body");
+    return body?.getClientRects().length && body.innerText.includes(${JSON.stringify(mcpMarker)});
+  })()`), "expand successful MCP tool row");
+  assert.equal(mcpRequests.filter((method) => method === "tools/call").length, 1);
+  const mcpModelRequests = modelRequests.slice(modelRequests.indexOf(second) + 1);
+  assert.ok(mcpModelRequests.some((request) => request.tools?.some((tool) => tool.function?.name === mcpTool)));
+  assert.ok(mcpModelRequests.some((request) => request.messages?.some((message) =>
+    message.role === "tool" && JSON.stringify(message.content).includes(mcpMarker))));
 
   // An explicit browser request to a reserved test domain proves the
   // rejecting proxy is really in Chromium's path. Test it after measuring
