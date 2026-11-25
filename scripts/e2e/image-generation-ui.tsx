@@ -126,6 +126,12 @@ globalThis.imageGenerationProbe = async () => {
     [...document.querySelectorAll<HTMLInputElement>(
       ".provider-chosen-capability input[type=\"checkbox\"]",
     )].find((element) => element.getAttribute("aria-label") === label);
+  const findImageRow = () => container.querySelector(".model-image-row");
+  const expectStatusWithoutPicker = (key: "settings.imageModelNoneAvailable" | "settings.imageModelUnavailable") => {
+    const row = findImageRow();
+    assert(row?.querySelector('[role="status"]')?.textContent === i18n.t(key), `expected image model status: ${key}`);
+    assert(!row?.querySelector('button[aria-haspopup="listbox"]'), "unexpected image model picker");
+  };
   try {
     for (const locale of ["en", "zh-CN"]) {
       await i18n.changeLanguage(locale);
@@ -136,10 +142,7 @@ globalThis.imageGenerationProbe = async () => {
       settings = { ...settings, imageGeneration: null, imageGenerationModels: null };
       flushSync(() => useAppStore.setState({ settings }));
       render();
-      const initialImageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
-        (element) => element.textContent?.includes(i18n.t("settings.imageModel")),
-      );
-      assert(!initialImageRow, "unconfigured image model row should be hidden");
+      expectStatusWithoutPicker("settings.imageModelNoneAvailable");
       // Enter from the real model settings page, not the advanced pane alone.
       await editProviderForModelSettings();
       await until(
@@ -250,6 +253,10 @@ globalThis.imageGenerationProbe = async () => {
         assert(row.querySelector('[role="status"]')?.textContent === i18n.t("settings.imageModelUnavailable"), "unavailable state missing");
         assert(!row.querySelector(".model-default-provider"), "unavailable binding still displays provider");
       }
+      flushSync(() => useAppStore.setState({
+        providers: [{ ...provider, enabled: false }, { ...alternate, hasSecret: false }, chatProvider],
+      }));
+      expectStatusWithoutPicker("settings.imageModelUnavailable");
       settings = { ...settings, imageGeneration: null };
       flushSync(() => useAppStore.setState({ settings, providers }));
       const unsetImageRow = [...container.querySelectorAll<HTMLElement>(".settings-row")].find(
@@ -291,7 +298,7 @@ globalThis.imageGenerationProbe = async () => {
       flushSync(() => root.render(null));
       flushSync(() => useAppStore.setState({ settings: structuredClone(settings) }));
       render();
-      assert(!container.querySelector(".model-image-row"), "image summary returned after reopen");
+      expectStatusWithoutPicker("settings.imageModelNoneAvailable");
       await editProviderForModelSettings();
       await until(() => !!imageModelToggle(i18n.t("settings.setImageModel")), "unmarked checkbox did not persist");
       assert(!imageModelToggle(i18n.t("settings.setImageModel"))?.checked, "reopened model is still marked");
@@ -341,8 +348,13 @@ globalThis.imageGenerationProbe = async () => {
         flushSync(() => root.render(null));
         flushSync(() => useAppStore.setState({ settings: structuredClone(settings) }));
         render();
-        assert(!!container.querySelector(".model-image-row") === remaining,
-          "image summary did not reflect the saved candidates after reopen");
+        if (remaining) {
+          assert(findImageRow()?.querySelector('[role="status"]')?.textContent === i18n.t("settings.imageModelUnset"),
+            "remaining candidate should not become the default");
+          assert(findImageRow()?.querySelector('button[aria-haspopup="listbox"]'), "remaining candidate should stay selectable");
+        } else {
+          expectStatusWithoutPicker("settings.imageModelNoneAvailable");
+        }
         editImages();
         await until(() => !!document.querySelector(".provider-chosen-row"), "saved provider did not reopen");
         assert(![...document.querySelectorAll(".provider-chosen-row-id")]
@@ -379,10 +391,9 @@ globalThis.imageGenerationProbe = async () => {
       },
     });
     click(button(i18n.t("settings.configureImageModel")));
-    assert(
-      useAppStore.getState().settingsTab === "agent" && useAppStore.getState().page === "settings",
-      "setup action did not navigate",
-    );
+    const { settingsOpen, settingsTab, settingsAnchor } = useAppStore.getState();
+    assert(settingsOpen && settingsTab === "agent" && settingsAnchor === "settings.imageModel",
+      "setup action did not open Models settings at the image model row");
     const imageReads: string[] = [];
     const readImage = api.fsReadImageDataUrl;
     api.fsReadImageDataUrl = async (ref, mimeType) => {
@@ -405,8 +416,8 @@ globalThis.imageGenerationProbe = async () => {
         "advanced-save-cancel",
         "unmark-only-image-model-save-reopen-chat-default-preserved",
         "advanced-provider-switch",
-        "unconfigured-summary-hidden",
-        "unavailable-summary",
+        "unconfigured-summary-visible-without-picker",
+        "unavailable-summary-with-and-without-runnable-candidates",
         "chat-default-preserved",
         "image-preview-partial-failure",
         "setup-navigation",

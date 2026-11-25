@@ -12,7 +12,31 @@ longer offer — the stored candidate list changed between the menu rendering an
 the click — reports that the image model could not be saved instead of silently
 keeping the previous default.
 
-Model Advanced exposes **Set as image model** alongside the image and document attachment capabilities in the model capability group, not as a separate control row. The checkbox is multi-select: saving a provider persists every checked model in `imageGenerationModels`; Cancel leaves settings unchanged. Saving candidates does not replace the default conversation model. Unchecking every image model on the provider that holds the current default clears that default, even when another provider still has a runnable candidate. The Models page drops the check and does not select the other candidate automatically. Unchecking the current model while another model on the same provider stays marked moves the default to the first runnable marked candidate. The unmarked model is available for chat again after saving and reopening settings. Saving another provider preserves a still-runnable image default. Below the default model row in the same defaults panel, **Image generation model** shows the current default and offers a menu to choose one from all marked candidates. When no candidate is configured, or none of them can be selected, the summary row is hidden. A candidate whose provider still exists but is disabled, credential-less or otherwise unusable displays only **Currently unavailable** while another marked candidate can still be selected; a candidate whose provider row is gone is dropped from the stored list on the next settings read or write instead of staying listed. A signed-in ChatGPT (Codex) account is eligible for its own image model, which its provider row offers next to the models it configures; every other OAuth account is not, and there is no fallback.
+Model Advanced exposes **Set as image model** alongside the image and document
+attachment capabilities in the model capability group, not as a separate control
+row. The checkbox is multi-select: saving a provider persists every checked model
+in `imageGenerationModels`; Cancel leaves settings unchanged. Saving candidates
+does not replace the default conversation model. Unchecking every image model on
+the provider that holds the current default clears that default, even when
+another provider still has a runnable candidate. The Models page drops the check
+and does not select the other candidate automatically. Unchecking the current
+model while another model on the same provider stays marked moves the default to
+the first runnable marked candidate. The unmarked model is available for chat
+again after saving and reopening settings. Saving another provider preserves a
+still-runnable image default.
+
+The **Image generation model** row in Models settings stays visible. With no
+candidates it points to **Set as image model** in the provider's model settings.
+With candidates but none runnable it shows **Currently unavailable**, even if no
+default is selected. Neither state shows a picker. With runnable candidates the
+row shows the selected provider and model, **Not configured** if no default is
+selected, or **Currently unavailable** if the selected candidate cannot run. The
+picker lets the user choose a runnable candidate without silently changing the
+default. A candidate whose provider row is gone is dropped from the stored list on
+the next settings read or write. A signed-in ChatGPT (Codex) account is eligible
+for its own image model, which its provider row offers next to the models it
+configures; every other OAuth account is not, and there is no fallback.
+
 Only a pure image-generation endpoint is excluded from the default conversation picker, provider quick-default action, and Composer model menu; a marked model that also supports conversation keeps its chat eligibility everywhere, because the image binding is host-owned and independent of the conversation route (#2253). A pure image-generation endpoint is recognized by a model id its family reserves for image generation (for example `gpt-image-*`, DALL·E or Imagen ids) or by published output modalities that name no text output; unknown custom metadata stays chat-eligible. Other providers with the same model ID remain independent. Existing conversation bindings and history are preserved; a conversation still pinned to a pure image candidate must select a chat model before sending. Runtime launch rejects a marked pure image-generation model before inference.
 
 The marking checkbox has localized help explaining chat/default-menu exclusion
@@ -41,6 +65,10 @@ with 1–10 output images total. An optional `images` array supplies 1–4 local
 files per item for editing; a previous generated path supports iterative edits.
 Prompt length is bounded at 32,000 characters. Unsupported or excessive input is
 rejected rather than truncated. Plan and Goal cannot execute the tool.
+
+Without a configured image binding the tool returns `IMAGE_NOT_CONFIGURED` and
+points to **Settings → Models → Image generation model**. The message explains
+that MCP image tools are separate and do not serve as this tool's backend.
 
 The bundled `pi-desktop/imagegen` skill is discoverable in ordinary sessions and
 loads through the existing Skill tool. It teaches prompting, batches, reference
