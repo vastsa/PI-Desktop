@@ -4,9 +4,10 @@ type DeletionSnapshot = { expected: string; breaks: Set<HTMLBRElement> };
 
 /**
  * Preserve native deletion/undo; remove only a proven extra Chromium placeholder.
- * With `onInsertLineBreak` the editor also owns line breaks: Chromium inserts the
- * break *and* a placeholder newline after the caret, so one Enter would reach the
- * draft as one empty line too many.
+ * With `onInsertLineBreak` the editor also owns the end-of-draft break: Chromium
+ * adds a second, layout-only newline after the caret there, which reaches the
+ * draft as one empty line too many. A break anywhere else is exactly one newline
+ * natively and stays in the undo stack, so it is left alone.
  */
 export function installComposerDeletionGuard(
   editor: HTMLElement,
@@ -16,12 +17,14 @@ export function installComposerDeletionGuard(
   // spurious, never a string pattern that could also be an intentional newline.
   const placeholders = new WeakSet<HTMLBRElement>();
   let snapshot: DeletionSnapshot | null = null;
+  const atDraftEnd = () => editorSelectionRange(editor).end === readEditorValue(editor).length;
   const beforeInput = (event: InputEvent) => {
     snapshot = null;
     if (event.isComposing) return;
     if (
       onInsertLineBreak &&
-      (event.inputType === "insertLineBreak" || event.inputType === "insertParagraph")
+      (event.inputType === "insertLineBreak" || event.inputType === "insertParagraph") &&
+      atDraftEnd()
     ) {
       event.preventDefault();
       onInsertLineBreak();

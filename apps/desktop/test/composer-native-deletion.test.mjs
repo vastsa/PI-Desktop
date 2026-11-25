@@ -18,11 +18,17 @@ test("composer input owns the native deletion guard", () => {
   assert.doesNotMatch(deletionSource, /trim\(\)/);
 });
 
-test("one Enter is one newline, owned by the editor", () => {
-  // Chromium inserts the break plus a placeholder newline after the caret, so a
-  // draft would gain an empty line the user did not ask for (#2555).
+test("one Enter is one newline, owned by the editor at the draft end only", () => {
+  // Chromium adds a second, layout-only newline when the caret ends the block, so
+  // a draft would gain an empty line the user did not ask for (#2555).
   assert.match(deletionSource, /event\.inputType === "insertLineBreak" \|\| event\.inputType === "insertParagraph"/);
+  assert.match(deletionSource, /atDraftEnd\(\)/);
+  assert.match(deletionSource, /editorSelectionRange\(editor\)\.end === readEditorValue\(editor\)\.length/);
   assert.match(deletionSource, /event\.preventDefault\(\);\n\s+onInsertLineBreak\(\);/);
+  // A break anywhere else is exactly one newline natively and stays in the undo
+  // stack, so the guard must not take it over.
+  assert.match(deletionSource, /A break anywhere else is exactly one newline/);
   // React never dispatches the synthetic beforeinput event, so the guard owns it.
   assert.doesNotMatch(inputSource, /onBeforeInput/);
 });
+

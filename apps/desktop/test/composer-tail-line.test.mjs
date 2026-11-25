@@ -54,3 +54,15 @@ test("Chromium does not get to add a second newline for one Enter", () => {
   assert.match(deletion, /event\.inputType === "insertLineBreak"/);
   assert.doesNotMatch(deletion, /syncTailPlaceholder/);
 });
+
+test("the end-of-draft break is one native edit, so undo takes both nodes", () => {
+  assert.match(editor, /export function tailBreakFragment\(\): string \{/);
+  assert.match(editor, /return `<br><br \$\{TAIL_PLACEHOLDER\}>`;/);
+  // One edit inserts the real break and the placeholder, so Chromium records a
+  // single undo step instead of a bare DOM mutation (#2588 follow-up).
+  assert.match(draft, /document\.execCommand\("insertHTML", false, tailBreakFragment\(\)\)/);
+  // The native edit is the primary path; the DOM fallback only covers a browser
+  // that refuses insertHTML.
+  assert.ok(draft.indexOf("execCommand") < draft.indexOf("range.insertNode"));
+});
+

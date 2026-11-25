@@ -4820,12 +4820,12 @@ index and caret path counts it as zero characters. The placeholder carries no
 text, so it cannot be selected, copied or typed, never merges into a neighbouring
 text node, and the draft string and its indices are unchanged; the end-of-draft
 caret sits before the placeholder, on the empty line, and the placeholder is
-removed as soon as the line holds text. The editor also owns the break itself:
-Chromium inserts the break plus a placeholder newline after the caret, which
-reached the draft as one empty line too many, so a native `insertLineBreak` or
-`insertParagraph` is prevented and the editor inserts a single newline. A middle
-empty line keeps its existing behavior; the placeholder only covers the line that
-ends the draft.
+removed as soon as the line holds text. The editor owns only the end-of-draft
+break: Chromium would add the break plus a placeholder newline there, so a native
+`insertLineBreak` or `insertParagraph` at the draft end is prevented and one
+native edit inserts the real break together with the placeholder, which keeps undo
+and redo covering both in a single step. A break anywhere else stays native, and a
+middle empty line keeps its existing behavior.
 
 ### Dialog long-text containment
 

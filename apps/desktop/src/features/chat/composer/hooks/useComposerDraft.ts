@@ -43,6 +43,7 @@ import {
   readEditorValue,
   setEditorCaret,
   syncTailPlaceholder,
+  tailBreakFragment,
   type ComposerFileReference,
 } from "../editor";
 import type { ComposerPrefill } from "../model";
@@ -407,7 +408,11 @@ export function useComposerDraft({
     updateCursor(start);
   };
 
-  /** Enter inserts exactly one newline; Chromium would add a second one. */
+  /**
+   * End-of-draft break. One native edit adds the real break together with the
+   * layout placeholder, so undo and redo take the new line and its caret at once;
+   * Chromium's own break would add a second, layout-only newline here.
+   */
   const insertNewlineInEditor = () => {
     const element = ref.current;
     if (!element) return;
@@ -416,9 +421,13 @@ export function useComposerDraft({
     const range = selection.getRangeAt(0);
     if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return;
     const { start } = editorSelectionRange(element);
-    // Chromium's own `insertLineBreak` also adds a placeholder newline after the
-    // caret, which reaches the draft as one empty line too many (#2555), so the
-    // break is inserted here as the single newline the draft model stores.
+    if (document.execCommand("insertHTML", false, tailBreakFragment())) {
+      commitEditorDom();
+      // The edit leaves the caret after the placeholder; the draft end is before
+      // it, on the empty line the placeholder lays out.
+      setEditorCaret(element, readEditorValue(element).length);
+      return;
+    }
     range.deleteContents();
     range.insertNode(document.createTextNode("\n"));
     setEditorCaret(element, start + 1);

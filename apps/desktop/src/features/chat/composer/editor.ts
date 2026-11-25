@@ -130,6 +130,15 @@ function paintTailPlaceholder(el: HTMLElement, value: string): void {
   if (value.endsWith("\n")) el.appendChild(createTailPlaceholder());
 }
 
+/**
+ * One native edit for an end-of-draft break: the real break plus the layout
+ * placeholder. Chromium records it as a single undo step, so undo and redo take
+ * the new line and its caret together.
+ */
+export function tailBreakFragment(): string {
+  return `<br><br ${TAIL_PLACEHOLDER}>`;
+}
+
 /** Rendered length of a node in draft-string characters (chip = 1 char). */
 function editorNodeLength(node: Node): number {
   if (isTailPlaceholder(node)) return 0;
