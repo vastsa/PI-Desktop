@@ -1805,7 +1805,7 @@ sklm: {
     autoCollapseThinking: "Tamamlanan düşünmeyi katla",
     autoCollapseThinkingDesc: "Yalnızca üretilmekte olan düşünme açık kalır. Kapatınca tüm düşünme satırları açık kalır.",
     autoCollapseSettledGroups: "Tamamlanan grupları katla",
-    autoCollapseSettledGroupsDesc: "Tur bittiğinde etkinlik grupları katlı kalır ve başlık grubun ne yaptığını söyler. Kapatınca tamamlanan her grup açık kalır.",
+    autoCollapseSettledGroupsDesc: "Tamamlanan etkinlik grupları, turun bitmesi beklenmeden bir sonraki adıma geçildiğinde katlanır. Açık kalmaları için bu seçeneği kapatın.",
     transcriptDisplayMode: "Süreç görünümü",
     transcriptDisplayModeDesc: "Asistan sürecinin transkriptte nasıl gruplanacağını seçer.",
     radialMenu: "Dairesel bağlam menüsü",

@@ -7,24 +7,19 @@
  * reader's explicit choice, the parent's visibility, and transient reading
  * protection (see `disclosure.tsx`).
  *
- * Live work always stays visible. Everything else is settled, and the reader's
- * preference decides: by default a completed turn folds both levels, so opening
- * it reads as a compact list of what the agent did rather than a wall of rows.
- * Size is deliberately not part of either rule - the old "groups of up to four
- * rows stay open" tier was the reason `Show thinking` and small groups looked
- * permanently expanded, and it is replaced by the two switches.
+ * A group can settle before its turn ends. Only the current group and groups
+ * with live work stay open by default; finished groups and Thinking rows
+ * follow their own switches, regardless of size.
  */
 
 /** Whether a rendered activity group starts open. */
 export function activityGroupStartsOpen(state: {
-  /** The assistant turn this group belongs to is still running. */
-  turnActive: boolean;
   /** This group still owns live work, including running delegations. */
   groupActive: boolean;
   /** `resolveAutoCollapseSettledGroups` for the current settings. */
   collapseSettled: boolean;
 }): boolean {
-  return state.turnActive || state.groupActive || !state.collapseSettled;
+  return state.groupActive || !state.collapseSettled;
 }
 
 /** Whether a rendered Thinking row starts open. */
