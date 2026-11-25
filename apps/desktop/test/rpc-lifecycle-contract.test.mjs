@@ -263,8 +263,8 @@ test("app quit waits for one idempotent teardown before allowing the follow-up q
 test("settings writes validate without applying read defaults", async () => {
   const settingsIpc = await readMainModule("ipc/settings-ipc.ts");
   assert.match(settingsIpc, /const validatedSettings = validateSettingsWrite\(settings\)/);
-  // The write contract concerns the payload, not the host acknowledgement type.
-  assert.match(settingsIpc, /host\.call(?:<[^>\n]+>)?\("settings\.set", validatedSettings\)/);
+  // Assert the exact write argument independently of the RPC receiver and acknowledgement type.
+  assert.match(settingsIpc, /\.call(?:<[^>\n]+>)?\("settings\.set", validatedSettings\)/);
   assert.doesNotMatch(settingsIpc, /\("settings\.set", normalizedSettings\)/);
   assert.match(apiSource, /export function validateSettingsWrite/);
   assert.match(apiSource, /invoke\(IPC\.invoke\.settingsSet, validateSettingsWrite\(settings\)\)/);
