@@ -1,6 +1,7 @@
 import {
   IPC,
   ErrorCodes,
+  JEV_API_KEY_SECRET_REF,
   inferEndpointProfile,
   normalizeApiStyle,
   type ModelBinding,
@@ -82,6 +83,7 @@ export type ProviderIpcDependencies = {
   enrichProviderList: (result: { providers: RuntimeProvider[] }) => Promise<unknown>;
   bindingForModel: (provider: Pick<RuntimeProvider, "models">, modelId: string) => ModelBinding | undefined;
   onProviderInvalidated?: (providerId: string) => Promise<void> | void;
+  invalidateCacheWarming?: () => Promise<void>;
 };
 
 /** Register provider catalog, model discovery, OAuth and secret channels. */
@@ -96,6 +98,7 @@ export function registerProviderIpc({
   enrichProviderList,
   bindingForModel,
   onProviderInvalidated,
+  invalidateCacheWarming,
 }: ProviderIpcDependencies): void {
   let host: HostProcess | null = null;
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
@@ -723,14 +726,16 @@ export function registerProviderIpc({
   // Secret material never crosses to the renderer: set/delete/has only.
   handle(IPC.invoke.secretsSet, async (input: { secretRef: string; value: string }) => {
     if (!host) throw new Error("host unavailable");
-    return host.call("secrets.set", {
-      secretRef: input?.secretRef,
-      value: input?.value,
-    });
+    const secretRef = input?.secretRef;
+    const result = await host.call("secrets.set", { secretRef, value: input?.value });
+    if (secretRef === JEV_API_KEY_SECRET_REF) await invalidateCacheWarming?.();
+    return result;
   });
   handle(IPC.invoke.secretsDelete, async (secretRef: string) => {
     if (!host) throw new Error("host unavailable");
-    return host.call("secrets.delete", { secretRef });
+    const result = await host.call("secrets.delete", { secretRef });
+    if (secretRef === JEV_API_KEY_SECRET_REF) await invalidateCacheWarming?.();
+    return result;
   });
   handle(IPC.invoke.secretsHas, async (secretRef: string) => {
     if (!host) throw new Error("host unavailable");

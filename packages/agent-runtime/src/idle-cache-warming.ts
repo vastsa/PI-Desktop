@@ -95,8 +95,6 @@ export class IdleCacheWarming {
         !isCacheWarmingReplayable(model, options)) return;
     const ttl = getPromptCacheTtlMs(model, options) ?? getOpenAiResponsesCacheTtl(model);
     if (ttl === undefined && result.usage.cacheRead + result.usage.cacheWrite <= 0) return;
-    const promptTokens = result.usage.input + result.usage.cacheRead + result.usage.cacheWrite;
-    if (request.metered && evaluateCacheWarming(model, promptTokens, "idle").action !== "warm") return;
     const lifetime = ttl ?? ASSUMED_CACHE_TTL_MS;
     const interval = getCacheWarmingDelayMs(lifetime);
     if (interval === undefined || lifetime >= CACHE_WARMING_MAX_IDLE_AGE_MS) return;
@@ -144,7 +142,7 @@ export class IdleCacheWarming {
     const dueAt = candidate.lastStartedAt + candidate.interval;
     const deadline = Math.min(dueAt + candidate.margin, candidate.expiresAt);
     if (candidate.remaining === 0 || dueAt >= candidate.expiresAt || now >= deadline ||
-        (canSend && !this.canReuse(candidate))) {
+        (canSend && (!this.canReuse(candidate) || !this.isWorthRefreshing(candidate.request)))) {
       this.clear();
       return;
     }
@@ -152,6 +150,13 @@ export class IdleCacheWarming {
       ? setTimeout(() => void this.refresh(candidate, deadline), Math.max(dueAt - now, 0))
       : setTimeout(() => this.clear(), deadline - now);
     this.timer.unref();
+  }
+
+  private isWorthRefreshing(request: CacheRequest): boolean {
+    if (!request.metered) return true;
+    const usage = request.result.usage;
+    const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+    return evaluateCacheWarming(request.model, promptTokens, this.waiting ? "streaming" : "idle").action === "warm";
   }
 
   private async refresh(candidate: CacheCandidate, deadline: number): Promise<void> {

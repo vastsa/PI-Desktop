@@ -94,6 +94,26 @@ describe("foreground prompt-cache warming", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it("applies the active-turn savings threshold only while waiting", async () => {
+    const modelWithCost = { ...model, cost: { input: 3, cacheRead: 0.3, cacheWrite: 3.75, output: 15 } };
+    for (const waiting of [false, true]) {
+      const warming = new IdleCacheWarming(() => true);
+      warming.setForeground(true);
+      warming.setWaitingAllowed(true);
+      const refresh = vi.fn(async () => response(20_000));
+      warming.remember({
+        model: modelWithCost, options: {}, startedAt: Date.now(), result: response(20_000),
+        metered: true, oauth: false, canResume: () => true,
+        foregroundRevision: warming.foregroundRevision, idleEligible: true, refresh,
+      });
+      if (waiting) warming.setWaiting(true);
+      else warming.settle();
+      await vi.advanceTimersByTimeAsync(interval);
+      expect(refresh).toHaveBeenCalledTimes(waiting ? 1 : 0);
+      warming.clear();
+    }
+  });
+
   it("sends no refresh if a delegation wait ends before the first due time", async () => {
     const warming = new IdleCacheWarming(() => true);
     const refresh = vi.fn(async () => response(4_096));

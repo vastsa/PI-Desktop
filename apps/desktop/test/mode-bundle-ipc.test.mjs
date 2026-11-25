@@ -61,7 +61,7 @@ function registrar() {
   };
 }
 
-async function fixture() {
+async function fixture(invalidateCacheWarming) {
   const dir = await mkdtemp(join(tmpdir(), "modes-bundle-"));
   const modeDir = join(dir, "sisyphus");
   await mkdir(join(modeDir, "prompts"), { recursive: true });
@@ -75,6 +75,7 @@ async function fixture() {
   registerModesIpc({
     registrar: reg,
     catalog,
+    invalidateCacheWarming,
     runs: { get: async () => ({ run: null }), control: async () => ({}), update: async () => ({}), resolve: async () => ({}) },
     openPath: async (path) => {
       opened.push(path);
@@ -260,6 +261,20 @@ test("a build without a trusted shell reports the open channel as unsupported", 
       runs: { get: async () => ({ run: null }), control: async () => ({}), update: async () => ({}), resolve: async () => ({}) },
     });
     await assert.rejects(() => reg.call(IPC.invoke.modesSkillsOpen, "sisyphus"), /cannot open a folder/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a committed mode bundle change invalidates prompt cache warming", async () => {
+  let invalidations = 0;
+  const { dir, reg } = await fixture(async () => { invalidations++; });
+  try {
+    await reg.call(IPC.invoke.modesBundleRead, "sisyphus");
+    await assert.rejects(reg.call(IPC.invoke.modesBundleSettings, { id: "sisyphus", includeGlobalSubagents: "bad" }));
+    assert.equal(invalidations, 0);
+    await reg.call(IPC.invoke.modesBundleSettings, { id: "sisyphus", includeGlobalSubagents: true });
+    assert.equal(invalidations, 1);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

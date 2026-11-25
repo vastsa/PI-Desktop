@@ -80,6 +80,12 @@ lock, suspend, renderer loss, or invalidation. The sidecar verifies the original
 locally before refresh. One schedule covers all subagents in that wait.
 Native Pi sessions retain their SDK lifecycle.
 
+GitHub Copilot routes are excluded from refreshes because replaying a
+user-initiated request can consume premium request quota. Apply Pi's
+active-turn savings estimate while waiting for subagents and its idle
+estimate after the turn settles. Successful changes to modes, skills,
+subagents, and settings that alter the request discard previous candidates.
+
 Use the effective request's known TTL and skip a cache that covers the
 30-minute window. For official OpenAI Responses models supporting prompt-cache
 options, use the documented 30-minute minimum when the SDK catalog provides

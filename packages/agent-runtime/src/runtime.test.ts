@@ -832,7 +832,7 @@ describe("foreground cache warming through the normal turn", () => {
     expect(requests[0].max_completion_tokens ?? requests[0].max_tokens).toBe(1);
   });
 
-  it.each(["none", "observe", "replace"])("preserves foreground replay limits with the %s extension fixture", async (hook) => {
+  it.each(["none", "observe", "replace", "copilot"])("preserves foreground replay limits with the %s extension fixture", async (hook) => {
     const root = await mkdtemp(join(tmpdir(), "pi-cache-warming-extension-"));
     const entry = join(root, "extension.mjs");
     await writeFile(entry, `export default function (pi) {
@@ -849,8 +849,8 @@ describe("foreground cache warming through the normal turn", () => {
     const runtime = createRuntime({
       thinkingLevel: "off", onEvent,
       host: { call: vi.fn().mockResolvedValue({}) },
-      provider: { ...provider, headers: { "X-Cache-Route": "configured" } },
-      trustedExtensions: hook === "none" ? [] : [{ id: entry, entry, root, label: "Cache warming", source: "plugin" }],
+      provider: { ...provider, ...(hook === "copilot" ? { vendorKey: "github-copilot" } : {}), headers: { "X-Cache-Route": "configured" } },
+      trustedExtensions: hook === "none" || hook === "copilot" ? [] : [{ id: entry, entry, root, label: "Cache warming", source: "plugin" }],
     });
     const { TrustedExtensionRunner } = await import("./extensions/runner.js");
     const beforeRequest = vi.spyOn(TrustedExtensionRunner.prototype, "emitBeforeProviderRequest");
@@ -878,13 +878,13 @@ describe("foreground cache warming through the normal turn", () => {
       runtime.setCacheWarmingForeground(true);
       await runtime.prompt("Synthetic prompt", "user-1", "turn-1");
       expect(stream).toHaveBeenCalledTimes(1);
-      const hookCalls = hook === "none" ? 0 : 1;
+      const hookCalls = hook === "none" || hook === "copilot" ? 0 : 1;
       expect(beforeRequest).toHaveBeenCalledTimes(hookCalls);
       onEvent.mockClear();
       await vi.advanceTimersByTimeAsync(270_000);
       expect(beforeRequest).toHaveBeenCalledTimes(hookCalls);
-      if (hook === "replace") {
-        expect(payloads[0]).toMatchObject({ max_tokens: 64 });
+      if (hook === "replace" || hook === "copilot") {
+        if (hook === "replace") expect(payloads[0]).toMatchObject({ max_tokens: 64 });
         expect(stream).toHaveBeenCalledTimes(1);
         expect(onEvent).not.toHaveBeenCalled();
         return;

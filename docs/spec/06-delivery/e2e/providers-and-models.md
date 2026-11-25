@@ -43,6 +43,11 @@ Render the normal Composer toolbar for an active remote session that denies Stop
   nested instructions allow warming and an edit stops it. Verify SDK session
   deletion, an offscreen new turn, and successful project memory, group
   instruction, or MCP configuration writes discard the old request.
+- Verify Copilot sends no refresh. In an isolated worktree using Host-owned
+   group instructions, verify the unchanged launch files pass a local check
+   and editing the active custom prompt stops warming. Verify a paid request
+   can pass the waiting threshold while failing the idle threshold. Change a
+   mode or request-affecting setting and confirm the old candidate is cleared.
 
 ## E2E-USAGE-explicit-zero-cache
 

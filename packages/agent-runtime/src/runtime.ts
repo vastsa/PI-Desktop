@@ -285,9 +285,10 @@ import {
   type ReasoningReplayIdentity,
 } from "./reasoning-replay.js";
 import { genericModelConfig, visionFromModelConfig } from "./model-capabilities.js";
-import { loadInstructionChain, type ProjectInstructions } from "./project-instructions.js";
+import type { ProjectInstructions } from "./project-instructions.js";
+import { matchesCacheWarmingInstructions } from "./cache-warming-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
-import { loadCustomSystemPrompt, type CustomSystemPrompt } from "./custom-system-prompt.js";
+import type { CustomSystemPrompt } from "./custom-system-prompt.js";
 import { projectMemoryPrompt } from "./project-memory-prompt.js";
 import {
   pluginSkillsPrompt,
@@ -2357,8 +2358,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // justified a rebuild does not carry into the next request (issue #234).
         this.providerFetchFailure = undefined;
         this.providerTransportHealth.reset();
+        const copilotHeaders = copilotRequestHeaders(this.provider, context);
         const providerHeaders = mergeProviderHeaders(
-          copilotRequestHeaders(this.provider, context),
+          copilotHeaders,
           this.provider.headers,
         );
         const requestOptions: SimpleStreamOptions = withProviderHeaders(
@@ -2465,7 +2467,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           const idleEligible = this.idleCacheWarming.isForeground;
           if (usageTurnId && usageTurnId === this.cacheWarmingTurnId &&
               (idleEligible || this.cacheWarmingEnabled) &&
-              input === requestContext && !m.webSearch) {
+              input === requestContext && !m.webSearch && !copilotHeaders && m.provider !== "github-copilot") {
             const model = this.thinkingLevel === "omit" ? omitThinkingModel(m) : m;
             const omitThinking = this.thinkingLevel === "omit";
             const messageCount = this.agent.state.messages.length;
@@ -2773,15 +2775,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
   }
 
-  private async cacheWarmingInstructionSourcesMatch(): Promise<boolean> {
-    if (this.remoteWorkspace) return false;
+  private cacheWarmingInstructionSourcesMatch(): Promise<boolean> {
+    if (this.remoteWorkspace) return Promise.resolve(false);
     const root = this.workspaceRoot ?? this.projectPath;
-    const [instructions, customPrompt] = await Promise.all([loadInstructionChain(root, this.projectInstructionPath), loadCustomSystemPrompt(root)]);
-    // Group instructions come from Host configuration, not the local file chain.
-    const original = this.projectInstructions?.entries.filter(entry =>
-      entry.source !== "Project group folders" && entry.source !== "Project group instructions") ?? [];
-    return safeJson(instructions?.entries ?? []) === safeJson(original) &&
-      safeJson(customPrompt) === safeJson(this.customSystemPrompt);
+    return matchesCacheWarmingInstructions(
+      root, this.projectInstructionPath, this.projectPath, this.projectInstructions, this.customSystemPrompt,
+    );
   }
 
   private modelRequestMessages(messages: AgentMessage[]): ReturnType<typeof convertToLlm> {

@@ -342,8 +342,12 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     registrar,
     getHost,
   });
+  const invalidateCacheWarming = async () => {
+    await getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined);
+  };
   registerProviderIpc({
     registrar,
+    invalidateCacheWarming,
     getHost,
     modelsDevCatalog,
     vendorOAuth,
@@ -360,6 +364,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   registerJevIpc({ registrar, logger });
   registerModesIpc({
     registrar,
+    invalidateCacheWarming,
     catalog: dependencies.modeServices.catalog,
     runs: dependencies.modeServices.runs,
     // Opening a mode's `skills/` folder is the only path this feature hands to
@@ -507,9 +512,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
 
 
-  const invalidateCacheWarming = async () => {
-    await getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined);
-  };
   registerMcpIpc({
     registrar,
     getHost,

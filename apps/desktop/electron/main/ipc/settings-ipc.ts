@@ -6,6 +6,19 @@ import type { LiveCallService } from "../live-voice/call-service";
 import type { AppSettings } from "@pi-desktop/shared";
 import { currentSystemProxyRelayUrl } from "../network-proxy";
 
+const CACHE_WARMING_SETTINGS = [
+  "codemodeEnabled", "computerUse", "scheduledTasksEnabled",
+  "backgroundJobContinuationEnabled", "defaultCommandShell", "jevEnabled",
+  "defaultProviderId", "defaultModelId", "defaultMode", "language",
+  "imageGeneration", "imageGenerationModels",
+] as const satisfies readonly (keyof AppSettings)[];
+
+function cacheWarmingSettingsChanged(patch: unknown, before: AppSettings, after: AppSettings): boolean {
+  if (!patch || typeof patch !== "object") return false;
+  return CACHE_WARMING_SETTINGS.some(key => Object.hasOwn(patch, key) &&
+    JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+}
+
 export type SettingsIpcDependencies = {
   registrar: IpcRegistrar;
   sendToRenderer: (channel: string, payload: unknown) => void;
@@ -75,18 +88,25 @@ export function registerSettingsIpc({
   });
 
   handle(IPC.invoke.settingsSet, async (settings: unknown) => {
-    if (!host) throw new Error("host unavailable");
+    const owner = host;
+    if (!owner) throw new Error("host unavailable");
     const validatedSettings = validateSettingsWrite(settings);
-    const currentSettings = await host.call<AppSettings>("settings.get");
+    const currentSettings = await owner.call<AppSettings>("settings.get");
     const prospectiveSettings = validatedSettings && typeof validatedSettings === "object" && !Array.isArray(validatedSettings)
       ? { ...currentSettings, ...(validatedSettings as Partial<AppSettings>) }
       : currentSettings;
     const releaseSettingsWrite = liveCallService?.beginSettingsWrite(prospectiveSettings);
     let result: { ok: true };
     try {
-      result = await host.call<{ ok: true }>("settings.set", validatedSettings);
-      if (typeof validatedSettings?.foregroundCacheWarmingEnabled === "boolean") {
-        applyForegroundCacheWarming(validatedSettings);
+      result = await owner.call<{ ok: true }>("settings.set", validatedSettings);
+      if (getHost() === owner) {
+        const invalidation = cacheWarmingSettingsChanged(validatedSettings, currentSettings, prospectiveSettings)
+          ? getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined)
+          : undefined;
+        if (typeof validatedSettings?.foregroundCacheWarmingEnabled === "boolean") {
+          applyForegroundCacheWarming(validatedSettings);
+        }
+        await invalidation;
       }
       // settings.set acknowledges the write; it does not return the stored settings.
       const style = validatedSettings?.subagentStyle;
@@ -114,7 +134,7 @@ export function registerSettingsIpc({
     if (sidecar) {
       try {
         await sidecar.call("sidecar.configure", {
-          hostBinary: host.binaryPath,
+          hostBinary: owner.binaryPath,
           dataDir,
           networkProxy: currentNetworkProxy(),
           systemProxyRelayUrl: currentSystemProxyRelayUrl(),

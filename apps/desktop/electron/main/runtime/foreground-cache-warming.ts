@@ -4,6 +4,7 @@ import type { AgentSidecar } from "../agent-sidecar";
 const PLUGIN_CHANGES = new Set([
   "agentExtensions", "disable", "enable", "importExtension", "install",
   "market.applyUpdates", "market.install", "reload", "scope", "settings", "uninstall",
+  "skill", "subagent", "loadDev", "crash", "hostRestart", "restore",
 ]);
 
 export function createForegroundCacheWarming({
