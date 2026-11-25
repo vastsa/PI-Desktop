@@ -25,6 +25,8 @@ profiles. Explicit profile overrides and relocation keep their existing behavior
 The packaged updater metadata also uses its own `pie-code-updater` cache
 and points to Pie Code releases. Offline mode does not check that endpoint;
 updates are installed from internally distributed packages.
+Settings → Info opens the bundled release notes without checking for updates
+or connecting to GitHub.
 
 The included icon uses the selected bitten coral P with exposed gold crust on
 a blue-gray tile. The built-in dark theme uses coral for the accent; the

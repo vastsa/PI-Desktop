@@ -844,6 +844,10 @@
 - **Expected**:
   - Before ready: full-window splash with brand mark, shell name, tagline, and accessible starting status (`data-testid="startup-splash"`).
   - In Pie Code, the splash shows “Ars longa, vita brevis.” in every app language, matching About and release notes.
+  - In offline Pie Code, open Settings → Info → Release notes, then repeat after
+    changing the interface language in Appearance. The local notes load and the
+    subtitle stays in Latin; online updates remain disabled. Covered by
+    `pnpm test:e2e:pie-code-offline` in English and Simplified Chinese.
   - After ready: splash exits with a short fade (or instantly under reduced motion) and the main shell (or settings page) is interactive underneath.
   - If the initial state never arrives, the splash is replaced rather than held: the boot surface gains logs, diagnostics, and quit at 30s (`STARTUP_SLOW_HINT_MS`) without reporting a failure, and at 180s (`STARTUP_STALLED_MS`) becomes the recovery surface, which also offers a retry (`data-testid="startup-recovery"`); every action works without a backend, the renderer-drawn window controls stay above the surface on Windows/Linux, and quit goes through `pi-desktop/app/quit`.
   - On macOS the splash uses the same glass tint and sheen as the sidebar over native `sidebar` vibrancy; the mounted shell stays hidden until the splash exit fade, then cross-fades in. Other platforms keep the opaque `--ds-bg-primary` fill.

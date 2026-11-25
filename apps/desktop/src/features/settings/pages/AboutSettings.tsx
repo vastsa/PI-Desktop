@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../../lib/api";
 import { useAppStore } from "../../../stores/app-store";
 import { Button } from "../../../components/ui";
-import { UpdatesRow } from "../agent-sections";
+import { ReleaseNotesButton, UpdatesRow } from "../agent-sections";
 import { DeveloperSection } from "../developer-sections";
 import { SettingsCard, SettingsRow } from "../primitives";
 import { useStartupGuideRequest } from "../../startup/startup-guide-request";
@@ -43,7 +43,9 @@ export function AboutSettings({
         />
       ) : (
         <SettingsCard title={t("updates.title")}>
-          <SettingsRow title={t("settings.offlineUpdateInstructions")}>{null}</SettingsRow>
+          <SettingsRow title={t("settings.offlineUpdateInstructions")}>
+            <ReleaseNotesButton currentVersion={version?.version} />
+          </SettingsRow>
         </SettingsCard>
       )}
       <SettingsCard>

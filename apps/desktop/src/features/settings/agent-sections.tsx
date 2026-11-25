@@ -84,6 +84,42 @@ export function AgentInstructionsSection() {
   );
 }
 
+export function ReleaseNotesButton({
+  currentVersion,
+  availableVersion,
+}: {
+  currentVersion?: string;
+  availableVersion?: string;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+
+  return (
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
+        <IconFileText size={14} />
+        {t("updates.releaseNotes")}
+      </Button>
+      {open && (
+        <Suspense
+          fallback={
+            <div className="route-pending" role="status" aria-label={t("app.loadingView")}>
+              <span className="route-pending-indicator" aria-hidden />
+            </div>
+          }
+        >
+          <ReleaseNotesDialog
+            currentVersion={currentVersion}
+            availableVersion={availableVersion}
+            onClose={close}
+          />
+        </Suspense>
+      )}
+    </>
+  );
+}
+
 export function UpdatesRow({
   currentVersion,
   settings,
@@ -96,7 +132,6 @@ export function UpdatesRow({
   const { t } = useTranslation();
   const update = useUpdateState();
   const showToast = useAppStore((state) => state.showToast);
-  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const [preferenceSaving, setPreferenceSaving] = useState(false);
   const selectedPreference: UpdatePreference =
     update?.automaticSupported === false
@@ -118,7 +153,6 @@ export function UpdatesRow({
       setPreferenceSaving(false);
     }
   }, [saveSettings, showToast, t]);
-  const closeReleaseNotes = useCallback(() => setReleaseNotesOpen(false), []);
   const disabled = !update || update.mode === "disabled";
   const busy = update?.status === "checking" || update?.status === "downloading";
   const preferenceLocked =
@@ -264,13 +298,10 @@ export function UpdatesRow({
               <div className="about-update-desc">{t("updates.cardDesc")}</div>
             </div>
             <div className="about-update-actions">
-              <Button
-                variant="secondary"
-                onClick={() => setReleaseNotesOpen(true)}
-              >
-                <IconFileText size={14} />
-                {t("updates.releaseNotes")}
-              </Button>
+              <ReleaseNotesButton
+                currentVersion={update?.currentVersion ?? currentVersion}
+                availableVersion={update?.availableVersion}
+              />
               {action}
             </div>
           </div>
@@ -324,25 +355,6 @@ export function UpdatesRow({
           </div>
         </SettingsRow>
       </SettingsCard>
-      {releaseNotesOpen ? (
-          <Suspense
-            fallback={
-              <div
-                className="route-pending"
-                role="status"
-                aria-label={t("app.loadingView")}
-              >
-                <span className="route-pending-indicator" aria-hidden />
-              </div>
-            }
-          >
-            <ReleaseNotesDialog
-              currentVersion={update?.currentVersion ?? currentVersion}
-              availableVersion={update?.availableVersion}
-              onClose={closeReleaseNotes}
-            />
-          </Suspense>
-        ) : null}
     </>
   );
 }
