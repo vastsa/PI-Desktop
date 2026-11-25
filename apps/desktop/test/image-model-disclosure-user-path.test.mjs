@@ -10,7 +10,7 @@ import { repositoryRoot, resolveElectronBinary } from "../../../scripts/e2e/boot
 const root = repositoryRoot();
 const { build } = createRequire(join(root, "packages/agent-runtime/package.json"))("esbuild");
 
-test("image-model marking explains chat exclusion and remains visible when Advanced is collapsed", {
+test("image-model marking explains image-only chat exclusion and remains visible when Advanced is collapsed", {
   timeout: 60_000,
   skip: process.platform === "linux" && !process.env.DISPLAY ? "Electron requires a display" : false,
 }, async () => {
@@ -24,16 +24,21 @@ import { flushSync } from "react-dom";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { catalogs } from "@pi-desktop/i18n";
-import { ModelSelectionPanes } from "./apps/desktop/src/components/settings/ModelSelectionPanes";
+import { ModelSelectionPanes, useModelSelection } from "./apps/desktop/src/components/settings/ModelSelectionPanes";
 import { composerModelsForProvider } from "./apps/desktop/src/lib/composer-models";
 const i18n = createInstance();
 await i18n.init({ lng: "en", resources: { en: { translation: catalogs.en } } });
-const bindings = [{ id: "custom-chat", contextWindow: 128000, maxTokens: 8192, thinkingLevels: [] }];
+const bindings = [{ id: "custom-image", contextWindow: 128000, maxTokens: 8192, thinkingLevels: [] }];
+const provider = { id: "fixture", models: bindings };
+const discovery = { status: "ready", models: [{
+  modelId: "custom-image", displayName: "Custom Image", providerId: "fixture",
+  modalities: { input: ["text"], output: ["image"] }, capabilities: [], source: "discovered",
+}] };
 let selected = [];
 function Fixture() {
   const [images, setImages] = useState([]);
-  return <ModelSelectionPanes listTitle="Fixture models" discovery={{ status: "ready", models: [] }}
-    selection={{ rows: [], models: bindings, publishedLevelsById: new Map(), bindingsToPersist: bindings, setModels() {} }}
+  const selection = useModelSelection(discovery, bindings, () => {});
+  return <ModelSelectionPanes listTitle="Fixture models" discovery={discovery} selection={selection}
     imageModelIds={images} onImageModelChange={(id, checked) => { selected = checked ? [id] : []; setImages(selected); }} />;
 }
 const root = createRoot(document.getElementById("root"));
@@ -45,16 +50,18 @@ const row = () => document.querySelector(".provider-chosen-row-head");
 click(advanced());
 const hint = i18n.t("settings.imageModelChatExclusionHint");
 assert(document.querySelector('[aria-label="' + hint + '"]'), "Missing explanation before marking");
-assert(hint.includes("chat") && hint.includes("image input"), "Explanation must distinguish generation from input");
+assert(hint.includes("pure image-generation endpoint") && hint.includes("image input"), "Explanation must distinguish image-only models and image input");
 click(document.querySelector('[aria-label="' + i18n.t("settings.setImageModel") + '"]'));
 click(advanced());
 assert(row().textContent.includes(i18n.t("settings.imageModelSelected")), "Collapsed row must disclose the image role");
-const provider = { id: "fixture", models: bindings };
-assert(composerModelsForProvider(provider, [], selected.map(modelId => ({ providerId: provider.id, modelId }))).length === 0, "Saved marking must exclude chat");
+const composerModels = (discovered) => composerModelsForProvider(provider, discovered,
+  selected.map(modelId => ({ providerId: provider.id, modelId })));
+assert(composerModels(discovery.models).length === 0, "Marked image-only model must be excluded from chat");
+assert(composerModels([]).length === 1, "Marked custom model with unknown capabilities must stay available for chat");
 click(advanced());
 click(document.querySelector('input[aria-label="' + i18n.t("settings.imageModelSelected") + '"]'));
 assert(!row().textContent.includes(i18n.t("settings.imageModelSelected")), "Unmark must remove the badge");
-assert(composerModelsForProvider(provider, [], []).length === 1, "Unmark restores chat eligibility");
+assert(composerModels(discovery.models).length === 1, "Unmark restores chat eligibility");
 window.probe = { ok: true, hint, selected };
 ` },
       outfile: join(temp, "renderer.js"), bundle: true, platform: "browser", format: "esm", jsx: "automatic",

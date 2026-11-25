@@ -124,20 +124,27 @@ test("cancellation rejects before a late tunnel arrives and closes that tunnel",
   assert.equal(socket.destroyed, true);
 });
 
-
-test("the original timeout reason survives cancellation during TLS handshake", async (t) => {
+test("cancelling during TLS handshake closes the peer and preserves the original timeout", { timeout: 5_000 }, async (t) => {
   const controller = new AbortController();
   const timeout = new DOMException("metadata budget exhausted", "TimeoutError");
   const { createServer: createTcpServer } = await import("node:net");
+  let peer;
+  let peerClosed;
   const server = createTcpServer((socket) => {
-    t.after(() => socket.destroy());
-    controller.abort(timeout);
+    peer = socket;
+    peerClosed = once(socket, "close");
+    // Wait for the TLS ClientHello without sending a handshake reply.
+    socket.once("data", () => controller.abort(timeout));
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  t.after(() => new Promise((resolve) => server.close(resolve)));
+  t.after(() => {
+    peer?.destroy();
+    return new Promise((resolve) => server.close(resolve));
+  });
   const port = server.address().port;
   await assert.rejects(fetchHttpsMetadata(`https://localhost:${port}/models`, init(controller.signal), connect), (error) => error === timeout);
+  await peerClosed;
 });
 
 test("OPTIONS probes keep their method and pre-aborted probes never connect", async (t) => {

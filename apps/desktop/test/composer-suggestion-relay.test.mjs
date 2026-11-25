@@ -72,9 +72,12 @@ test("a draft that cannot take the line is reported with its own reason", async 
   assert.deepEqual(await pending, { shown: false, reason: "draft-not-empty" });
 });
 
-test("a silent window costs the caller a miss, never a hang", async () => {
+test("a silent window costs the caller a miss, never a hang", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const { relay } = makeRelay({ answerTimeoutMs: 20 });
-  assert.deepEqual(await relay.offer(offer()), { shown: false, reason: "unsupported" });
+  const pending = relay.offer(offer());
+  t.mock.timers.tick(20);
+  assert.deepEqual(await pending, { shown: false, reason: "unsupported" });
 });
 
 test("one suggestion per session: the newer offer takes the slot", async () => {
