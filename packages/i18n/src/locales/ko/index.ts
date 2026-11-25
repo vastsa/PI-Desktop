@@ -2096,7 +2096,7 @@ sklm: {
     defaultUpdated: "기본 AI 프로바이더 업데이트됨",
     providerRemoved: "AI 프로바이더 제거됨",
     application: "애플리케이션",
-    aboutTagline: "인트라넷 AI 코딩 작업 공간",
+    aboutTagline: "Ars longa, vita brevis.",
     offlineUpdateInstructions: "앱을 종료한 뒤 사내 배포처에서 받은 최신 설치 패키지를 설치하세요. 프로젝트와 설정은 유지됩니다.",
     aboutVersion: "버전 {{version}}",
     logs: "로그",

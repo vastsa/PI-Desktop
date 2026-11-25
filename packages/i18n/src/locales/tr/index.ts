@@ -2090,7 +2090,7 @@ sklm: {
     defaultUpdated: "Varsayılan AI servisi güncellendi",
     providerRemoved: "AI servisi kaldırıldı",
     application: "Uygulama",
-    aboutTagline: "Kurum içi yapay zekâ kodlama çalışma alanı",
+    aboutTagline: "Ars longa, vita brevis.",
     offlineUpdateInstructions: "Uygulamadan çıkın ve kurum içi dağıtıcınızın sağladığı daha yeni paketi yükleyin. Projeleriniz ve ayarlarınız korunur.",
     aboutVersion: "Sürüm {{version}}",
     logs: "Günlükler",

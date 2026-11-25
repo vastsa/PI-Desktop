@@ -2080,7 +2080,7 @@ sklm: {
     "defaultUpdated": "Proveedor de IA predeterminado actualizado",
     "providerRemoved": "Proveedor de IA eliminado",
     "application": "Aplicación",
-    "aboutTagline": "Espacio de programación con IA para intranet",
+    "aboutTagline": "Ars longa, vita brevis.",
     "offlineUpdateInstructions": "Cierra la aplicación e instala el paquete más reciente de tu distribuidor interno. Se conservarán tus proyectos y ajustes.",
     "aboutVersion": "Versión {{version}}",
     "logs": "Registros",

@@ -2050,7 +2050,7 @@ export const ptBR = {
     defaultUpdated: "Provedor de IA padrão atualizado",
     providerRemoved: "Provedor de IA excluído",
     application: "Aplicativo",
-    aboutTagline: "Ambiente de programação com IA para intranet",
+    aboutTagline: "Ars longa, vita brevis.",
     offlineUpdateInstructions: "Feche o aplicativo e instale o pacote mais recente fornecido pela distribuição interna. Seus projetos e configurações são preservados.",
     aboutVersion: "Versão {{version}}",
     logs: "Logs",

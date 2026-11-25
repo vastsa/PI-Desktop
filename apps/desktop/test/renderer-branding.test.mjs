@@ -32,14 +32,18 @@ const [
     read("../src/lib/renderer-language.ts"),
   ]);
 
-test("renderer surfaces the Pie Code brand and Chinese About subtitle", async () => {
-  const about = await read("../src/features/settings/pages/AboutSettings.tsx");
+test("renderer surfaces the Pie Code brand and shares its subtitle", async () => {
+  const [about, releaseNotes] = await Promise.all([
+    read("../src/features/settings/pages/AboutSettings.tsx"),
+    read("../src/components/ReleaseNotesDialog.tsx"),
+  ]);
   assert.match(english, /shellName:\s*"Pie Code"/);
   assert.match(chinese, /shellName:\s*"Pie Code"/);
   assert.match(english, /placeholder:\s*"Ask Pie Code to help with anything"/);
   assert.match(chinese, /placeholder:\s*"让 Pie Code 帮你做任何事"/);
-  assert.match(chinese, /aboutTagline:\s*"内网 AI 编程工作台"/);
-  assert.match(about, /t\("settings\.aboutTagline"\)/);
+  for (const surface of [about, releaseNotes]) {
+    assert.match(surface, /t\("settings\.aboutTagline"\)/);
+  }
   assert.doesNotMatch(english, /shellName:\s*"Codex"/);
   assert.doesNotMatch(chinese, /shellName:\s*"Codex"/);
   // Codex remains a supported external import source, not the app identity.
