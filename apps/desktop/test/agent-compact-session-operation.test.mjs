@@ -69,6 +69,7 @@ function buildHarness({ hostCall, sidecarCall, resolveSessionMessageInput }) {
     },
     "../composer-mcp": { expandMcpInvocation: () => null },
     "../runtime/mode-runs": { modeContinuationOrigin: () => undefined },
+    "../runtime/mode-sidecar-definition": load("../electron/main/runtime/mode-sidecar-definition.ts", {}),
     "../runtime/background-continuations": {
       backgroundContinuationOrigin: () => undefined,
       backgroundCompletionMessage: () => assert.fail("compaction must not deliver a background result"),
