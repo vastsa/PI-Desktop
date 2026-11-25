@@ -113,21 +113,28 @@ address `192.0.2.1` in the same isolated namespace; the trace checker must
 reject it. Record the two results with the actual candidate package. A
 loopback proxy alone can miss direct connections from child processes.
 
-## Offline Office — Word
+## Offline Office — Word and Excel
 
 On the Pie Code maintenance line, the ARM64 Debian package includes one
 shared Office Runtime and the built-in Offline Office extension. In a
 fresh profile the extension is off. Enable it in Extensions to expose
-`pie.offline-office/word` in local Agent sessions. The skill uses the
-ordinary Bash approval flow and the packaged executables; it neither
-installs dependencies nor uses a system Node or Python. Disable the
-extension and restart to verify that new sessions no longer receive it.
+`pie.offline-office/word` and `pie.offline-office/excel` in local Agent
+sessions. Both skills use ordinary Bash approval and the packaged executables;
+neither installs dependencies nor uses a system Node, Python, or LibreOffice.
 
 Before building, stage the approved ARM64 Office Runtime 1.0.2
-`python-runtime`, `python-dependencies`, and `node-runtime` layers into one
-directory on a case-sensitive Linux filesystem, preserving permissions and
-relative links that resolve inside it. Into `node/lib/node_modules`, overlay the complete `node_modules` from the locked
-docx 9.16.0 build. Retain the source manifest as
+`python-runtime`, `python-dependencies`, `node-runtime`, and
+`libreoffice-runtime` layers into one directory on a case-sensitive Linux
+filesystem, preserving permissions and relative links that resolve inside it.
+Overlay the complete `node_modules` from the locked docx 9.16.0 build into
+`node/lib/node_modules`. In `python/lib/python3.12/site-packages`, unpack the
+pre-staged pandas 3.1.1 CPython 3.12 manylinux AArch64 wheel and
+python-dateutil 2.9.0.post0 universal wheel, including their `.dist-info`
+directories. These two wheels have no `.data` directory and can be unpacked
+with the bundled `python3.12 -I -m zipfile -e WHEEL SITE_PACKAGES` on ARM64
+Linux. Reuse the bundled NumPy, six, and openpyxl. Neither installation nor
+first use downloads dependencies. Keep the LibreOffice entry point at
+`libreoffice/program/soffice`. Retain the source manifest as
 `metadata/runtime-source.json`, the Node dependency lock as
 `metadata/package-lock.json`, and the components' licenses. Set
 `PI_CODE_OFFICE_RUNTIME_DIR` to the absolute path of this staging directory.
@@ -143,25 +150,24 @@ node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
 ```
 
 The package check inspects the extracted payload and uses its own Node and
-Python to create and extract a sample Word document. Keep the exact Office
-Debian package, the candidate commit, the package inspection output, and the
-Kylin run output together. Link those results in the PR or release record;
+Python to read back a newly created Word document and pandas Excel table.
+Keep the exact Office Debian package, the candidate commit, the package
+inspection output, and the Kylin run output together. Link those results in the PR or release record;
 generic CI artifacts and results from a different package do not qualify.
 
 With no public route, install that package in a clean application test
-environment and run the Word scenario against the installed binary. Build
+environment and run the Office scenario against the installed binary. Build
 the shared JS package beforehand and use Node 22+ to run the scenario
 (the bundled Node can run it). The scenario enables the extension through
-the UI, loads the Skill through a loopback model, checks Bash is held for
-approval, and verifies Chinese text, Word styles, untouched content and
-the unmodified input with an independent python-docx readback. It checks
-that create and replace refuse to overwrite the input or an existing copy. It then
-disables the extension and verifies the skill is absent in a new session
-after restarting.
+the UI, loads both skills through a loopback model, and checks that Bash is
+held for approval. It reads back the Word and Excel results independently
+with python-docx and openpyxl and checks that both sources are unchanged.
+It disables the extension and verifies both skills are absent from new
+sessions after restarting.
 
 ```sh
 PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
-  node scripts/e2e-offline-office-word.mjs
+  node scripts/e2e-offline-office.mjs
 ```
 
 Word edits replace a unique literal within one main-document paragraph
@@ -169,3 +175,14 @@ and save a new file. The skill reads the main part of transitional and
 Strict DOCX files. Tabs and other layout markers interrupt literal matches.
 Replacement text inherits the first matched run's formatting. Existing output files, including the source, are never
 overwritten.
+
+Excel reads a sheet with pandas, using the first row as column names and the
+stored values for formulas. New tables use JSON records and pandas. An edit
+replaces an existing plain value cell in a fresh `.xlsx` copy and leaves
+formulas, cached results, styles, and other sheets intact. An explicit
+recalculation creates another copy and updates only the formula caches. It
+gives bundled LibreOffice a separate workbook with plain values and supported
+workbook-local scalar formulas; external references, named ranges, array
+formulas, iterative calculation, precision as displayed, and unsupported
+functions fail without producing a copy. The sample keeps its `SUM` formula
+and reads back as 250 after editing and 260 after recalculation.

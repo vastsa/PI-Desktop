@@ -4,7 +4,10 @@ export const trEntries: ChangelogEntry[] = [
   {
     version: "0.23.1",
     date: "2026-11-25",
-    highlights: ["Word belgeleri oluşturmak, metni ayıklamak veya bir kopya kaydetmek için Kylin ARM64 sürümünde Uzantılar bölümünden Çevrimdışı Ofis’i etkinleştirin."],
+    highlights: [
+      "Word belgeleri oluşturmak, metni ayıklamak veya bir kopya kaydetmek için Kylin ARM64 sürümünde Uzantılar bölümünden Çevrimdışı Ofis’i etkinleştirin.",
+      "Çevrimdışı Ofis, Excel çalışma kitaplarını okuyabilir, oluşturabilir ve kopyalarını kaydedebilir; istek üzerine formülleri yeniden hesaplar.",
+    ],
   },
   {
     version: "0.23.0",

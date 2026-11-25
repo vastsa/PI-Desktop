@@ -41,12 +41,30 @@
   Chinese text, formatting, and untouched paragraphs. Failed writes leave
   both original and existing files unchanged. New sessions no longer see
   the skill after disabling and restarting.
-- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--word),
+- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--word-and-excel),
   [Plugin manifest schema](../../07-plugins/02-plugin-manifest-schema.md#31-localized-labels-i18n).
 - **Acceptance criterion**: A, C, E, G, Quality.
 - **Milestone**: M6+ (Pie Code 0.23.1).
 - **Status**: Automated. Record the result against the exact candidate
   Debian package for each release.
+
+## E2E-PIE-OFFICE-EXCEL: Offline Excel on Kylin ARM64
+
+- **Preconditions**: The same installed candidate, clean profile, and isolated
+  network as E2E-PIE-OFFICE-WORD. An XLSX fixture has Chinese filenames and
+  sheet names, formatted cells, a second sheet, and a sum cached as 250.
+- **Steps**: Enable Offline Office. Load the Excel skill in a local Agent
+  session. Approve Bash once to create and read an XLSX with pandas, edit the
+  fixture into a new copy, then explicitly recalculate and read a second copy.
+- **Expected**: The session reads the pandas result. The source is unchanged.
+  The edited copy keeps the formula, styles, other sheet, and cache of 250;
+  the recalculated copy keeps the same workbook and reads back 260. Both
+  skills disappear from new sessions after disabling and restarting.
+- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--word-and-excel).
+- **Acceptance criterion**: A, C, E, G, Quality.
+- **Milestone**: M6+ (Pie Code 0.23.1).
+- **Status**: Automated by the installed Office scenario. Record the result
+  against the exact Debian candidate for each release.
 
 ## Windows background process snapshot clock
 

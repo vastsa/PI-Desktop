@@ -4,7 +4,10 @@ export const deEntries: ChangelogEntry[] = [
   {
     version: "0.23.1",
     date: "2026-11-25",
-    highlights: ["Aktiviere Offline Office unter Erweiterungen auf Kylin ARM64, um Word-Dokumente offline zu erstellen, auszulesen oder als Kopie zu speichern."],
+    highlights: [
+      "Aktiviere Offline Office unter Erweiterungen auf Kylin ARM64, um Word-Dokumente offline zu erstellen, auszulesen oder als Kopie zu speichern.",
+      "Offline Office kann auch Excel-Arbeitsmappen lesen, erstellen und als Kopie speichern sowie Formeln auf Wunsch neu berechnen.",
+    ],
   },
   {
     version: "0.23.0",

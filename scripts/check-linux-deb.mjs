@@ -62,13 +62,17 @@ try {
       throw new Error("Offline Office requires a dedicated ARM64 Debian package.");
     }
     await verifyOfflineOfficeRuntime(runtime);
-    for (const file of ["manifest.json", "main.cjs", "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py"]) {
+    for (const file of [
+      "manifest.json", "main.cjs", "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
+      "excel/SKILL.md", "excel/excel.sh", "excel/spreadsheet.py",
+    ]) {
       if (!existsSync(path.join(officePlugin, file))) {
         throw new Error(`Missing bundled Offline Office plugin file: ${file}`);
       }
     }
     required.add("resources/office-runtime/node/bin/node");
     required.add("resources/office-runtime/python/bin/python3.12");
+    required.add("resources/office-runtime/libreoffice/program/soffice.bin");
   }
   if (!existsSync(path.join(app, "resources/app.asar"))) throw new Error("Missing app.asar");
   const catalog = new ModelsDevCatalog({ catalogPath: path.join(app, "resources/models.dev/api.json") });
