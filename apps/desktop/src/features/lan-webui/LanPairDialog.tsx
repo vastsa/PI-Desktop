@@ -100,11 +100,10 @@ export function LanPairDialog({ origin, code, busy, error, issueCode, onClose }:
 
 /** Approve a pending browser, or change what a paired device may do. */
 export function LanAccessDialog({
-  mode, label, projects, initial, busy, error, onSubmit, onDeny, onClose,
+  mode, label, initial, busy, error, onSubmit, onDeny, onClose,
 }: {
   mode: "approve" | "edit";
   label: string;
-  projects: LanAdminView["projects"];
   initial: LanGrants;
   busy: boolean;
   error: string | null;
@@ -114,8 +113,6 @@ export function LanAccessDialog({
 }) {
   const { t } = useTranslation("lan");
   const [draft, setDraft] = useState(initial);
-  const projectIds = projects.filter((project) => draft.projectIds.includes(project.id)).map((project) => project.id);
-  const ready = projectIds.length > 0 || draft.temporary;
   return (
     <LanDialog
       id={`lan-access-${mode}`}
@@ -127,7 +124,6 @@ export function LanAccessDialog({
       onClose={onClose}
       footer={
         <>
-          {!ready ? <span className="lan-dialog-footer-hint" role="status">{t("needScope")}</span> : null}
           {mode === "approve" ? (
             <Button type="button" variant="ghost" aria-disabled={busy || undefined} onClick={busy ? undefined : onDeny}>{t("deny")}</Button>
           ) : (
@@ -136,16 +132,15 @@ export function LanAccessDialog({
           <Button
             type="button"
             variant="primary"
-            disabled={!ready}
             aria-disabled={busy || undefined}
-            onClick={busy ? undefined : () => onSubmit({ ...draft, projectIds })}
+            onClick={busy ? undefined : () => onSubmit(draft)}
           >
             {mode === "approve" ? t("allow") : t("save")}
           </Button>
         </>
       }
     >
-      <LanGrantsEditor projects={projects} value={{ ...draft, projectIds }} onChange={setDraft} disabled={busy} />
+      <LanGrantsEditor value={draft} onChange={setDraft} disabled={busy} />
     </LanDialog>
   );
 }

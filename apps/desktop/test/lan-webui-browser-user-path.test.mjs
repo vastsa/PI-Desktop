@@ -40,7 +40,7 @@ const journey = String.raw`(async () => {
   code.value = window.__code;
   document.querySelector(".pair button[type=submit]").click();
 
-  // Desktop approves; the shared projects appear (the unshared one does not).
+  // Desktop approves the device; both local projects appear, but the SSH project does not.
   await wait(() => rowByTitle("Alpha"), "projects");
   result.projects = [...document.querySelectorAll(".row-title")].map((n) => n.textContent);
 
@@ -82,25 +82,23 @@ const journey = String.raw`(async () => {
 })()`;
 
 const afterGrantEdit = String.raw`(async () => {
-  const waitForRow = async (label) => {
+  const waitForRow = async (label, ready = () => true) => {
     const deadline = performance.now() + 10_000;
     while (performance.now() < deadline) {
       const row = [...document.querySelectorAll(".row")].find((item) => item.querySelector(".row-title")?.textContent === label);
-      if (row) return row;
+      if (row && ready(row)) return row;
       await new Promise(requestAnimationFrame);
     }
     throw new Error("Missing row after grant edit: " + label);
   };
-  const project = await waitForRow("Beta");
+  const readOnly = (row) => !row.querySelector(".row-more") && !document.querySelector("main > button.primary");
+  await waitForRow("Fix login", readOnly);
+  history.back();
+  await waitForRow("Alpha");
   const projectTitles = [...document.querySelectorAll(".row-title")].map((item) => item.textContent);
-  project.querySelector(".row-main").click();
+  (await waitForRow("Beta")).querySelector(".row-main").click();
   const session = await waitForRow("Second root chat");
-  return {
-    projectTitles,
-    canOrganize: Boolean(session.querySelector(".row-more")),
-    canCreate: Boolean(document.querySelector("main > button.primary")),
-    pairingShown: Boolean(document.getElementById("pair-code")),
-  };
+  return { projectTitles, readOnly: readOnly(session), pairingShown: Boolean(document.getElementById("pair-code")) };
 })()`;
 
 test("a phone pairs, organizes, chats and follows updated grants through the real page", { timeout: 60_000 }, async (t) => {
@@ -113,7 +111,7 @@ test("a phone pairs, organizes, chats and follows updated grants through the rea
   // Desktop-side approval as soon as the phone asks.
   const approver = setInterval(() => {
     const [pending] = server.pending();
-    if (pending) server.confirm(pending.id, { projectIds: ["g-a"], temporary: false, chat: true, organize: true });
+    if (pending) server.confirm(pending.id, { projectScope: "all-local", temporary: false, chat: true, organize: true });
   }, 50);
   const temp = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? tmpdir(), "lan-webui-ui-"));
   t.after(async () => {
@@ -156,7 +154,7 @@ app.whenReady().then(async () => {
     if (edited || !stdout.includes("EDIT_GRANTS\n")) return;
     edited = true;
     const [device] = server.devices();
-    if (device) server.update(device.id, { projectIds: ["g-b"], temporary: false, chat: false, organize: false });
+    if (device) server.update(device.id, { projectScope: "all-local", temporary: false, chat: false, organize: false });
     child.stdin.end("updated");
   });
   child.stderr.on("data", (chunk) => (stderr += chunk));
@@ -166,7 +164,7 @@ app.whenReady().then(async () => {
   assert.ok(line, stdout + stderr);
   const result = JSON.parse(line.slice(7));
 
-  assert.deepEqual(result.projects, ["Alpha"]);
+  assert.deepEqual(result.projects, ["Alpha", "Beta"]);
   assert.deepEqual(result.sessions, ["Fix login", "A plan"]);
   assert.equal(result.projectHash, "#/p/g-a");
   assert.ok(result.pinnedMeta.length > 0, "the pinned label is shown");
@@ -181,5 +179,5 @@ app.whenReady().then(async () => {
   assert.equal(result.horizontalScroll, false);
   assert.equal(result.smallTargets, 0);
   assert.equal(result.backHash, "#/p/g-a");
-  assert.deepEqual(result.afterEdit, { projectTitles: ["Beta"], canOrganize: false, canCreate: false, pairingShown: false });
+  assert.deepEqual(result.afterEdit, { projectTitles: ["Alpha", "Beta"], readOnly: true, pairingShown: false });
 });

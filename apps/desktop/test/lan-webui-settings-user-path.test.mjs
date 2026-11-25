@@ -34,7 +34,6 @@ const copied = [];
 const view = {
   running: false, origin: null, address: null, port: null, code: null, pending: [], devices: [], error: null,
   interfaces: [{ address: "192.168.1.20", name: "Wi-Fi" }],
-  projects: [{ id: "alpha", label: "Alpha" }, { id: "beta", label: "Beta" }],
 };
 let stateReads = 0;
 let startFails = true;
@@ -175,29 +174,24 @@ window.lanSettingsProbe = async () => {
   emit();
   await wait(() => title() === "Allow iPhone?", "new request advances directly to approval");
   await wait(() => dialog().contains(document.activeElement), "focus moves into approval");
-  check(button(lanEn.allow, dialog()).disabled && !checkbox("Alpha").checked && !checkbox("Beta").checked, "no project preselected");
+  check(!button(lanEn.allow, dialog()).disabled, "device approval does not require choosing a project");
+  check(dialog().textContent.includes(lanEn.scopeAll) && dialog().textContent.includes(lanEn.approveDescription), "approval discloses access to all local projects");
+  check(dialog().querySelectorAll('input[type="checkbox"]').length === 3 && !checkbox(lanEn.scopeTemporary).checked, "only optional permissions are configurable");
   q(".lan-dialog-close", dialog()).focus();
-  check(!press("Tab", true) && document.activeElement === button(lanEn.deny, dialog()), "Shift+Tab stays in the approval dialog");
-  click(button(lanEn.selectAll, dialog()));
-  await wait(() => checkbox("Alpha").checked && checkbox("Beta").checked, "select all");
-  click(button(lanEn.selectNone, dialog()));
-  await wait(() => button(lanEn.allow, dialog()).disabled, "clear selection");
-  click(checkbox("Alpha"));
-  await wait(() => !button(lanEn.allow, dialog()).disabled, "selected scope enables approval");
+  check(!press("Tab", true) && document.activeElement === button(lanEn.allow, dialog()), "Shift+Tab stays in the approval dialog");
   click(button(lanEn.allow, dialog()));
   await wait(() => !dialog() && button(lanEn.permissions) && document.activeElement === button(lanEn.addDevice), "paired device row and restored focus");
 
   document.documentElement.dataset.theme = "light";
   click(button(lanEn.permissions));
   await wait(() => title() === "iPhone permissions", "edit device");
-  check(checkbox("Alpha").checked && !checkbox("Beta").checked && fitsDialog(), "permissions load and fit in a narrow light window");
-  click(checkbox("Alpha"));
-  click(checkbox("Beta"));
+  check(dialog().textContent.includes(lanEn.scopeAll) && !checkbox(lanEn.scopeTemporary).checked && fitsDialog(), "device permissions fit in a narrow light window");
   click(checkbox(lanEn.chat));
   click(checkbox(lanEn.organize));
   await wait(() => !button(lanEn.save, dialog()).disabled && !checkbox(lanEn.chat).checked, "view-only edit");
   click(button(lanEn.save, dialog()));
   await wait(() => !dialog() && q(".lan-device:not(.is-request)")?.textContent.includes(lanEn.viewOnly), "device updates without re-pairing");
+  check(q(".lan-device:not(.is-request)").textContent.includes(lanEn.scopeAll), "project access is retained in view-only mode");
   click(button(lanEn.deny, q(".lan-device.is-request")));
   await wait(() => !q(".lan-device.is-request"), "deny pre-existing request");
   click(button(lanEn.remove));
@@ -262,8 +256,8 @@ app.whenReady().then(async () => {
       { kind: "start", address: "192.168.1.20", port: 38180 },
       { kind: "start", address: "192.168.1.20", port: 38180 },
       { kind: "issueCode" }, { kind: "issueCode" }, { kind: "issueCode" },
-      { kind: "confirm", id: "phone", grants: { projectIds: ["alpha"], temporary: false, chat: true, organize: true } },
-      { kind: "update", id: "device", grants: { projectIds: ["beta"], temporary: false, chat: false, organize: false } },
+      { kind: "confirm", id: "phone", grants: { projectScope: "all-local", temporary: false, chat: true, organize: true } },
+      { kind: "update", id: "device", grants: { projectScope: "all-local", temporary: false, chat: false, organize: false } },
       { kind: "deny", id: "old" }, { kind: "revoke", id: "device" }, { kind: "stop" },
     ],
     copied: ["http://192.168.1.20:38180"],

@@ -32,12 +32,14 @@ const secret = () => randomBytes(32).toString("base64url");
 
 function cleanGrants(value: unknown): LanGrants {
   const input = (value && typeof value === "object" ? value : {}) as Partial<Record<keyof LanGrants, unknown>>;
-  const projectIds = Array.isArray(input.projectIds)
-    ? [...new Set(input.projectIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length < 200))]
-    : [];
-  const temporary = input.temporary === true;
-  if (!projectIds.length && !temporary) throw new LanError(400, "INVALID_SCOPE");
-  return { projectIds, temporary, chat: input.chat === true, organize: input.organize === true };
+  // Never reinterpret an older project-id selection as consent to all local projects.
+  if (input.projectScope !== "all-local") throw new LanError(400, "INVALID_SCOPE");
+  return {
+    projectScope: input.projectScope,
+    temporary: input.temporary === true,
+    chat: input.chat === true,
+    organize: input.organize === true,
+  };
 }
 
 const sameSecret = (a: string, b: string) => {
@@ -408,8 +410,7 @@ export function createLanServer(options: {
       if (!device) throw new LanError(404, "NOT_FOUND");
       const next = cleanGrants(grants);
       const current = device.grants;
-      if (next.temporary === current.temporary && next.chat === current.chat && next.organize === current.organize
-        && next.projectIds.length === current.projectIds.length && next.projectIds.every((id) => current.projectIds.includes(id))) return;
+      if (next.temporary === current.temporary && next.chat === current.chat && next.organize === current.organize) return;
       device.grants = next;
       closeStreams(device);
       changed();

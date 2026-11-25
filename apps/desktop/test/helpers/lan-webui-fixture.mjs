@@ -19,6 +19,8 @@ export function desktop() {
     { id: "s-b1", title: "Second root chat", projectPath: "/work/b2", mode: "agent", updatedAt: "2026-11-02" },
     { id: "s-plan", title: "A plan", projectPath: "/work/a", mode: "plan", updatedAt: "2026-10-01" },
     { id: "s-tmp", title: "Scratch", projectPath: null, mode: "agent", updatedAt: "2026-11-03" },
+    { id: "s-ssh", title: "SSH session", projectPath: "/remote", mode: "agent" },
+    { id: "s-ungrouped", title: "Ungrouped", projectPath: "/unregistered", mode: "agent" },
   ];
   const meta = { projectMeta: {}, sessionMeta: {} };
   const calls = [];

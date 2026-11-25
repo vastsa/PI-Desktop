@@ -159,9 +159,6 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return index.get(normalizeProjectKey(path))?.id;
   }
 
-  const allowed = (access: LanAccess, projectId: string | null | undefined) =>
-    projectId === null ? access.temporary : projectId !== undefined && access.projectIds.includes(projectId);
-
   function sessionView(session: HostSession, projectId: string | null, meta: LanMeta): LanSession {
     const own = meta.sessionMeta[session.id] ?? {};
     const title = session.title?.trim() || "";
@@ -198,13 +195,12 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     const session = sessions.find((candidate) => candidate.id === sessionId);
     if (!session) throw new LanError(404, "NOT_FOUND");
     const projectId = projectOf(session, rootIndex(list));
-    if (projectId === undefined || !allowed(access, projectId)) throw new LanError(404, "NOT_FOUND");
+    if (projectId === undefined || (projectId === null && !access.temporary)) throw new LanError(404, "NOT_FOUND");
     const meta = deps.organization.read();
     return { session, projectId, meta, view: sessionView(session, projectId, meta) };
   }
 
-  async function authorizedProject(access: LanAccess, projectId: string) {
-    if (!access.projectIds.includes(projectId)) throw new LanError(404, "NOT_FOUND");
+  async function requireLocalProject(projectId: string) {
     const group = (await groups()).find((candidate) => candidate.id === projectId);
     if (!group) throw new LanError(404, "NOT_FOUND");
     const meta = deps.organization.read();
@@ -219,12 +215,11 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
 
   const matches = (text: string, query: string) => !query || text.toLowerCase().includes(query.toLowerCase());
 
-  async function listProjects(access: LanAccess, query: URLSearchParams): Promise<LanPage<LanProject>> {
+  async function listProjects(query: URLSearchParams): Promise<LanPage<LanProject>> {
     const meta = deps.organization.read();
     const archivedOnly = query.get("archived") === "1";
     const q = (query.get("q") ?? "").trim();
     const list = distinctViews(await groups(), meta)
-      .filter(({ group }) => access.projectIds.includes(group.id))
       .filter(({ view }) => view.archived === archivedOnly && matches(view.label, q))
       .sort((a, b) => Number(b.view.pinned) - Number(a.view.pinned) || b.group.lastOpenedAt - a.group.lastOpenedAt)
       .map(({ view }) => view);
@@ -234,9 +229,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
   async function listSessions(access: LanAccess, query: URLSearchParams): Promise<LanPage<LanSession>> {
     const requested = query.get("projectId") ?? "";
     const wantTemporary = requested === LAN_TEMPORARY_PROJECT;
-    if (wantTemporary ? !access.temporary : !access.projectIds.includes(requested)) {
-      throw new LanError(404, "NOT_FOUND");
-    }
+    if (wantTemporary && !access.temporary) throw new LanError(404, "NOT_FOUND");
     const [list, sessions] = await Promise.all([groups(), hostSessions()]);
     if (!wantTemporary && !list.some((group) => group.id === requested)) throw new LanError(404, "NOT_FOUND");
     const index = rootIndex(list);
@@ -318,7 +311,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     if (projectId === null) {
       if (!access.temporary) throw new LanError(404, "NOT_FOUND");
     } else {
-      const { group, view } = await authorizedProject(access, projectId);
+      const { group, view } = await requireLocalProject(projectId);
       if (view.archived) throw new LanError(409, "ARCHIVED");
       projectPath = group.primaryPath;
     }
@@ -335,7 +328,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
   async function organizeProject(access: LanAccess, projectId: string, body: Record<string, unknown>) {
     requireOrganize(access);
     const [field, value] = oneOrganizeField(body);
-    const { group, view } = await authorizedProject(access, projectId);
+    const { group, view } = await requireLocalProject(projectId);
     if (body.revision !== view.revision) throw new LanError(409, "CONFLICT");
     if (field === "archived" && value === true) {
       const index = rootIndex([group]);
@@ -424,18 +417,12 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
   }
 
   return {
-    /** Operator-only list for the Desktop pairing dialog. */
-    async operatorProjects(): Promise<Array<{ id: string; label: string }>> {
-      const meta = deps.organization.read();
-      return distinctViews(await groups(), meta).map(({ view }) => ({ id: view.id, label: view.label }));
-    },
-
     async handle(request: LanRequest, key: string | null): Promise<unknown> {
       const { method, path, access, query, body } = request;
       const parts = path.split("/").filter(Boolean).map(decodeURIComponent); // ["v1", ...]
       const [, resource, id, sub] = parts;
       if (method === "GET") {
-        if (resource === "projects" && !id) return listProjects(access, query);
+        if (resource === "projects" && !id) return listProjects(query);
         if (resource === "sessions" && !id) return listSessions(access, query);
         if (resource === "sessions" && id && !sub) return conversation(access, id);
         if (resource === "sessions" && id && sub === "history") {

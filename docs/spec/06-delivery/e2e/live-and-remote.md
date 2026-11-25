@@ -763,24 +763,25 @@ user's running instance.
 - **Preconditions:** Fresh Desktop profile with projects A and B; a real phone
   on the selected private LAN. Repeat on iOS Safari and Android Chrome.
 - **Steps:** Choose the interface and start. Open **Add device**, copy the shown
-  `http://` address, and enter the displayed code on the phone. In the review
-  dialog, select A and allow the request. Open and close the dialog with the
-  keyboard, regenerate an expired code, and deny a separate waiting request.
-  Close/reopen the tab, hide Desktop, then stop, quit and relaunch Desktop.
+  `http://` address, and enter the displayed code on the phone. Confirm the
+  device without choosing projects. Add project C on Desktop after pairing.
+  Open and close the dialog with the keyboard, regenerate an expired code,
+  and deny a separate waiting request. Close/reopen the tab, hide Desktop,
+  then stop, quit and relaunch Desktop.
 - **Expected:** No listener by default and no project data before confirmation.
-  A new request advances to review without polling or user refresh. The
-  approval action requires a scope; the paired device sees A only. An expired,
-  reused or five-times-wrong code fails. Hiding Desktop/closing the tab does not
-  sign out. Stopping closes streams, invalidates cookies and releases the port;
-  restarting requires pairing again. An occupied port or isolated Wi-Fi
-  produces actionable guidance, not a silent rebind.
+  The request advances to device confirmation, which discloses access to all
+  local projects. The paired device sees A, B and subsequently C without another
+  approval; Temporary conversations remain off. An expired, reused or five-times-
+  wrong code fails. Hiding Desktop/closing the tab does not sign out. Stopping
+  closes streams, invalidates cookies and releases the port; restarting requires
+  pairing again. An occupied port or isolated Wi-Fi produces actionable guidance.
 - **Acceptance:** A, E; W01, W06.
 
 ### E2E-270: Organize projects and sessions without stealing navigation
 
 - **Preconditions:** Desktop is editing an unsent draft in A. The phone has
-  View and Organize for A and B; B is a closed local multi-root group with
-  existing sessions, one separately archived. Seed a duplicate display name.
+  View and Organize; B is a closed local multi-root group with existing
+  sessions, one separately archived. Seed a duplicate display name.
 - **Steps:** Search for B, open it, pin and rename it; rename/pin/archive/restore
   an idle session. Archive and restore B through the archived filter. Make a
   competing rename from Desktop and submit the stale edit from the phone.
@@ -847,21 +848,21 @@ user's running instance.
 
 ### E2E-274: Enforce device grants, network boundary and revocation
 
-- **Preconditions:** A View-only device, a second device with Chat/Organize for
-  A only, and unshared B, Temporary and SSH-backed fixtures. Use a controlled
+- **Preconditions:** A View-only device, a second device with Chat, Organize and
+  Temporary access, two local projects and an SSH-backed project. Use a controlled
   clock, a second interface and an allowed and a disallowed browser origin.
 - **Steps:** Exercise catalog, deep links, history, search/counts, commands and
   SSE with those identities. Check wrong Origin/Host, absent CSRF, expired
   cookies, pairing throttles and rejected admin/owner operations. In **Permissions**,
-  replace A with B and switch to View only while a stream, a queued turn and an
-  in-flight catalog request exist. Remove the device and change the desktop
-  network. Inspect fixture logs/cache.
+  turn off Temporary, Chat and Organize while a temporary history request and
+  stream are in flight. Remove the device and change the desktop network.
+  Inspect fixture logs/cache.
 - **Expected:** No out-of-scope metadata, events or writes, even for known IDs;
   View cannot mutate. No generic owner/SSH exemption or raw RPC, no leaked
   credentials/content in logs or persistent browser caches. Permission edits
-  do not require re-pairing and the browser reflects the new access after
-  reconnecting. Lost scope closes affected streams and cancels its pending
-  queued work; a late or cached reply under the old grants cannot recover it.
+  do not require re-pairing or change local project visibility. Temporary scope
+  loss closes affected streams and cancels its pending queued work; a late or
+  cached reply under the old grants cannot recover it.
   Expiry is not extended by a heartbeat. No connection on other interfaces or
   automatic sharing on the new network.
 - **Acceptance:** D, E; W01, W02, W06.

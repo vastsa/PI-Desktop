@@ -3,8 +3,8 @@
  * No native paths, host RPC or provider secrets cross this boundary.
  */
 export interface LanGrants {
-  /** Host project group ids the device may see. */
-  projectIds: string[];
+  /** All eligible local projects, resolved from the current Host catalog. */
+  projectScope: "all-local";
   /** Temporary (projectless) conversations. */
   temporary: boolean;
   /** Create sessions, send, queue, stop. */
@@ -79,7 +79,6 @@ export interface LanAdminView {
   pending: LanPairing[];
   devices: LanDevice[];
   interfaces: LanInterface[];
-  projects: Array<{ id: string; label: string }>;
   error: string | null;
 }
 export type LanAdminAction =

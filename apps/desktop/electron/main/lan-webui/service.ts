@@ -55,8 +55,7 @@ export function createLanWebUiService(deps: {
     return server;
   };
 
-  async function view(error: string | null = null): Promise<LanAdminView> {
-    const projects = await workspace.operatorProjects().catch(() => []);
+  function view(error: string | null = null): LanAdminView {
     const current = server;
     const running = current?.running() === true;
     return {
@@ -68,7 +67,6 @@ export function createLanWebUiService(deps: {
       pending: running ? current!.pending() : [],
       devices: running ? current!.devices() : [],
       interfaces: listLanInterfaces(),
-      projects,
       error,
     };
   }

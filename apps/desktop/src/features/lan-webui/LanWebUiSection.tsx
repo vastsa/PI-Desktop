@@ -194,7 +194,7 @@ export function LanWebUiSection() {
                       <div className="lan-device-name">{entry.label}</div>
                       <div className="lan-device-meta">
                         {[
-                          grants.projectIds.length ? t("scope", { count: grants.projectIds.length }) : null,
+                          t("scopeAll"),
                           grants.temporary ? t("scopeTemporary") : null,
                           actions.length ? list.format(actions) : t("viewOnly"),
                           t("activeAt", { time: time(entry.lastActiveAt) }),
@@ -233,7 +233,6 @@ export function LanWebUiSection() {
           key={request.id}
           mode="approve"
           label={request.label}
-          projects={view.projects}
           initial={NEW_DEVICE_GRANTS}
           busy={busy}
           error={errorText}
@@ -247,7 +246,6 @@ export function LanWebUiSection() {
           key={device.id}
           mode="edit"
           label={device.label}
-          projects={view.projects}
           initial={device.grants}
           busy={busy}
           error={errorText}

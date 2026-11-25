@@ -64,7 +64,6 @@
 .lan-address-hint,
 .lan-device-meta,
 .lan-dialog-description,
-.lan-dialog-footer-hint,
 .lan-code-meta,
 .lan-pair-waiting,
 .lan-grants-option-hint,
@@ -113,14 +112,12 @@
   border-block-start: 1px solid var(--ds-border-subtle);
 }
 
-
 .lan-device.is-request {
   background: color-mix(in oklab, var(--ds-accent) 7%, var(--ds-tile));
 }
 
 .lan-device-actions,
-.lan-code-meta,
-.lan-grants-section-meta {
+.lan-code-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -223,10 +220,6 @@
   gap: 8px;
   padding: 12px 20px;
   border-top: 1px solid var(--ds-border-subtle);
-}
-
-.lan-dialog-footer-hint {
-  margin-inline-end: auto;
 }
 
 .lan-pair-steps {
@@ -337,27 +330,6 @@
   gap: 16px;
 }
 
-.lan-grants-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  margin-bottom: 6px;
-}
-
-.lan-grants-section-title {
-  margin: 0;
-  color: var(--ds-text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-}
-
-.lan-grants-section-meta {
-  color: var(--ds-text-secondary);
-  font-size: var(--text-sm);
-}
-
 .lan-grants-list {
   display: grid;
   border: 1px solid var(--ds-border-subtle);
@@ -365,13 +337,11 @@
   background: var(--ds-tile);
 }
 
-/* Keep one scroll region in the dialog; even long project lists share it. */
 .lan-grants-list > :not(:first-child) {
   border-top: 1px solid var(--ds-border-subtle);
 }
 
 .lan-grants-option.ui-checkbox,
-.lan-grants-empty,
 .lan-grants-fixed {
   min-height: 40px;
   padding: 9px 12px;
@@ -396,16 +366,6 @@
 
 .lan-grants-option-label {
   color: var(--ds-text-primary);
-  font-size: var(--text-sm-plus);
-}
-
-.lan-grants-option.ui-checkbox.lan-grants-option-separate {
-  border-top: 1px solid var(--ds-border-default);
-}
-
-.lan-grants-empty {
-  margin: 0;
-  color: var(--ds-text-secondary);
   font-size: var(--text-sm-plus);
 }
 
