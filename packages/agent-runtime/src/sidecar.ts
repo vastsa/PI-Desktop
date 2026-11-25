@@ -73,6 +73,7 @@ function nativeProjectPaths(params: { projectPaths?: unknown } | undefined): str
 
 const runtimes: RuntimeMap = new Map();
 let cacheWarmingSessionId: string | undefined;
+let cacheWarmingWaitAllowed = false;
 const hostProxy = new ParentHostProxy();
 const testRuntimeIds = new WeakMap<DesktopAgentRuntime, string>();
 function testRuntimeIdentity(sessionId: string) {
@@ -377,6 +378,7 @@ async function runtimeFor(
   });
   runtimes.set(sessionId, runtime);
   runtime.setCacheWarmingForeground(sessionId === cacheWarmingSessionId);
+  runtime.setCacheWarmingWaitAllowed(cacheWarmingWaitAllowed);
   // Load failures are diagnostics, never a failed prompt (spec 16 §4.4).
   await runtime.loadTrustedExtensions().catch(() => undefined);
   if (provider.extensionAgentKey) {
@@ -482,6 +484,11 @@ async function handle(method: string, params: any): Promise<unknown> {
       return testRuntimeIdentity(String(params.sessionId ?? ""));
     }
     case "agent.setCacheWarmingSession": {
+      const waitAllowed = params?.waitAllowed === true;
+      if (cacheWarmingWaitAllowed !== waitAllowed) {
+        cacheWarmingWaitAllowed = waitAllowed;
+        for (const runtime of runtimes.values()) runtime.setCacheWarmingWaitAllowed(waitAllowed);
+      }
       const next = typeof params?.sessionId === "string" ? params.sessionId : undefined;
       if (next !== cacheWarmingSessionId) {
         if (cacheWarmingSessionId) runtimes.get(cacheWarmingSessionId)?.setCacheWarmingForeground(false);

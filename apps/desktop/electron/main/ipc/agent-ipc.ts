@@ -667,7 +667,7 @@ export function registerAgentIpc({
           // The host-created durable turn is the approval identity used by
           // Rust. The runtime must not replace it with a provider-local UUID.
           turnId: durableTurnId,
-          cacheWarmingEligible: !background && !voiceOrigin &&
+          cacheWarmingEligible: !background && !voiceOrigin && !launch.sidecarParams.remoteWorkspace &&
             !scheduledRunsBySession?.has(req.sessionId) && !isAutomationRequest(req),
           content: background ? "" : modelContent,
           ...(completion ? { backgroundCompletion: completion } : {}),

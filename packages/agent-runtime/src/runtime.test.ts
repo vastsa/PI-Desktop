@@ -11333,6 +11333,69 @@ describe("DesktopAgentRuntime subagents", () => {
     }
   });
 
+  it.each(["explicit", "automatic"] as const)("keeps the parent cache warm offscreen during an %s subagent wait", async (kind) => {
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.result = undefined;
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ subagents: [explorer], onEvent, thinkingLevel: "off" });
+    const models = (runtime as unknown as { models: Models }).models;
+    let normalRequests = 0;
+    const stream = vi.spyOn(models, "streamSimple").mockImplementation((_model, _context, options) => {
+      const refresh = options?.disableContinuation === true;
+      if (!refresh) normalRequests++;
+      const content = refresh
+        ? [{ type: "toolCall", id: "must-not-run", name: "Task", arguments: { agent: "explorer", task: "Do not run." } }]
+        : normalRequests === 1
+          ? [{ type: "toolCall", id: "delegate", name: "Task", arguments: { agent: "explorer", task: "Inspect the fixture." } }]
+          : normalRequests === 2 && kind === "explicit"
+            ? [{ type: "toolCall", id: "wait", name: "TaskWait", arguments: {} }]
+            : [{ type: "text", text: "Synthetic answer." }];
+      const stopReason = content[0].type === "toolCall" && !refresh ? "toolUse" : "stop";
+      const result = assistantMessage({ content, stopReason }) as AssistantMessage;
+      result.usage.cacheRead = 2_048;
+      const events = createAssistantMessageEventStream();
+      events.push({ type: "start", partial: result });
+      events.push({ type: "done", reason: stopReason, message: result });
+      events.end(result);
+      return events;
+    });
+    vi.useFakeTimers();
+    runtime.setCacheWarmingWaitAllowed(true);
+    runtime.setCacheWarmingForeground(true);
+    const running = runtime.prompt("Start the inspection.", "initial-user", "active-turn");
+    try {
+      await vi.waitFor(() => expect(runtime.getStatus().activity?.phase).toBe("waiting-subagents"));
+      const lastRequest = stream.mock.calls.at(-1);
+      const before = stream.mock.calls.length;
+      runtime.setCacheWarmingForeground(false);
+      onEvent.mockClear();
+      await vi.advanceTimersByTimeAsync(270_000);
+      await vi.waitFor(() => expect(stream).toHaveBeenCalledTimes(before + 1));
+      expect(stream.mock.calls.at(-1)?.[1]).toEqual(lastRequest?.[1]);
+      expect(stream.mock.calls.at(-1)?.[2]).toMatchObject({
+        maxTokens: 1, disableContinuation: true, maxRetries: 0,
+      });
+      expect(subagentRuns.calls).toHaveLength(1);
+      expect(onEvent.mock.calls.map(([event]) => event)).toEqual([
+        expect.objectContaining({ turnId: "active-turn", event: expect.objectContaining({ type: "usage" }) }),
+      ]);
+
+      subagentRuns.resolveRun?.({ agentName: "explorer", status: "completed", report: "Fixture inspected.", turns: 1, toolCalls: 0 });
+      await running;
+      const completed = stream.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(270_000);
+      expect(stream).toHaveBeenCalledTimes(completed);
+    } finally {
+      await runtime.abort();
+      await running;
+      await runtime.dispose();
+      vi.useRealTimers();
+      subagentRuns.deferred = false;
+    }
+  });
+
   it("converges through TaskWait with reports and statuses", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     subagentRuns.calls.length = 0;

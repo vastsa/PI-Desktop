@@ -1925,12 +1925,19 @@ export function isolatedWorkspaceGuidance(): string {
 }
 
 export class DesktopAgentRuntime {
-  private readonly idleCacheWarming = new IdleCacheWarming(() => !this.disposed && !this.getStatus().isRunning);
+  private readonly idleCacheWarming = new IdleCacheWarming((waiting) =>
+    !this.disposed && !this.runCancelled && !this.turnHadError &&
+    (waiting ? this.agentActivity?.phase === "waiting-subagents" : !this.getStatus().isRunning)
+  );
   private cacheWarmingTurnId?: string;
   private cacheWarmingAttempt = 0;
 
   setCacheWarmingForeground(foreground: boolean): void {
     this.idleCacheWarming.setForeground(foreground);
+  }
+
+  setCacheWarmingWaitAllowed(allowed: boolean): void {
+    this.idleCacheWarming.setWaitingAllowed(allowed);
   }
 
   invalidateCacheWarming(providerId?: string): void {
@@ -2447,9 +2454,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               nativeCost: this.provider.modelConfig?.nativeCost,
               onUsage: (usage) => this.emit({ type: "usage", usage }, usageTurnId),
             });
+          const idleEligible = this.idleCacheWarming.isForeground;
           if (usageTurnId && usageTurnId === this.cacheWarmingTurnId &&
-              this.idleCacheWarming.isForeground && input === requestContext &&
-              !m.webSearch) {
+              (idleEligible || this.idleCacheWarming.canRememberWaitingRequest) &&
+              input === requestContext && !m.webSearch) {
             const model = this.thinkingLevel === "omit" ? omitThinkingModel(m) : m;
             const omitThinking = this.thinkingLevel === "omit";
             const messageCount = this.agent.state.messages.length;
@@ -2473,14 +2481,14 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
               if (extensionReplacedPayload || this.disposed || this.runCancelled ||
                   attempt !== this.cacheWarmingAttempt) return;
               this.idleCacheWarming.remember({
-                model, options: replayOptions, startedAt, result, foregroundRevision,
+                model, options: replayOptions, startedAt, result, foregroundRevision, idleEligible,
                 canResume,
                 oauth: this.provider.authKind === OAUTH_AUTH_KIND,
                 metered: this.provider.authKind !== OAUTH_AUTH_KIND &&
                   this.provider.authKind !== "none" && this.provider.modelConfig?.nativeCost !== undefined &&
                   /^(?:https:\/\/api\.anthropic\.com|https:\/\/api\.openai\.com)(?:\/v1)?\/?$/.test(model.baseUrl),
-                refresh: async (signal, deadline) => {
-                  if (foregroundRevision !== this.idleCacheWarming.foregroundRevision) {
+                refresh: async (signal, deadline, checkPrefix) => {
+                  if (checkPrefix) {
                     if (!await this.cacheWarmingInstructionSourcesMatch() || !canResume()) {
                       throw new Error("Cache warming prefix changed");
                     }
@@ -5965,7 +5973,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.steeringWaitAbort?.abort();
     this.retainPendingSteering();
     this.abortRunningDelegations(!this.runCancelled && !this.disposed);
-    this.delegationWaitTargets = undefined;
+    this.endDelegationWait();
     this.clearAgentActivity();
   }
 
@@ -6102,6 +6110,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         ? this.agentActivity.since
         : Date.now();
     this.setAgentActivity(waitingSubagentsActivity(targets, since));
+    this.idleCacheWarming.setWaiting(true);
   }
 
   private refreshDelegationWait(): void {
@@ -6124,6 +6133,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   private endDelegationWait(): void {
+    if (this.delegationWaitTargets) {
+      this.cacheWarmingAttempt++;
+      this.idleCacheWarming.setWaiting(false);
+    }
     this.delegationWaitTargets = undefined;
     if (this.agentActivity?.phase === "waiting-subagents") {
       this.clearAgentActivity();

@@ -17,21 +17,23 @@ export function createForegroundCacheWarming({
   let viewingSessionId: string | null = null;
   let suspended = false;
   let screenLocked = false;
+  let rendererGone = false;
 
-  function publish(sessionId: string | null): void {
-    void getSidecar()?.call("agent.setCacheWarmingSession", { sessionId }).catch(() => undefined);
+  function publish(sessionId: string | null, waitAllowed = false): void {
+    void getSidecar()?.call("agent.setCacheWarmingSession", { sessionId, waitAllowed }).catch(() => undefined);
   }
 
   function sync(): void {
     const window = getMainWindow();
     const visible = window && !window.isDestroyed() && window.isFocused() &&
       window.isVisible() && !window.isMinimized();
-    publish(enabled && visible && !suspended && !screenLocked ? viewingSessionId : null);
+    const waitAllowed = enabled && Boolean(visible) && !suspended && !screenLocked && !rendererGone;
+    publish(waitAllowed ? viewingSessionId : null, waitAllowed);
   }
 
   function clearView(): void {
     viewingSessionId = null;
-    publish(null);
+    sync();
   }
 
   return {
@@ -56,12 +58,23 @@ export function createForegroundCacheWarming({
       }
     },
     observeWindow(window: BrowserWindow): void {
+      rendererGone = false;
       window.on("focus", sync);
       window.on("blur", () => publish(null));
       window.on("hide", () => publish(null));
       window.on("minimize", () => publish(null));
-      window.once("closed", clearView);
-      window.webContents.once("render-process-gone", clearView);
+      window.once("closed", () => {
+        viewingSessionId = null;
+        publish(null);
+      });
+      window.webContents.on("render-process-gone", () => {
+        rendererGone = true;
+        clearView();
+      });
+      window.webContents.on("did-finish-load", () => {
+        rendererGone = false;
+        sync();
+      });
       window.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
         if (isMainFrame && !inPlace) clearView();
       });

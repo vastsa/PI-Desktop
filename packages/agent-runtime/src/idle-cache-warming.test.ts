@@ -30,7 +30,7 @@ function arm(
 ) {
   warming.remember({
     model: requestModel, options: {}, startedAt: Date.now(), result, metered: false, oauth: false,
-    canResume: () => true, foregroundRevision: warming.foregroundRevision, refresh,
+    canResume: () => true, foregroundRevision: warming.foregroundRevision, idleEligible: true, refresh,
   });
   warming.settle();
 }
@@ -84,6 +84,66 @@ describe("foreground prompt-cache warming", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it("discards a tool-use candidate when its turn settles without a wait", async () => {
+    const warming = new IdleCacheWarming(() => true);
+    const refresh = vi.fn(async () => response(4_096));
+    warming.setWaitingAllowed(true);
+    arm(warming, refresh, model, { ...response(0, 4_096), stopReason: "toolUse" });
+    warming.setWaiting(true);
+    await vi.advanceTimersByTimeAsync(interval);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("sends no refresh if a delegation wait ends before the first due time", async () => {
+    const warming = new IdleCacheWarming(() => true);
+    const refresh = vi.fn(async () => response(4_096));
+    warming.setWaitingAllowed(true);
+    warming.setWaiting(true);
+    arm(warming, refresh);
+    await vi.advanceTimersByTimeAsync(interval - 1);
+    warming.setWaiting(false);
+    await vi.advanceTimersByTimeAsync(windowMs);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it.each(["wait exit", "window permission loss"])(
+    "keeps an in-flight refresh across view changes and aborts it on %s",
+    async (stop) => {
+      const warming = new IdleCacheWarming(() => true);
+      const refresh = vi.fn((signal: AbortSignal) => new Promise<AssistantMessage>((resolve) => {
+        signal.addEventListener("abort", () => resolve(response(0)), { once: true });
+      }));
+      warming.setForeground(true);
+      warming.setWaitingAllowed(true);
+      warming.setWaiting(true);
+      arm(warming, refresh);
+      await vi.advanceTimersByTimeAsync(interval);
+      const signal = refresh.mock.calls[0][0];
+      warming.setForeground(false);
+      expect(signal.aborted).toBe(false);
+      if (stop === "wait exit") warming.setWaiting(false);
+      else warming.setWaitingAllowed(false);
+      expect(signal.aborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(windowMs);
+      expect(refresh).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("bounds background waiting to six refreshes and stops when the desktop disallows it", async () => {
+    const warming = new IdleCacheWarming(() => true);
+    const refresh = vi.fn(async () => response(4_096));
+    warming.setWaitingAllowed(true);
+    warming.setWaiting(true);
+    arm(warming, refresh);
+    await vi.advanceTimersByTimeAsync(windowMs);
+    expect(refresh).toHaveBeenCalledTimes(6);
+
+    arm(warming, refresh);
+    warming.setWaitingAllowed(false);
+    await vi.advanceTimersByTimeAsync(interval);
+    expect(refresh).toHaveBeenCalledTimes(6);
+  });
+
   it("aborts in-flight work on focus loss", async () => {
     const warming = new IdleCacheWarming(() => true);
     const refresh = vi.fn((signal: AbortSignal) => new Promise<AssistantMessage>((resolve) => {
@@ -111,6 +171,25 @@ describe("foreground prompt-cache warming", () => {
     await vi.advanceTimersByTimeAsync(windowMs);
     arm(warming, refresh, { ...model, promptCache: { short: 3_600 } });
     await vi.advanceTimersByTimeAsync(windowMs);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the OpenAI Responses default only on the official endpoint", async () => {
+    const warming = new IdleCacheWarming(() => true);
+    const refresh = vi.fn(async () => response(4_096));
+    const openAiResponses: Model<"openai-responses"> = {
+      ...model, api: "openai-responses", baseUrl: "https://api.openai.com/v1",
+      compat: { supportsExplicitPromptCacheMode: true },
+    };
+
+    warming.setWaitingAllowed(true);
+    warming.setWaiting(true);
+    arm(warming, refresh, openAiResponses);
+    await vi.advanceTimersByTimeAsync(interval);
+    expect(refresh).not.toHaveBeenCalled();
+
+    arm(warming, refresh, { ...openAiResponses, baseUrl: "https://provider.invalid/v1" });
+    await vi.advanceTimersByTimeAsync(interval);
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 

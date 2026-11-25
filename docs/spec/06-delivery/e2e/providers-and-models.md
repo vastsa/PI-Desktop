@@ -31,6 +31,13 @@ Render the normal Composer toolbar for an active remote session that denies Stop
   or plugin scope. Verify the old request is discarded.
   Repeat with a plugin hook or model context source whose current output cannot
   be checked locally and verify that a new normal request is required.
+- Hold a synthetic subagent past the first refresh time while the parent is in
+  TaskWait or automatically waiting for delegation completion. Keep the app
+  focused and select another conversation or open Settings. Verify a bounded
+  refresh on the original parent schedule, with no tool execution or transcript
+  change. Resolve the wait or stop the turn and verify the old request stops
+  warming. Check that a short wait sends nothing and a long wait stops by the
+  original 30-minute limit.
 
 ## E2E-USAGE-explicit-zero-cache
 

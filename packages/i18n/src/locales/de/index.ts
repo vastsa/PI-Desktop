@@ -1764,7 +1764,7 @@ sklm: {
     "enterToSend": "Zum Senden eingeben",
     "enterToSendDesc": "Aus: Zum Senden ⌘/Strg+Eingabe drücken.",
     foregroundCacheWarming: "Prompt-Cache aktiv halten (experimentell)",
-    foregroundCacheWarmingDesc: "Solange die aktuelle Unterhaltung im Vordergrund ist, halten gelegentliche Anfragen ihren Cache aktiv. Diese Anfragen verbrauchen Anbieterkontingent.",
+    foregroundCacheWarmingDesc: "Hält den Prompt-Cache der ausgewählten Unterhaltung nach einem Durchlauf aktiv. Wenn der Hauptagent auf Subagenten wartet, bleibt der Cache auch beim Seitenwechsel aktiv. Die Anfragen verbrauchen Anbieterkontingent.",
     backgroundJobContinuation: "Nach Hintergrundaufgaben fortfahren",
     backgroundJobContinuationDesc: "Lokale Gespräche nach angeforderten Tests oder Builds mit den bestehenden Berechtigungen fortsetzen. Standardmäßig aus. Ausschalten verwirft wartende Fortsetzungen, beendet aber keine Prozesse.",
     codemode: "Codemode-Skripte",

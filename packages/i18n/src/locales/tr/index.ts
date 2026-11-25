@@ -1766,7 +1766,7 @@ sklm: {
     enterToSend: "Enter ile gönder",
     enterToSendDesc: "Kapalı: göndermek için ⌘/Ctrl+Enter.",
     foregroundCacheWarming: "İstem önbelleğini etkin tut (deneysel)",
-    foregroundCacheWarmingDesc: "Geçerli konuşma ön plandayken ara sıra istek göndererek önbelleği etkin tutar. Bu istekler sağlayıcının kotasını kullanır.",
+    foregroundCacheWarmingDesc: "Tur tamamlandıktan sonra seçili konuşmanın istem önbelleğini etkin tutar. Ana ajan alt ajanları beklerken sayfa değiştirseniz de önbellek etkin kalır. İstekler sağlayıcının kotasını kullanır.",
     backgroundJobContinuation: "Arka plan görevlerinden sonra devam et",
     backgroundJobContinuationDesc: "İstenen yerel test veya derlemeler bitince mevcut izinlerle konuşmaya devam et. Varsayılan olarak kapalıdır. Kapatmak bekleyen devamları iptal eder, işlemleri durdurmaz.",
     codemode: "Codemode betikleri",
