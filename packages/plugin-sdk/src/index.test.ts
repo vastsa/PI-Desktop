@@ -1030,8 +1030,13 @@ describe("contributes.providers", () => {
         },
       }).error,
     ).toMatch(/defaultThinkingLevel must be a string/);
+    expect(
+      validateManifest({
+        ...perm,
+        contributes: { providers: [{ ...provider, models: [{ ...provider.models[0], allowEmptyThinkingSignature: "yes" as never }] }] },
+      }).error,
+    ).toMatch(/allowEmptyThinkingSignature must be a boolean/);
   });
-
   it("requires provider.oauth and accepts a declared OAuth provider", () => {
     const oauthProvider: PluginProviderContrib = {
       ...provider,

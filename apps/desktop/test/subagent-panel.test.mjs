@@ -90,22 +90,14 @@ test("the delegation tab renders a message list with a read-only composer", () =
   assert.match(tabSource, /buildSubagentTranscript\(messages, delegationId\)/);
   assert.match(tabSource, /className="message-row user"/);
   assert.match(tabSource, /className="message-user-text selectable"/);
-  assert.match(tabSource, /className="message-row assistant"/);
-  assert.match(tabSource, /data-message-id=\{row\.message\.id\}/);
-  assert.match(tabSource, /<Textarea/);
-  assert.match(tabSource, /disabled/);
-  assert.match(tabSource, /rows=\{2\}/);
-  assert.match(tabSource, /placeholder=\{t\("panel\.subagentReadOnly"\)\}/);
-  assert.match(tabSource, /className="subagent-transcript-composer-controls"/);
-  assert.match(tabSource, /subagent-transcript-model-picker/);
-  assert.match(tabSource, /delegateModelId\(result\)/);
-  assert.match(tabSource, /delegateThinkingLevel\(result\)/);
-  assert.match(tabSource, /<SubagentStopButton delegationId=\{delegationId\} running compact \/>/);
-  assert.doesNotMatch(tabSource, /subagent-transcript-actions/);
-  assert.match(workPanelCss, /\.subagent-transcript-composer-controls \{/);
-  assert.match(workPanelCss, /\.subagent-transcript-model-picker \{/);
-  // Display-only: no send path may exist in the composer.
-  assert.doesNotMatch(tabSource, /onSubmit|onSend|api\.send/);
+  assert.match(tabSource, /<AssistantTurnBody[\s\S]*entry=\{reply\}/);
+  assert.match(tabSource, /<TranscriptSearchContext.Provider value=\{searchTarget\}>/);
+  assert.match(tabSource, /className="composer-shell"/);
+  assert.match(tabSource, /t\("panel\.subagentReadOnly"\)/);
+  assert.match(tabSource, /delegateModelId\(latest\)/);
+  assert.match(tabSource, /delegateThinkingLevel\(latest\)/);
+  assert.match(tabSource, /delegationIdForMessage\(latest\)/);
+  assert.doesNotMatch(tabSource, /<Textarea|contentEditable|<Composer|aria-haspopup|onSubmit|onSend/);
 });
 
 test("the tab owns one scroll surface and pins to the latest output", () => {

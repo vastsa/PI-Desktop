@@ -245,6 +245,12 @@ export const ActivityGroup = memo(function ActivityGroup({
   // Parent tools after a Task fan-out live in a later activity part (D319), so
   // this card is not the turn's live tail while its delegates are still running.
   const topologyLive = hasSubagentTopology && subagentSummary.running > 0;
+  // A later segment can render before a parallel tool or search has finished.
+  // Ignore stale ordinary running rows once their owning turn is no longer live.
+  const runningOperation = turnActive && items.some((item) =>
+    (item.kind === "tool" && item.message.toolStatus === "running") ||
+    (item.kind === "hostedSearch" && item.round.status === "searching"),
+  );
   const live = isActive || topologyLive;
   const searchTarget = useContext(TranscriptSearchContext);
   const revealRequest = useMemo(() => searchTarget && items.some((item) => item.message.id === searchTarget.messageId)
@@ -260,8 +266,7 @@ export const ActivityGroup = memo(function ActivityGroup({
   // their own switch, and the group's header states what it holds, so folding it
   // hides no detail the reader needs to expand the group to discover.
   const automaticallyOpen = activityGroupStartsOpen({
-    turnActive,
-    groupActive: live,
+    groupActive: live || runningOperation,
     collapseSettled: collapseSettledGroups,
   });
   const disclosure = useAutomaticDisclosure(

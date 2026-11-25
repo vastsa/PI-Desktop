@@ -9,6 +9,7 @@ register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 const { buildSubagentTranscript } = await import(
   "../src/lib/subagent-transcript.ts"
 );
+const { projectTurnProcess, segmentTurnProcess } = await import("../src/lib/turn-process.ts");
 
 function message(id, content, extra = {}) {
   return { id, content, ...extra };
@@ -47,7 +48,7 @@ test("one Task call becomes one user turn followed by the delegate's rows", () =
   assert.equal(transcript.turns.length, 1);
   assert.equal(transcript.turns[0].task, "Find all call sites of resize()");
   assert.deepEqual(
-    transcript.turns[0].rows.map((row) => row.kind),
+   transcript.turns[0].reply.parts.flatMap((part) => part.kind === "activity" ? part.items.map((item) => item.kind) : ["answer"]),
     ["tool", "thinking", "answer"],
   );
 });
@@ -74,12 +75,12 @@ test("a resumed delegation renders follow-up prompts as further user turns", () 
   assert.equal(transcript.turns.length, 2);
   assert.equal(transcript.turns[0].task, "First prompt");
   assert.deepEqual(
-    transcript.turns[0].rows.map((row) => row.message.id),
+   transcript.turns[0].messages.map((message) => message.id),
     ["answer-1"],
   );
   assert.equal(transcript.turns[1].task, "Follow-up prompt");
   assert.deepEqual(
-    transcript.turns[1].rows.map((row) => row.message.id),
+   transcript.turns[1].messages.map((message) => message.id),
     ["answer-2"],
   );
 });
@@ -126,12 +127,12 @@ test("parallel delegates never mix into each other's turns", () => {
   const b = buildSubagentTranscript(messages, "del-b");
   assert.equal(a.agentName, "explorer");
   assert.deepEqual(
-    a.turns.flatMap((turn) => turn.rows.map((row) => row.message.id)),
+   a.turns.flatMap((turn) => turn.messages.map((message) => message.id)),
     ["answer-a"],
   );
   assert.equal(b.agentName, "reviewer");
   assert.deepEqual(
-    b.turns.flatMap((turn) => turn.rows.map((row) => row.message.id)),
+   b.turns.flatMap((turn) => turn.messages.map((message) => message.id)),
     ["answer-b"],
   );
 });
@@ -152,8 +153,8 @@ test("nested tools stay with their owning delegate, not their tool parent", () =
   ];
   const transcript = buildSubagentTranscript(messages, "delegate-1");
   assert.equal(transcript.agentName, "reader");
-  assert.deepEqual(transcript.turns[0].rows.map((row) => row.message.id), ["code-1", "nested-read"]);
-  assert.equal(transcript.turns[0].rows[1].message.nestedParentToolCallId, "code-1");
+ assert.deepEqual(transcript.turns[0].messages.map((message) => message.id), ["code-1", "nested-read"]);
+ assert.equal(transcript.turns[0].messages[1].nestedParentToolCallId, "code-1");
   assert.equal(buildSubagentTranscript(messages, "root-code"), null);
 });
 
@@ -177,4 +178,25 @@ test("a call with no task argument degrades to an empty prompt", () => {
   ];
   const transcript = buildSubagentTranscript(messages, "del-1");
   assert.equal(transcript.turns[0].task, "");
+});
+
+test("a delegation turn uses the shared process layout and keeps its answer separate", () => {
+  const child = { parentToolCallId: "task-1", turnId: "parent-turn" };
+  const messages = [
+    taskCall("task-1", "Inspect files", { toolResult: { delegationId: "delegate-1" } }),
+    message("think", "", { ...child, role: "assistant", thinking: "Check the files." }),
+    message("read", "a file", { ...child, role: "tool", toolName: "Read" }),
+    message("run", "command output", { ...child, role: "tool", toolName: "Bash" }),
+    message("progress", "One more check.", { ...child, role: "assistant" }),
+    message("grep", "another file", { ...child, role: "tool", toolName: "Grep" }),
+    message("answer", "Done.", { ...child, role: "assistant" }),
+  ];
+  const { turns: [turn] } = buildSubagentTranscript(messages, "delegate-1");
+  assert.equal(turn.reply.id, "task-1");
+  const { process, responses } = projectTurnProcess(turn.reply);
+  assert.deepEqual(responses.map((part) => part.message.id), ["answer"]);
+  assert.ok(process.some((part) => part.kind === "message" && part.message.id === "progress"));
+  assert.deepEqual(segmentTurnProcess(process, "flat").map((segment) => segment.kind), ["process"]);
+  assert.deepEqual(segmentTurnProcess(process, "command-first").map((segment) => segment.kind), ["process", "run", "process"]);
+  assert.deepEqual(segmentTurnProcess(process, "fully-folded").map((segment) => segment.kind), ["process"]);
 });

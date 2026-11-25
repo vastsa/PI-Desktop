@@ -38,6 +38,7 @@ import {
   resolveNativeWebSearch,
   nativeWebSearchTransport,
   deepseekRequestCompat,
+  mistralRequestCompat,
   zhipuRequestCompat,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -379,6 +380,10 @@ export function buildProviderModel(
     modelId: provider.modelId,
     family: catalogModel.family,
   });
+  const mistralCompat = mistralRequestCompat({
+    vendorKey: provider.vendorKey,
+    baseUrl,
+  });
   const copilotDefaults =
     provider.vendorKey?.trim().toLowerCase() === "github-copilot"
       ? nativeCopilotHeaders(provider.modelId)
@@ -419,6 +424,7 @@ export function buildProviderModel(
           ...(thinkingProtocolCompat ?? {}),
           ...(zhipuCompat ?? {}),
           ...(deepseekCompat ?? {}),
+          ...(mistralCompat ?? {}),
           // Only an explicit saved binding may override endpoint compatibility.
           ...(typeof catalog?.supportsReasoningEffort === "boolean"
             ? { supportsReasoningEffort: catalog.supportsReasoningEffort }

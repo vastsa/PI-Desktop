@@ -206,6 +206,83 @@ function chainLatestCalls(
   };
 }
 
+function appendAssistantTurnMessage(
+  current: AssistantTurnEntry,
+  message: UiMessage,
+  delegate?: SubagentRun,
+) {
+  const pushActivity = (item: AssistantActivityItem) => {
+    const last = current.parts[current.parts.length - 1];
+    const standalone = isStandaloneRunActivity(item);
+    const lastStandalone =
+      last?.kind === "activity" &&
+      last.items.length === 1 &&
+      isStandaloneRunActivity(last.items[0]);
+    // A delegation card is only the Task fan-out. Mixing the parent's later
+    // Read/Grep/thinking into that group painted them as subagent work (D319).
+    // A standalone run row never merges with a neighbour, so adjacent Bash
+    // calls each keep their own row.
+    if (
+      last?.kind === "activity" &&
+      last.items.length > 0 &&
+      !standalone &&
+      !lastStandalone &&
+      isDelegationStartActivity(last.items[0]) === isDelegationStartActivity(item)
+    ) {
+      last.items.push(item);
+      return;
+    }
+    current.parts.push({ kind: "activity", items: [item] });
+  };
+
+  if (message.role === "tool") {
+    pushActivity({
+      kind: "tool",
+      message,
+      ...(delegate ? { delegate } : {}),
+    });
+    return;
+  }
+  const thinking = messageThinking(message);
+  if (thinking) pushActivity({ kind: "thinking", message });
+  for (const round of hostedSearchRounds(message.hostedSearch)) {
+    pushActivity({ kind: "hostedSearch", message, round });
+  }
+  const hasContent = messageContentFacts(message).hasContent;
+  if (hasContent || !thinking || message.error) {
+    current.parts.push({ kind: "message", message });
+    if (!current.anchorId && hasContent) {
+      current.anchorId = message.id;
+    }
+  }
+}
+
+function finishAssistantTurn(entry: AssistantTurnEntry) {
+  for (let index = 0; index < entry.parts.length; index += 1) {
+    const part = entry.parts[index];
+    const next = entry.parts[index + 1];
+    if (
+      part.kind === "activity" &&
+      next?.kind === "message" &&
+      !part.items.some((item) => item.message.id === next.message.id)
+    ) {
+      part.endedAt = next.message.createdAt;
+    }
+  }
+}
+
+/** Project the already scoped child messages of one Task call as one turn. */
+export function buildDelegationReply(callId: string, messages: readonly UiMessage[]): AssistantTurnEntry {
+  const entry: AssistantTurnEntry = { kind: "assistant-turn", id: callId, parts: [] };
+  for (const message of messages) {
+    if ((message.role === "assistant" || message.role === "tool") && isVisibleMessage(message)) {
+      appendAssistantTurnMessage(entry, message);
+    }
+  }
+  finishAssistantTurn(entry);
+  return entry;
+}
+
 /**
  * Group provider-level assistant fragments and tool rows into user-level turns.
  * Providers end an assistant message before each tool call, but that transport
@@ -249,31 +326,6 @@ export function buildTranscriptEntries(
     return turn;
   };
 
-  const pushActivity = (item: AssistantActivityItem) => {
-    const current = ensureTurn(item.message);
-    const last = current.parts[current.parts.length - 1];
-    const standalone = isStandaloneRunActivity(item);
-    const lastStandalone =
-      last?.kind === "activity" &&
-      last.items.length === 1 &&
-      isStandaloneRunActivity(last.items[0]);
-    // A delegation card is only the Task fan-out. Mixing the parent's later
-    // Read/Grep/thinking into that group painted them as subagent work (D319).
-    // A standalone run row never merges with a neighbour, so adjacent Bash
-    // calls each keep their own row.
-    if (
-      last?.kind === "activity" &&
-      last.items.length > 0 &&
-      !standalone &&
-      !lastStandalone &&
-      isDelegationStartActivity(last.items[0]) === isDelegationStartActivity(item)
-    ) {
-      last.items.push(item);
-      return;
-    }
-    current.parts.push({ kind: "activity", items: [item] });
-  };
-
   const appendMessage = (message: UiMessage) => {
     if (message.role === "user" || message.role === "system") {
       turn = undefined;
@@ -281,31 +333,9 @@ export function buildTranscriptEntries(
       return;
     }
 
-    if (message.role === "tool") {
-      const delegate = message.toolCallId
-        ? runs.get(message.toolCallId)
-        : undefined;
-      pushActivity({
-        kind: "tool",
-        message,
-        ...(delegate ? { delegate } : {}),
-      });
-      return;
-    }
-
-    const current = ensureTurn(message);
-    const thinking = messageThinking(message);
-    if (thinking) pushActivity({ kind: "thinking", message });
-    for (const round of hostedSearchRounds(message.hostedSearch)) {
-      pushActivity({ kind: "hostedSearch", message, round });
-    }
-    const hasContent = messageContentFacts(message).hasContent;
-    if (hasContent || !thinking || message.error) {
-      current.parts.push({ kind: "message", message });
-      if (!current.anchorId && hasContent) {
-        current.anchorId = message.id;
-      }
-    }
+    const delegate = message.role === "tool" && message.toolCallId
+      ? runs.get(message.toolCallId) : undefined;
+    appendAssistantTurnMessage(ensureTurn(message), message, delegate);
   };
 
   let previousRootTurnId: string | undefined;
@@ -325,18 +355,7 @@ export function buildTranscriptEntries(
   }
 
   for (const entry of entries) {
-    if (entry.kind !== "assistant-turn") continue;
-    for (let index = 0; index < entry.parts.length; index += 1) {
-      const part = entry.parts[index];
-      const next = entry.parts[index + 1];
-      if (
-        part.kind === "activity" &&
-        next?.kind === "message" &&
-        !part.items.some((item) => item.message.id === next.message.id)
-      ) {
-        part.endedAt = next.message.createdAt;
-      }
-    }
+    if (entry.kind === "assistant-turn") finishAssistantTurn(entry);
   }
 
   return { entries, visible };

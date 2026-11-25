@@ -5039,6 +5039,9 @@ See ADR 0332.
   absent or invalid values, keeps run rows inside their groups and lets only
   ordinary assistant progress text split them. The mode is read while rendering,
   so switching repaints immediately.
+- Follow-up: `autoCollapseSettledGroups` now folds an untouched group when it
+  stops being current and has no live work, rather than waiting for its turn
+  to end. The turn's outer disclosure and manual group choices are unchanged.
 - With `showThinking` on, Thinking rows default expanded in `flat` and
   `command-first`; `fully-folded` keeps the released exception where only the
   last active row opens while it is live. With the preference off, no completed

@@ -2107,6 +2107,7 @@ export function Sidebar({
       temporary?: boolean;
       projectPath?: string;
       global?: boolean;
+      recent?: boolean;
       showLastReplyDate?: boolean;
       /** The `Remote` section heading already says these rows live on a host. */
       insideRemoteSection?: boolean;
@@ -2139,7 +2140,7 @@ export function Sidebar({
     return (
       <div
         key={session.id}
-        className={`thread-item ${active ? "active" : ""} ${archived ? "archived" : ""} ${draggingSessionId === session.id ? "is-dragging" : ""} ${selectedIds.has(session.id) ? "selected" : ""}`}
+        className={`thread-item ${active ? "active" : ""} ${archived ? "archived" : ""} ${draggingSessionId === session.id ? "is-dragging" : ""} ${selectedIds.has(session.id) ? "selected" : ""} ${options?.recent && normalizedProjectPath ? "recent-project-session" : ""}`}
         data-sidebar-session-row={session.id}
         draggable={!running && !isRemoteSession(session)}
         onDragStart={(event) => {
@@ -2215,7 +2216,10 @@ export function Sidebar({
           <WorktreeBadge worktree={session.worktree} sessionId={session.id} />
           <span className="thread-item-title">{taskTitle(session.title)}</span>
           {options?.global ? (
-            <span className="thread-item-project">
+            <span
+              className="thread-item-project"
+              title={options?.recent && normalizedProjectPath ? owningProject : undefined}
+            >
               {owningProject}
             </span>
           ) : null}
@@ -2584,7 +2588,7 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="sidebar-body no-drag">
+      <div className="sidebar-body no-drag" onScroll={() => closeMenus(false)}>
         <SidebarPrimaryNav onNewTask={onNewTask} onBeforeNavigate={() => closeMenus(false)} />
 
         {pinnedSessions.length > 0 ? (
@@ -2682,7 +2686,7 @@ export function Sidebar({
             >
               {visibleRecentSessions.length > 0 ? (
                 <>
-                  {renderSessionRows(visibleRecentSessions, { global: true })}
+                  {renderSessionRows(visibleRecentSessions, { global: true, recent: true })}
                   {recentNextPageCount > 0 ? (
                     <button
                       type="button"
@@ -2731,7 +2735,7 @@ export function Sidebar({
             </div>
 
             <div
-              className={`sidebar-session-groups min-h-0 flex-1 overflow-auto px-0.5 ${projectsDropActive ? "is-drop-target" : ""}`}
+              className={`sidebar-session-groups px-0.5 ${projectsDropActive ? "is-drop-target" : ""}`}
               onScroll={() => {
                 if (sessionMenu || projectMenu || sectionMenu || sortOpen) closeMenus(false);
               }}
