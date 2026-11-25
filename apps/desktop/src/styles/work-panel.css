@@ -428,38 +428,30 @@
 
 .subagent-transcript-composer {
   flex: none;
-  border-top: 1px solid var(--ds-border-subtle);
-  padding: 10px 14px;
+  min-width: 0;
+  padding: 0 14px 10px;
 }
 
-.subagent-transcript-composer textarea {
-  font-size: var(--text-base);
-  line-height: var(--leading-chat);
-  display: block;
-  width: 100%;
-  min-height: calc(var(--leading-chat) * 2em);
-  resize: none;
+.subagent-composer-notice {
+  min-height: 2lh;
+  max-height: none;
+  color: var(--ds-text-secondary);
+  cursor: default;
 }
 
-.subagent-transcript-composer-controls {
-  display: flex;
+.subagent-composer-toolbar {
+  justify-content: flex-end;
+}
+
+.subagent-composer-model {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 8px;
-}
-
-.subagent-transcript-model-picker {
-  flex: 1 1 auto;
-  max-width: calc(100% - 36px);
-  justify-content: flex-start;
-  cursor: not-allowed;
-}
-
-.subagent-transcript-composer-controls > .stop-btn {
-  width: 26px;
-  height: 26px;
-  flex-basis: 26px;
+  min-width: 0;
+  min-height: 28px;
+  gap: 6px;
+  font-size: var(--text-sm);
+  padding-inline: 8px;
+  color: var(--ds-text-secondary);
 }
 /* Shared per-tool empty state used by Files and plugin fallback surfaces. */
 .work-tab-empty {

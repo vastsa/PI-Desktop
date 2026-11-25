@@ -375,8 +375,9 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   image checkbox. Cancel once, repeat and Save, then reopen settings and editor.
 - **Expected:** Cancel preserves both configurations. Save removes the model and
   its image candidate and clears the image default, even when another image
-  candidate remains on this or another provider. The settings summary therefore
-  shows the unavailable state until the user explicitly chooses a new default.
+  candidate remains on this or another provider. The image model row remains
+  visible: it shows **Not configured** with a picker when another candidate is
+  runnable, or an empty-state hint without a picker when no candidates remain.
   An unaffected chat default stays unchanged; a removed chat default still falls
   back to the first configured model. Reload preserves results.
 - **Specs:** 03-runtime/21-image-generation. **Acceptance:** B.
@@ -388,27 +389,30 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
 - **Preconditions:** Isolated desktop profile and workspace, built image feature,
   local chat and OpenAI Images HTTP fixtures; no live provider credentials.
 - **Steps:** Open Models settings with no image model configured; verify the image
-  summary row is absent. Open a provider's Advanced model settings and verify
-  **Set as image model** is grouped with the image/document attachment
-  capabilities and can be checked for multiple models. Save, use the image
-  summary menu to choose one marked model as the default, then submit a
-  two-image request through the composer and edit the first output through a
+  model row shows the no-candidates hint without a picker. Open a provider's
+  Advanced model settings and verify **Set as image model** is grouped with
+  the image/document attachment capabilities and can be checked for multiple
+  models. Save, choose a marked model from the image summary menu, then submit
+  a two-image request through the composer and edit the first output through a
   follow-up message. Collapse tool details.
-- **Expected:** After saving, the image summary appears with a 12px default-row
-  gap and lists all marked candidates, the selected default is changeable
-  without changing the chat default, decoded image previews stay outside
-  collapsed process details, multipart source upload is used for editing,
+- **Expected:** After saving, the image summary keeps its 12px default-row gap
+  and lists all marked candidates in the picker. Changing the image default does
+  not change the chat default, decoded image previews stay outside collapsed
+  process details, multipart source upload is used for editing,
   originals are preserved, and no image HTTP request occurs while unconfigured.
-- **Settings interactions:** The unconfigured state renders no image summary.
-  Mark candidates in the attachment capability group, save, and select one
-  from the summary menu. An existing missing/disabled candidate shows only
-  Currently unavailable. Covered in `scripts/e2e-image-generation-ui.mjs`.
+- **Settings interactions:** Mark candidates in the attachment capability group,
+  save, and select one from the summary menu. A missing or disabled default
+  shows **Currently unavailable**; another runnable candidate remains selectable.
+  When all marked models are unavailable, the row still shows **Currently
+  unavailable**, without a picker. Covered in `scripts/e2e-image-generation-ui.mjs`
+  and `apps/desktop/test/image-generation-row-empty-state.test.mjs`.
 - **Image model deselection (#826):** With one provider and one model marked
   for images, uncheck it in the provider editor. Cancel must preserve the image
   default; Save must clear both its candidate and default binding. Reopen settings
-  and the editor: the image row stays hidden, the checkbox stays unchecked, and
-  the model can be selected as the chat default. Covered in English and Chinese
-  by `scripts/e2e-image-generation-ui.mjs` with an API-boundary fixture.
+  and the editor: the image row shows the no-candidates hint without a picker,
+  the checkbox stays unchecked, and the model can be the chat default. Covered
+  in English and Chinese by `scripts/e2e-image-generation-ui.mjs` with an
+  API-boundary fixture.
 - **Conversation selection:** Every marked image provider/model is absent from
   default and Composer candidates. Other providers retain same-ID models. An
   existing session pinned to any marked image binding is rejected before
@@ -463,8 +467,13 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   `04-ux/09-interaction-patterns.md` §1.2
 - **Acceptance**: C (composer send)
 - **Milestone**: M2
-- **Status**: Source-level regression (`composer-ime.test.mjs`); full UI
-  keyboard journey remains Draft. Protocol smoke does not dispatch key events.
+- **Automation**: `pnpm test:e2e:composer-tail-line` mounts the production editor in
+  Electron. Type three lines, click the end of line one, insert one break, click
+  each painted line, then type and backspace at the end. Check the exact draft,
+  line geometry, selection and caret, including an empty last line, consecutive
+  breaks, native undo/redo of both insertion and Backspace, and IME preedit/commit. On a disposable desktop with
+  its own empty clipboard, add `--isolated-clipboard` to check native copy as well.
+  The full Settings-to-send journey remains Draft; this lane needs no provider.
 
 ## E2E-008e: Host speech transcribe and speak
 
@@ -1488,7 +1497,9 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   changes occur. The keyboard hint includes Shift+Enter and a submit hint, while the
   command/file hint includes `/` and `@`. The slash menu still contains `/new`,
   `/compact`, `/agent-mode`, `/plan-mode`, and `/goal-mode`, followed by a
-  Skills group at the bottom. Selecting a Skill inserts `/skill:<id>`; sending
+  Skills group at the bottom. Select a Skill mid-sentence and type its arguments;
+  verify the editor has one atomic Skill node, deletion removes the whole node,
+  and native undo restores it. The node serializes to `/skill:<id>` without an attachment; sending
   it keeps the typed command chip visible and the model calls `Skill` with the
   original ID before answering. Verify builtin, plugin, and user Skill prefixes,
   multiple inline references, and a prompt template sharing the unprefixed
@@ -3333,9 +3344,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   paste a screenshot and a large text selection.
 - **Expected**: Native disk files retain original paths and exact byte sizes;
   removable inline cards show human-readable size. No source contents cross
-  paste IPC or enter scratch/content-addressed snapshots. Small and large disk
-  files use the same reference flow; screenshots and generated text retain their
-  existing scratch/image behavior. Dispatch refreshes size, preserves metadata
+  paste IPC or enter scratch/content-addressed snapshots. Small and large
+  non-image disk files use the same reference flow. Native raster image files
+  within the import bounds (for example a screenshot tool's temporary PNG) are
+  copied into session scratch, attach as image chips and reach vision models as
+  image bytes even after the source is deleted; oversized images and SVGs keep
+  the reference flow. Screenshots and generated text retain their existing
+  scratch/image behavior. Dispatch refreshes size, preserves metadata
   through messages and model history, and clearly rejects unavailable or
   redirected sources. Forged ids/paths, another project and remote contexts are
   refused. Agent reads use normal permissions; referencing an external file does
@@ -3348,7 +3363,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   drives real React hooks, native disk-backed `File` objects, preload IPC,
   selection tokens, reference registration, prompt preparation and Composer
   history. A sparse 64 MiB + 1 byte source and a small file outside the project
-  retain size cards without renderer byte reads or scratch writes. The fixture
+  retain size cards without renderer byte reads or scratch writes, while a
+  native PNG in the same selection is imported to scratch and prepared as inline
+  image data. The fixture
   edits the large source before send and verifies refreshed size in model context.
   A second Electron process recalls the stored metadata and dispatches through
   the persisted reference records. Native clipboard metadata and provider
@@ -3358,6 +3375,16 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   Restore the saved selection before focusing the original control so selection
   updates cannot steal its final focus. Stale session/project previews restore
   neither focus nor selection (`composer-image-preview-focus.test.mjs`).
+- **Native pasteboard coverage (macOS)**: `pnpm test:e2e:composer-paste-image-file`
+  runs the built Desktop with a real Host, agent sidecar and preload IPC, writes
+  a temporary PNG outside the project to the general pasteboard as a file URL
+  (the PixPin/Finder shape from issue #2529), and pastes with a real paste
+  command. It asserts an image chip, deletes the source before send, then
+  verifies the local vision-capable Chat Completions fixture receives the exact
+  PNG as an `image_url` part with no local file reference context, and that the
+  transcript stores `attachments/<sha256>`. Only the model endpoint is a local
+  fixture. The pasteboard is shared with the desktop session, so the script
+  retries a paste only when Chromium saw an empty pasteboard.
 
 ## E2E-COMPOSER-deep-file-mentions: `@` reaches deep files in a large workspace
 
@@ -4530,11 +4557,15 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   answer; the `Show thinking` preference on and off; the `Transcript display`
   preference at Flat, Commands first, and Fully folded; a restart with saved
   settings; legacy message-level transcript search targets.
-- **Steps:** Confirm a live active group starts open, let that same turn finish
-  without interacting, and confirm the process closes so only the final answer
-  (and any error or pending-action surface) remains. Reopen it and confirm a
-  every settled group folded and every finished reasoning row folded, and that
-  each group header names the actions it contains plus the call count
+- **Steps:** In Commands first and Fully folded, start with an expanded current
+  group. Advance past a progress paragraph into another group while the turn is
+  still active. Verify that the previous group folds and the current group
+  remains open. Repeat with a running tool left behind in the previous group; it
+  stays open until that tool settles. Let the turn finish without interacting
+  and confirm the process closes so only the final answer (and any error or
+  pending-action surface) remains. Reopen it and confirm every settled group
+  and finished reasoning row starts folded, and that each header names the actions
+  it contains plus the call count
   (`搜索并读取文件 · 12 次操作`). Confirm tool and search payloads stay closed.
   Turn `Auto-fold finished groups` off and confirm every settled group opens
   whatever its size, then turn it back on; turn `Auto-fold finished thinking`
@@ -4586,10 +4617,10 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   stay inside their groups and only ordinary assistant progress text splits a
   group, so the middle progress paragraph ends the preceding group and the
   following activity starts a new one. A group appears only with at least two
-  visible items; a singleton has no group. Every group stays open while its turn
-  runs; after completion both nested levels fold, so every settled group and
-  every reasoning row that is no longer streaming starts closed, whatever the
-  group's size. Only the reasoning a live turn is still streaming starts
+  visible items; a singleton has no group. An untouched group folds when it is
+  no longer current and has no running tool, search, or delegation, even before
+  the turn ends. Finished reasoning also starts closed. Only the reasoning a
+  live turn is still streaming starts
   expanded when `Show thinking` is on, and a group does not inherit open state
   from the reasoning inside it, so folding a group hides expanded reasoning.
   Turning off `Auto-fold finished groups` opens every settled group; turning off
@@ -4630,8 +4661,9 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   group presentation only; precise item-level transcript search targeting is out
   of scope and keeps the existing message-level search behavior.
 - **Automation:** `pnpm test:e2e:transcript` covers the command-first and
-  fully-folded layouts, active-to-completed process disclosure behavior, the
-  automatic folding and reading-hold transitions, and the activity issue
+  fully-folded layouts, group-to-group handoff while the turn continues,
+  active-to-completed process disclosure, automatic folding and reading holds,
+  and the activity issue
   counter's inline layout at 320/800px and 100%/150% zoom in English and
   Simplified Chinese; `pnpm test:e2e:transcript-disclosure` verifies manual-open
   retention and viewport anchoring; `apps/desktop/test/turn-process.test.mjs`

@@ -1781,6 +1781,28 @@
   supported window size. Existing hover cards, context menus, drag/drop, and
   project pinning retain their normal behavior.
 
+## E2E-SIDEBAR-recent-project-label-width
+
+- **Preconditions**: Sidebar contains an unpinned project conversation and a
+  path-less Temporary conversation in Recent; at least one project session has
+  a title much longer than its project display name. The same project also has
+  a pinned conversation and a visible project-group row.
+- **Steps**: 1) Open the chat sidebar at its default width and inspect the
+  Recent rows. 2) Focus the session row and hover the project label.
+  3) Open the row menu and select the conversation. 4) Repeat at the minimum
+  supported sidebar width, then compare the Pinned, Temporary, and project
+  history rows.
+- **Expected**: The long Recent session title ellipsizes before it needlessly
+  consumes the project label's width; the full project name remains available
+  on hover. The session row remains selectable and its existing actions open.
+  Temporary rows have no Recent project-label sizing, and Pinned and
+  project-history row presentation and semantics are unchanged.
+- **Specs linked**: `04-ux/08-component-spec.md` §6.6.
+- **Acceptance**: Quality (sidebar layout and navigation).
+- **Milestone**: M5.
+- **Status**: Documented; SSR regression coverage in
+  `sidebar-pinned-rendering.test.mjs`.
+
 ## US-UI-59 Session-rooted background tools
 - Start a visible turn in project A, switch to project B while it runs, and
   inspect both sidebar status indicators.
@@ -2689,12 +2711,16 @@ Native gesture regression: run `node scripts/e2e-window-native-behavior.mjs`
 with the pinned Electron in an interactive desktop. The isolated fixture uses
 production minimum-size and maximize-guard logic. On macOS test both opaque
 and translucent windows: a 1440 DIP display's half-width minimum must allow a
-window below 800 DIP, maximize must preserve native zoom/green controls,
-and restore must re-enable edge resizing. `node scripts/e2e-window-controls.mjs`
+window below 800 DIP. Zoom/Restore must return the window to its original
+position and size, and AppKit must be able to resize its edges.
+`node scripts/e2e-window-controls.mjs`
 then covers the built shell: maximized caption regions must compute to no-drag,
 and a double-click must restore through the real preload/IPC and unlock the
-normal caption. `maximized-window-chrome.test.mjs` covers late-query/event races,
-repeated clicks, no-drag controls and unmount cleanup.
+normal caption. Native fullscreen enter/exit must also leave renderer maximize
+state synchronized after the AppKit transition settles, including when the
+native event precedes the final maximize flag. `maximized-window-chrome.test.mjs`
+and `window-state-sync.test.mjs` cover late-query/event races, fullscreen
+resync, repeated clicks, no-drag controls and cleanup.
 Windows covers maximize/restore with the same production guard; Linux keeps
 its compositor-owned geometry. Unit tests cover cancellable edge events and
 listener cleanup (`window-native-behavior.test.mjs`).
@@ -3547,6 +3573,24 @@ PowerShell-launched fixture; activation must not restore the native outline.
   styling checks; this is not a native focus/drag test. Unit coverage:
   `sidebar-navigation.test.mjs`, `sidebar-pinned-rendering.test.mjs`, and
   `sidebar-project-sessions.test.mjs`.
+
+## E2E-LAYOUT-sidebar-height
+
+- **Preconditions**: Pinned sessions, Recent sessions, and Projects are visible.
+  Seed one pinned conversation, at least seventeen unpinned conversations, and
+  an expanded project containing a conversation.
+- **Steps**: Click Load more in Recent sessions. Zoom in until the effective
+  viewport height is roughly 490 CSS px. Click a conversation in the project.
+  Zoom in further until the sidebar's minimum sizes overflow the viewport.
+  Scroll to the Projects list and the Settings footer, then reset zoom.
+- **Expected**: Recent and Pinned sessions can scroll within their lists.
+  The project conversation opens at 490 CSS px. At extreme zoom the sidebar
+  body scrolls and both Projects and Settings stay reachable. Resetting zoom
+  restores space without resetting the loaded Recent sessions.
+- **Specs linked**: `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md` §9.2
+- **Acceptance**: C, D, Quality
+- **Status**: Renderer coverage in `apps/desktop/test/sidebar-height.test.mjs`.
+  The application menu shortcut and installed Windows build are manual checks.
 
 ## E2E-LAYOUT-sidebar-settings
 

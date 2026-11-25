@@ -106,7 +106,8 @@
 
 .sidebar-session-groups {
   display: flex;
-  min-height: 0;
+  /* Keep room for a project header and one conversation row with their insets. */
+  min-height: 60px;
   /* Basis 0, not auto: with a content-derived basis the scroller's resolved
      height is re-solved from its own content, so collapsing the first project
      nudges the whole list up a few pixels before it settles back. */
@@ -119,7 +120,6 @@
   gap: 1px;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
   padding-top: 2px;
 }
 
@@ -303,30 +303,30 @@
   /* Ten compact 28px rows plus the nine 1px gaps between them, and the 2px
      label inset, before the Recent list starts scrolling internally. */
   max-height: 291px;
-  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
   /* 2px below the section label, matching every label-to-content pair. */
   padding: 2px 2px 0;
 }
 
-.sidebar-standalone-sessions {
+.sidebar-standalone-sessions,
+.sidebar-pinned-sessions {
+  display: grid;
   min-width: 0;
-  flex: 0 0 auto;
+  /* Allow shrinking below the list's intrinsic height while keeping its label
+     and a compact row reachable. */
+  min-height: 60px;
+  flex: 0 1 auto;
+  grid-template-rows: auto minmax(30px, 1fr);
 }
 
 /* Projects hidden in Settings: the session list takes the freed height. */
 .sidebar-standalone-sessions.is-fill {
-  display: flex;
-  min-height: 0;
   flex: 1 1 auto;
-  flex-direction: column;
 }
 
 .sidebar-standalone-sessions.is-fill .sidebar-session-group-body.standalone {
   max-height: none;
-  flex: 1 1 auto;
 }
 
 .sidebar-session-empty {
@@ -336,18 +336,12 @@
   line-height: var(--leading-compact);
 }
 
-.sidebar-pinned-sessions {
-  min-width: 0;
-  flex: 0 0 auto;
-}
-
 .sidebar-session-group-body.pinned {
   /* Eight compact 28px rows plus their seven 1px gaps, and the 2px label
      inset. */
   max-height: min(233px, 30vh);
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
   /* 2px below the section label, matching every label-to-content pair. */
   padding: 2px 2px 0;
 }
@@ -366,6 +360,12 @@
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Recent rows share one line between task and project identity. Let a long
+   task title take only the space left after the project label. */
+.thread-item.recent-project-session .thread-item-project {
+  flex: 0 0 auto;
 }
 
 /* Multi-select highlight: visually distinct from the single active row. */

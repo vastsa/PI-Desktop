@@ -97,7 +97,7 @@ const fs = require("node:fs/promises");
 const assert = require("node:assert/strict");
 const { saveComposerPasteFiles } = require("./writer.cjs");
 const { nativeClipboardPaths, readComposerClipboardDirectories } = require("./directories.cjs");
-const { referenceComposerFiles } = require("./references.cjs");
+const { pasteComposerClipboardFiles } = require("./references.cjs");
 const { rememberComposerPickerSelection, consumeComposerPickerSelection } = require("./picker.cjs");
 const { preparePromptAttachments, appendPromptFallbackPaths } = require("./prompt.cjs");
 const { readOpenableFile, readOpenableImage, resolveRealOpenablePath } = require("./reader.cjs");
@@ -113,12 +113,12 @@ let directoryPastePending = true;
 let referencePrompts = 0;
 ipcMain.handle("pi-desktop/composer/readClipboardDirectories", async (event) => {
   if (process.argv.includes("--file-references-only")) {
-    const paths = ["large reference.bin", "native notes.txt"].map(name => path.join(__dirname, name));
+    const paths = ["large reference.bin", "native-image.png", "native notes.txt"].map(name => path.join(__dirname, name));
     const clipboard = { readBuffer: format => Buffer.from(format === "text/uri-list"
       ? paths.map(source => pathToFileURL(source).href).join("\\r\\n") : "") };
     const data = await readComposerClipboardDirectories(clipboard,
       selected => rememberComposerPickerSelection(selected, event.sender.id),
-      () => nativeClipboardPaths(clipboard, "linux"));
+      () => paths);
     return { ok: true, data };
   }
   if (!directoryPastePending) return { ok: true, data: null };
@@ -137,18 +137,24 @@ if (process.argv.includes("--file-references-only") || process.argv.includes("--
   ipcMain.handle("pi-desktop/composer/importFiles", async (event, input) => {
     assert.equal(input.reference, true);
     assert.equal(input.sessionId, "paste-a");
-    const files = await referenceComposerFiles(__dirname, input.sessionId,
+    const files = await pasteComposerClipboardFiles(__dirname, input.sessionId,
       path.join(__dirname, "reference-project"), consumeComposerPickerSelection(input.token, event.sender.id));
     assert.equal(files[0].size, 67108865);
+    // Native image files are copied like picker imports instead of becoming live references (#2529).
+    assert.equal(files[1].kind, "image");
+    assert.equal(files[1].localReference, undefined);
+    assert(files[1].path.startsWith(path.join(__dirname, "scratch", input.sessionId) + path.sep));
     // Simulate a source edit after registration, before the user sends the draft.
     await fs.writeFile(path.join(__dirname, "large reference.bin"), "changed");
     return { ok: true, data: { files } };
   });
   ipcMain.handle("pi-desktop/agent/prompt", async (_event, input) => {
-    assert.equal(input.attachments.length, 2);
+    assert.equal(input.attachments.length, 3);
     const prepared = await preparePromptAttachments(__dirname, input.sessionId,
       path.join(__dirname, "reference-project"), input.attachments, true, input.content);
-    assert(prepared.every(item => item.message.kind === "file" && !item.inlineData));
+    const image = prepared.find(item => item.message.name === "native-image.png");
+    assert(image?.message.kind === "image" && image.inlineData, "native image file must reach the model as image bytes");
+    assert(prepared.filter(item => item !== image).every(item => item.message.kind === "file" && !item.inlineData));
     const large = prepared.find(item => item.message.name === "large reference.bin");
     assert.equal(large.message.size, 7);
     const context = appendPromptFallbackPaths(input.content, prepared);
@@ -322,9 +328,9 @@ app.whenReady().then(async () => {
     window.webContents.debugger.attach("1.3");
     const { root } = await window.webContents.debugger.sendCommand("DOM.getDocument");
     const { nodeId } = await window.webContents.debugger.sendCommand("DOM.querySelector", { nodeId: root.nodeId, selector: "#native-files" });
-    await window.webContents.debugger.sendCommand("DOM.setFileInputFiles", { nodeId, files: [path.join(__dirname,
-      process.argv.includes("--file-references-only") || process.argv.includes("--file-references-history-check")
-        ? "large reference.bin" : "native-image.png"), path.join(__dirname, "native notes.txt")] });
+    await window.webContents.debugger.sendCommand("DOM.setFileInputFiles", { nodeId, files: (process.argv.includes("--file-references-only") || process.argv.includes("--file-references-history-check")
+      ? ["large reference.bin", "native-image.png", "native notes.txt"] : ["native-image.png", "native notes.txt"])
+      .map(name => path.join(__dirname, name)) });
     window.webContents.on("console-message", async (event) => {
       if (!event.message.startsWith("PI_PREVIEW_KEY:")) return;
       const key = event.message.slice("PI_PREVIEW_KEY:".length);

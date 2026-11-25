@@ -15,8 +15,8 @@ user who knows a workflow should apply.
 
 Active built-in, plugin, and user Skills contribute entries to the composer slash menu
 in a trailing `Skills` group, named with the explicit `skill:<id>` prefix while
-`skillId` keeps the original id. Selecting one inserts `/skill:<skill-id> `, and
-sending uses the ordinary prompt path: Electron main resolves the command against the
+`skillId` keeps the original id. Selecting one places an atomic editor chip and
+an argument separator; it serializes to `/skill:<skill-id> `. Sending uses the ordinary prompt path: Electron main resolves the command against the
 session project, revalidates active scope and permissions at send time, and keeps the
 typed slash form for the transcript chip. Main then persists a model-facing
 instruction to call the local `Skill` tool with each validated id before the remaining

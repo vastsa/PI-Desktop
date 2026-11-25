@@ -205,8 +205,8 @@ test("a relay enriches official IDs, strips safe deployment labels, and preserve
   const { result } = await handlersFor(t, row, {
     data: [
       { id: "deepseek-v4-flash" },
-      { id: "mimo-v2.5-pro" },
-      { id: "mimo-v2.5-pro-1m" },
+      { id: "deepseek-v4-pro" },
+      { id: "deepseek-v4-pro-1m" },
       { id: "mimo-v2.5-tts" },
       { id: "gemini-2.5-pro-1m" },
       { id: "claude-sonnet-4-5" },
@@ -221,23 +221,21 @@ test("a relay enriches official IDs, strips safe deployment labels, and preserve
   assert.equal(deepseek.catalogSource, "models.dev");
   assert.equal(deepseek.contextWindow, 1_048_576);
   assert.equal(deepseek.maxTokens, 393_216);
-  // Xiaomi publishes the base id, so both the plain and the `-1m` alias read
-  // the owner's record without rewriting the served wire ID.
-  for (const id of ["mimo-v2.5-pro", "mimo-v2.5-pro-1m"]) {
-    const mimo = byId.get(id);
-    assert.equal(mimo.modelId, id); // lookup never rewrites the served wire ID
-    assert.equal(mimo.catalogSource, "models.dev");
-    assert.equal(mimo.contextWindow, 1_048_576);
-    assert.equal(mimo.maxTokens, 131_072);
+  // DeepSeek's current official listing is the source of truth for both the
+  // base model and its whitelisted context-size deployment label.
+  for (const id of ["deepseek-v4-pro", "deepseek-v4-pro-1m"]) {
+    const model = byId.get(id);
+    assert.equal(model.modelId, id); // lookup never rewrites the served wire ID
+    assert.equal(model.catalogSource, "models.dev");
+    assert.equal(model.contextWindow, 1_048_576);
+    assert.equal(model.maxTokens, 393_216);
   }
 
-  // Matching Xiaomi reseller records agree on the published speech limits.
+  // The refreshed catalog has no Xiaomi-owned TTS record, so relay lookups
+  // must not claim reseller metadata for it.
   const tts = byId.get("mimo-v2.5-tts");
-  assert.equal(tts.source, "discovered");
-  assert.equal(tts.catalogSource, "models.dev");
-  assert.ok(tts.capabilities.includes("audio"));
-  assert.equal(tts.contextWindow, 8_192);
-
+  assert.equal(tts.modelId, "mimo-v2.5-tts");
+  assert.equal(tts.catalogSource, undefined);
   // Google and Vertex now publish matching metadata, so the `-1m` alias can
   // safely use their shared record without changing the served model id.
   const gemini = byId.get("gemini-2.5-pro-1m");

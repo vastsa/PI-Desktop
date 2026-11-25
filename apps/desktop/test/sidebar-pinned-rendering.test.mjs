@@ -25,7 +25,7 @@ test("sidebar renders global pins once, outside project folding and history limi
     const old = "2020-01-01T00:00:00Z";
     const session = (id, projectPath, updatedAt = old) => ({
       id,
-      title: id,
+      title: id === "normal-00" ? `${id} with a deliberately long session title that must not crowd its project` : id,
       projectPath,
       createdAt: old,
       updatedAt,
@@ -118,6 +118,17 @@ test("sidebar renders global pins once, outside project folding and history limi
     assert.ok(recentRows.every((id) => !expectedPins.includes(id)), "Recent skips pins");
     assert.deepEqual(recentRows.slice(0, 3), ["normal-00", "normal-01", "normal-02"]);
     assert.match(recentSection(html), /data-action="recent-sessions-load-more"/);
+    assert.match(
+      recentSection(html),
+      /class="thread-item[^\"]*recent-project-session[^\"]*" data-sidebar-session-row="normal-00"/,
+    );
+    assert.match(
+      recentSection(html),
+      /<span class="thread-item-title">normal-00 with a deliberately long session title that must not crowd its project<\/span><span class="thread-item-project" title="[^"]+">[^<]+<\/span>/,
+    );
+    assert.match(recentSection(html), /data-action="session-menu"/);
+    assert.doesNotMatch(pinnedSection(html), /recent-project-session/);
+    assert.doesNotMatch(recentSection(html), /recent-project-session[^\"]*" data-sidebar-session-row="temporary-normal"/);
     const openProject =
       html.match(/data-sidebar-project-group="\/open"[\s\S]*?<\/section>/)?.[0] ?? "";
     assert.equal(rows(openProject).filter((id) => id.startsWith("normal-")).length, 10);
@@ -127,6 +138,14 @@ test("sidebar renders global pins once, outside project folding and history limi
       catalogs.en.nav.loadMoreCount.replace("{{count}}", "6"),
     ));
     assert.ok(!rows(html).includes("archived-pin"));
+    const temporaryOnly = render({
+      sessionMeta: {},
+      sessions: [session("temporary-only", null)],
+    });
+    const temporaryOnlyRows = recentSection(temporaryOnly);
+    assert.deepEqual(rows(temporaryOnlyRows), ["temporary-only"]);
+    assert.doesNotMatch(temporaryOnlyRows, /recent-project-session/);
+    assert.match(temporaryOnlyRows, /class="thread-item-project">Temporary<\/span>/);
     assert.ok(!rows(html).includes("archived-project-pin"));
 
     const unpinned = render({ sessionMeta: {} });
@@ -169,6 +188,7 @@ test("sidebar renders global pins once, outside project folding and history limi
     );
     assert.ok(rows(openGroup).length > 0, "an expanded group renders its rows");
     assert.doesNotMatch(openGroup, /sidebar-time-group-header/);
+    assert.doesNotMatch(openGroup, /recent-project-session/);
     assert.match(openGroup, /class="sidebar-load-more"/);
 
     const datedGroup =
