@@ -1,4 +1,4 @@
-import { COMPOSER_FILE_DRAG_TYPE } from "@pi-desktop/shared/file-line-reference";
+import { COMPOSER_FILE_DRAG_TYPE } from "@pi-desktop/shared";
 
 /**
  * Normalize native file-system drops before the Composer decides whether to
