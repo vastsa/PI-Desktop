@@ -63,7 +63,7 @@ export function registerPluginUiIpc({
   };
   registrar.handleWithEvent(IPC.invoke.composerDropPluginFile, async (event, payload: unknown) => {
     registrar.assertMainWindowSender(event);
-    if (event.senderFrame !== event.sender.mainFrame) {
+    if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame) {
       throw new Error("PERMISSION_DENIED: file drops require the main frame");
     }
     return dropPluginFile(payload);

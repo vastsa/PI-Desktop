@@ -50,7 +50,9 @@ with any plugin-local drag data for tree moves.
 
 The trusted Composer frame redeems the token once on drop. Main verifies the
 live File Manager registration, grants, selected session, and lexical and
-canonical project containment. It registers a regular file through the existing
+canonical project containment. Host session metadata excludes remote and
+isolated worktree sessions, where the visible project folder is not the
+execution checkout. Main registers a regular file through the existing
 metadata-only disk-file reference store. Cancellation or a drop outside the
 Composer never redeems the token. Content reads remain subject to normal tool
 permissions.

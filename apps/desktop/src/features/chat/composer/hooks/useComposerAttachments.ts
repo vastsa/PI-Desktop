@@ -560,12 +560,17 @@ export function useComposerAttachments({
   const onComposerDragEnter = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!hasComposerReferenceDrag(event.dataTransfer) && !hasComposerFileDrag(event.dataTransfer)) return;
     event.preventDefault();
-    setDropTargetActive(true);
+    setDropTargetActive(!isInputBlocked);
   };
 
   const onComposerDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!hasComposerReferenceDrag(event.dataTransfer) && !hasComposerFileDrag(event.dataTransfer)) return;
     event.preventDefault();
+    if (isInputBlocked) {
+      event.dataTransfer.dropEffect = "none";
+      setDropTargetActive(false);
+      return;
+    }
     event.dataTransfer.dropEffect = "copy";
   };
 

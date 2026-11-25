@@ -152,7 +152,7 @@ export function createPluginServices({
   };
   const fileManagerComposerDrag = createFileManagerComposerDrag(fileManagerComposerContext, dataDir);
   ipcMain.on(PLUGIN_PANEL_COMPOSER_FILE_DRAG_CHANNEL, (event, payload: unknown) => {
-    event.returnValue = !event.sender.isDestroyed() && event.senderFrame === event.sender.mainFrame
+    event.returnValue = !event.sender.isDestroyed() && event.senderFrame && event.senderFrame === event.sender.mainFrame
       ? fileManagerComposerDrag.begin(event.sender.id, payload)
       : null;
   });

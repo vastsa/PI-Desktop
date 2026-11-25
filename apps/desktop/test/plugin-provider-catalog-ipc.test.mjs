@@ -281,6 +281,10 @@ test("only the main shell's top frame can redeem a File Manager drag", async () 
   const payload = { token: "opaque", sessionId: "current" };
   await assert.rejects(drop({ sender: {}, senderFrame: mainFrame }, payload), /not the main shell/);
   await assert.rejects(drop({ sender, senderFrame: {} }, payload), /require the main frame/);
+  await assert.rejects(drop({ sender: { ...sender, mainFrame: null }, senderFrame: null }, payload), /not the main shell/);
+  sender.mainFrame = null;
+  await assert.rejects(drop({ sender, senderFrame: null }, payload), /require the main frame/);
+  sender.mainFrame = mainFrame;
   assert.deepEqual(redeemed, []);
   assert.equal(await drop({ sender, senderFrame: mainFrame }, payload), null);
   assert.deepEqual(redeemed, [payload]);

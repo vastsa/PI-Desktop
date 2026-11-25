@@ -8,9 +8,16 @@ let values = Array(arguments)
 guard let pid = Int32(values[0]),
       let fromX = Double(values[1]), let fromY = Double(values[2]),
       let toX = Double(values[3]), let toY = Double(values[4]),
-      NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
       CGPreflightPostEventAccess() else {
-    fputs("Native drag needs the fixture in front and macOS event-post access.\n", stderr)
+    fputs("Native drag requires valid fixture bounds and macOS event-post access.\n", stderr)
+    exit(2)
+}
+for _ in 0..<20 {
+    if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid { break }
+    usleep(50_000)
+}
+guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else {
+    fputs("Native drag requires the isolated fixture to be foregrounded.\n", stderr)
     exit(2)
 }
 
@@ -44,3 +51,5 @@ if values[5] == "cancel" {
     usleep(100_000)
 }
 mouse(.leftMouseUp, target)
+// AppKit consumes the queued mouse-up before the pointer is restored.
+usleep(250_000)

@@ -39,7 +39,10 @@ Composer across the two Electron web contents. Check that one removable file
 card appears without sending or copying bytes, existing draft text survives,
 and the source file remains in place. Cancel with Escape and drop outside the
 Composer. Neither action may add a card. Repeat on a local secondary project
-folder and verify native OS file drops and local tree moves still work.
+folder and verify native OS file drops and local tree moves still work. In a
+blocked Composer, verify the target stays inactive. Switch to an isolated
+worktree session and confirm dropping a file from the project checkout leaves
+the draft untouched.
 
 On macOS, set `PI_FILE_MANAGER_TEST_NATIVE_DRAG=1` for the installed-package
 journey below. It uses the real side-panel launcher and native mouse input;

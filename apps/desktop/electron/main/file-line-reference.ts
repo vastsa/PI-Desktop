@@ -52,7 +52,7 @@ export async function checkFileManagerComposerRegistry(
 ) {
   const host = bridge.getHost();
   if (!host) {
-    throw Object.assign(new Error("HOST_UNAVAILABLE: The Host is unavailable. Try adding the selection again when it reconnects."), {
+    throw Object.assign(new Error("HOST_UNAVAILABLE: The Host is unavailable. Try again when it reconnects."), {
       code: "HOST_UNAVAILABLE",
     });
   }

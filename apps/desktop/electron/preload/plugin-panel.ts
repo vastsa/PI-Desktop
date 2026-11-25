@@ -47,7 +47,12 @@ let composerDragStart: DragEvent | undefined;
 if (composerFileLines) {
   window.addEventListener("dragstart", (event) => {
     composerDragStart = event.isTrusted ? event : undefined;
+    // Clear after synchronous handlers even when the page never uses the bridge.
+    queueMicrotask(() => {
+      if (composerDragStart === event && event.eventPhase === Event.NONE) composerDragStart = undefined;
+    });
   }, true);
+  window.addEventListener("dragend", () => { composerDragStart = undefined; }, true);
 }
 const bridge = {
   ...(composerFileLines ? {

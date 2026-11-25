@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { lstatSync, realpathSync } from "node:fs";
+import { lstat, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
+import { normalizeProjectPath, type SessionSummary } from "@pi-desktop/shared";
 import { referenceComposerFiles } from "./composer-file-references.ts";
 import {
   checkFileManagerComposerRegistry,
@@ -11,6 +12,18 @@ import {
 
 const DRAG_TTL_MS = 60_000;
 type Target = NonNullable<ReturnType<typeof fileManagerComposerTarget>>;
+type DropSession = Pick<SessionSummary, "projectPath" | "remoteWorkspace" | "worktree">;
+
+async function resolveDragFile(path: string): Promise<string | null> {
+  try {
+    return (await lstat(path)).isFile() ? await realpath(path) : null;
+  } catch (error) {
+    if (["ENOENT", "ENOTDIR", "EACCES", "EPERM", "ELOOP"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+      return null;
+    }
+    throw error;
+  }
+}
 
 export function createFileManagerComposerDrag(
   context: FileManagerComposerContext,
@@ -37,6 +50,7 @@ export function createFileManagerComposerDrag(
       ) return null;
       const target = fileManagerComposerTarget(context, senderId, workspace);
       if (!target || !target.selected.projectPath || !isAbsolute(target.selected.projectPath)) return null;
+      if (!/^[A-Za-z0-9_-]+$/.test(target.selected.sessionId)) return null;
       const token = randomUUID();
       pending = { token, senderId, workspace, path, target, expiresAt: now() + DRAG_TTL_MS };
       return token;
@@ -59,10 +73,17 @@ export function createFileManagerComposerDrag(
       if (!isCurrent()) return null;
       const host = await checkFileManagerComposerRegistry(context, target.loaded);
       if (context.getHost() !== host || !isCurrent()) return null;
-      const entry = lstatSync(path, { throwIfNoEntry: false });
-      if (!entry?.isFile()) return null;
-      const canonicalPath = realpathSync(path);
-      if (!fileLinePathInProject(path, projectPath, canonicalPath)) return null;
+      const { session } = await host.call<{ session?: DropSession }>(
+        "session.get", { id: sessionId, messageLimit: 1, contentLimit: 1 }, 5_000,
+      );
+      // File Manager shows the project tree. An isolated session runs in a
+      // different checkout, so the visible project file is not its counterpart.
+      if (!session || session.remoteWorkspace || session.worktree ||
+          normalizeProjectPath(session.projectPath) !== normalizeProjectPath(projectPath)) return null;
+
+      const canonicalPath = await resolveDragFile(path);
+      if (!canonicalPath || context.getHost() !== host || !isCurrent() ||
+          !fileLinePathInProject(path, projectPath, canonicalPath)) return null;
       const [reference] = await referenceComposerFiles(dataDir, sessionId, projectPath, [canonicalPath]);
       return reference?.path === canonicalPath && context.getHost() === host &&
         isCurrent() && fileLinePathInProject(path, projectPath, canonicalPath) ? reference : null;
