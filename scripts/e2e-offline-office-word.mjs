@@ -162,6 +162,8 @@ async function selectOffice({ evaluate }, enabled) {
     if (!nav) return false;
     nav.click(); return true;
   })()`), 20_000, "Extensions navigation");
+  await waitFor(() => evaluate(`(${row})?.querySelector(".plugins-row-name")?.textContent === "Offline Office"`),
+    20_000, "English extension name");
   await waitFor(() => evaluate(`(() => {
     const trigger = (${row})?.querySelector(".scope-compact-trigger");
     if (!trigger) return false;
@@ -211,6 +213,7 @@ try {
   const py = (script, ...args) => execFileSync(python, ["-I", "-B", "-X", "utf8", "-c", script, ...args], { cwd: workspace });
   py(`from docx import Document
 from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 import sys
 doc = Document()
 doc.add_heading("原件标题", level=1)
@@ -221,6 +224,13 @@ doc.add_paragraph(${JSON.stringify(untouched)})
 p = doc.add_paragraph()
 p.add_run("AB")._r.append(OxmlElement("w:noBreakHyphen"))
 p.add_run("CD")
+p = doc.add_paragraph()
+p.add_run("甲")
+tab = OxmlElement("w:ptab")
+for key, value in {"alignment": "center", "relativeTo": "margin", "leader": "none"}.items():
+    tab.set(qn("w:" + key), value)
+p.add_run()._r.append(tab)
+p.add_run("乙")
 doc.save(sys.argv[1])`, original);
   const originalBytes = await readFile(join(workspace, original));
 
@@ -249,7 +259,7 @@ new, copy = Document(created), Document(edited)
 assert [p.text for p in new.paragraphs] == ["中文标题", "新建正文含中文"]
 assert new.paragraphs[0].style.name == "Heading 1"
 assert [p.text for p in copy.paragraphs[:3]] == ["原件标题", "${after}，保留后缀", "${untouched}"]
-assert copy.paragraphs[3]._p.xml == Document(original).paragraphs[3]._p.xml
+assert [p._p.xml for p in copy.paragraphs[3:]] == [p._p.xml for p in Document(original).paragraphs[3:]]
 assert copy.paragraphs[0].style.name == "Heading 1"
 assert copy.paragraphs[1].runs[0].bold and copy.paragraphs[1].runs[1].italic
 with ZipFile(original) as a, ZipFile(edited) as b:
@@ -257,11 +267,19 @@ with ZipFile(original) as a, ZipFile(edited) as b:
     assert all(a.read(part) == b.read(part) for part in a.namelist() if part != "word/document.xml")
 `, created, original, edited);
   const rejected = "不能覆盖.docx";
-  const failed = spawn("/bin/sh", [launcher, "replace", original, rejected, "ABCD", "collapsed"], {
-    cwd: workspace, stdio: "ignore",
+  const tool = (operation, ...args) => execFileSync("/bin/sh", [launcher, operation, ...args], {
+    cwd: workspace, encoding: "utf8", input: "should not overwrite", stdio: "pipe",
   });
-  assert.deepEqual(await once(failed, "exit"), [1, null]);
-  await assert.rejects(stat(join(workspace, rejected)), { code: "ENOENT" });
+  assert.ok(tool("extract", original).split("\n").includes("甲\t乙"));
+  for (const separated of ["ABCD", "甲乙"]) {
+    assert.throws(() => tool("replace", original, rejected, separated, "collapsed"), /Text was not found/);
+    await assert.rejects(stat(join(workspace, rejected)), { code: "ENOENT" });
+  }
+  for (const [name, bytes] of [[original, originalBytes], [edited, await readFile(join(workspace, edited))]]) {
+    assert.throws(() => tool("replace", original, name, before, after), /Output already exists/);
+    assert.throws(() => tool("create", name, "Not a new document"), /Output already exists/);
+    assert.deepEqual(await readFile(join(workspace, name)), bytes);
+  }
 
   await selectOffice(app, false);
   await stop();

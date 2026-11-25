@@ -4,6 +4,7 @@ import sys
 from copy import copy
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import urlsplit
 from zipfile import BadZipFile, ZipFile
 
 try:
@@ -12,31 +13,66 @@ except ImportError as error:
     sys.exit(f"The bundled Office Runtime is incomplete: {error}")
 
 
-W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+WORD_NAMESPACES = {
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "http://purl.oclc.org/ooxml/wordprocessingml/main",
+}
+MAIN_PART_TYPES = {
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+    "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument",
+}
+RELATIONSHIPS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 SPACE = "{http://www.w3.org/XML/1998/namespace}space"
-DOCUMENT = "word/document.xml"
-NON_TEXT = {W + name: char for name, char in {
-    "tab": "\t", "br": "\n", "cr": "\n", "noBreakHyphen": "\u2011", "softHyphen": "\u00ad",
+NON_TEXT = {
+    "tab": "\t", "ptab": "\t", "br": "\n", "cr": "\n",
+    "noBreakHyphen": "\u2011", "softHyphen": "\u00ad",
     "sym": "\ufffc", "drawing": "\ufffc", "object": "\ufffc", "pict": "\ufffc",
-}.items()}
+}
 
 
-def read_body(archive):
-    if archive.namelist().count(DOCUMENT) != 1:
-        raise ValueError("Expected exactly one Word document body.")
-    part = archive.getinfo(DOCUMENT)
+def read_xml(archive, name):
+    if archive.namelist().count(name) != 1:
+        raise ValueError(f"Expected exactly one Word package part: {name}")
+    part = archive.getinfo(name)
     if part.file_size > 64 * 1024 * 1024:
-        raise ValueError("Word document body exceeds 64 MiB.")
+        raise ValueError(f"Word package part exceeds 64 MiB: {name}")
     root = etree.fromstring(archive.read(part), etree.XMLParser(resolve_entities=False, no_network=True))
-    if root.getroottree().docinfo.doctype or root.tag != W + "document":
-        raise ValueError("Expected an ordinary Word document body.")
+    if root.getroottree().docinfo.doctype:
+        raise ValueError("Word package XML must not contain a document type.")
     return root
 
 
+def read_body(archive):
+    relationships = read_xml(archive, "_rels/.rels")
+    if relationships.tag != RELATIONSHIPS + "Relationships":
+        raise ValueError("Expected Word package relationships.")
+    main_parts = [rel for rel in relationships.findall(RELATIONSHIPS + "Relationship")
+                  if rel.get("Type") in MAIN_PART_TYPES]
+    if len(main_parts) != 1 or main_parts[0].get("TargetMode", "Internal") != "Internal":
+        raise ValueError("Expected exactly one internal Word document body.")
+
+    target = main_parts[0].get("Target", "")
+    uri = urlsplit(target)
+    # Package part names and ZIP entry names retain URI escapes.
+    member = uri.path.removeprefix("/")
+    if (uri.scheme or uri.netloc or any(char in "?#\\" or ord(char) <= 32 for char in target)
+            or any(piece in {"", ".", ".."} for piece in member.split("/"))):
+        raise ValueError("Invalid Word document body path.")
+
+    root = read_xml(archive, member)
+    if root.tag not in {f"{{{namespace}}}document" for namespace in WORD_NAMESPACES}:
+        raise ValueError("Expected an ordinary Word document body.")
+    return member, root
+
+
 def paragraphs(root):
-    for paragraph in root.iter(W + "p"):
-        yield [node for node in paragraph.iter(W + "t", *NON_TEXT)
-               if next(node.iterancestors(W + "p"), None) is paragraph]
+    word = root.tag.removesuffix("document")
+    paragraph_tag, text_tag = word + "p", word + "t"
+    separators = {word + name: char for name, char in NON_TEXT.items()}
+    for paragraph in root.iter(paragraph_tag):
+        yield [(node, node.text or "") if node.tag == text_tag else (None, separators[node.tag])
+               for node in paragraph.iter(text_tag, *separators)
+               if next(node.iterancestors(paragraph_tag), None) is paragraph]
 
 
 def replace(root, old, new):
@@ -45,7 +81,7 @@ def replace(root, old, new):
 
     match = None
     for nodes in paragraphs(root):
-        current = "".join(NON_TEXT.get(node.tag, node.text or "") for node in nodes)
+        current = "".join(text for _, text in nodes)
         start = current.find(old)
         if start < 0:
             continue
@@ -57,10 +93,9 @@ def replace(root, old, new):
 
     nodes, start, end = match
     offset = 0
-    for node in nodes:
-        text = NON_TEXT.get(node.tag, node.text or "")
+    for node, text in nodes:
         right = offset + len(text)
-        if node.tag == W + "t" and right > start and offset < end and text:
+        if node is not None and right > start and offset < end and text:
             prefix = text[:max(0, start - offset)]
             suffix = text[max(0, end - offset):]
             node.text = prefix + (new if offset <= start else "") + suffix
@@ -69,13 +104,13 @@ def replace(root, old, new):
         offset = right
 
 
-def save_copy(source, root, output):
+def save_copy(source, member, root, output):
     with TemporaryDirectory(prefix=".pie-word-", dir=output.parent) as directory:
         staged = Path(directory) / "document.docx"
         with ZipFile(staged, "w") as target:
             target.comment = source.comment
             for part in source.infolist():
-                if part.filename == DOCUMENT:
+                if part.filename == member:
                     target.writestr(copy(part), etree.tostring(root, encoding="UTF-8", xml_declaration=True))
                 else:
                     with source.open(part) as reader, target.open(copy(part), "w") as writer:
@@ -88,14 +123,14 @@ def main():
     if any(Path(name).suffix.lower() != ".docx" for name in [source, *args[:1]]):
         raise ValueError("Use .docx filenames.")
     with ZipFile(source) as archive:
-        root = read_body(archive)
+        member, root = read_body(archive)
         if operation == "extract":
             for nodes in paragraphs(root):
-                print("".join(NON_TEXT.get(node.tag, node.text or "") for node in nodes))
+                print("".join(text for _, text in nodes))
         else:
             output, old, new = args
             replace(root, old, new)
-            save_copy(archive, root, Path(output))
+            save_copy(archive, member, root, Path(output))
             print(f"Saved {output}")
 
 

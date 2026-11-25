@@ -147,10 +147,10 @@ test("manual Linux package validation covers the RPM desktop identity", () => {
   );
 });
 
-test("manual Linux package validation checks the native ARM64 Debian candidate", () => {
+test("manual Linux package validation checks and labels the generic ARM64 Debian artifact", () => {
   assert.match(linuxPackageWorkflowSource, /arch: arm64\s+runner: ubuntu-22\.04-arm/);
   assert.match(linuxPackageWorkflowSource, /name: Verify the Debian package[\s\S]*?check-linux-deb\.mjs/);
-  assert.match(linuxPackageWorkflowSource, /name: Upload Debian candidate[\s\S]*?path: apps\/desktop\/release\/\*\.deb/);
+  assert.match(linuxPackageWorkflowSource, /name: Upload generic Debian package[\s\S]*?path: apps\/desktop\/release\/\*_generic\.deb/);
 });
 
 test("release workflow publishes the Linux ASAR beside installers", () => {

@@ -13,7 +13,7 @@ first-release delivery procedure.
 
 1. For the Word-enabled 0.23.1 candidate, use the dedicated build below.
    The generic Linux package workflow does not have the approved Office Runtime.
-   For generic validation, use the `pie-code-linux-arm64-deb` artifact or
+   For generic validation, use the `pie-code-linux-arm64-generic-deb` workflow artifact or
    build on an ARM64 Linux runner with Docker
    using `pnpm --filter @pi-desktop/desktop run dist:linux --linux deb --arm64`.
    Run `node scripts/check-linux-deb.mjs arm64 <package.deb>` on the build
@@ -21,6 +21,8 @@ first-release delivery procedure.
    The packager needs access to models.dev and records the catalog fetch time
    inside the package. Keep the candidate commit, inspection output (including
    the catalog date), and package together.
+   The workflow names its downloaded package `*_generic.deb`; use the
+   dedicated Office build for Kylin Word qualification.
    The optional microphone binaries are reported separately and are outside this
    candidate's scope.
 2. On the target, record `uname -m`, `getconf GNU_LIBC_VERSION`, and
@@ -123,8 +125,8 @@ extension and restart to verify that new sessions no longer receive it.
 
 Before building, stage the approved ARM64 Office Runtime 1.0.2
 `python-runtime`, `python-dependencies`, and `node-runtime` layers into one
-directory, preserving permissions and relative links. Into
-`node/lib/node_modules`, overlay the complete `node_modules` from the locked
+directory on a case-sensitive Linux filesystem, preserving permissions and
+relative links that resolve inside it. Into `node/lib/node_modules`, overlay the complete `node_modules` from the locked
 docx 9.16.0 build. Retain the source manifest as
 `metadata/runtime-source.json`, the Node dependency lock as
 `metadata/package-lock.json`, and the components' licenses. Set
@@ -136,16 +138,24 @@ Docker, run the dedicated build and require Office in the package check:
 ```sh
 export PI_CODE_OFFICE_RUNTIME_DIR=/absolute/path/to/staged/office-runtime
 pnpm --filter @pi-desktop/desktop run dist:kylin
-node scripts/check-linux-deb.mjs arm64 apps/desktop/release/pie-code_0.23.1_arm64.deb --with-offline-office
+deb=apps/desktop/release/kylin-offline-office/pie-code_0.23.1_arm64.deb
+node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
 ```
 
-With no public route, install the candidate in a clean application test
+The package check inspects the extracted payload and uses its own Node and
+Python to create and extract a sample Word document. Keep the exact Office
+Debian package, the candidate commit, the package inspection output, and the
+Kylin run output together. Link those results in the PR or release record;
+generic CI artifacts and results from a different package do not qualify.
+
+With no public route, install that package in a clean application test
 environment and run the Word scenario against the installed binary. Build
 the shared JS package beforehand and use Node 22+ to run the scenario
 (the bundled Node can run it). The scenario enables the extension through
 the UI, loads the Skill through a loopback model, checks Bash is held for
 approval, and verifies Chinese text, Word styles, untouched content and
-the unmodified input with an independent python-docx readback. It then
+the unmodified input with an independent python-docx readback. It checks
+that create and replace refuse to overwrite the input or an existing copy. It then
 disables the extension and verifies the skill is absent in a new session
 after restarting.
 
@@ -155,6 +165,7 @@ PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
 ```
 
 Word edits replace a unique literal within one main-document paragraph
-and save a new file. Replacement text inherits the first matched run's
-formatting. Existing output files, including the source, are never
+and save a new file. The skill reads the main part of transitional and
+Strict DOCX files. Tabs and other layout markers interrupt literal matches.
+Replacement text inherits the first matched run's formatting. Existing output files, including the source, are never
 overwritten.

@@ -60,9 +60,7 @@ export async function fetchHttpsMetadata(
   }
   const agent = new Agent({ keepAlive: false, maxCachedSessions: 0 });
   agent.createConnection = () => socket;
-  // The signal rejects the handshake or request. A socket error could arrive
-  // after that abort has removed the handshake's error listener.
-  const abort = () => socket.destroy();
+  const abort = () => socket.destroy(new DOMException("The operation was aborted", "AbortError"));
   init.signal.addEventListener("abort", abort, { once: true });
   try {
     const connected = once(socket, "secureConnect", { signal: init.signal });

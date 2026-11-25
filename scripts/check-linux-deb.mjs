@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { MIN_LINUX_GLIBC, formatGlibcVersion, hostGlibcWithinFloor, maxNeededGlibc } from "../apps/desktop/electron/main/linux-glibc.ts";
 import { ModelsDevCatalog } from "../apps/desktop/electron/main/models-dev-catalog.ts";
-import { verifyOfflineOfficeRuntime } from "./bundle-offline-office.mjs";
+import { smokeTestOfflineOffice, verifyOfflineOfficeRuntime } from "./bundle-offline-office.mjs";
 
 const [arch, deb, officeFlag, ...extra] = process.argv.slice(2);
 const targets = { arm64: { deb: "arm64", elf: 183 }, x64: { deb: "amd64", elf: 62 } };
@@ -29,8 +29,12 @@ for (const [key, expected] of Object.entries({
 })) {
   if (fields[key] !== expected) throw new Error(`Expected ${key} ${expected}, got ${fields[key]}`);
 }
-if (arch === "arm64" && path.basename(deb) !== `pie-code_${pkg.version}_arm64.deb`) {
-  throw new Error(`Unexpected ARM64 package filename: ${path.basename(deb)}`);
+const filename = path.basename(deb);
+const genericLabel = filename.endsWith("_generic.deb");
+const expectedArm64 = `pie-code_${pkg.version}_arm64`;
+if (arch === "arm64" && filename !== `${expectedArm64}.deb` &&
+    (officeFlag || filename !== `${expectedArm64}_generic.deb`)) {
+  throw new Error(`Unexpected ARM64 package filename: ${filename}`);
 }
 for (const relation of ["Conflicts", "Breaks", "Replaces", "Provides"]) {
   const value = inspect("dpkg-deb", ["-f", deb, relation]);
@@ -49,10 +53,14 @@ try {
   const { productName, linux: { executableName } } = pkg.build;
   const app = path.join(root, "opt", productName);
   const required = new Set([executableName, "resources/bin/pi-desktop-host-core"]);
-  const runtime = path.join(app, "resources/office-runtime");
-  const officePlugin = path.join(app, "resources/plugins/pie.offline-office");
-  if (officeFlag || existsSync(runtime) || existsSync(officePlugin)) {
-    if (arch !== "arm64") throw new Error("Offline Office requires an ARM64 Debian package.");
+  const resources = path.join(app, "resources");
+  const runtime = path.join(resources, "office-runtime");
+  const officePlugin = path.join(resources, "plugins/pie.offline-office");
+  const withOffice = officeFlag || existsSync(runtime) || existsSync(officePlugin);
+  if (withOffice) {
+    if (arch !== "arm64" || genericLabel) {
+      throw new Error("Offline Office requires a dedicated ARM64 Debian package.");
+    }
     await verifyOfflineOfficeRuntime(runtime);
     for (const file of ["manifest.json", "main.cjs", "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py"]) {
       if (!existsSync(path.join(officePlugin, file))) {
@@ -129,6 +137,10 @@ try {
   }
   if (required.size) throw new Error(`Missing required ELF files: ${[...required].join(", ")}`);
   console.log(`Verified ${verified} ${arch} ELF files at glibc <= ${floor}.`);
+  if (withOffice) {
+    await smokeTestOfflineOffice(resources);
+    console.log("Verified bundled Word creation and extraction.");
+  }
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

@@ -1,11 +1,34 @@
+import { execFileSync } from "node:child_process";
 import { constants } from "node:fs";
-import { access, cp, readFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { access, cp, lstat, mkdtemp, readdir, readFile, readlink, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, sep } from "node:path";
 
 const plugin = new URL("../apps/desktop/resources/offline-office/", import.meta.url);
 const ARM64 = 3; // electron-builder's Arch.arm64 in the afterPack context.
 
+async function verifyRuntimeLinks(runtime) {
+  if (!(await lstat(runtime)).isDirectory()) {
+    throw new Error("Office Runtime link or non-directory cannot be the package root.");
+  }
+  const root = await realpath(runtime);
+  for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
+    if (!entry.isSymbolicLink()) continue;
+    const link = join(entry.parentPath, entry.name);
+    const name = relative(root, link);
+    if (isAbsolute(await readlink(link))) throw new Error(`Office Runtime link must be relative: ${name}`);
+    const target = await realpath(link).catch((cause) => {
+      throw new Error(`Office Runtime link cannot be resolved: ${name}`, { cause });
+    });
+    const targetPath = relative(root, target);
+    if (targetPath === ".." || targetPath.startsWith(`..${sep}`) || isAbsolute(targetPath)) {
+      throw new Error(`Office Runtime link points outside the package: ${name}`);
+    }
+  }
+}
+
 export async function verifyOfflineOfficeRuntime(runtime) {
+  await verifyRuntimeLinks(runtime);
   for (const interpreter of ["node/bin/node", "python/bin/python3.12"]) {
     await access(join(runtime, interpreter), constants.X_OK);
   }
@@ -25,6 +48,24 @@ export async function verifyOfflineOfficeRuntime(runtime) {
     await access(join(runtime, "python/lib/python3.12/site-packages", module, "__init__.py"));
   }
   await access(join(runtime, "metadata/runtime-source.json"));
+}
+
+export async function smokeTestOfflineOffice(resources) {
+  const launcher = join(resources, "plugins", "pie.offline-office", "word", "word.sh");
+  const workspace = await mkdtemp(join(tmpdir(), "pie-office-smoke-"));
+  const text = "离线办公验证";
+  const output = "Word smoke.docx";
+  const run = (args, input) => execFileSync("/bin/sh", [launcher, ...args], {
+    cwd: workspace, encoding: "utf8", input, stdio: "pipe", timeout: 30_000,
+  });
+  try {
+    run(["create", output, ""], text + "\n");
+    if (run(["extract", output]) !== text + "\n") throw new Error("Unexpected DOCX readback.");
+  } catch (error) {
+    throw new Error(`Office Word package smoke test failed: ${error.message}`, { cause: error });
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
 }
 
 export default async function bundleOfflineOffice({ electronPlatformName, arch, appOutDir, targets }) {
