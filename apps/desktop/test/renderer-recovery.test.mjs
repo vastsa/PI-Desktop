@@ -106,4 +106,45 @@ describe("recoverRendererAfterGone", () => {
     assert.equal(recoverRendererAfterGone(details, second.dependencies), true);
     assert.equal(second.calls.reload, 1, "should reload immediately after cooldown");
   });
+
+  it("stops reloading after too many consecutive crash loops", () => {
+    mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    mock.timers.tick(10_000);
+
+    const details = { reason: "crashed", exitCode: 1 };
+
+    // Simulate the startup crash loop: a crash every ~2 seconds, forever.
+    let recovered = 0;
+    for (let i = 0; i < 50; i++) {
+      const attempt = recovery();
+      assert.equal(recoverRendererAfterGone(details, attempt.dependencies), i < 5);
+      if (i < 5) recovered++;
+      mock.timers.tick(2_100);
+    }
+
+    assert.equal(recovered, 5, "recovery should stop after the reload cap");
+  });
+
+  it("a renderer that stays up past the recovery window resets the crash counter", () => {
+    mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    mock.timers.tick(10_000);
+
+    const details = { reason: "crashed", exitCode: 1 };
+    let reloads = 0;
+    const dependencies = recovery({
+      reload: () => reloads++,
+    }).dependencies;
+
+    for (let i = 0; i < 5; i++) {
+      mock.timers.tick(2_100);
+      recoverRendererAfterGone(details, dependencies);
+    }
+    assert.equal(reloads, 5);
+
+    // Renderer stays up long enough to count as recovered, then crashes again.
+    mock.timers.tick(60_000);
+    const after = recovery({ reload: () => reloads++ });
+    assert.equal(recoverRendererAfterGone(details, after.dependencies), true);
+    assert.equal(reloads, 6, "recovery should resume after a healthy window");
+  });
 });
