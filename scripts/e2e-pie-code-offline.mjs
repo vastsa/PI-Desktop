@@ -71,6 +71,8 @@ const manualModel = "fixture-manual";
 const marker = "offline-local-file-marker";
 const finished = "Read finished without internet";
 const mcpName = "local_echo";
+const mcpTestName = "connection_probe";
+const mcpToolNames = [mcpName];
 const mcpTool = "mcp_intranet_local_echo";
 const mcpCallId = "call_intranet_mcp";
 const mcpPrompt = "Read the intranet fixture marker.";
@@ -107,7 +109,7 @@ const provider = createServer(async (req, res) => {
     } });
     if (message.method === "ping") return json({ ...reply, result: {} });
     if (message.method === "tools/list") return json({ ...reply, result: {
-      tools: [{ name: mcpName, inputSchema: { type: "object", properties: {} } }],
+      tools: mcpToolNames.map((name) => ({ name, inputSchema: { type: "object", properties: {} } })),
     } });
     if (message.method === "tools/call" && message.params.name === mcpName) return json({ ...reply, result: {
       content: [{ type: "text", text: mcpMarker }],
@@ -268,7 +270,7 @@ try {
   socket = new WebSocket(renderer.webSocketDebuggerUrl);
   await once(socket, "open");
   let sequence = 0;
-  const evaluate = async (expression) => {
+  const cdp = async (method, params) => {
     const id = ++sequence;
     const result = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -283,13 +285,14 @@ try {
         resolve(reply);
       };
       socket.addEventListener("message", receive);
-      socket.send(JSON.stringify({ id, method: "Runtime.evaluate", params: {
-        expression, awaitPromise: true, returnByValue: true,
-      } }));
+      socket.send(JSON.stringify({ id, method, params }));
     });
     assert.ok(result.result && !result.result.exceptionDetails, JSON.stringify(result));
-    return result.result.result.value;
+    return result.result;
   };
+  const evaluate = async (expression) => (await cdp("Runtime.evaluate", {
+    expression, awaitPromise: true, returnByValue: true,
+  })).result.value;
   const wire = (channel, ...args) =>
     evaluate("window.piDesktop.invoke(..." + JSON.stringify([channel, ...args]) + ")");
   const invoke = async (channel, ...args) => {
@@ -400,13 +403,15 @@ try {
   await fill('.ext-sheet input[placeholder="https://mcp.example.com/sse"]', providerUrl + "/mcp");
   await clickText(".ext-sheet button", "Save");
   await click('.settings-content button[aria-label="Edit Intranet"]');
-  const mcpReady = () => evaluate(`document.querySelector(".ext-sheet [role=status].is-ready")?.innerText.includes(${JSON.stringify(mcpName)})`);
-  const discoveries = () => mcpRequests.filter((method) => method === "tools/list").length;
-  await until(mcpReady, "initial MCP connection after saving");
-  const initialDiscoveries = discoveries();
+  const mcpReady = (name) => evaluate(`document.querySelector(".ext-sheet [role=status].is-ready .ext-test-tools")
+    ?.textContent.split(" · ").includes(${JSON.stringify(name)})`);
+  await until(() => mcpReady(mcpName), "initial MCP connection after saving");
+  // Only a fresh tools/list result can contain the extra tool.
+  mcpToolNames.push(mcpTestName);
   await clickText(".ext-sheet button", "Test connection");
-  await until(() => discoveries() > initialDiscoveries && mcpReady(),
-    "MCP connection and discovered tool in settings");
+  await until(async () => await evaluate(`Array.from(document.querySelectorAll(".toast.success .toast-message"))
+    .some(toast => toast.textContent === "Connected · 2 tools")`) && await mcpReady(mcpTestName),
+    "completed manual MCP test with fresh tools");
   await click(".ext-sheet-close");
   await click(".settings-dialog-close");
   await click(`[data-sidebar-session-row="${session.id}"]`);
@@ -415,11 +420,35 @@ try {
   await clickText('.composer-permission-menu button[role="menuitemradio"]', "Ask every time");
   await until(() => evaluate("document.querySelector('.composer-permission .mode-chip')?.innerText.trim() === 'Ask every time'"),
     "session permission mode is Ask");
-  await evaluate(`(() => {
-    const composer = document.querySelector(".composer-input");
-    composer.focus();
-    document.execCommand("insertText", false, ${JSON.stringify(`/mcp:intranet:${mcpName} ${mcpPrompt}`)});
-  })()`);
+  const typeComposer = (text) => cdp("Input.insertText", { text });
+  const command = `/mcp:intranet:${mcpName}`;
+  const menuOpen = () => evaluate('Boolean(document.querySelector(".composer-autocomplete.is-open"))');
+  await evaluate('document.querySelector(".composer-input").focus()');
+  await typeComposer(command.slice(0, -1));
+  await until(async () => {
+    await until(menuOpen, "slash command menu");
+    const selected = await evaluate(`(() => {
+      const option = Array.from(document.querySelectorAll(".composer-autocomplete.is-open [role=option]"))
+        .find(row => row.getClientRects().length &&
+          row.querySelector(".composer-ac-name")?.textContent === ${JSON.stringify(command)});
+      if (!option) return false;
+      option.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    if (selected) return true;
+    // A just-opened menu can still use the catalog cached before MCP was saved.
+    // Reopen through the editor so it can reload the catalog when that cache expires.
+    await evaluate(`(() => {
+      window.getSelection().selectAllChildren(document.querySelector(".composer-input"));
+      document.execCommand("delete");
+    })()`);
+    await until(async () => !(await menuOpen()), "slash command menu closed");
+    await typeComposer(command.slice(0, -1));
+    return false;
+  }, "select the discovered MCP tool from autocomplete");
+  await until(() => evaluate(`document.querySelector(".composer-input")?.textContent.trim() === ${JSON.stringify(command)}`),
+    "MCP menu inserted the full command");
+  await typeComposer(mcpPrompt);
   await click(".send-btn");
   await until(() => evaluate(`document.querySelector(".permission-card")?.innerText.includes(${JSON.stringify(mcpTool)})`),
     "permission card for the MCP tool");
