@@ -327,6 +327,6 @@ test("sidecar crash reports carry the last stderr lines", () => {
   assert.doesNotMatch(runtimeSidecarSource, /finishTurn\([^)]*"PLAN_APPROVAL_INTERRUPTED"/);
   assert.match(
     runtimeSidecarSource,
-    /finishTurn\(sessionId, "aborted", errorCode, \{/,
+    /finishTurn\(sessionId, "aborted", errorCode, \{[\s\S]*?crashError: \{/,
   );
 });

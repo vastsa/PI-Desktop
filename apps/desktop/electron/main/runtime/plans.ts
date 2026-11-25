@@ -1,4 +1,5 @@
-import { ErrorCodes, IPC, type AgentEventEnvelope, type AppNotification, type MessageUsage, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
+import { randomUUID } from "node:crypto";
+import { ErrorCodes, IPC, type AgentEventEnvelope, type AppError, type AppNotification, type MessageUsage, type PlanExecution, type PlanExecutionFinishStatus, type UiMessage } from "@pi-desktop/shared";
 import { executionFromResponse, executionListFromResponse, planExecutionFromUnknown } from "@pi-desktop/host-runtime";
 import type { RuntimeState } from "./context";
 import type {
@@ -17,6 +18,7 @@ export type FinishTurnOptions = {
   turnId: string;
   createNotification?: boolean;
   recoverInflight?: boolean;
+  crashError?: AppError;
 };
 
 /**
@@ -135,7 +137,16 @@ function hostTurnStatus(
 function hostTurnError(
   reason: TurnEndReason,
   errorCode: string | undefined,
+  crashError?: AppError,
 ): { code: string; message: string; retriable: boolean; traceId: string } | undefined {
+  if (crashError) {
+    return {
+      code: crashError.code,
+      message: crashError.message,
+      retriable: crashError.retriable === true,
+      traceId: crashError.traceId ?? "",
+    };
+  }
   if (reason !== "error") return undefined;
   const code = errorCode ?? "TURN_ERROR";
   return { code, message: code, retriable: false, traceId: "" };
@@ -189,7 +200,9 @@ function finishTurn(
   // Nothing below may read or delete state by session id again: a newer turn can
   // start while this one unwinds, and everything keyed by the session alone is
   // then its data.
-  const reason = peekAbortReason(id, turnId) ?? status;
+  const lockedAbortReason = peekAbortReason(id, turnId);
+  const reason = lockedAbortReason ?? status;
+  const crashError = lockedAbortReason ? undefined : options.crashError;
   const turnUsage = activeTurnUsages.get(id);
   activeTurnUsages.delete(id);
   const runId = scheduledRunsBySession.get(id);
@@ -239,6 +252,48 @@ function finishTurn(
             sessionId: id,
             data: String(e),
           });
+        }
+      }
+
+      if (crashError && activeTurns.get(id) === turnId) {
+        const ts = Date.now();
+        const errorMessage: UiMessage = {
+          id: randomUUID(),
+          turnId,
+          role: "assistant",
+          content: "",
+          createdAt: new Date(ts).toISOString(),
+          status: "error",
+          isError: true,
+          error: crashError,
+        };
+        if (runtimeState.host && settledTurnId) {
+          await runtimeState.host
+            .call("session.appendMessage", {
+              sessionId: id,
+              turnId,
+              message: errorMessage,
+            })
+            .catch((e) =>
+              logger.app("persistence", "warn", "crash error append failed", {
+                sessionId: id,
+                data: String(e),
+              }),
+            );
+        }
+        if (activeTurns.get(id) === turnId) {
+          emitAgentEvent({
+            sessionId: id,
+            turnId,
+            ts,
+            event: { type: "message_end", message: errorMessage },
+          } satisfies AgentEventEnvelope);
+          sendToRenderer(IPC.event.agentMessage, {
+            sessionId: id,
+            turnId,
+            ts,
+            event: { type: "error", error: crashError },
+          } satisfies AgentEventEnvelope);
         }
       }
 
@@ -317,7 +372,7 @@ function finishTurn(
         id,
         turnId,
         hostTurnStatus(reason),
-        hostTurnError(reason, errorCode),
+        hostTurnError(reason, errorCode, crashError),
       );
       runtimeState.agentHostBridge?.agentHost.kick(id);
     }

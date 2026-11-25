@@ -192,9 +192,16 @@ export function createSidecarRuntime({
       return;
     }
     inflightCheckpointer.settle(sessionId);
+    agentExtensions.cancelPrompts(sessionId);
+    plugins.cancelSessionTools(sessionId, "Agent runtime exited unexpectedly");
     await finishTurn(sessionId, "aborted", errorCode, {
       recoverInflight: true,
       turnId: crashedTurnId,
+      crashError: {
+        code: errorCode,
+        message: errorCode,
+        retriable: false,
+      },
     });
     if (executionId) {
       await finishApprovedExecution(

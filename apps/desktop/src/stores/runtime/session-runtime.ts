@@ -26,6 +26,7 @@ import type { ComposerDraftSnapshot } from "../../lib/composer-smart-stop";
 import { formatToolValue } from "../../lib/tool-display";
 import { recordPaneTranscript } from "../../lib/session-panes";
 import { withTranscriptTurnId } from "../../lib/transcript-turn-id";
+import { assistantErrorMessage } from "../helpers/store-helpers";
 import type { AppState, SessionHistoryWindow } from "../app-state";
 import type { StoreAccess } from "../slices/types";
 
@@ -357,6 +358,58 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
               createdAt: existing.createdAt || completed.createdAt,
             })
           : upsertLiveSessionMessage(current, completed);
+        break;
+      }
+      case "error": {
+        const aborted = event.error.code === "TURN_ABORTED";
+        const last = current[current.length - 1];
+        const hasErrorMessage =
+          last?.role === "assistant" &&
+          (last.status === "error" || last.isError === true);
+        let changed = false;
+        const settled: UiMessage[] = [];
+        for (const message of current) {
+          if (
+            message.role === "assistant" &&
+            message.status === "aborted" &&
+            !message.content.trim() &&
+            !(message.thinking || "").trim()
+          ) {
+            changed = true;
+            continue;
+          }
+          if (message.role === "tool" && message.toolStatus === "running") {
+            changed = true;
+            settled.push({
+              ...message,
+              toolStatus: "error",
+              status: "error",
+              isError: true,
+            });
+            continue;
+          }
+          if (message.role === "assistant" && message.status === "streaming") {
+            changed = true;
+            settled.push({
+              ...message,
+              status: aborted ? "aborted" : "error",
+            });
+            continue;
+          }
+          settled.push(message);
+        }
+        next =
+          aborted || hasErrorMessage
+            ? changed
+              ? settled
+              : current
+            : [
+                ...settled,
+                {
+                  ...assistantErrorMessage(event.error),
+                  ...(envelope.turnId ? { turnId: envelope.turnId } : {}),
+                },
+              ];
         break;
       }
       default:

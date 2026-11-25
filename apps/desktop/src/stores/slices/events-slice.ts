@@ -519,7 +519,7 @@ export function createEventsSlice({
           notifyInteractivePrompt(envelope.sessionId, "ask", {
             question: event.request.questions?.[0]?.question,
           });
-        } else if (event.type === "agent_end") {
+        } else if (event.type === "agent_end" || event.type === "error") {
           void get().refreshSessions();
         } else if (event.type === "planning_state") {
           void get().refreshSessions();
@@ -745,6 +745,7 @@ export function createEventsSlice({
                   : [...messages, assistantErrorMessage(event.error)],
             };
           });
+          void get().refreshSessions();
           break;
         }
         default:
