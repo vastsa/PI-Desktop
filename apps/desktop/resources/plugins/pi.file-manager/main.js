@@ -572,6 +572,7 @@ async function selectRoot(workspace, rootPath) {
  * 两个 root 下的同名相对路径根本不是同一个文件。
  */
 function dropRootScopedCaches() {
+  gitViewEpoch = gitEpoch();
   searchSessions.clear();
   for (const key of [...sqliteHandles.keys()]) closeSqliteHandle(key);
 }
@@ -713,23 +714,23 @@ async function audit(entry) {
 // 状态**不是自己解析 .git/** 得来的，而是跑工作区里真实存在的 git（只读子命令
 // status / diff / rev-parse）。两条理由：
 //   ① 索引格式（v2/v3/v4、扩展块、稀疏索引）、工作树状态、rename 检测、
-//      .gitattributes 的 filters 与换行归一化，都要复刻一遍。自己算出来的状态
+//      .gitattributes 的内建换行归一化，都要复刻一遍。自己算出来的状态
 //      迟早和 git 对不上——而「和 git 对不上」正是这个功能的全部价值所在。
 //   ② 插件进程跑在宿主给的最小环境里（child-process-env.ts 只放行 PATH 等少量
 //      变量），git 就在 PATH 上，spawn 得到；状态也因此跟着用户的 git 版本走。
 //
 // 边界：
-//   · 只跑只读子命令，从不传会写索引 / 联网的开关。GIT_OPTIONAL_LOCKS=0 让
+//   · 徽标与差异只读；只有本地 Changes 面板的独立通道能修改暂存区和创建提交。GIT_OPTIONAL_LOCKS=0 让
 //     status 不为了刷新索引去抢 .git/index.lock；GIT_TERMINAL_PROMPT=0 保证任何
 //     意外的交互都变成一次立即失败，而不是把面板挂住。
 //   · 每个子命令都有超时（5s）与输出上限，超了直接 kill。面板通道的总预算是 30s，
 //     一次列表最多再叠一层 2s 的结果缓存。
-//   · 路径仍然先过 resolveInsideRoot（根内包含 + 凭据黑名单）；传给 git 的是
+//   · 差异与写操作检查凭据、符号链接、路径包含与 Git 路径类型；传给 git 的是
 //     **根相对**路径，并配 GIT_LITERAL_PATHSPECS=1——文件名里带 ":(top)" 之类
 //     也不会被当成 pathspec 魔法。git 在这里只是被问了一句「这些文件怎么样」。
 //   · git 缺失 / 当前文件夹不是仓库 / 超时 / 任何意外，都只是「没有状态」：
 //     全部降级成 null，绝不影响列目录与读写。
-//   · 子模块只看指针本身变没变（--ignore-submodules=none），不递归进子模块工作区。
+//   · 不进入子模块工作区，不运行仓库配置的 hooks、filters 或 textconv。
 
 const GIT_TIMEOUT_MS = 5000;
 /** 同一 root 的结果缓存：一次展开目录往往连带好几次列表调用。 */
@@ -785,13 +786,16 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(binary, args, {
+      child = spawn(binary, ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", ...args], {
         cwd: rootPath,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
         env: {
-          ...process.env,
-          // 只读三件套：别抢索引锁、别开分页器、别弹交互提示。
+          // Never inherit an alternate index, work tree, git-dir, config or executable override.
+          ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_/i.test(k))),
+          GIT_NO_REPLACE_OBJECTS: "1",
+          GIT_NO_LAZY_FETCH: "1",
+          GIT_ALLOW_PROTOCOL: "",
           GIT_OPTIONAL_LOCKS: "0",
           GIT_PAGER: "cat",
           GIT_TERMINAL_PROMPT: "0",
@@ -821,9 +825,9 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
 
     const timer = setTimeout(() => {
       timedOut = true;
+      child.kill("SIGKILL");
       // Inherited pipes can delay close; settle at the deadline instead.
       finish(reject, fail("GIT_TIMEOUT", "git command timed out"));
-      child.kill("SIGKILL");
       child.stdout?.destroy?.();
       child.stderr?.destroy?.();
     }, timeoutMs);
@@ -844,7 +848,7 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
     child.on("error", (error) => finish(reject, error));
     child.on("close", (code) => {
       finish(resolve, {
-        code: code ?? 0,
+        code: code ?? -1,
         stdout: Buffer.concat(chunks),
         truncated,
         timedOut,
@@ -859,7 +863,12 @@ function runGit(rootPath, binary, args, { maxBytes, timeoutMs = GIT_TIMEOUT_MS }
  * 找到就记住（每个插件进程一次）。
  */
 async function runGitCommand(rootPath, args, options = {}) {
-  const candidates = gitBinary ? [gitBinary] : ["git", ...GIT_FALLBACK_BINARIES];
+  // An absolute executable also avoids Windows searching the repository for git.exe.
+  const executable = process.platform === "win32" ? "git.exe" : "git";
+  const candidates = gitBinary ? [gitBinary] : [...new Set([
+    ...(process.env.PATH || "").split(path.delimiter).filter(dir => path.isAbsolute(dir) && path.relative(rootPath, dir) !== "" && !isInside(rootPath, dir)).map(dir => path.join(dir, executable)),
+    ...GIT_FALLBACK_BINARIES.filter(file => path.isAbsolute(file)),
+  ])];
   for (const binary of candidates) {
     let result;
     try {
@@ -947,13 +956,14 @@ function parseNumstat(stdout) {
  * 仓库还没有任何提交（unborn HEAD）时 HEAD 不存在，退回「暂存区」与「工作区」
  * 两份再合并。
  */
-async function gitNumstat(rootPath) {
+async function gitNumstat(rootPath, flags) {
+  const cmd = [...flags, "diff", "--no-ext-diff", "--no-textconv", "--ignore-submodules=all", "--numstat", "-z"];
   const options = { maxBytes: MAX_STATUS_BYTES };
-  const head = await runGitCommand(rootPath, ["diff", "--numstat", "-z", "HEAD", "--"], options);
+  const head = await runGitCommand(rootPath, [...cmd, "HEAD", "--"], options);
   if (head && head.code === 0) return parseNumstat(head.stdout);
   const [staged, worktree] = await Promise.all([
-    runGitCommand(rootPath, ["diff", "--numstat", "-z", "--cached", "--"], options),
-    runGitCommand(rootPath, ["diff", "--numstat", "-z", "--"], options),
+    runGitCommand(rootPath, [...cmd, "--cached", "--"], options),
+    runGitCommand(rootPath, [...cmd, "--"], options),
   ]);
   const merged = new Map();
   for (const result of [staged, worktree]) {
@@ -978,20 +988,22 @@ async function buildGitSnapshot(rootPath) {
   const probeLines = probe.stdout.toString("utf8").split("\n");
   if (!probeLines[0]) return null;
   const prefix = (probeLines[1] ?? "").trim();
+  const flags = await gitFilterOptions({ root: rootPath });
 
   const [status, stats, branchResult] = await Promise.all([
     runGitCommand(
       rootPath,
       [
+        ...flags,
         "status",
         "--porcelain=v1",
         "-z",
         "--untracked-files=all",
-        "--ignore-submodules=none",
+        "--ignore-submodules=dirty",
       ],
       { maxBytes: MAX_STATUS_BYTES },
     ),
-    gitNumstat(rootPath),
+    gitNumstat(rootPath, flags),
     runGitCommand(rootPath, ["rev-parse", "--abbrev-ref", "HEAD"], { maxBytes: 4096 }).catch(
       () => null,
     ),
@@ -1002,7 +1014,7 @@ async function buildGitSnapshot(rootPath) {
   for (const record of parsePorcelainV1(status.stdout)) {
     if (prefix && !record.path.startsWith(prefix)) continue;
     const rel = prefix ? record.path.slice(prefix.length) : record.path;
-    if (!rel) continue;
+    if (!rel || isDenied(rel, "read")) continue;
     const classified = classifyRecord(record);
     if (!classified) continue;
     const stat = stats.get(record.path);
@@ -1037,11 +1049,12 @@ async function gitSnapshotFor(rootPath) {
   if (cached?.pending) return cached.pending;
   if (cached && Date.now() - cached.at < GIT_SNAPSHOT_TTL_MS) return cached.snapshot;
 
+  const cache = gitCache;
   const pending = buildGitSnapshot(rootPath)
     // 快照失败只等于「没有状态」：绝不让它把列目录 / 打开文件带崩。
     .catch(() => null)
     .then((snapshot) => {
-      gitCache.set(rootPath, { at: Date.now(), snapshot });
+      cache.set(rootPath, { at: Date.now(), snapshot });
       return snapshot;
     });
   gitCache.set(rootPath, { at: cached?.at ?? 0, snapshot: cached?.snapshot ?? null, pending });
@@ -1199,16 +1212,22 @@ function untrackedDiff(text, truncated) {
  * 两段：只有一段有内容就只给这一段，两段都有就都列出来（标题写清楚哪来的）。
  */
 async function handleGitDiff(payload) {
-  // 一次解析就够：包含校验、凭据黑名单、基点都在 resolveInsideRoot 里。
-  const { rootPath, abs, rel } = await resolveInsideRoot(payload?.path ?? "");
-  if (!rel) throw fail("INVALID_PATH", "the project root has no changes to show");
+  const root = await currentRoot();
+  if (!root) throw fail("NO_WORKSPACE", "No project is open.");
+  const rootPath = root.path;
+  const rel = normalizeRelative(payload?.path);
+  if (payload?.external || !(await gitFileAllowed(rootPath, rel, "read", (root.roots || []).map(r => r.path).filter(p => isInside(rootPath, p))))) throw fail("DENIED_PATH", "Select a regular, non-protected file.");
+  const abs = path.join(rootPath, rel);
   const snapshot = await gitSnapshotFor(rootPath);
   if (!snapshot) throw fail("GIT_UNAVAILABLE", "git status is unavailable in this folder");
 
   const info = snapshot.files.get(rel) ?? null;
+  return gitFileDiff(rootPath, abs, rel, info, await gitFilterOptions({ root: rootPath }));
+}
 
+async function gitFileDiff(rootPath, abs, rel, info, flags) {
   if (info?.untracked) {
-    const stat = await fs.stat(abs).catch(() => null);
+    const stat = await fs.lstat(abs).catch(() => null);
     if (!stat?.isFile()) throw fail("NOT_FOUND", "file not found");
     if (stat.size > MAX_UNTRACKED_DIFF_BYTES) {
       return {
@@ -1224,7 +1243,20 @@ async function handleGitDiff(payload) {
         truncated: true,
       };
     }
-    const buffer = await fs.readFile(abs);
+    const handle = await fs.open(abs, require("node:fs").constants.O_RDONLY | (require("node:fs").constants.O_NOFOLLOW || 0));
+    let buffer;
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile() || opened.dev !== stat.dev || opened.ino !== stat.ino || opened.size !== stat.size || !await gitFileAllowed(rootPath, rel, "read")) throw staleGit();
+      const bytes = Buffer.alloc(stat.size);
+      let pos = 0;
+      while (pos < bytes.length) {
+        const { bytesRead } = await handle.read(bytes, pos, bytes.length - pos, pos);
+        if (!bytesRead) break;
+        pos += bytesRead;
+      }
+      buffer = bytes.subarray(0, pos);
+    } finally { await handle.close(); }
     // 含 NUL 字节 = 二进制：逐行加前缀毫无意义，直接说清楚。
     if (buffer.subarray(0, 4096).includes(0)) {
       return {
@@ -1247,21 +1279,24 @@ async function handleGitDiff(payload) {
       addedLines: parsed.hunks[0].lines.length,
       deletedLines: 0,
       sections: [{ scope: "worktree", ...parsed }],
-      truncated: buffer.length >= MAX_UNTRACKED_DIFF_BYTES,
+      truncated: buffer.length >= MAX_UNTRACKED_DIFF_BYTES || parsed.hunks[0].lines.length === MAX_DIFF_LINES,
     };
   }
 
-  const diffArgs = ["diff", "--no-color", "--no-ext-diff", "-U3", "--", rel];
+  // Even literal pathspecs match descendants of a deleted directory. Diff only a file.
+  const ctx = { root: rootPath, options: flags };
+  await gitCheckIndexPath(ctx, rel, "HEAD");
+  const diffArgs = [...flags, "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=all", "-U3", "--", rel];
   const [worktree, staged] = await Promise.all([
     runGitCommand(rootPath, diffArgs, { maxBytes: MAX_DIFF_BYTES }),
     runGitCommand(
       rootPath,
-      ["diff", "--no-color", "--no-ext-diff", "-U3", "--cached", "--", rel],
+      [...diffArgs.slice(0, -2), "--cached", "--", rel],
       { maxBytes: MAX_DIFF_BYTES },
     ),
   ]);
-  if (!worktree || worktree.code !== 0) {
-    throw fail("GIT_UNAVAILABLE", worktree?.stderr?.trim() || "git diff failed");
+  if ([worktree, staged].some(result => result.timedOut || (result.code !== 0 && !result.truncated))) {
+    throw fail("GIT_UNAVAILABLE", "Git could not read the diff. Refresh or inspect the repository in Git.");
   }
 
   const sections = [];
@@ -1270,15 +1305,15 @@ async function handleGitDiff(payload) {
   // 整个响应的行数预算：超了就把后面的 hunk 丢掉并说清楚「已截断」——界面上那句
   // 「输出已截断」必须名副其实，否则用户会以为差异就这么多。
   let budget = MAX_DIFF_LINES;
-  let truncated = false;
+  let truncated = worktree.truncated || staged.truncated;
 
   for (const [scope, result] of [
     ["worktree", worktree],
     ["staged", staged],
   ]) {
-    if (!result || result.code !== 0 || result.stdout.length === 0) continue;
+    if (!result || result.stdout.length === 0) continue;
     const parsed = parseUnifiedDiff(result.stdout.toString("utf8"));
-    if (parsed.hunks.length === 0 && !parsed.binary) continue;
+    if (!parsed.meta.length && !parsed.hunks.length && !parsed.binary) continue;
 
     if (parsed.binary) {
       sections.push({ scope, meta: parsed.meta, hunks: [], binary: true, truncated: false });
@@ -1325,6 +1360,173 @@ async function handleGitDiff(payload) {
     sections,
     truncated,
   };
+}
+
+// Local Changes panel: a review token binds the host-selected folder, project/session,
+// branch/HEAD and *all* index changes (including entries the view must never see).
+const gitEpoch = () => require("node:crypto").randomUUID();
+let gitViewEpoch; // Lazy: optional Git support must not affect ordinary file browsing.
+const gitBusy = new Set();
+const staleGit = () => fail("GIT_STALE", "The project, branch or index changed. Refresh Changes and review again.");
+const unsafeIndex = () => fail("GIT_INDEX_BLOCKED", "The index contains a protected path, link, submodule or conflict. Review and unstage it in Git first.");
+
+async function gitContext(payload) {
+  const ws = await pi.workspace.get();
+  gitViewEpoch ||= gitEpoch();
+  if (!ws?.path || isRemoteWorkspace(ws) || payload.external || payload.workspacePath !== ws.path ||
+      (payload.projectId || null) !== (ws.projectId || null) || payload.rootPath !== selectedRootOf(ws).path) throw staleGit();
+  return { root: payload.rootPath, nested: rootsOf(ws).map(r => r.path).filter(p => isInside(payload.rootPath, p)),
+    key: JSON.stringify([gitViewEpoch, ws.path, ws.projectId, ws.sessionId, payload.rootPath, rootsOf(ws).map(r => r.path)]) };
+}
+
+// Git uses '/' on every OS. Do not normalize an unsafe spelling into a different file.
+// Walk even missing parents: a deleted file may have vanished with its whole directory.
+async function gitFileAllowed(root, rel, mode, nested = [], fingerprint) {
+  if (typeof rel !== "string" || !rel || /[\\\x00-\x1f\ufffd]/.test(rel) || path.win32.isAbsolute(rel) || /^[A-Za-z]:/.test(rel) ||
+      rel.split("/").some(s => !s || s === "." || s === "..") || isDenied(rel, mode)) return false;
+  if (process.platform === "win32" && rel.split("/").some(s => /[:. ]$|:/.test(s) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(s))) return false;
+  const target = path.join(root, rel);
+  if (!isInside(root, target) || nested.some(dir => !path.relative(dir, target) || isInside(dir, target))) return false;
+  let part = root;
+  for (const segment of rel.split("/")) {
+    part = path.join(part, segment);
+    let st;
+    try { st = await fs.lstat(part); } catch (e) { return e.code === "ENOENT"; }
+    if (st.isSymbolicLink() || (part === target ? !st.isFile() : !st.isDirectory())) return false;
+    if (part === target && fingerprint) fingerprint.update(JSON.stringify([rel, st.ino, st.size, st.ctimeMs, st.mtimeMs]));
+    if (part !== target && await exists(path.join(part, ".git"))) return false;
+  }
+  return true;
+}
+
+async function panelCommand(ctx, args, allowed = [0]) {
+  const result = await runGitCommand(ctx.root, [...(ctx.options || []), ...args], { maxBytes: MAX_STATUS_BYTES });
+  if (result.timedOut || result.truncated) throw fail("GIT_LIMIT", "Git exceeded the time or output limit. Use Git directly for this repository.");
+  if (!allowed.includes(result.code)) throw fail("GIT_FAILED", result.stderr.trim().slice(0, 1000) || "Git failed. Check the repository and refresh Changes.");
+  return result;
+}
+
+const gitText = r => r.stdout.toString("utf8").replace(/\r?\n$/, "");
+const gitOid = s => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(s);
+const RAW_DIFF = ["--raw", "-z", "--no-abbrev", "--no-renames", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none"];
+
+async function gitFilterOptions(ctx) {
+  const filters = await panelCommand(ctx, ["config", "-z", "--name-only", "--get-regexp", "^filter\\..*\\.(clean|smudge|process|required)$"], [0, 1]);
+  return [...new Set(filters.stdout.toString().split("\0").filter(Boolean).map(k => k.slice(0, k.lastIndexOf("."))))]
+    .flatMap(k => ["-c", `${k}.clean=`, "-c", `${k}.smudge=`, "-c", `${k}.process=`, "-c", `${k}.required=false`]);
+}
+
+async function gitCheckIndexPath(ctx, rel, base) {
+  const [index, previous] = await Promise.all([
+    panelCommand(ctx, ["ls-files", "--stage", "-z", "--", rel]),
+    base ? panelCommand(ctx, ["ls-tree", base, "--", rel], [0, 128]) : null,
+  ]);
+  if (index.stdout.toString().split("\0").some(row => row &&
+    (!/^100(?:644|755) /.test(row) || row.slice(row.indexOf("\t") + 1) !== rel))) throw unsafeIndex();
+  if (previous?.stdout.length && !/^100(?:644|755) /.test(gitText(previous))) throw unsafeIndex();
+}
+
+async function panelState(ctx) {
+  const probe = await panelCommand(ctx, ["rev-parse", "--show-toplevel"], [0, 128]);
+  if (probe.code || path.relative(await fs.realpath(ctx.root), gitText(probe))) throw fail("GIT_REPO_ROOT", "Open the repository root to manage Git changes.");
+  // Do not write through .git indirections into another workspace or a shared index.
+  const gd = path.join(ctx.root, ".git");
+  const gitDir = await fs.lstat(gd);
+  if (!gitDir.isDirectory() || gitDir.isSymbolicLink() || await exists(path.join(gd, "commondir"))) throw fail("GIT_LAYOUT", "Use Git directly to manage this linked worktree or submodule.");
+  // Never execute an attribute-selected clean/process filter from repository config.
+  // Filtered files cannot be staged here; never silently replace LFS pointers with bytes.
+  ctx.options = await gitFilterOptions(ctx);
+  const [status, index, branch, head] = await Promise.all([
+    panelCommand(ctx, ["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--ignore-submodules=dirty"]),
+    panelCommand(ctx, ["diff", "--cached", ...RAW_DIFF, "--"]),
+    panelCommand(ctx, ["symbolic-ref", "-q", "HEAD"], [0, 1]),
+    panelCommand(ctx, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], [0, 1]),
+  ]);
+  const records = parsePorcelainV1(status.stdout);
+  if (records.length > 2000) throw fail("GIT_LIMIT", "Too many changed files. Use Git directly or reduce the changes.");
+  const entries = [], restricted = new Set();
+  const fingerprint = require("node:crypto").createHash("sha256");
+  // Both sides matter: a staged symlink may have been replaced by a regular disk file.
+  const fields = index.stdout.toString().split("\0");
+  for (let i = 0; i < fields.length - 1; i += 2) {
+    if (!/^:(?:100644|100755|000000) (?:100644|100755|000000) [a-f0-9]+ [a-f0-9]+ [ADMT]$/.test(fields[i])) restricted.add(fields[i + 1]);
+  }
+  const visibleStaged = new Set();
+  for (const rec of records) {
+    if (restricted.has(rec.path) || !(await gitFileAllowed(ctx.root, rec.path, "write", ctx.nested, fingerprint))) continue;
+    const info = classifyRecord(rec);
+    if (!info) continue;
+    entries.push({ path: rec.path, index: rec.x, worktree: rec.y, status: info.status });
+    if (rec.x !== " " && rec.x !== "?" && info.status !== "conflicted") visibleStaged.add(rec.path);
+  }
+  const blocked = fields.some((f, i) => i % 2 === 1 && (restricted.has(f) || !visibleStaged.has(f)));
+  const ref = gitText(branch), parent = gitText(head);
+  const revision = fingerprint.update(ctx.key).update(ref).update(parent).update(index.stdout).update(status.stdout).digest("hex");
+  return { entries, revision, blocked, hidden: records.length !== entries.length, ref, parent, raw: index.stdout };
+}
+
+async function handleGitChanges(payload) {
+  const ctx = await gitContext(payload);
+  const s = await panelState(ctx);
+  if ((await gitContext(payload)).key !== ctx.key) throw staleGit();
+  return { ok: true, entries: s.entries, revision: s.revision, branch: s.ref.replace(/^refs\/heads\//, "") || "HEAD", hidden: s.hidden, blocked: s.blocked };
+}
+
+async function handleGitAction(action, payload) {
+  const ctx = await gitContext(payload);
+  const writesIndex = action !== "diff";
+  if (writesIndex) {
+    if (gitBusy.has(ctx.root)) throw fail("GIT_BUSY", "A Git operation is running. Refresh and retry.");
+    gitBusy.add(ctx.root);
+  }
+  try {
+    const state = await panelState(ctx);
+    const checkContext = async () => { if ((await gitContext(payload)).key !== ctx.key) throw staleGit(); };
+    if (payload.revision !== state.revision) throw staleGit();
+    await checkContext();
+    const rel = payload.path;
+    if (action === "commit") {
+      const msg = payload.message;
+      if (typeof msg !== "string" || !msg.trim() || msg.includes("\0") || Buffer.byteLength(msg) > 4096) throw fail("GIT_MESSAGE", "Enter a commit message (up to 4096 bytes).");
+      if (state.blocked) throw unsafeIndex();
+      if (!state.raw.length) throw fail("GIT_EMPTY", "Stage at least one file before committing.");
+      if (!state.ref.startsWith("refs/heads/")) throw fail("GIT_BRANCH", "Check out a local branch before committing.");
+      for (const mark of ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply", "sequencer", "BISECT_START"]) {
+        if (await exists(path.join(ctx.root, ".git", mark))) throw fail("GIT_IN_PROGRESS", "Finish the ongoing Git operation before committing here.");
+      }
+      // Commit an immutable Git tree, NOT the mutable live index. Compare its full raw
+      // delta to the reviewed index (including old/new modes, blob IDs and literal paths).
+      // An external stage between validation and publishing cannot enter this commit.
+      const tree = gitText(await panelCommand(ctx, ["write-tree"]));
+      const base = state.parent || gitText(await panelCommand(ctx, ["hash-object", "-w", "-t", "tree", "--stdin"]));
+      if (!gitOid(tree) || !gitOid(base)) throw staleGit();
+      const frozen = await panelCommand(ctx, ["diff-tree", "-r", ...RAW_DIFF, base, tree, "--"]);
+      if (!frozen.stdout.equals(state.raw)) throw staleGit();
+      const oid = gitText(await panelCommand(ctx, ["commit-tree", tree, ...(state.parent ? ["-p", state.parent] : []), "--no-gpg-sign", "-m", msg.trim()]));
+      if (!gitOid(oid) || gitText(await panelCommand(ctx, ["symbolic-ref", "HEAD"])) !== state.ref) throw staleGit();
+      await checkContext();
+      await panelCommand(ctx, ["update-ref", "-m", "commit: File Manager", state.ref, oid, state.parent || "0".repeat(oid.length)]);
+    } else {
+      const entry = state.entries.find(e => e.path === rel && (action === "stage" ? e.worktree !== " " : action === "unstage" ? !["?", " "].includes(e.index) : true));
+      if (!entry || entry.status === "conflicted" || !await gitFileAllowed(ctx.root, rel, "write", ctx.nested)) throw fail("GIT_PATH", "Select a changed regular file. Resolve conflicts and protected paths in Git.");
+      if (action === "diff") {
+        const response = await gitFileDiff(ctx.root, path.join(ctx.root, rel), rel, classifyRecord({ x: entry.index, y: entry.worktree }), ctx.options);
+        await checkContext();
+        return response;
+      }
+      if (action === "stage") {
+        const attr = await panelCommand(ctx, ["check-attr", "-z", "filter", "--", rel]);
+        if (!["unspecified", "unset"].includes(attr.stdout.toString().split("\0")[2])) throw fail("GIT_FILTER", "Stage files that use custom Git filters in Git directly.");
+      }
+      await gitCheckIndexPath(ctx, rel, state.parent);
+      if (!await gitFileAllowed(ctx.root, rel, "write", ctx.nested)) throw staleGit();
+      await checkContext();
+      await panelCommand(ctx, action === "stage" ? ["update-index", "--add", "--remove", "--", rel] : state.parent ? ["reset", "-q", state.parent, "--", rel] : ["rm", "--cached", "-f", "--", rel]);
+    }
+    invalidateGitSnapshots();
+    await audit({ op: `git.${action}`, root: ctx.root, ...(action === "commit" ? {} : { path: rel }) });
+    return { ok: true };
+  } finally { if (writesIndex) gitBusy.delete(ctx.root); }
 }
 
 // ── 文件监听（0.8.0） ───────────────────────────────────────────────────────
@@ -1451,6 +1653,7 @@ function flushWatchChanges() {
 }
 
 function noteWatchChange(rel) {
+  if (isSelfWrite(rel)) return;
   watchPending.add(rel);
   if (watchTimer) clearTimeout(watchTimer);
   watchTimer = setTimeout(flushWatchChanges, WATCH_DEBOUNCE_MS);
@@ -1476,6 +1679,8 @@ function stopWatching() {
 function startWatching(rootPath) {
   if (watcher?.rootPath === rootPath) return true;
   stopWatching();
+  watchHistory = [];
+  selfWrites.clear();
   const watch = fsWatchFn();
   if (!watch) {
     watchSupported = false;
@@ -1483,7 +1688,9 @@ function startWatching(rootPath) {
   }
   try {
     const handle = watch(
-      rootPath,
+      // Electron on Windows slices event names against the native long path;
+      // an 8.3 alias otherwise leaves stray characters before the relative path.
+      process.platform === "win32" ? require("node:fs").realpathSync.native(rootPath) : rootPath,
       // persistent: false —— 监听不该让插件进程一直活着；没有变化时它可以自然退出。
       { recursive: true, persistent: false },
       (_eventType, filename) => {
@@ -1536,7 +1743,7 @@ async function handleWatch(payload) {
     revision: watchRevision,
     changed: changed.slice(0, WATCH_MAX_CHANGED),
     // 游标已经落到有界历史之外：视图据此也按「可能还有别的变化」做一次保守刷新。
-    stale: since > 0 && watchHistory.length > 0 && since < watchHistory[0].revision,
+    stale: changed.length > WATCH_MAX_CHANGED || (since > 0 && watchHistory.length > 0 && since < watchHistory[0].revision - 1),
   };
 }
 
@@ -2823,6 +3030,7 @@ async function handleWrite(payload) {
   if (payload?.eol === "crlf") serialized = serialized.split("\n").join("\r\n");
   if (payload?.bom) serialized = `\uFEFF${serialized}`;
 
+  noteSelfWrite(rel); // Windows may report parent changes before rename/audit completes.
   await atomicWrite(abs, serialized, stat?.mode ?? null);
 
   const next = await fs.stat(abs);
@@ -2849,9 +3057,11 @@ const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 function assertValidName(rawName) {
   if (typeof rawName !== "string") throw fail("INVALID_NAME", "name is required");
   const name = rawName.trim();
-  if (!name || name === "." || name === ".." || /[<>:"/\\|?*\x00-\x1f]/.test(name) || name.endsWith(".") || WINDOWS_RESERVED.test(name)) {
-    throw fail("INVALID_NAME", "name must be a valid file or directory name");
-  }
+  if (!name || name === "." || name === "..") throw fail("INVALID_NAME", "invalid name");
+  if (/[\\/:*?"<>|\x00-\x1f]/.test(name)) throw fail("INVALID_NAME", "name contains an illegal character");
+  if (name.endsWith(".")) throw fail("INVALID_NAME", "name must not end with a dot");
+  if (WINDOWS_RESERVED.test(name)) throw fail("INVALID_NAME", "name is reserved by the system");
+  if (name.length > 200) throw fail("INVALID_NAME", "name is too long");
   return name;
 }
 
@@ -2912,6 +3122,9 @@ async function handleRename(payload) {
 async function handleMove(payload) {
   const source = await resolveInsideRoot(payload?.from ?? "", { mode: "write" });
   const target = await resolveInsideRoot(payload?.toDir ?? "", { mode: "write", allowRoot: true });
+  if (source.rootPath !== target.rootPath || (payload.expectedRoot !== undefined && path.relative(source.rootPath, payload.expectedRoot) !== "")) {
+    throw fail("WORKSPACE_CHANGED", "The folder changed during the drag. Please try again.");
+  }
 
   const targetStat = await fs.stat(target.abs).catch(() => null);
   if (!targetStat?.isDirectory()) throw fail("INVALID_PATH", "the destination is not a directory");
@@ -2934,7 +3147,7 @@ async function handleMove(payload) {
   } catch (error) {
     if (error?.code !== "EXDEV") throw error;
     // 跨卷：复制 + 删除。
-    await fs.cp(source.abs, nextAbs, { recursive: true, errorOnExist: true });
+    await fs.cp(source.abs, nextAbs, { recursive: true, errorOnExist: true, force: false });
     await fs.rm(source.abs, { recursive: true });
   }
 
@@ -3653,7 +3866,7 @@ async function handleHello() {
     // 而不是让用户开了却永远没反应。
     watch: { available: !isRemoteWorkspace(root) && watchSupported && fsWatchFn() !== null },
     // Older hosts may load this plugin before the built-in Browser action API exists.
-    capabilities: { openHtmlInBrowser: !isRemoteWorkspace(root) && typeof pi.fs.openInBrowser === "function" },
+    capabilities: { openHtmlInBrowser: !isRemoteWorkspace(root) && typeof pi.fs?.openInBrowser === "function" },
     prefs,
   };
 }
@@ -3675,7 +3888,15 @@ const CHANNELS = {
   "fm.sqlite.open": handleSqliteOpen,
   "fm.sqlite.rows": handleSqliteRows,
   "fm.sqlite.query": handleSqliteQuery,
+  ...require("./git-sync").createGitSync({ gitContext, gitBusy, invalidateGitSnapshots, isDenied, audit }),
+  ...require("./git-history").createGitHistory({ gitContext, panelCommand, gitFileAllowed, fail }),
+  "fm.git.batch": require("./git-batch").createGitBatch({ gitContext, panelState, panelCommand, gitFileAllowed, gitCheckIndexPath, gitBusy, staleGit, invalidateGitSnapshots, audit, fail }),
   "fm.git.diff": handleGitDiff,
+  "fm.git.changes": handleGitChanges,
+  "fm.git.panelDiff": payload => handleGitAction("diff", payload),
+  "fm.git.stage": payload => handleGitAction("stage", payload),
+  "fm.git.unstage": payload => handleGitAction("unstage", payload),
+  "fm.git.commit": payload => handleGitAction("commit", payload),
   "fm.watch": handleWatch,
   // 编辑器探测与「通过…打开」（0.9.0）。前者一天只真的探一次（落盘缓存，多开共享），
   // 后者只认探测结果里的 id，视图指定不了可执行文件。
@@ -3688,6 +3909,9 @@ async function onPanelInvoke(channel, payload) {
   if (!handler) return { ok: false, code: "UNSUPPORTED", message: `unknown channel: ${channel}` };
   try {
     const workspace = await pi.workspace.get();
+    if (channel === 'fm.write' && payload?.expectedRoot && (!workspace || !samePath(selectedRootOf(workspace)?.path ?? '', payload.expectedRoot))) {
+      throw fail('WORKSPACE_CHANGED', 'The selected folder changed before this document could be saved.');
+    }
     if (payload?.workspacePath !== undefined && payload.workspacePath !== workspace?.path) {
       throw fail("WORKSPACE_CHANGED", "The workspace changed while the file was loading");
     }
@@ -3717,6 +3941,7 @@ async function onLoad() {
 }
 
 async function onUnload() {
+  gitViewEpoch = undefined;
   searchSessions.clear();
   for (const key of [...sqliteHandles.keys()]) closeSqliteHandle(key);
   invalidateGitSnapshots();

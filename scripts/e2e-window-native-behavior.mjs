@@ -54,6 +54,7 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))");
     window.setSize(704, 650);
     assert.ok(window.getBounds().width <= 720, "native half-width tile is not blocked by the old 800 DIP minimum");
+    const normalBounds = window.getBounds();
     await transition(window, () => window.maximize(), "maximize");
     assert.equal(window.isMaximized(), true);
     assert.equal(window.isResizable(), true, "native restore/green button is not disabled");
@@ -63,7 +64,10 @@ app.whenReady().then(async () => {
     }
     await transition(window, () => window.unmaximize(), "unmaximize");
     assert.equal(window.isMaximized(), false);
-    if (process.platform === "darwin") assert.equal(window.isMovable(), true);
+    if (process.platform === "darwin") {
+      assert.deepEqual(window.getBounds(), normalBounds, "macOS Zoom must restore the entire window frame");
+      assert.equal(window.isMovable(), true);
+    }
     window.setSize(900, 650);
     assert.equal(window.getBounds().width, 900, "restored window can resize again");
     window.destroy();

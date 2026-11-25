@@ -135,8 +135,9 @@ recency only breaks ties between equally relevant matches.
   resets this handshake.
 - Frameless minimize, maximize/restore, and close controls remain outside the
   drag region. Maximize state is queried on mount and updated from native
-  window events, so the restore affordance never depends only on optimistic
-  renderer state.
+  maximize/unmaximize events. Fullscreen enter/exit also rechecks native
+  maximize state after the transition settles, so macOS caption dragging and
+  the restore affordance reflect the actual window state.
 - Windows/Linux explicit minimize actions use native minimize and keep the
   taskbar entry. On Windows, clicking the focused window's taskbar button also
   uses native minimize and keeps the taskbar entry; clicking it again
@@ -1881,11 +1882,12 @@ Project drag/drop follows these patterns:
 
 ### 9.2 Sidebar scrolling
 
-- The Recent sessions body is capped at ten compact rows and scrolls
-  internally once Load more has added rows beyond that height.
-- Retained project groups occupy the remaining sidebar height and scroll in a
-  separate region. Both regions stay independent from the footer and primary
-  navigation.
+- When Projects is shown, Recent sessions is capped at ten compact rows.
+  Recent and Pinned sessions scroll internally as the sidebar gets shorter,
+  keeping room for a project header and conversation row.
+- Retained project groups scroll in their own region. If the minimum heights
+  overflow the window, the sidebar body scrolls to expose Projects and the
+  Settings footer. Loaded conversations stay loaded when space returns.
 - No horizontal scroll in sidebar
 - Scroll indicators use the platform's subtle overlay treatment without
   changing either region's width. The 6px thumb is transparent at rest and
@@ -2032,8 +2034,10 @@ This does not prevent state changes — it makes them instant.
   chat-width contract is unchanged; this exception only relaxes the native
   window constraint so small/scaled displays can accept side-by-side tiles.
   The minimum height remains 560 DIP, capped to the work-area height.
-- On macOS and Windows a maximized main window rejects manual edge resizing.
-  Windows retains native drag-to-restore. On macOS the shell temporarily disables
+- On Windows a maximized main window rejects manual edge resizing and retains
+  native drag-to-restore. AppKit owns edge resizing and Zoom/Restore on macOS.
+  Both use the same cancellable resize event, so cancelling it would also block
+  restoration of the window's original frame. The macOS shell temporarily disables
   CSS caption dragging and handles caption double-click as Restore; normal
   windows retain native double-click behavior. The inherited `--window-drag-region`
   marker distinguishes caption text from explicit no-drag controls. Do not use

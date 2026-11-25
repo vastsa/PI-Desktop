@@ -388,8 +388,14 @@ type PluginProviderModelContrib = {
  thinkingLevels?: string[];
  /** New sessions use this level when it is present in `thinkingLevels`. */
  defaultThinkingLevel?: string;
+ /** Preserve unsigned reasoning blocks when the Anthropic endpoint accepts them. */
+ allowEmptyThinkingSignature?: boolean;
 };
 ```
+The opt-in is copied into the Host-owned model binding and survives provider
+reloads. It is only used when constructing Anthropic Messages requests;
+omitting it preserves the adapter default. Manifest validation rejects
+non-boolean values.
 To materialize these fields, the Host trims entries, drops unknown canonical
 names, removes duplicates, and preserves the remaining declaration order. An
 absent or unusable list becomes an empty binding. `defaultThinkingLevel` is kept

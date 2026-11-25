@@ -356,8 +356,10 @@ session gets a scratch directory outside the workspace:
 ```
 
 Native disk-file pastes retain main-registered live paths and byte sizes; they
-do not copy or read file contents, including referenced images. Subsequent reads
-use normal tool permissions. See [local file references](../../adr/composer-local-file-references.md).
+do not copy or read file contents. Native image files within the import bounds
+are the exception: they are copied into session scratch like picker imports so
+vision models receive the image. Subsequent reads of referenced files use
+normal tool permissions. See [local file references](../../adr/composer-local-file-references.md).
 
 Generated clipboard files and images pasted into the composer are materialized by
 Electron main below `<data_dir>/scratch/<sessionId>/pasted/` before their
@@ -637,6 +639,14 @@ Host execution baseline:
 - A command that exits non-zero returns `ok: false`, `isError: true`, and
   `errorCode: TOOL_FAILED` while preserving its `exitCode`, stdout, and stderr
   in `content` so the agent can diagnose the command without blindly retrying.
+- For a parent Agent's ordinary local Bash call at the end of a tool batch,
+  wait up to 10s for the first response. If the command is still running and the
+  session has background capacity, return a `running` snapshot with bounded
+  output and a Bash job reference. Host keeps the same process and its original
+  timeout, and the agent can use `TaskWait` before consuming its results or
+  `TaskStop` after handoff to stop it. No continuation is registered. Gates,
+  patch commands, delegated calls, earlier calls in a batch, and native remote
+  workspaces keep waiting for completion.
 - `runInBackground: true` detaches the command from the turn: the call returns
   `backgroundTaskId` as soon as the shell starts, no timeout applies, and the
   process survives `tools.abort` and `agent.abort`. The host owns the process

@@ -28,32 +28,30 @@ function fixture(platform, initiallyMaximized = false) {
     window.emit(event, { preventDefault() { prevented = true; } });
     return prevented;
   };
-  return { window, transition, drag, dispose, setNativeMaximized: (value) => { maximized = value; } };
+  return { window, transition, drag, dispose };
 }
 
-for (const platform of ["darwin", "win32"]) {
-  test(`${platform}: maximize protects edges; restore re-enables native gestures`, () => {
-    const f = fixture(platform);
-    assert.equal(f.drag("will-resize"), false);
-    f.transition(true);
-    assert.equal(f.drag("will-resize"), true);
-    assert.equal(f.drag("will-move"), false, "native drag-to-restore remains OS-owned");
-    f.transition(false);
-    assert.equal(f.drag("will-resize"), false);
-    assert.equal(f.drag("will-move"), false);
-    assert.equal(f.window.isMovable(), true);
-    f.window.emit("closed");
-    for (const event of ["will-resize", "will-move", "maximize", "unmaximize"]) assert.equal(f.window.listenerCount(event), 0);
-  });
-}
-
-test("macOS: an already maximized window protects edges without disabling native zoom", () => {
-  const f = fixture("darwin", true);
-  assert.equal(f.window.isMovable(), true);
-  assert.equal(f.drag("will-resize"), true);
-  f.dispose();
-  assert.equal(f.window.isMovable(), true);
+test("Windows: maximize protects edges; restore re-enables native gestures", () => {
+  const f = fixture("win32");
   assert.equal(f.drag("will-resize"), false);
+  f.transition(true);
+  assert.equal(f.drag("will-resize"), true);
+  assert.equal(f.drag("will-move"), false, "native drag-to-restore remains OS-owned");
+  f.transition(false);
+  assert.equal(f.drag("will-resize"), false);
+  assert.equal(f.drag("will-move"), false);
+  assert.equal(f.window.isMovable(), true);
+  f.window.emit("closed");
+  for (const event of ["will-resize", "will-move", "maximize", "unmaximize"]) assert.equal(f.window.listenerCount(event), 0);
+});
+
+test("macOS leaves native Zoom and edge resizing available after maximize", () => {
+  const f = fixture("darwin");
+  f.transition(true);
+  assert.equal(f.window.isMovable(), true);
+  assert.equal(f.window.listenerCount("will-resize"), 0);
+  assert.equal(f.drag("will-resize"), false);
+  f.dispose();
 });
 
 test("Linux retains compositor-owned maximize and movement", () => {
@@ -63,7 +61,6 @@ test("Linux retains compositor-owned maximize and movement", () => {
   assert.equal(f.drag("will-resize"), false);
   f.dispose();
 });
-
 
 function transparentFixture() {
   const window = new EventEmitter();
@@ -115,17 +112,4 @@ test("transparent Windows leaves unrelated commands/fullscreen alone and cancels
   f.close();
   await new Promise(setImmediate);
   assert.equal(f.count, 0);
-});
-
-
-test("macOS zoom animation is not blocked by an early native maximize flag", () => {
-  const f = fixture("darwin");
-  f.setNativeMaximized(true); // native flag precedes the end-of-zoom event.
-  assert.equal(f.drag("will-resize"), false);
-  f.window.emit("maximize");
-  assert.equal(f.drag("will-resize"), true);
-  f.setNativeMaximized(false); // programmatic bounds change, without native zoom.
-  f.window.emit("resize");
-  assert.equal(f.drag("will-resize"), false);
-  f.dispose();
 });

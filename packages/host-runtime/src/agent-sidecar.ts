@@ -76,6 +76,7 @@ const HOST_PROXY_ALLOWED = new Set([
   "project.instructions.resolve",
   "provider.resolveAuth",
   "provider.resolveSubagentModel",
+  "delegation.validateRole",
   "app.health",
   "plugins.modelContext.read",
   // Trusted extensions (D387): answered by the embedding host, plus the
@@ -446,6 +447,12 @@ export class AgentSidecar {
    * user's configured providers and the model catalog, respecting the
    * `availableForSubagents` gate on each model binding.
    */
+  private roleValidator?: (sessionId: string, mode: string, role: unknown) => Promise<boolean>;
+
+  setRoleValidator(validate: (sessionId: string, mode: string, role: unknown) => Promise<boolean>): void {
+    this.roleValidator = validate;
+  }
+
   private subagentModelResolver:
     | ((key: string) => Promise<unknown>)
     | null = null;
@@ -536,6 +543,11 @@ export class AgentSidecar {
           this.writeToChild(
             JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n",
           );
+          return;
+        }
+        if (method === "delegation.validateRole") {
+          const allowed = await this.roleValidator?.(String(params.sessionId), String(params.mode), params.role);
+          this.writeToChild(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { allowed: allowed === true } }) + "\n");
           return;
         }
         if (method === "provider.resolveSubagentModel") {

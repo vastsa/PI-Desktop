@@ -2380,20 +2380,26 @@ cannot be replayed. The returned `ComposerPastedFile` records are the only
 paths the renderer stores or dispatches, so a picker selection cannot leave an
 external source path in the prompt or bypass the attachment-root boundary.
 
-For native clipboard files, `reference: true` consumes the same one-shot token
-but registers metadata instead of copying bytes. Main requires a local project,
-stores a durable UUID selection record, and returns the canonical original path,
-name, MIME, exact byte size and additive `localReference` id. Only the main window
-may invoke this flow. Ordinary file-only and mixed file/folder clipboard lists
-both use it; no `File.arrayBuffer()` is needed and transfer byte limits do not
-apply. The 20-item clipboard limit remains. Screenshots/generated payloads use
-`pasteFiles`; picker imports without `reference` retain the copy behavior above.
+For native clipboard files, `reference: true` consumes the same one-shot token.
+Raster image files (not SVG) that fit the import bounds above (64 MiB per file,
+128 MiB and 20 files per batch, counted in paste order) are copied into session
+scratch exactly like picker imports and returned as `kind: "image"` without
+`localReference`; they do not require a local project. Every other file,
+including images beyond those bounds, registers metadata instead of copying
+bytes: main requires a local project, stores a durable UUID selection record,
+and returns the canonical original path, name, MIME, exact byte size and
+additive `localReference` id. Results keep the clipboard order. Only the main
+window may invoke this flow. Ordinary file-only and mixed file/folder clipboard
+lists both use it; no `File.arrayBuffer()` is needed and transfer byte limits do
+not apply to references. The 20-item clipboard limit remains.
+Screenshots/generated payloads use `pasteFiles`; picker imports without
+`reference` retain the copy behavior above.
 
 Drafts, queue entries and message attachments retain `localReference` and `size`.
 On dispatch, main matches the id/path to the selection record and current local
 project, rejects missing files or canonical-target changes, and refreshes size.
 The Agent receives path and byte size as reference context. No referenced file
-or image contents are read, hashed, snapshotted or uploaded by dispatch; normal
+contents are read, hashed, snapshotted or uploaded by dispatch; normal
 tool access policy governs subsequent reads, including outside-project approval.
 Input history can restore the live reference into another session in the same
 project. Original contents can change and the reference can become unavailable.

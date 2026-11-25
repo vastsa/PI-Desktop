@@ -56,7 +56,6 @@ let filesCache: {
 } | null = null;
 
 /** The delegation catalog `Task` offers, for the `@` menu's Agents group (ADR 0346). */
-let agentsCache: { key: string; at: number; agents: AutocompleteAgent[] } | null = null;
 
 const COMMAND_GROUP_ORDER = {
   template: 0,
@@ -183,14 +182,30 @@ function activeSessionHasRemoteWorkspace(state: ReturnType<typeof useAppStore.ge
   return Boolean(state.sessions.find((session) => session.id === state.activeSessionId)?.remoteWorkspace);
 }
 
+/**
+ * Mode the composer is currently composing for. A mode's private skills are
+ * part of the `/` source (issue #2544 §3), so the resolver must ask for the same
+ * mode the menu showed; reading it here keeps both paths on one identity.
+ */
+function activeSessionMode(state: ReturnType<typeof useAppStore.getState>): string {
+  const sessionMode = state.sessions.find((session) => session.id === state.activeSessionId)?.mode;
+  if (typeof sessionMode === "string" && sessionMode) return sessionMode;
+  const draftMode = (state.draftConfiguration as { mode?: unknown } | null)?.mode;
+  if (typeof draftMode === "string" && draftMode) return draftMode;
+  const defaultMode = (state.settings as { defaultMode?: unknown } | undefined)?.defaultMode;
+  return typeof defaultMode === "string" && defaultMode ? defaultMode : "agent";
+}
+
 export async function resolveComposerCommand(
   name: string,
 ): Promise<ComposerCommandResolution> {
-  const key = useAppStore.getState().workspace?.path ?? "";
-  let commands = readComposerCommandsCache(key);
+  const state = useAppStore.getState();
+  const key = state.workspace?.path ?? "";
+  const mode = activeSessionMode(state);
+  let commands = readComposerCommandsCache(key, Date.now(), mode);
   if (!commands) {
     try {
-      commands = await fetchComposerCommands(key);
+      commands = await fetchComposerCommands(key, mode);
     } catch (error) {
       // Deliberately leaves the cache cold: the next attempt re-reads the
       // source, which is what makes the refusal retriable.
@@ -212,6 +227,7 @@ export function useComposerAutocomplete({
   composing,
   enabled,
   agentsEnabled = false,
+  agentMode = "agent",
 }: {
   value: string;
   cursor: number;
@@ -219,6 +235,7 @@ export function useComposerAutocomplete({
   enabled: boolean;
   /** Offer subagents in the `@` menu; only Agent mode may delegate (ADR 0346). */
   agentsEnabled?: boolean;
+  agentMode?: string;
 }) {
   const sessionId = useAppStore((s) => s.activeSessionId);
   const remoteSession = useAppStore(activeSessionHasRemoteWorkspace);
@@ -235,7 +252,9 @@ export function useComposerAutocomplete({
     entries: FsIndexEntry[];
     truncated: boolean;
   } | null>(null);
-  const [agents, setAgents] = useState<AutocompleteAgent[] | null>(null);
+  const agentKey = JSON.stringify([workspaceKey, sessionId, agentMode]);
+  const [agentRows, setAgentRows] = useState<{key: string; rows: AutocompleteAgent[]} | null>(null);
+  const agents = agentRows?.key === agentKey ? agentRows.rows : null;
   const [highlight, setHighlight] = useState(0);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const frozenRef = useRef<ComposerTrigger | null>(null);
@@ -259,18 +278,19 @@ export function useComposerAutocomplete({
     if (dismissedKey && triggerKey !== dismissedKey) setDismissedKey(null);
   }, [triggerKey, dismissedKey]);
 
-  // Lazy source fetch with a short TTL, keyed by workspace.
+  // Lazy source fetch with a short TTL, keyed by workspace and mode: a mode
+  // switch must show that mode's own skills, never the previous list.
   useEffect(() => {
     if (!trigger || dismissed) return;
     const now = Date.now();
     if (trigger.mode === "slash") {
-      const cached = readComposerCommandsCache(workspaceKey);
+      const cached = readComposerCommandsCache(workspaceKey, Date.now(), agentMode);
       if (cached) {
         setCommands(cached);
         return;
       }
       let cancelled = false;
-      void fetchComposerCommands(workspaceKey)
+      void fetchComposerCommands(workspaceKey, agentMode)
         .then((commands) => {
           if (!cancelled) setCommands(commands);
         })
@@ -311,36 +331,27 @@ export function useComposerAutocomplete({
     return () => {
       cancelled = true;
     };
-  }, [trigger?.mode, dismissed, workspaceKey, hasWorkspace, sessionId]);
+  }, [trigger?.mode, dismissed, workspaceKey, hasWorkspace, sessionId, agentMode]);
 
   // The Agents group reads the same catalog `Task` is built from. A failed
   // read leaves the group empty; the file rows still answer.
   const wantAgents = agentsEnabled && trigger?.mode === "file" && !dismissed;
   useEffect(() => {
     if (!wantAgents) return;
-    if (
-      agentsCache &&
-      agentsCache.key === workspaceKey &&
-      Date.now() - agentsCache.at < SOURCE_TTL_MS
-    ) {
-      setAgents(agentsCache.agents);
-      return;
-    }
     let cancelled = false;
     void api
-      .subagentCatalog()
+      .subagentCatalog({ mode: agentMode, sessionId: sessionId ?? undefined })
       .then((catalog) => {
         const next = catalog.subagents.map(({ name, description }) => ({ name, description }));
-        agentsCache = { key: workspaceKey, at: Date.now(), agents: next };
-        if (!cancelled) setAgents(next);
+        if (!cancelled) setAgentRows({ key: agentKey, rows: next });
       })
       .catch(() => {
-        if (!cancelled) setAgents([]);
+        if (!cancelled) setAgentRows(null);
       });
     return () => {
       cancelled = true;
     };
-  }, [wantAgents, workspaceKey]);
+  }, [wantAgents, agentKey, agentMode, sessionId]);
 
   // A truncated index keeps only the shallowest entries, so a deep file of a
   // large tree matches nothing in it. Once typing pauses, the query also
@@ -383,8 +394,8 @@ export function useComposerAutocomplete({
   // full host assembly and then be discarded.
   useEffect(() => {
     if (!enabled || !ready) return;
-    return prewarmComposerCommands(workspaceKey);
-  }, [enabled, ready, workspaceKey]);
+    return prewarmComposerCommands(workspaceKey, agentMode);
+  }, [enabled, ready, workspaceKey, agentMode]);
 
   const items = useMemo<AutocompleteItem[]>(() => {
     if (!trigger || dismissed) return [];

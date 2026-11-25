@@ -998,8 +998,9 @@ Within the process, the `Transcript display` mode decides the grouping.
 `fully-folded` (the default; absent or unknown values use it) forms ordinary
 activity groups from contiguous tool/search/thinking segments between ordinary
 assistant progress paragraphs, and keeps `Bash`/run aliases inside the group
-around them. A `Task` delegation keeps its own topology and is not duplicated
-inside an ordinary group. `command-first` keeps those groups but lifts every
+around them. With **In transcript**, a `Task` delegation keeps its own topology
+and is not duplicated inside an ordinary group. With **Composer bar**, it is an
+ordinary expandable tool row instead. `command-first` keeps those groups but lifts every
 `Bash`/run alias into a standalone row beside them: adjacent calls stay separate,
 a row's detail stays closed until the user opens it, and a normal assistant
 progress message or a command ends the current group. `flat` renders no nested
@@ -1256,8 +1257,10 @@ entirely inside the plugin's isolated page:
   choices remain available. The Browser action opens a new Browser resource tab
   and requires the bundled Browser plugin to be enabled. **Show in folder**
   remains a file action. The host refuses directory paths for file actions.
-- Selecting a file replaces the tree with a focused viewer: syntax-highlighted
-  editing with save, a Markdown preview toggle, image and audio/video viewing,
+- Selecting a file opens a document tab in the viewer. Tabs retain independent
+  drafts and reuse an existing tab for the same document. Save acts on that
+  document, and closing a dirty tab asks whether to save, discard, or cancel.
+  Viewers include syntax-highlighted editing, Markdown, image and media viewing,
   CSV/TSV tables with paging and sorting, a JSON tree, and read-only SQLite
   browsing with a SQL query box. The editor's CodeMirror find/replace fields
   and buttons use the plugin theme surfaces and foreground in both light and
@@ -1265,11 +1268,16 @@ entirely inside the plugin's isolated page:
   being decoded, and every viewer names its own bound — 2 MiB for text, 8 MiB
   for images, 24 MiB for media, none for databases, whose bytes stay out of
   the page.
+- The local Git sidebar shows changes, diffs and history. Repository setup,
+  staging, commits, fetch, pull and push are explicit user actions; force push
+  requires confirmation and a lease for the reviewed remote commit. Remote SSH
+  workspaces remain read-only and do not run local Git.
 - Saving is atomic and refuses to overwrite a file that changed on disk since it
   was opened until the user confirms. Loading, read failures, unsupported
   binaries, oversized files, empty folders, and folders that fail to load each
-  have a distinct localized state, and a failed directory can be retried in
-  place.
+  have a distinct localized state. Initial reads can show skeletons that respect
+  reduced motion, while a same-target refresh keeps the current content visible.
+  A failed directory can be retried in place.
 - The view chooses which folder of the open project it browses from a control in
   its own top-left area: the project's primary folder by default, its other
   folders after that in group order (ADR 0249), remembered per project and
@@ -1716,15 +1724,24 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   `updatedAt` first. A project conversation therefore appears both in Recent
   and in its project group, so it stays visible while that project is folded;
   a temporary conversation appears only in Recent. Recent opens with seven
-  rows; a trailing Load more button appends ten more per click. Its body is a
-  291px window over ten compact 28px rows, their 1px row gaps, and the 2px
-  label inset; it scrolls internally when more rows are loaded. The Projects list uses the remaining
-  sidebar height and scrolls independently; neither region scrolls the footer
-  or primary navigation. Both list scrollbars use the same global 6px,
+  rows; a trailing Load more button appends ten more per click. With Projects
+  shown, Recent sessions can grow to 291px, and both Recent and Pinned sessions
+  shrink into independently scrolling lists when the sidebar runs out of room.
+  The Projects list uses the remaining height and reserves room for a project
+  header and one conversation row. When the minimum sizes exceed the
+  available height, the sidebar body scrolls so Projects and Settings remain
+  reachable. Resizing or changing zoom preserves the loaded rows. The list
+  scrollbars use the same global 6px,
   trackless, transparent-at-rest rule as the conversation and work-panel
   scrollbars; the semantic-ink thumb appears when its list is hovered, focused,
   or scrolling and remains visible while dragging, so the independent regions
   stay available without becoming persistent visual rails.
+
+  Project-bound rows in Recent keep their project label ahead of an
+  ellipsizing session title, so long titles cannot consume the label's width.
+  The label retains its full name on hover. This sizing applies only to
+  unpinned project rows in Recent; pinned rows, path-less sessions, and rows
+  inside project groups keep their existing layout and session semantics.
 
 ---
 
@@ -2717,7 +2734,12 @@ twice.
 
 ### 9.9 Delegation cards and fan-out topology (D201, D265, D268, D271, D302, D319, D323, ADR 0062)
 
-A `Task` call is presented as a node of a delegation card, not as a compact tool
+With **Composer bar**, `Task` calls remain ordinary expandable tool rows in the
+transcript throughout their lifecycle. The bar disappears when work settles;
+no inline topology card replaces it. Switching styles changes neither tool
+history nor the delegate's Work panel record.
+
+With the default **In transcript** style, a `Task` call is a delegation node, not a compact tool
 row — one delegation reads the same as a fan-out (D265). The node names the
 delegate it ran, taken from the rows it produced or, before any arrived, from
 the call's own `agent` argument, and carries the call's short `description`. The
@@ -4789,13 +4811,17 @@ as well as its DOM, so submission and draft caching retain the path. Deleted
 reference history is local to the current draft/workspace and is cleared on send;
 pasting a private-use character alone must not restore an attachment. The input owns and disposes the native event listeners.
 
-An empty last line keeps its own caret. Chromium has no box for a line that holds
-nothing, so a caret left after the final line break types the next keystroke onto
-the line above. The editor paints a placeholder break on that line, places an
-end-of-draft caret before it when the draft ends in a newline, and restores it
-after every commit; the draft string, its indices and the caret's position in it
-are unchanged, and the placeholder disappears as soon as the line holds text. A
-middle empty line needs none: the break that ends it already gives it a box.
+An empty last line keeps its own caret. Chromium gives a line that holds nothing a
+box but no caret box, so a caret left after the final line break resolves to the
+line above and types the next keystroke there. A trailing break adds the box but
+also a second caret position below it, which reads as one line too many; the
+editor therefore paints a zero-width space on that line, places an end-of-draft
+caret on the character when the draft ends in a newline, and re-syncs it after
+every commit. Every read, index and caret path strips the character — Chromium can
+merge it into the neighbouring text node — so the draft string, its indices and
+the caret's position in it are unchanged, and the marker is removed as soon as
+the line holds text. A middle empty line needs none: the break that ends it
+already gives it a caret box.
 
 ### Dialog long-text containment
 

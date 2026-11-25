@@ -60,11 +60,11 @@ test("the runtime forwards runInBackground on a Bash tools.execute call", () => 
   );
 });
 
-test("host-core parses runInBackground on ToolsExecuteParams and skips the cancellation registry for it", () => {
-  assert.match(
-    toolSources,
-    /pub run_in_background: bool,\s*\n\s*pub timeout_ms/,
-  );
+test("host-core accepts optional Bash background and initial-wait flags", () => {
+  const params = toolSources.match(/pub struct ToolsExecuteParams \{([\s\S]*?)^\}/m)?.[1];
+  assert.ok(params, "ToolsExecuteParams must define the Host wire fields");
+  assert.match(params, /#\[serde\(default\)\]\s+pub run_in_background: bool,/);
+  assert.match(params, /#\[serde\(default\)\]\s+pub yield_after_initial_wait: bool,/);
   assert.match(
     toolSources,
     /if options\.run_in_background \{[\s\S]*?spawn_background_task_with_continuation/,
