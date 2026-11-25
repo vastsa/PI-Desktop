@@ -90,6 +90,8 @@ test("a File Manager view closed during reference creation leaves no stored refe
   f.setVisibilityCheck(() => !existsSync(directory) || readdirSync(directory).length === 0);
   assert.equal(await f.drop(token), null);
   assert.deepEqual(await readdir(directory), []);
+  f.setVisibilityCheck(() => true);
+  assert.equal(await f.drop(token), null);
 });
 
 test("a source removed after drop path resolution is rejected without an error", async (t) => {
