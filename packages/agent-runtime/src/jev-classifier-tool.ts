@@ -4,8 +4,10 @@ import { typesafeProvider } from "@earendil-works/pi-ai/providers/typesafe";
 import type {
   ClassifierContext,
   ClassifierQuestion,
+  ClassifierResult,
   JsonObject,
   JsonValue,
+  Usage,
 } from "@earendil-works/pi-ai";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -160,6 +162,61 @@ function parseContext(value: unknown): ClassifierContext | undefined {
   return context;
 }
 
+export type JevClassification =
+  | { ok: true; answers: ClassifierResult["answers"]; usage?: Usage }
+  | {
+      ok: false;
+      errorCode: "JEV_INVALID_ARGUMENT" | "JEV_ABORTED" | "JEV_REQUEST_FAILED";
+      message: string;
+      /** Reported by a request that reached the service but did not complete. */
+      usage?: Usage;
+    };
+
+/** The physical classifier model, for usage attribution by callers. */
+export const JEV_MODEL_REF = { provider: jevModel.provider, id: jevModel.id, name: jevModel.name } as const;
+
+const JEV_INVALID_ARGUMENT_MESSAGE =
+  "JevClassify requires a JSON object state and 1–16 valid structured questions; the total input must be at most 24 KiB.";
+
+/**
+ * Validate and run one TypeSafe Jev classification. Shared by the
+ * `JevClassify` tool and the codemode `models.classify()` global so both apply
+ * the same bounds, timeout, and credential redaction.
+ */
+export async function classifyWithJev(
+  apiKey: string,
+  rawParams: unknown,
+  signal?: AbortSignal,
+  options: { maxRetries?: number } = {},
+): Promise<JevClassification> {
+  const context = parseContext(rawParams);
+  if (!context) {
+    return { ok: false, errorCode: "JEV_INVALID_ARGUMENT", message: JEV_INVALID_ARGUMENT_MESSAGE };
+  }
+  const timeoutSignal = AbortSignal.timeout(45_000);
+  const requestSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
+  const result = await models.classify(jevModel, context, {
+    apiKey,
+    signal: requestSignal,
+    timeoutMs: 45_000,
+    maxRetries: options.maxRetries ?? 1,
+  });
+  if (result.stopReason !== "stop") {
+    const errorMessage = (result.errorMessage ?? "Request did not complete")
+      .replaceAll(apiKey, "[redacted]")
+      .slice(0, 1_000);
+    return {
+      ok: false,
+      errorCode: result.stopReason === "aborted" ? "JEV_ABORTED" : "JEV_REQUEST_FAILED",
+      message: `Jev classification failed: ${errorMessage}`,
+      ...(result.usage ? { usage: result.usage } : {}),
+    };
+  }
+  return { ok: true, answers: result.answers, ...(result.usage ? { usage: result.usage } : {}) };
+}
+
 /** Agent-only, deferred call to pi-ai's TypeSafe System One classifier. */
 export function createJevClassifierTool(apiKey: string): AgentTool {
   return {
@@ -183,41 +240,11 @@ export function createJevClassifierTool(apiKey: string): AgentTool {
     ),
     executionMode: "sequential",
     execute: async (_toolCallId, rawParams, signal) => {
-      const context = parseContext(rawParams);
-      if (!context) {
+      const result = await classifyWithJev(apiKey, rawParams, signal);
+      if (!result.ok) {
         return {
-          content: [
-            {
-              type: "text",
-              text: "JevClassify requires a JSON object state and 1–16 valid structured questions; the total input must be at most 24 KiB.",
-            },
-          ],
-          details: { errorCode: "JEV_INVALID_ARGUMENT" },
-          isError: true,
-        };
-      }
-      const timeoutSignal = AbortSignal.timeout(45_000);
-      const requestSignal = signal
-        ? AbortSignal.any([signal, timeoutSignal])
-        : timeoutSignal;
-      const result = await models.classify(jevModel, context, {
-        apiKey,
-        signal: requestSignal,
-        timeoutMs: 45_000,
-        maxRetries: 1,
-      });
-      if (result.stopReason !== "stop") {
-        const errorMessage = (result.errorMessage ?? "Request did not complete")
-          .replaceAll(apiKey, "[redacted]")
-          .slice(0, 1_000);
-        return {
-          content: [{ type: "text", text: `Jev classification failed: ${errorMessage}` }],
-          details: {
-            errorCode:
-              result.stopReason === "aborted"
-                ? "JEV_ABORTED"
-                : "JEV_REQUEST_FAILED",
-          },
+          content: [{ type: "text", text: result.message }],
+          details: { errorCode: result.errorCode },
           isError: true,
         };
       }

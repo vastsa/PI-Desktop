@@ -210,6 +210,7 @@ globalThis.composerPasteProbe = async (screenshotOnly = false, fileReferencesOnl
     editor: HTMLDivElement,
     text: string,
     files: File[],
+    fileLines?: { workspace: string; path: string; start: number; end: number },
   ) => {
     const data = new DataTransfer();
     if (text) {
@@ -217,6 +218,7 @@ globalThis.composerPasteProbe = async (screenshotOnly = false, fileReferencesOnl
       data.setData("text/html", `<b>${text}</b>`);
     }
     for (const file of files) data.items.add(file);
+    if (fileLines) data.setData("application/x-pi-desktop-file-lines", JSON.stringify(fileLines));
     const event = new ClipboardEvent("paste", {
       clipboardData: data,
       bubbles: true,
@@ -245,6 +247,29 @@ globalThis.composerPasteProbe = async (screenshotOnly = false, fileReferencesOnl
     selection.addRange(range);
   };
   try {
+    const lineEditor = await reset();
+    const workspace = "/fixture/project";
+    useAppStore.setState({ activeProjectPath: workspace });
+    await dispatchPaste(lineEditor, "saved line selection", [], { workspace, path: workspace + "/gpt.py", start: 85, end: 86 });
+    const lineChip = lineEditor.querySelector(".composer-chip");
+    assert(lineChip?.textContent?.includes("gpt.py (85:86)"), "file range paste did not create a line chip");
+    assert(!lineEditor.textContent?.includes("saved line selection"), "file range paste inserted source text");
+    assert(controller.snapshotReferences("paste-a")[0]?.lineRange?.start === 85, "file range did not reach the draft");
+    for (let start = 1; start <= 3; start++) {
+      await dispatchPaste(lineEditor, "saved line selection", [], { workspace, path: workspace + "/gpt.py", start, end: start });
+    }
+    assert(controller.snapshotReferences("paste-a").length === 4, "file range limit fixture did not fill");
+    await dispatchPaste(lineEditor, "limit fallback text", [], { workspace, path: workspace + "/gpt.py", start: 4, end: 4 });
+    assert(lineEditor.textContent?.includes("limit fallback text"), "file range limit swallowed the pasted plain text");
+    assert(controller.snapshotReferences("paste-a").length === 4, "file range limit added an extra chip");
+    const otherProjectEditor = await reset();
+    await dispatchPaste(otherProjectEditor, "foreign selection", [], {
+      workspace: "/fixture/other", path: "/fixture/other/gpt.py", start: 85, end: 86,
+    });
+    assert(!otherProjectEditor.querySelector(".composer-chip"), "another project's paste created a file line chip");
+    assert(otherProjectEditor.textContent?.includes("foreign selection"), "another project's paste lost the plain text");
+    useAppStore.setState({ activeProjectPath: null });
+
     useAppStore.setState({ sessions: [{
       id: "paste-a", title: "Folder paste fixture", source: "desktop", mode: "agent",
       permissionMode: "inherit", thinkingLevel: "off", messageCount: 0,
@@ -257,12 +282,12 @@ globalThis.composerPasteProbe = async (screenshotOnly = false, fileReferencesOnl
       render("paste-a", referenceProject);
       if (referenceHistoryOnly) {
         const history = loadComposerInputHistory("paste-a")[0];
-        assert(history?.fileReferences.length === 2, "process restart lost reference history");
+        assert(history?.fileReferences.length === 3, "process restart lost reference history");
         flushSync(() => controller.restoreDraftForKey("paste-a", history));
         await new Promise(requestAnimationFrame);
       } else {
         const files = Array.from((document.getElementById("native-files") as HTMLInputElement).files!);
-        assert(files.length === 2 && files.every(file => api.getDroppedFilePath(file)), "native reference File paths missing");
+        assert(files.length === 3 && files.every(file => api.getDroppedFilePath(file)), "native reference File paths missing");
         for (const file of files) file.arrayBuffer = () => { throw new Error("disk file bytes were read by the renderer"); };
         await dispatchPaste(controller.ref.current!, "", files);
       }
@@ -270,10 +295,12 @@ globalThis.composerPasteProbe = async (screenshotOnly = false, fileReferencesOnl
       const matchesSnapshot = (candidate: ComposerDraftSnapshot | undefined) => candidate !== undefined &&
         candidate.text === snapshot.text && candidate.fileReferences.length === snapshot.fileReferences.length &&
         candidate.fileReferences.every((file, index) => sameDraftFileReference(file, snapshot.fileReferences[index]));
-      assert(snapshot.fileReferences.length === 2, "native file-only selection did not attach both references");
+      assert(snapshot.fileReferences.length === 3, "native file-only selection did not attach every file");
       const large = snapshot.fileReferences.find(file => file.name === "large reference.bin")!;
       assert(large?.size === 67108865 && large.localReference && !large.path.includes("/scratch/"), "large file lost its original path, size or selection id");
       assert(controller.ref.current!.textContent?.includes("64 MiB"), "file card did not display its size");
+      const image = snapshot.fileReferences.find(file => file.name === "native-image.png");
+      assert(image?.kind === "image" && !image.localReference && /[\\/]scratch[\\/]/.test(image.path), "native image file was not imported as an image attachment");
       flushSync(() => root.render(null));
       render("paste-a", referenceProject);
       await new Promise(requestAnimationFrame);
@@ -292,7 +319,7 @@ globalThis.composerPasteProbe = async (screenshotOnly = false, fileReferencesOnl
         await new Promise(requestAnimationFrame);
         assert(matchesSnapshot(controller.draftSnapshot(readEditorValue(controller.ref.current!))), "history recall lost removable references");
         flushSync(() => controller.ref.current!.querySelector<HTMLButtonElement>(".composer-chip-remove")!.click());
-        assert(controller.fileReferences.length === 1, "restored reference was not removable");
+        assert(controller.fileReferences.length === 2, "restored reference was not removable");
       } finally { historySendPrompt = previousSend; }
       return { ok: true, largeFileReference: true, noRendererByteRead: true, metadataHistory: true,
         refreshedSize: true, processRestartMetadata: referenceHistoryOnly };
@@ -1253,6 +1280,7 @@ globalThis.composerHistoryProbe = async (phase) => {
       } as unknown as AppState;
       const queueRuntime = {
         beginNavigationIntent: () => 1,
+        sessionModeSelections: new Map(),
         submittedComposerDrafts: new Map(),
         sessionTranscriptCache: new Map(),
         insertOptimisticUserMessage: () => {},
@@ -1275,6 +1303,7 @@ globalThis.composerHistoryProbe = async (phase) => {
         messageErrorFromUnknown: () => { throw new Error("unexpected prompt failure"); },
         assistantErrorMessage: () => { throw new Error("unexpected prompt failure"); },
         materializeDraftSession: async () => "history-created-session",
+        flushPendingSessionConfiguration: async () => {},
       });
       historySendPrompt = queueSlice.sendPrompt;
       api.prompt = async (input) => {
@@ -1286,7 +1315,10 @@ globalThis.composerHistoryProbe = async (phase) => {
       };
       try {
         await press("Enter");
-        await started;
+        await Promise.race([
+          started,
+          latestSubmission.then(() => { throw new Error("Home submission settled before reaching the prompt boundary"); }),
+        ]);
         const homeSubmission = latestSubmission;
         render("paste-b");
         releaseSend();

@@ -113,6 +113,7 @@ fn hydrate_dynamic_plugin_models(db: &Database, provider: &mut ProviderPublic) -
                 available_for_subagents: None,
                 native_web_search: None,
                 fast_mode_allowed: None,
+                allow_empty_thinking_signature: None,
             }
         })
         .collect();
@@ -474,7 +475,8 @@ pub fn update_provider(
         };
         forget_missing_discovered_models(db, &input.id, &configured)?;
         db.conn().execute(
-            "UPDATE models SET discovery_state = NULL WHERE provider_id = ?1",
+            "UPDATE models SET discovery_state = NULL, reported_context_window = NULL
+             WHERE provider_id = ?1",
             params![input.id],
         )?;
     }

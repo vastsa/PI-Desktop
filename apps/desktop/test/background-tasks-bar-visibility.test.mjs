@@ -125,3 +125,17 @@ test("an unchanged snapshot keeps the previous state object", () => {
   const state = observeTasks(EMPTY_VISIBILITY, running, 0);
   assert.equal(observeTasks(state, running, 500), state);
 });
+
+
+test("a pending continuation remains visible and cancellable after the process ends, including after reload", () => {
+  const pending = { id: "pending", sessionId: "s", state: "exited", continuation: "pending" };
+  const state = observeTasks(EMPTY_VISIBILITY, [pending], 0);
+  assert.deepEqual(selectVisibleTasks(state, [pending], ENDED_VISIBLE_MS * 10), [pending]);
+  assert.equal(canDismiss(state, pending), false);
+  assert.equal(dismissTask(state, pending), state);
+  assert.equal(nextExpiryAt(state, [pending], ENDED_VISIBLE_MS * 10), null);
+  const cancelled = { ...pending, continuation: "cancelled" };
+  const after = observeTasks(state, [cancelled], ENDED_VISIBLE_MS * 10);
+  assert.equal(canDismiss(after, cancelled), true);
+  assert.deepEqual(selectVisibleTasks(after, [cancelled], ENDED_VISIBLE_MS * 12), []);
+});

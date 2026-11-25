@@ -1,5 +1,9 @@
 # E2E Scenarios: Providers and Models
 
+## E2E-provider-refresh-remote-identity
+
+Render the normal Composer toolbar for an active remote session that denies Stop/local tools, then refresh providers while session inventory omits the Host. Verify the remote identity and capability restrictions remain, and the Stop control remains disabled. Return an authoritative summary and verify its updated capabilities replace the retained value. Coverage: `provider-refresh-remote-identity.test.mjs`, remote project regressions and `scripts/e2e-provider-refresh-remote-identity.mjs` with production ComposerToolbar/useAppStore in Electron.
+
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Provider setup, credentials, OAuth, model catalogs, wire protocols, usage, and hosted search.
 > Scenario template, gates, and traceability live in the plan.
 
@@ -221,6 +225,27 @@ with only Host API controlled. Running-turn configuration remains queued.
 - **Status:** Protocol coverage is automated in the agent-runtime provider
   binding tests; desktop settings coverage remains part of the provider model
   configuration E2E fixture.
+
+## E2E-PROVIDER-unsigned-thinking-replay
+
+- **Preconditions:** A saved Anthropic Messages custom provider backed by a
+  local mock SSE endpoint. The endpoint emits a non-empty thinking block with
+  an empty signature; no live credentials or external service.
+- **Steps:** In Settings → Models, open the custom model's Advanced options,
+  enable unsigned thinking replay, save, reload the provider configuration,
+  and send two prompts in one session. Capture the second outbound request.
+- **Expected:** The setting survives save and reload. The second request sends
+  the prior reasoning as `{ type: "thinking", signature: "" }`, not as an
+  assistant text block. An absent setting preserves existing adapter/catalog
+  behavior, and an explicit false overrides published metadata.
+- **Coverage:** Host provider storage round-trip tests, model binding tests,
+  and `pi-1.5-adapter-features.test.ts` use a local request fixture. Settings
+  control wiring is covered by `model-advanced-capabilities.test.mjs`.
+- **Specs:** `03-runtime/12-provider-config-schema.md` and
+  `07-plugins/02-plugin-manifest-schema.md`.
+- **Acceptance:** Persisted user configuration and second-request replay.
+- **Milestone:** Maintenance.
+- **Status:** Candidate regression coverage added.
 
 ## Provider & Key
 
@@ -710,6 +735,21 @@ with only Host API controlled. Running-turn configuration remains queued.
 - **Status**: Unit-covered (stream processor terminates on the terminal
   event via the pi-ai patch); live-proxy scenario Draft
 
+## E2E-PROVIDER-responses-explicit-nonstrict
+
+- Complete a turn, then switch the same conversation to a custom Responses
+  model using default compatibility. Ask to update an existing weekly task
+  for two distinct weekdays. Activate `ScheduledTaskUpdate` via `ToolSearch`.
+- Verify the new request replays the prior turn. The activated function
+  declaration carries explicit `strict: false` and retains the weekday
+  uniqueness constraint. The runtime sends one update to the Host, replays
+  the result to the provider, and returns the assistant confirmation.
+- Run `node scripts/e2e-responses-tool-strictness.mjs <built sidecar.js>`
+  against the production sidecar bundle with a loopback provider and a fixture
+  Host. The runtime regression also covers current and replayed declarations,
+  strict-capable adapters, and local rejection of duplicate weekdays.
+- Spec: [Responses function tool strictness](../../03-runtime/11-provider-model-system.md#162-responses-function-tool-strictness).
+
 ## E2E-005E: DeepSeek thinking replay includes reasoning_content on aggregator endpoints
 
 - **Preconditions**: An OpenAI-compatible provider whose base URL is not
@@ -743,6 +783,25 @@ with only Host API controlled. Running-turn configuration remains queued.
   mixed-field normalization + echoed-placeholder strip + compaction
   retained-reasoning wire proof); live OpenCode / aggregator
   verification deferred; rendered UI scenario pending
+
+## E2E-PROVIDER-mistral-store-compat: Omit OpenAI-only store on Mistral Chat Completions
+
+- **Preconditions**: Agent-runtime provider rows for native Mistral, Mistral-hosted
+  DeepSeek, a custom row pointing at Mistral, and OpenAI; local stub fetch only,
+  with no live credentials or provider requests.
+- **Steps**: Serialize one Chat Completions request for each row through the real
+  pi-ai adapter and capture its request body at the fetch boundary.
+- **Expected**: Mistral requests omit `store`, including the custom Mistral URL
+  and Mistral-hosted DeepSeek rows. DeepSeek reasoning replay compatibility stays
+  enabled. OpenAI keeps its existing `store: false` body.
+- **Coverage**: `provider-binding.test.ts` captures serialized adapter bodies;
+  `provider-presets.test.ts` checks endpoint and vendor matching, including
+  spoofed hosts and rows repointed to another published vendor. No real API is
+  called.
+- **Specs linked**: `03-runtime/11-provider-model-system.md`.
+- **Acceptance**: B (provider Chat Completions compatibility).
+- **Milestone**: Maintenance.
+- **Status**: Unit-covered; live Mistral verification is intentionally not run.
 
 ## E2E-006: Key survives restart
 
@@ -1048,6 +1107,9 @@ with only Host API controlled. Running-turn configuration remains queued.
      `prompt is too long: N tokens > M maximum` once.
   8. Run a turn where the model calls `new_context` well below the hard budget.
   9. Invoke `/compact` manually while idle.
+  10. Use a saved non-OAuth Responses endpoint whose catalog-owned window is
+      1,050,000, whose discovery record reports 500,000, and whose output cap
+      is 128,000. Report 400,000 occupied tokens and submit a follow-up.
 - **Expected**:
   - The summary request of every checkpoint carries the session's own
     conversation identity: on the Responses-shaped providers
@@ -1064,6 +1126,10 @@ with only Host API controlled. Running-turn configuration remains queued.
     assistant turns compact through `prepareNextTurn` (pi 0.84.4+ skips that
     hook on a terminating turn); a new user prompt still compacts before its
     first provider request.
+  - In step 10, the main session launches with a 500,000-token window and
+    installs a checkpoint before the follow-up request. A smaller manual
+    window still applies, and missing or unlisted discovery falls back to
+    the existing catalog or binding.
   - Every successful compaction adds exactly one divider row to the transcript,
     positioned immediately after the last message that checkpoint covers, and
     raises exactly one warning toast. Two checkpoints produce two rows, in
@@ -1073,7 +1139,9 @@ with only Host API controlled. Running-turn configuration remains queued.
     size without waiting for another turn; the provider usage rows in its
     panel still describe the last real request. The next request's reported
     usage replaces the estimate, and reopening the session after a restart
-    shows the same estimate (#2015; unit coverage in
+    shows the same estimate. Repeat after a failed or stopped reply that
+    reported usage. Its tokens remain in the provider breakdown while the ring
+    shows the new checkpoint estimate (#2015, #2410; unit coverage in
     `apps/desktop/test/compaction-context-usage.test.mjs`).
   - The `new_context` call appears as a normal tool activity row, returns
     immediately, and the checkpoint is created at the following turn boundary
@@ -1094,6 +1162,9 @@ with only Host API controlled. Running-turn configuration remains queued.
     retained tail. The request contains no tool call without its result, and
     expanding the original transcript rows still shows their complete
     persisted results.
+  - A successful active-turn checkpoint with one retained request and no
+    reasoning to replay sends that request before the nonempty summary. Any
+    newer user message follows the summary (issue #2512).
   - Restart restores the summary and the recorded active/completed retention
     mode, and every earlier compaction row is still drawn. A regenerate/fork
     before a checkpoint boundary drops that record specifically; records
@@ -1119,12 +1190,18 @@ with only Host API controlled. Running-turn configuration remains queued.
     once more with tool results cut to a short prefix rather than skipping the
     model. If fallback persistence or the safe budget guard fails,
     `CONTEXT_COMPACTION_FAILED` is emitted once.
+    The fallback's recovery notice precedes the retained window even when it
+    contains only the active request.
   - If the newest checkpoint is already the transcript leaf when a follow-up
     prompt crosses the hard budget, the runtime rebuilds a smaller tail from
     the full transcript and carries the existing summary forward instead of
     reporting that there is no new context to compact.
   - The budget reminders appear at most once each per checkpoint window, never
-    in the transcript, and never in a persisted system prompt.
+    in the transcript, and never in a persisted system prompt. On a model
+    without mid-conversation system messages (for example a local OpenAI
+    compatible endpoint) the leading system message of the request that carries
+    a reminder is byte-identical to the previous request's, so the provider's
+    prefix cache stays warm.
   - Idle `/compact` succeeds and shows its own informational toast on top of the
     compaction warning, because the user asked for it. Compaction failures
     surface once through `CONTEXT_COMPACTION_FAILED` without duplicate error
@@ -2405,3 +2482,31 @@ conversation content or credentials. A skipped test remains NOT RUN, not PASS.
 ## E2E-ISSUE-1789
 
 Image-model marking explains chat/default-menu exclusion and distinguishes generation from image input. Collapsed model rows retain an image-model badge. Verify marking, help, collapsing, unmarking and restored chat eligibility through `image-model-disclosure-user-path.test.mjs`.
+
+## E2E-PI-152-kernel-upgrade
+
+- **Preconditions:** Exact Pi 1.5.2 release-group pins and rebased package
+  patches in a dedicated worktree, isolated fixture state, and no real provider
+  credentials.
+- **Steps:** Run the runtime, native Pi session, identity, and patch-gate
+  suites against the installed 1.5.2 packages. Drive an Anthropic-compatible
+  loopback gateway with message threads enabled through a main turn, a
+  delegate request and a compaction summary that share the session id, then a
+  second main turn. Dispose the runtime and start a new one for the same
+  session id.
+- **Expected:** The main conversation creates one thread and continues it with
+  only the new turn; delegate and summary requests send no `thread` field and
+  leave the conversation's continuation intact. After disposal the next
+  runtime creates a new thread. Hosted-search capture and local request-error
+  mapping from the Desktop patches remain intact. Identity headers report
+  1.5.2. No provider credentials or live services are used.
+- **Coverage:** `pi-anthropic-message-threads.test.ts`,
+  `pi-upstream-1.5-identity.test.ts`, `pi-upstream-1.5-contract.test.ts`,
+  `pi-1.5-adapter-features.test.ts`, `pi-anthropic-strict-fallback.test.ts`,
+  `pi-ai-provider-sync.test.ts`, `provider-presets.test.ts`,
+  `scripts/pi-patch-hash.test.mjs`, `pnpm check:pi-patches`,
+  `pnpm check:pi-dependencies`.
+- **Specs:** [Pi dependency boundary](../../02-architecture/06-pi-runtime-dependency-boundary.md).
+- **Acceptance:** Offline runtime/contract validation.
+- **Milestone:** Maintenance.
+- **Status:** Candidate validation recorded in `docs/project/pi-152-adoption.md`.

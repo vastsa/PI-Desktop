@@ -2,7 +2,25 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-24",
+    highlights: [
+      "Modlar ayarlarında yerleşik rolleri ve becerileri düzenleyin, özel ajan rollerini düzenleyin ve devredilen işleri rolün ihtiyaç duyduğu araç ve dosyalarla sınırlayın.",
+      "Etkin alt ajanları isteğe bağlı olarak Composer'ın üzerinde izleyin; koordinatör ajanı durdurmadan birini veya tümünü durdurun.",
+      "Uzun süren Bash komutları ilk beklemeden sonra kontrolü geri verir ve arka planda çalışmayı sürdürür; isteğe bağlı olarak sonucu bildirip boşta olan bir sohbeti devam ettirebilir.",
+      "Dosya Yöneticisi'nden seçili metni ve dosya satırı referanslarını Composer'a gönderin, görsel dosyalarını görsel eki olarak yapıştırın.",
+      "Eski MCP sunucuları geçici HTTP+SSE hatalarından sonra yeniden bağlanır ve kullanılamaz durumda kalmaz.",
+      "Sınırlı yürütme ve model yardımcıları sunan yalıtılmış Codemode betiklerini isteğe bağlı olarak etkinleştirin; varsayılan olarak kapalıdır.",
+      "Özel Anthropic uyumlu modellerde imzasız düşünme bloklarının yeniden oynatılmasını etkinleştirin; etkin değilken mevcut sağlayıcı davranışı değişmez.",
+      "Mistral uyumlu Chat Completions isteklerine desteklenmeyen OpenAI store alanı artık eklenmez.",
+      "Son Kullanılanlar'daki proje etiketleri uzun başlıkların yanında yerini korur; yüksek yakınlaştırmada da projelere erişilebilir.",
+      "Composer dosya ve satır referansları, görsel yapıştırma, sıkıştırma sonrası oturum kurtarma ve Windows/macOS pencere durumu iyileştirildi.",
+      "Tek taraflı silme sonrası yapılandırma eşitleme, MCP yeniden bağlantıları, bozuk araç yolları ve çeşitli kenar çubuğu, model seçici ve eklenti paneli sorunları düzeltildi.",
+    ],
+  },
+  {
     version: "0.23.0",
+    date: "2026-11-19",
     highlights: [
       "OpenAI Fast modunu model başına açın ve öncelikli hizmet istemek için konuşmada /fast kullanın; bu, abonelik limitlerini daha hızlı tüketebilir veya token başına maliyeti artırabilir.",
       "Satır içi görselleştirmeler yeniden kullanılabilir grafik yardımcılarıyla daha hızlı yüklenir; başarısız betikler artık boş kartlar yerine düzeltmeye yardımcı olacak hatalar gösterir.",
@@ -11,6 +29,13 @@ export const trEntries: ChangelogEntry[] = [
       "Elle veya otomatik bağlam sıkıştırması tamamlanır tamamlanmaz bağlam halkası sıkıştırılmış tahmini gösterir.",
       "Çince IME kullanırken eğik çizgi komutları, taslağı koruyarak metin girişinin tamamlanmasını bekler ve yinelenen eğik çizgiyi önler.",
       "Yeniden oluşturulan istemler, arşivleri yüklenen geçmişin dışında tamamlandığında en son yanıttan sonraki doğru konumlarında kalır.",
+      "Eklenti pazarına kaydırdıkça yüklenen tek bir listede göz atın, önerilen, popüler, en yeni veya ada göre sıralayın ve her kategoride kaç eklentinin eşleştiğini görün; eklenti merkezine ulaşılamazsa son kaydedilen katalog kullanılır.",
+      "Her eklenti artık iki dilli bir rafa yerleşiyor; pazar yeri Türkçe veya Çince okunuyor ve aynı kategoriyle filtreleniyor.",
+      "Eklenti ayrıntıları artık yayıncıyı, README'yi ve güvenlik notlarını gösteriyor; katalog okunurken kayboluyorlardı.",
+      "GPT-6.2 Sol ve GPT-6.2 Astra modellerini OpenAI, ChatGPT, GitHub Copilot, OpenCode ve bunları yayımlayan ağ geçitlerinde, yayımlanan sınır ve fiyatlarıyla seçin.",
+      "Ayarlar artık geçerli sayfanın üzerinde bir iletişim kutusu olarak açılıyor, kenar çubuğu Yeni görev, Zamanlanmış ve Eklenti pazarını en üste taşıyor ve kısa bir başlangıç rehberi model eklemenize ve eklenti başlatıcı kısayolunu öğrenmenize yardımcı oluyor.",
+      "Ayarlar → Görünüm → Kenar çubuğu modülleri bölümünden hangi kenar çubuğu modüllerinin görüneceğini seçin: Yeni görev, Zamanlanmış, Eklenti pazarı, sabitlenmiş oturumlar, Oturumlar, Projeler, araç çubuğu düğmeleri ve sürüm.",
+      "Kenar çubuğundaki Oturumlar bölümü artık Son: sabitlenmemiş tüm konuşmalar en yeniden başlayarak listelenir ve Daha fazla yükle ile genişler; boş ana sayfa başlığı da proje değiştirmek için bir açılır ok gösterir.",
     ],
   },
   {
@@ -32,6 +57,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.21.0",
     date: "2026-10-24",
     highlights: [
+      "README önizlemeleri dahil Mermaid diyagramlarını SVG metni olarak kopyalayın veya bağımsız SVG dosyaları olarak dışa aktarın.",
       "Her turun ve tüm konuşmanın maliyetini bağlam denetçisinde ve tur kullanım kapsülünde görün; abonelik kullanımı kullandıkça öde harcamasından ayrı gösterilir.",
       "Kendi videonuzu başlangıç animasyonu olarak kullanın: \"startup\" klasörüne bir video bırakın, oynatma bitince arayüz yavaşça belirir.",
       "Eklentiler, etkin oturumu değiştirmeden kayıtlı projeleri ve klasörlerini listeleyebilir.",

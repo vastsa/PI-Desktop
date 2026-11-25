@@ -340,7 +340,7 @@ async fn legacy_goal_schema_allows_custom_mode_turns_without_losing_history() {
                 .conn()
                 .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
                 .unwrap(),
-            33
+            crate::db::SCHEMA_VERSION
         );
         assert_eq!(legacy_goal_snapshot(reopened.conn()), before);
         assert!(!has_legacy_goal_trigger(reopened.conn()));
@@ -427,7 +427,7 @@ fn legacy_goal_migration_preserves_an_already_unconstrained_schema() {
         db.conn()
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        33
+        crate::db::SCHEMA_VERSION
     );
 }
 

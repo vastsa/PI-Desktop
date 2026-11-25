@@ -12,10 +12,10 @@ import { GEN_UI_SKILL_ID, type ComposerCommand } from "@pi-desktop/shared";
 import { api } from "./api";
 
 /**
- * The menu's view of the workspace list for one session. The source is keyed
- * by workspace only, so session-specific omissions happen here: a remote
- * session cannot render inline visualizations, so its runtime never receives
- * the visualize skill and the menu must not offer it either.
+ * The menu's view of the workspace list for one session. Session-specific
+ * omissions happen here rather than in the source: a remote session cannot
+ * render inline visualizations, so its runtime never receives the visualize
+ * skill and the menu must not offer it either.
  */
 export function commandsForSession(
   commands: ComposerCommand[],
@@ -33,42 +33,55 @@ const SOURCE_TTL_MS = 10_000;
 const PREWARM_RETRY_MS = 2_000;
 const PREWARM_MAX_ATTEMPTS = 10;
 
-type CommandCache = { key: string; at: number; commands: ComposerCommand[] };
+/**
+ * Cache identity. A mode switch must not be served the previous mode's skill
+ * list, so the mode is part of the key rather than a filter applied afterwards
+ * (issue #2544 §3: the stale selection can never be offered again).
+ */
+type CommandCache = { key: string; mode: string; at: number; commands: ComposerCommand[] };
 
 let cache: CommandCache | null = null;
 let inFlight: { key: string; promise: Promise<ComposerCommand[]> } | null = null;
 /** Read order of the last cache write, so a late answer cannot win. */
 let cacheWriteSeq = 0;
 
+const cacheKey = (key: string, mode: string): string => (mode ? `${key}\u0000${mode}` : key);
+
 /**
- * The warm list for `key`, or `null` when the cache is cold or holds another
- * workspace. Callers treat `null` as "read the source".
+ * The warm list for `key`, or `null` when the cache is cold, holds another
+ * workspace, or was read for a different mode. Callers treat `null` as "read
+ * the source".
  */
 export function readComposerCommandsCache(
   key: string,
   now = Date.now(),
+  mode = "",
 ): ComposerCommand[] | null {
-  if (!cache || cache.key !== key || now - cache.at >= SOURCE_TTL_MS) return null;
+  if (!cache || cache.key !== key || cache.mode !== mode || now - cache.at >= SOURCE_TTL_MS) {
+    return null;
+  }
   return cache.commands;
 }
 
 /**
  * Read the source, sharing one RPC between concurrent callers (the pre-warm and
  * a typed `/` can overlap). A failed read leaves the cache cold, so the next
- * attempt re-reads instead of serving an empty menu forever.
+ * attempt re-reads instead of serving an empty menu forever. `mode` asks the
+ * host for that mode's private skills as well.
  */
-export function fetchComposerCommands(key: string): Promise<ComposerCommand[]> {
-  const cached = readComposerCommandsCache(key);
+export function fetchComposerCommands(key: string, mode = ""): Promise<ComposerCommand[]> {
+  const cached = readComposerCommandsCache(key, Date.now(), mode);
   if (cached) return Promise.resolve(cached);
-  if (inFlight && inFlight.key === key) return inFlight.promise;
+  const identity = cacheKey(key, mode);
+  if (inFlight && inFlight.key === identity) return inFlight.promise;
   const seq = ++cacheWriteSeq;
   const tracked = api
-    .composerCommands()
+    .composerCommands(mode ? { mode } : undefined)
     .then((res) => {
       // A read that started later owns the cache: a late answer for a previous
-      // workspace must not re-cold the current one.
+      // workspace or mode must not re-cold the current one.
       if (!cache || cacheWriteSeq === seq) {
-        cache = { key, at: Date.now(), commands: res.commands };
+        cache = { key, mode, at: Date.now(), commands: res.commands };
       }
       return res.commands;
     })
@@ -77,7 +90,7 @@ export function fetchComposerCommands(key: string): Promise<ComposerCommand[]> {
       // newer one that replaced it in `inFlight`.
       if (inFlight?.promise === tracked) inFlight = null;
     });
-  inFlight = { key, promise: tracked };
+  inFlight = { key: identity, promise: tracked };
   return tracked;
 }
 
@@ -89,19 +102,19 @@ export function fetchComposerCommands(key: string): Promise<ComposerCommand[]> {
  *
  * @returns the cancel handle for the caller's effect cleanup.
  */
-export function prewarmComposerCommands(key: string): () => void {
+export function prewarmComposerCommands(key: string, mode = ""): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let cancelled = false;
   let attempts = 0;
   const attempt = (): void => {
-    void fetchComposerCommands(key).catch(() => {
+    void fetchComposerCommands(key, mode).catch(() => {
       // Expected while the host is still booting; the menu re-reads on demand.
       if (cancelled || attempts >= PREWARM_MAX_ATTEMPTS) return;
       attempts += 1;
       timer = setTimeout(attempt, PREWARM_RETRY_MS);
     });
   };
-  if (!readComposerCommandsCache(key)) attempt();
+  if (!readComposerCommandsCache(key, Date.now(), mode)) attempt();
   return () => {
     cancelled = true;
     if (timer !== null) clearTimeout(timer);

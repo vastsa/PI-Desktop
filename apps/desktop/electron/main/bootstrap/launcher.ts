@@ -250,6 +250,12 @@ export function createLauncher({
       window.moveTop();
     }
     window.webContents.send(IPC.event.pluginLauncherShown);
+    // The main window learns it too: the startup guide confirms the user's
+    // shortcut press, which a global accelerator never delivers as a keydown.
+    const mainWindow = state.mainWindow;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.event.pluginLauncherShown);
+    }
   }
 
   async function togglePluginLauncher(): Promise<void> {

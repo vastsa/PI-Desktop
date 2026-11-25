@@ -56,8 +56,10 @@ test("a catalog-derived list is reported as such, not as the service's answer", 
   // The live branch keeps its own distinct source value. What it returns may be
   // widened with the user's configured bindings, but only the rows the endpoint
   // actually served are cached, which the next test pins.
-  const liveReturn = handler.slice(handler.indexOf("await cacheForCurrentProvider(models, outcome.complete);"));
-  assert.match(liveReturn.slice(0, 240), /source: "remote" as const/);
+  assert.match(
+    handler,
+    /await cacheForCurrentProvider\([\s\S]*?outcome\.complete\);\s*return \{[^}]*source: "remote" as const/,
+  );
 });
 
 test("only a live answer is written back to the model cache", () => {
@@ -65,8 +67,9 @@ test("only a live answer is written back to the model cache", () => {
   // on the next cold start.
   const cacheCall = handler.indexOf("await cacheForCurrentProvider(");
   const catalog = handler.indexOf("modelsDevCatalog.modelsForProvider(");
+  assert.notEqual(cacheCall, -1, "live discovery cache write missing");
   assert.ok(cacheCall < catalog, "the cache write must belong to the live branch");
-  assert.match(handler, /if \(!provider \|\| req\.source === "cache"\) return;/);
+  assert.match(handler, /if \(!host \|\| !provider \|\| req\.source === "cache"\) return;/);
   // The cache key stays the saved endpoint, so a resolved candidate never
   // rewrites the cache of a row that has not been saved with it yet.
   assert.match(handler, /const requestBaseUrl = baseUrl\.replace/);

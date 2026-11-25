@@ -1,4 +1,4 @@
-# 04. Data Storage (Schema v33)
+# 04. Data Storage (Schema v34)
 
 ### Project path aliases (#2148)
 
@@ -91,6 +91,22 @@ with sessions is omitted from `detachedPaths` and remains readable as a standalo
 legacy group; removing a root from group membership never deletes sessions or files.
 Existing path projects are projected as legacy single-root groups at read time;
 their path-scoped memory and filesystem instructions remain readable.
+Replacing the sole root of a legacy or stored single-root group is an explicit
+project relocation, not a detach, only when the old root no longer exists on
+disk. The host retains the original project id and updates its canonical path
+in the same transaction as the group edit, moves the old path's
+`projectMemory` key and bound scheduled-task `workspacePath`, and absorbs only
+an empty target project row. Existing chats and scheduled tasks therefore
+retain their owner. A target that already owns chats, tasks, or memory blocks
+the edit without changing either project. When the old root still exists, the
+edit is an ordinary swap: the old project keeps its chats, tasks, and memory
+and stays readable as a standalone project. The two-step repair (#1869) is
+covered too: after the replacement was first saved next to the missing root,
+an edit that leaves only the replacement relocates the missing root's project
+onto it when exactly one removed root is missing on disk and owns chats, tasks,
+or memory and the replacement's project owns none; the stored group id is kept.
+Otherwise, and for removed roots that still exist, multi-root detachment keeps
+the existing standalone-project behavior.
 5. **Plan/Goal checkpoints are immutable host artifacts** with recorded path,
    hash, and size; the existing approval row also carries execution fields.
    Startup interruption is the process-epoch fence and no work is replayed.
@@ -682,6 +698,7 @@ CREATE TABLE models (
   source            TEXT NOT NULL DEFAULT 'user',  -- bundled | discovered | user
   capabilities_json TEXT NOT NULL DEFAULT '[]',
   context_window    INTEGER,
+  reported_context_window INTEGER,
   max_output_tokens INTEGER,
   deprecated        INTEGER NOT NULL DEFAULT 0,
   discovery_state   TEXT CHECK (discovery_state IN ('published', 'unlisted')),
@@ -693,6 +710,10 @@ CREATE TABLE models (
 Refresh (spec 13 §6/§9) upserts `discovered` rows and **never overwrites
 `source='user'`** rows. Recent-model MRU stays in `kv(cache)` — it is a
 bounded display list, not relational data.
+
+Schema v34 adds nullable `models.reported_context_window` for a limit explicitly
+reported by the endpoint. The backed-up migration preserves the display cache
+and leaves the new field unknown until the next successful discovery refresh.
 
 Schema v25 adds nullable `discovery_state`, distinct from metadata deprecation.
 The v24 upgrade backs up first, adds the field transactionally, and marks

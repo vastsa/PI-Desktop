@@ -53,7 +53,14 @@ async function processEvents(events: AnyRecord[]): Promise<{
     maxTokens: 8_192,
   } as never;
   const sink = {
-    push: (event: AnyRecord) => stream.push(event),
+    push: (event: AnyRecord) => {
+      if (event.type !== "text_start") {
+        stream.push(event);
+        return;
+      }
+      const block = (event.partial as AssistantMessage).content[Number(event.contentIndex)];
+      stream.push({ ...event, textSignatureAtPush: block?.type === "text" ? block.textSignature : undefined });
+    },
   } as unknown as Parameters<typeof processResponsesStream>[2];
   const asyncEvents = (async function* () {
     for (const event of events) yield event;
@@ -69,6 +76,24 @@ async function processEvents(events: AnyRecord[]): Promise<{
     hostedSearchCitations?: { url: string; title?: string }[];
   }, stream };
 }
+
+describe("Responses assistant text phases", () => {
+  it("keeps the commentary phase before the item finishes, even when done omits it", async () => {
+    const item = { type: "message", role: "assistant", id: "msg_progress" };
+    const { output, stream } = await processEvents([
+      { type: "response.output_item.added", output_index: 0, item: { ...item, phase: "commentary" } },
+      { type: "response.output_text.delta", output_index: 0, content_index: 0, delta: "Checking." },
+      { type: "response.output_item.done", output_index: 0, item: {
+        ...item, status: "completed", content: [{ type: "output_text", text: "Checking.", annotations: [] }],
+      } },
+      { type: "response.completed", response: { id: "resp_test", usage: {} } },
+    ]);
+    const expected = JSON.stringify({ v: 1, id: item.id, phase: "commentary" });
+    const start = stream.find((event) => event.type === "text_start");
+    expect(start?.textSignatureAtPush).toBe(expected);
+    expect(output.content[0]).toMatchObject({ type: "text", textSignature: expected });
+  });
+});
 
 describe("pi-ai hosted web search: responses stream extraction", () => {
   it("captures a web_search_call as a hostedSearch content block", async () => {

@@ -33,6 +33,7 @@ export const HIGH_RISK_PERMISSIONS = [
   "fs.write.workspace",
   "fs.delete.workspace",
   "agent.prompt.inject",
+  "agent.modelContext",
   "agent.tool.register",
   "agent.extension",
   "agent.complete",

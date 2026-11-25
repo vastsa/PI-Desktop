@@ -43,6 +43,8 @@ import {
 import { isRecord, timestampMs, toJsonObject, toJsonValue, usageToPi } from "./agent-messages.js";
 import { restoredToolResultContent } from "./tool-result-content.js";
 import type { ContextBudgetLimits } from "./context-budget.js";
+import { composeDelegateBrief } from "./delegation-brief.js";
+import { readDelegationModel, readDelegationPolicy, type DelegationModelSelection, type DelegationPolicy } from "./delegation-policy.js";
 import {
   apiBindingForProviderModel,
   type RuntimeProviderConfig,
@@ -71,6 +73,10 @@ export type DelegationChain = {
   latestModelId?: string;
   /** `providerId/modelId` key the latest run resolved (ADR 0279 §4). */
   latestModelKey?: string;
+  policy?: DelegationPolicy;
+  latestModel?: DelegationModelSelection;
+  /** New runs with incomplete metadata must never resume as legacy runs. */
+  incompleteSnapshot?: boolean;
   /** Settled status of the latest run; `running` while it works. Owns the
    * resumability gate so pruning finished delegation records cannot make a
    * stopped chain look reusable (ADR 0279). */
@@ -200,8 +206,13 @@ export function originalTaskFromTranscript(
   );
   if (!row) return undefined;
   const args = isRecord(row.toolArgs) ? row.toolArgs : undefined;
+  return briefFromTaskArgs(args);
+}
+
+function briefFromTaskArgs(args: Record<string, unknown> | undefined): string | undefined {
   const task = typeof args?.task === "string" ? args.task.trim() : "";
-  return task || undefined;
+  if (!task) return undefined;
+  return composeDelegateBrief({ task, userRequest: typeof args?.userRequest === "string" ? args.userRequest : undefined });
 }
 
 export function taskObjectiveFromArgs(args: unknown): string {
@@ -491,6 +502,9 @@ export type RebuiltTaskCall = {
   objective: string;
   task?: string;
   modelId?: string;
+  policy?: DelegationPolicy;
+  model?: DelegationModelSelection;
+  incompleteSnapshot?: boolean;
   createdAt: number;
   /** Settled status this call's `Task` row recorded, when it recorded one. */
   status?: string;
@@ -555,7 +569,10 @@ export function rebuildChainsFromTranscript(
     );
     if (!agentName) continue;
     const resume = typeof args?.resume === "string" ? args.resume.trim() : "";
-    const task = typeof args?.task === "string" ? args.task.trim() : "";
+    const task = briefFromTaskArgs(args);
+    const policy = readDelegationPolicy(details?.delegationPolicy);
+    const model = readDelegationModel(details?.delegationModel);
+    const incompleteSnapshot = (details?.delegationPolicy !== undefined || details?.delegationModel !== undefined || args?.scope !== undefined || args?.userRequest !== undefined) && (!policy || !model);
     const modelId =
       typeof details?.modelId === "string" ? details.modelId : undefined;
     const call: RebuiltTaskCall = {
@@ -566,6 +583,9 @@ export function rebuildChainsFromTranscript(
       objective: taskObjectiveFromArgs(args),
       ...(task ? { task } : {}),
       ...(modelId ? { modelId } : {}),
+      ...(policy ? { policy } : {}),
+      ...(model ? { model } : {}),
+      ...(incompleteSnapshot ? { incompleteSnapshot } : {}),
       status: chainStatusFromDetail(details, row),
       createdAt: timestampMs(row.createdAt) || Date.now(),
     };
@@ -628,6 +648,9 @@ export function rebuildChainsFromTranscript(
       latestDelegationId: latest?.delegationId,
       latestObjective: latest?.objective ?? root.objective,
       latestModelId: latest?.modelId,
+      policy: latest?.policy,
+      latestModel: latest?.model,
+      incompleteSnapshot: ordered.some((call) => call.incompleteSnapshot),
       latestStatus: latest?.status,
       lastActivityAt: latest?.createdAt ?? root.createdAt,
     });

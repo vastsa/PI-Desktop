@@ -255,6 +255,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     available_for_subagents: Some(true),
                     native_web_search: None,
                     fast_mode_allowed: Some(true),
+                    allow_empty_thinking_signature: Some(true),
                 },
                 ModelBinding {
                     id: "plain-model".into(),
@@ -272,6 +273,7 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
                     available_for_subagents: None,
                     native_web_search: None,
                     fast_mode_allowed: None,
+                    allow_empty_thinking_signature: None,
                 },
             ]),
             default_model_id: None,
@@ -325,9 +327,15 @@ fn model_bindings_roundtrip_and_legacy_model_migrates_on_read() {
     assert!(config["models"][1].get("availableForSubagents").is_none());
     assert!(config["models"][1].get("supportsImages").is_none());
     assert_eq!(config["models"][0]["fastModeAllowed"], true);
+    assert_eq!(config["models"][0]["allowEmptyThinkingSignature"], true);
     assert!(config["models"][1].get("fastModeAllowed").is_none());
     assert_eq!(provider.models[0].supports_images, Some(true));
     assert_eq!(provider.models[1].supports_documents, Some(false));
+    assert_eq!(
+        provider.models[0].allow_empty_thinking_signature,
+        Some(true)
+    );
+    assert_eq!(provider.models[1].allow_empty_thinking_signature, None);
 
     let legacy = create_provider(
         &db,
@@ -387,6 +395,7 @@ fn binding_with_alias(id: &str, alias: Option<&str>) -> ModelBinding {
         available_for_subagents: None,
         native_web_search: None,
         fast_mode_allowed: None,
+        allow_empty_thinking_signature: None,
     }
 }
 
@@ -443,6 +452,59 @@ fn alias_survives_the_provider_config_round_trip() {
     let restored: Vec<ModelBinding> = serde_json::from_value(parsed["models"].clone()).unwrap();
     assert_eq!(restored[0].alias.as_deref(), Some("pro"));
     assert_eq!(restored[1].alias, None);
+}
+#[test]
+fn empty_thinking_signature_binding_survives_provider_storage_round_trip() {
+    let (_dir, db, secrets) = test_context();
+    let mut binding = binding_with_alias("relay-model", None);
+    binding.allow_empty_thinking_signature = Some(true);
+    let provider = create_provider(
+        &db,
+        &secrets,
+        ProviderCreateInput {
+            name: "Anthropic relay".into(),
+            vendor_key: Some("custom".into()),
+            provider_type: Some("openai_compatible".into()),
+            protocol: Some("anthropic".into()),
+            base_url: Some("https://relay.example/v1".into()),
+            auth_kind: Some("none".into()),
+            models: Some(vec![binding]),
+            default_model_id: None,
+            secret_value: None,
+            api_style: Some("anthropic_messages".into()),
+            oauth_account_label: None,
+            headers: None,
+            context_window: None,
+            max_output_tokens: None,
+            temperature: None,
+            supports_reasoning: None,
+            supported_thinking_levels: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        provider.models[0].allow_empty_thinking_signature,
+        Some(true)
+    );
+    let reloaded = get_provider(&db, &secrets, &provider.id).unwrap().unwrap();
+    assert_eq!(
+        reloaded.models[0].allow_empty_thinking_signature,
+        Some(true)
+    );
+    assert_eq!(
+        reloaded.models[0].id, "relay-model",
+        "the opt-in must stay bound to its configured model",
+    );
+}
+
+#[test]
+fn absent_empty_thinking_signature_binding_remains_disabled() {
+    let binding = binding_with_alias("relay-model", None);
+    let json = serde_json::to_value(&binding).unwrap();
+    assert!(json.get("allowEmptyThinkingSignature").is_none());
+    let restored: ModelBinding = serde_json::from_value(json).unwrap();
+    assert_eq!(restored.allow_empty_thinking_signature, None);
 }
 
 #[test]
@@ -947,12 +1009,14 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
                 display_name: "Beta".into(),
                 capabilities: vec!["text".into()],
                 context_window: None,
+                reported_context_window: None,
             },
             DiscoveredModelInput {
                 model_id: "model-a".into(),
                 display_name: "Alpha".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(128_000),
+                reported_context_window: None,
             },
         ],
         true,
@@ -969,12 +1033,14 @@ fn discovered_models_are_cached_without_overwriting_user_rows() {
                 display_name: "Alpha updated".into(),
                 capabilities: vec!["text".into(), "reasoning".into()],
                 context_window: Some(256_000),
+                reported_context_window: None,
             },
             DiscoveredModelInput {
                 model_id: "user-model".into(),
                 display_name: "Remote label".into(),
                 capabilities: vec!["text".into()],
                 context_window: None,
+                reported_context_window: None,
             },
         ],
         true,
@@ -1045,6 +1111,7 @@ fn deleting_a_binding_and_saving_forgets_its_cached_parameters() {
                 display_name: "Alpha".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(128_000),
+                reported_context_window: None,
             },
             // The service spells it differently from the binding that drops it.
             DiscoveredModelInput {
@@ -1052,12 +1119,14 @@ fn deleting_a_binding_and_saving_forgets_its_cached_parameters() {
                 display_name: "Beta".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(32_000),
+                reported_context_window: None,
             },
             DiscoveredModelInput {
                 model_id: "model-c".into(),
                 display_name: "Gamma".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(64_000),
+                reported_context_window: None,
             },
         ],
         true,
@@ -1152,6 +1221,7 @@ fn a_probe_answer_forgets_models_it_no_longer_publishes() {
                 display_name: (*id).to_string(),
                 capabilities: vec!["text".into()],
                 context_window: Some(64_000),
+                reported_context_window: None,
             })
             .collect()
     };
@@ -1292,12 +1362,14 @@ fn changing_the_endpoint_forgets_the_discovered_answer() {
                 display_name: "Alpha".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(128_000),
+                reported_context_window: Some(128_000),
             },
             DiscoveredModelInput {
                 model_id: "model-b".into(),
                 display_name: "Beta".into(),
                 capabilities: vec!["text".into()],
                 context_window: Some(32_000),
+                reported_context_window: Some(32_000),
             },
         ],
         true,
@@ -1343,6 +1415,9 @@ fn changing_the_endpoint_forgets_the_discovered_answer() {
     assert_eq!(cached, vec!["model-a"]);
     let reset = list_models(&db, Some(&provider.id)).unwrap();
     assert!(reset.iter().all(|model| model.discovery_state.is_none()));
+    assert!(reset
+        .iter()
+        .all(|model| model.reported_context_window.is_none()));
     cache_discovered_models(
         &db,
         &provider.id,
@@ -1351,6 +1426,7 @@ fn changing_the_endpoint_forgets_the_discovered_answer() {
             display_name: "New".into(),
             capabilities: vec![],
             context_window: None,
+            reported_context_window: None,
         }],
         true,
     )
@@ -1671,6 +1747,7 @@ fn binding_with_limits(id: &str, context_window: u32, max_tokens: u32) -> ModelB
         available_for_subagents: None,
         native_web_search: None,
         fast_mode_allowed: None,
+        allow_empty_thinking_signature: None,
     }
 }
 

@@ -35,7 +35,10 @@ test("session project move is a durable host command, not a renderer-only regrou
   const runningTurnHelper =
     sessions.match(/pub fn session_has_running_turn\([\s\S]*?\n\}\n/)?.[0] ?? "";
   assert.match(runningTurnHelper, /SELECT EXISTS\([\s\S]*?status = 'running'/);
-  assert.match(moveBlock, /db\.ensure_project\(project_path, false\)/);
+  assert.match(moveBlock, /Some\(path\) => Some\(db\.ensure_project\(path, false\)\?\)/);
+  // An explicit null moves the session into the temporary group (#2455).
+  assert.match(moveBlock, /None => None/);
+  assert.match(rpc, /Some\(Value::Null\) => None/);
   assert.match(
     moveBlock,
     /UPDATE sessions SET project_id = \?1, updated_at = \?2 WHERE id = \?3/,
@@ -72,12 +75,12 @@ test("a successful move rebinds the live agent to the new project", () => {
 test("renderer api and store expose one guarded move action", () => {
   assert.match(
     api,
-    /moveSessionProject:\s*\(sessionId: string, projectPath: string\)/,
+    /moveSessionProject:\s*\(sessionId: string, projectPath: string \| null\)/,
   );
   assert.match(api, /IPC\.invoke\.sessionMoveProject/);
   assert.match(
     store,
-    /moveSessionProject: \(id: string, projectPath: string\) => Promise<boolean>;/,
+    /moveSessionProject: \(id: string, projectPath: string \| null\) => Promise<boolean>;/,
   );
 
   const storeBlock = store.match(/moveSessionProject: async \(id, projectPath\)[\s\S]*?\n  \},\n/)?.[0] ?? "";

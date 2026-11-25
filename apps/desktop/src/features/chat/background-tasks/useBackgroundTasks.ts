@@ -252,7 +252,7 @@ export function useBackgroundTasks(
    */
   const remove = useCallback((id: string): boolean => {
     const task = sessionTasks.find((candidate) => candidate.id === id);
-    if (!task || task.state === "running") {
+    if (!task || task.state === "running" || task.continuation === "pending") {
       setError("remove");
       return false;
     }
@@ -260,6 +260,16 @@ export function useBackgroundTasks(
     setExpandedId((current) => current === id ? null : current);
     return true;
   }, [sessionTasks]);
+
+  const cancelContinuation = useCallback(async (id: string) => {
+    try {
+      await api.backgroundTasksCancelContinuation(id);
+      if (mounted.current) refreshList.current?.();
+    } catch (failure) {
+      console.error("Background continuation cancellation failed", failure);
+      if (mounted.current) setError("stop");
+    }
+  }, []);
 
   const stop = useCallback(async (id: string) => {
     if (pendingStops.current.has(id)) return;
@@ -306,6 +316,7 @@ export function useBackgroundTasks(
     error,
     toggleOutput,
     stop,
+    cancelContinuation,
     remove,
   };
 }

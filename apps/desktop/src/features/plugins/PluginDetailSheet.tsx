@@ -114,6 +114,19 @@ export function PluginDetailSheet({
                       <span>{detail.author}</span>
                     </>
                   ) : null}
+                  {detail?.publisherId ? (
+                    <>
+                      <span className="plugins-dot" aria-hidden>
+                        ·
+                      </span>
+                      {/* The account that published it, which is not the display
+                          author: one is who wrote the plugin, the other is who
+                          the platform verified. */}
+                      <span className="plugins-sheet-publisher">
+                        {t("plugins.publisher", { id: detail.publisherId })}
+                      </span>
+                    </>
+                  ) : null}
                 </div>
               </div>
               <TooltipButton

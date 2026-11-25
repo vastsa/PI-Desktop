@@ -1,5 +1,55 @@
-import type { DiffHunk, DiffLine, ReviewChangesPage, ReviewHistoryChange } from "@pi-desktop/shared";
+import type { DiffHunk, DiffLine, ReviewChangesPage, ReviewHistoryChange, UiMessage } from "@pi-desktop/shared";
 import { reviewChangeFromMessage, type ReviewChangeEntry } from "./workspace-review.ts";
+
+const serializedReviewByPayload = new WeakMap<object, string>();
+
+function serializeReviewPayload(review: unknown): string {
+  if (review === null || typeof review !== "object") return String(JSON.stringify(review));
+
+  const cached = serializedReviewByPayload.get(review);
+  if (cached !== undefined) return cached;
+
+  // Renderer updates replace review payloads, including rollback. Cache by
+  // payload identity, not message ID, without keeping old diffs alive.
+  const serialized = String(JSON.stringify(review));
+  serializedReviewByPayload.set(review, serialized);
+  return serialized;
+}
+
+type ReviewRevisionFact = {
+  id: UiMessage["id"];
+  status: UiMessage["toolStatus"];
+  payload: string;
+};
+
+/** One reader per Review panel. Rebuild its revision only when tool facts change. */
+export function createReviewHistoryRevision() {
+  let previous: ReviewRevisionFact[] = [];
+  let revision = "";
+
+  return (messages: readonly UiMessage[]): string => {
+    const next: ReviewRevisionFact[] = [];
+    let changed = false;
+    for (const message of messages) {
+      if (message.role !== "tool") continue;
+      const review = (message.toolResult as { details?: { review?: unknown } } | undefined)?.details?.review ?? null;
+      const payload = serializeReviewPayload(review);
+      const old = previous[next.length];
+      if (old && old.id === message.id && old.status === message.toolStatus && old.payload === payload) {
+        next.push(old);
+      } else {
+        next.push({ id: message.id, status: message.toolStatus, payload });
+        changed = true;
+      }
+    }
+
+    if (changed || next.length !== previous.length) {
+      previous = next;
+      revision = next.map(({ id, status, payload }) => `${id}:${status}:${payload}`).join("|");
+    }
+    return revision;
+  };
+}
 
 export type NumberedReviewLine = DiffLine & { oldLine: number | null; newLine: number | null };
 export function numberedReviewHunks(hunks: readonly DiffHunk[]): { header: string; lines: NumberedReviewLine[] }[] {

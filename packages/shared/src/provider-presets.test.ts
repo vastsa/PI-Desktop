@@ -5,10 +5,12 @@ import {
   deepseekRequestCompat,
   DEEPSEEK_REASONING_REPLAY_PLACEHOLDER,
   isDeepSeekReasoningReplay,
+  isMistralEndpoint,
   isOfficialDeepSeekEndpoint,
   isZhipuEndpoint,
   matchNamedPreset,
   matchZhipuPreset,
+  mistralRequestCompat,
   normalizeEndpointUrl,
   withoutReasoningReplayPlaceholder,
   zhipuRequestCompat,
@@ -293,6 +295,9 @@ describe("pi-ai built-in API-key services", () => {
     expect(matchNamedPreset({ vendorKey: "qwen-token-plan-cn" })?.vendorKey).toBe(
       "alibaba-token-plan-cn",
     );
+    expect(
+      matchNamedPreset({ vendorKey: "qwen-token-plan-individual-cn" })?.vendorKey,
+    ).toBe("alibaba-token-plan-cn");
   });
 
   it("keeps OpenCode Zen and OpenCode Go as separate services", () => {
@@ -395,5 +400,41 @@ describe("withoutReasoningReplayPlaceholder", () => {
     expect(withoutReasoningReplayPlaceholder("real plan")).toBe("real plan");
     const mention = `the relay sent ${DEEPSEEK_REASONING_REPLAY_PLACEHOLDER} earlier`;
     expect(withoutReasoningReplayPlaceholder(mention)).toBe(mention);
+  });
+});
+
+describe("Mistral Chat Completions compat (#2539)", () => {
+  it("recognizes Mistral hosts and vendorKey", () => {
+    expect(isMistralEndpoint({ baseUrl: "https://api.mistral.ai/v1" })).toBe(true);
+    expect(isMistralEndpoint({ baseUrl: "https://API.MISTRAL.AI/v1/" })).toBe(true);
+    expect(isMistralEndpoint({ baseUrl: "https://codestral.mistral.ai/v1" })).toBe(true);
+    expect(isMistralEndpoint({ vendorKey: "mistral" })).toBe(true);
+    expect(
+      isMistralEndpoint({
+        vendorKey: "mistral",
+        baseUrl: "https://proxy.example.test/v1",
+      }),
+    ).toBe(true);
+    expect(mistralRequestCompat({ baseUrl: "https://api.mistral.ai/v1" })).toEqual({
+      supportsStore: false,
+    });
+  });
+
+  it("rejects spoofed hosts, unrelated URLs, and rows repointed to another vendor", () => {
+    expect(isMistralEndpoint({ baseUrl: "https://api.mistral.ai.evil.test/v1" })).toBe(false);
+    expect(isMistralEndpoint({ baseUrl: "https://relay.example.test/mistral.ai/v1" })).toBe(false);
+    expect(
+      isMistralEndpoint({
+        vendorKey: "mistral",
+        baseUrl: "https://api.openai.com/v1",
+      }),
+    ).toBe(false);
+    expect(
+      isMistralEndpoint({
+        vendorKey: "mistral",
+        baseUrl: "https://api.openai.com/beta",
+      }),
+    ).toBe(false);
+    expect(mistralRequestCompat({ vendorKey: "openai", baseUrl: "https://api.openai.com/v1" })).toBeUndefined();
   });
 });

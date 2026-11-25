@@ -2,6 +2,7 @@ import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, resolve, sep } from "node:path";
 import type { PluginMcpServerContrib } from "@pi-desktop/plugin-sdk";
 import { minimalChildEnv } from "./child-process-env.ts";
+import { createHttpTransportWithLegacyFallback } from "./mcp-legacy-sse.ts";
 import {
   MCP_STDIO_HOST_ENV_KEYS,
   decodeMcpStderr,
@@ -62,7 +63,7 @@ export type McpTransportHandlers = {
   onClose: (reason: string) => void;
 };
 
-type McpError = Error & { code?: string };
+type McpError = Error & { code?: string; status?: number };
 
 function mcpError(code: string, message: string): McpError {
   const error = new Error(message) as McpError;
@@ -469,7 +470,9 @@ function createHttpTransport(
             } catch {
               // The status is sufficient for the structured MCP error.
             }
-            throw mcpError("HTTP_ERROR", `mcp server returned ${response.status}`);
+            const error = mcpError("HTTP_ERROR", `mcp server returned ${response.status}`);
+            error.status = response.status;
+            throw error;
           }
           const nextSession = response.headers.get("mcp-session-id");
           if (nextSession && new URL(url).origin === initialOrigin) sessionId = nextSession;
@@ -700,15 +703,20 @@ export class McpServerClient {
         handlers,
       );
     }
-    return createHttpTransport(
-      {
-        url: String(this.opts.server.url ?? ""),
-        headers: this.opts.values,
-        timeoutMs,
-        fetchImpl: this.opts.fetchImpl,
-        assertUrlAllowed: this.opts.assertUrlAllowed,
-      },
+    const httpOptions = {
+      url: String(this.opts.server.url ?? ""),
+      headers: this.opts.values,
+      timeoutMs,
+      fetchImpl: this.opts.fetchImpl ?? globalThis.fetch,
+      assertUrlAllowed: this.opts.assertUrlAllowed,
+    };
+    // Servers still on the 2024-11-05 HTTP+SSE transport reject the
+    // streamable initialize POST (issue #2528); the spec's compatibility path
+    // retries over their event stream.
+    return createHttpTransportWithLegacyFallback(
+      httpOptions,
       handlers,
+      createHttpTransport(httpOptions, handlers),
     );
   }
 

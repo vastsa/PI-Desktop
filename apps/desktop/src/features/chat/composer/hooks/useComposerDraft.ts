@@ -42,6 +42,7 @@ import {
   paintEditorValue,
   readEditorValue,
   setEditorCaret,
+  syncTailMarker,
   type ComposerFileReference,
 } from "../editor";
 import type { ComposerPrefill } from "../model";
@@ -305,6 +306,14 @@ export function useComposerDraft({
     editorValueRef.current = nextValue;
   };
 
+  // An empty last line has no caret box of its own, so Chromium resolves a caret
+  // left on it to the neighbouring line; give the line a zero-width marker after
+  // every commit.
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element) syncTailMarker(element);
+  }, [value]);
+
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
@@ -406,14 +415,11 @@ export function useComposerDraft({
     if (!selection || selection.rangeCount === 0) return;
     const range = selection.getRangeAt(0);
     if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return;
+    const { start } = editorSelectionRange(element);
     range.deleteContents();
     const node = document.createTextNode("\n");
     range.insertNode(node);
-    const after = document.createRange();
-    after.setStart(node, 1);
-    after.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(after);
+    setEditorCaret(element, start + 1);
     commitEditorDom();
   };
 

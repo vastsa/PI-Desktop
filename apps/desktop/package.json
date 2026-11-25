@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.23.0-beta.1",
+  "version": "0.24.0-beta.2",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -12,7 +12,7 @@
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
-    "build:deps": "pnpm --filter '@pi-desktop/desktop^...' build",
+    "build:deps": "pnpm --filter \"@pi-desktop/desktop^...\" build",
     "predev": "pnpm run build:deps && cargo build --manifest-path ../../Cargo.toml -p host-core",
     "dev": "node ../../scripts/dev-electron.mjs",
     "build": "electron-vite build",
@@ -36,8 +36,8 @@
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "1.5.0",
-    "@earendil-works/pi-mcp": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.2",
+    "@earendil-works/pi-mcp": "1.5.2",
     "@pi-desktop/agent-host": "workspace:*",
     "@pi-desktop/computer-use": "workspace:*",
     "@pi-desktop/agent-runtime": "workspace:*",

@@ -1826,3 +1826,90 @@ describe("session affinity for the adapters' anonymous endpoints (#1634)", () =>
     expect(headers?.get("x-session-affinity")).toBe("session-9");
   });
 });
+
+describe("Mistral Chat Completions store suppression (#2539)", () => {
+  const captureRequestBody = async (
+    provider: RuntimeProviderConfig,
+  ): Promise<Record<string, unknown>> => {
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const model = buildProviderModel(provider);
+    await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "hello", timestamp: 1 }],
+          tools: [],
+        },
+        { fetch },
+      )
+      .result();
+    expect(requests).toHaveLength(1);
+    return requests[0];
+  };
+
+  it("omits store for Mistral-hosted DeepSeek models while preserving DeepSeek replay compat", async () => {
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      id: "mistral-row",
+      name: "Mistral",
+      vendorKey: "mistral",
+      baseUrl: "https://api.mistral.ai/v1",
+      modelId: "deepseek-v4-1-flash-1017",
+      supportsReasoning: true,
+      supportedThinkingLevels: ["off", "low", "high"],
+    };
+
+    const model = buildProviderModel(provider);
+    expect(model.compat).toMatchObject({
+      supportsStore: false,
+      requiresReasoningContentOnAssistantMessages: true,
+      supportsReasoningEffort: false,
+      requiresNonEmptyReasoningReplay: true,
+    });
+
+    const body = await captureRequestBody(provider);
+    expect(Object.hasOwn(body, "store")).toBe(false);
+  });
+
+  it("omits store for native Mistral models and custom rows pointing at api.mistral.ai", async () => {
+    const nativeBody = await captureRequestBody({
+      ...keyedProvider,
+      id: "mistral-native-row",
+      name: "Mistral",
+      vendorKey: "mistral",
+      baseUrl: "https://api.mistral.ai/v1",
+      modelId: "mistral-large-latest",
+    });
+    expect(Object.hasOwn(nativeBody, "store")).toBe(false);
+
+    const customUrlBody = await captureRequestBody({
+      ...keyedProvider,
+      id: "custom-mistral-row",
+      name: "Custom Mistral",
+      vendorKey: "custom",
+      baseUrl: "https://api.mistral.ai/v1",
+      modelId: "mistral-large-latest",
+    });
+    expect(Object.hasOwn(customUrlBody, "store")).toBe(false);
+  });
+
+  it("keeps OpenAI Chat Completions store behavior unchanged", async () => {
+    const openaiBody = await captureRequestBody({
+      ...keyedProvider,
+      id: "openai-row",
+      name: "OpenAI",
+      vendorKey: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      modelId: "gpt-4o",
+    });
+    expect(openaiBody.store).toBe(false);
+  });
+});

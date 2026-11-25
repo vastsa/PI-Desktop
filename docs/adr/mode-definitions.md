@@ -20,7 +20,20 @@ global-only discovery (D202).
 
 ## Decision
 
-### 1. A mode is one Markdown file
+### 1. A mode is a user-owned directory
+
+New modes use `mode.yaml`. Its `promptFile` names a local text document;
+`subagents` lists relative paths to role documents. The mode keeps the
+session's selected model. Roles own their prompts, tools, primary model,
+ordered `fallbackModels` and optional aligned `fallbackThinkingLevels`.
+No provider secrets belong to the directory. `includeGlobalSubagents` is
+off by default; enabling it adds only already-active roles and never
+shadows a private role. An empty team is a valid empty delegation catalog.
+
+Skills are discovered under `skills/`; their activation belongs to the mode,
+not the skill document. A present but invalid YAML manifest is an error: it
+never activates a neighboring legacy document. The following legacy format
+is still supported when there is no YAML manifest.
 
 `~/.pi/modes/<name>/mode.md` holds YAML frontmatter and a Markdown body that is the
 shared system prompt, with optional artifact templates in `templates/`; builtins

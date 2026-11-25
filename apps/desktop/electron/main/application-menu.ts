@@ -1,4 +1,4 @@
-import { Menu, type MenuItemConstructorOptions } from "electron";
+import { Menu, type BrowserWindow, type MenuItemConstructorOptions } from "electron";
 import {
   APP_NAME,
   KEYBOARD_SHORTCUTS,
@@ -245,4 +245,27 @@ export function installApplicationMenu(options: ApplicationMenuOptions) {
   }
   const template = buildApplicationMenuTemplate(options);
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+export function installEditableContextMenu(window: BrowserWindow) {
+  window.webContents.on("context-menu", (_event, params) => {
+    if (!params.isEditable) return;
+    const flags = params.editFlags;
+    Menu.buildFromTemplate([
+      { role: "undo", enabled: flags.canUndo },
+      { role: "redo", enabled: flags.canRedo },
+      { type: "separator" },
+      { role: "cut", enabled: flags.canCut },
+      { role: "copy", enabled: flags.canCopy },
+      { role: "paste", enabled: flags.canPaste },
+      { type: "separator" },
+      { role: "selectAll", enabled: flags.canSelectAll },
+    ]).popup({
+      window,
+      frame: params.frame ?? undefined,
+      x: params.x,
+      y: params.y,
+      sourceType: params.menuSourceType,
+    });
+  });
 }

@@ -28,11 +28,16 @@ export type SubagentSource = "builtin" | "user";
 
 /** Provider/model pin declared by a definition (resolved in Electron main). */
 export type SubagentModelPin = {
+  thinkingLevel?: SubagentThinkingLevel;
   providerId: string;
   modelId: string;
 };
 
 export type SubagentDefinition = {
+  /** Assigned by the mode catalog, never parsed from an agent document. */
+  modeOwner?: string;
+  /** Catalog identity checked by main immediately before a bundled Task starts. */
+  catalogMode?: string;
   /** Delegate id used as the `Task` argument, e.g. "code-reviewer". */
   name: string;
   /** One line telling the parent model when to delegate to this agent. */
@@ -105,18 +110,22 @@ export const SUBAGENT_INHERIT_TOKEN = "inherit";
  * reach because a delegate has no user. `ToolSearch` and `new_context` mutate
  * the parent runtime's deferred-tool set and compaction flag, so they stay
  * denied even though the child receives the full catalog without searching.
+ * `codemode` is bound to the parent session's tool pipeline and lineage, so a
+ * delegate never inherits it (ADR codemode-sandbox-boundary).
  */
 export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
   "Task",
   "TaskWait",
   "TaskList",
   "TaskStop",
+  "TaskSend",
   "EnterPlanMode",
   "EnterGoalMode",
   "TodoWrite",
   "asktool",
   "new_context",
   "ToolSearch",
+  "codemode",
 ];
 
 /**
@@ -300,7 +309,10 @@ function unquote(value: string): string {
 function splitFrontmatter(
   raw: string,
 ): { frontmatter: Frontmatter; body: string } {
-  const normalized = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const frontmatter: Frontmatter = new Map();
   if (!normalized.startsWith("---\n")) {
     return { frontmatter, body: normalized.trim() };
@@ -415,8 +427,19 @@ export function parseSubagentDefinition(
 
   const model = parseModelPin(frontmatter, errors);
   const fallbackModels: SubagentModelPin[] = [];
-  for (const value of asList(frontmatter.get("fallbackmodels"))) {
+  const fallbackKeys = asList(frontmatter.get("fallbackmodels"));
+  const levels = asList(frontmatter.get("fallbackthinkinglevels"));
+  if (levels.length && levels.length !== fallbackKeys.length) {
+    errors.push("fallbackThinkingLevels: expected one level per fallback model (use inherit for the role default)");
+  }
+  for (const [index, value] of fallbackKeys.entries()) {
     const pin = parseModelPin(new Map([["model", value]]), errors);
+    const level = levels[index];
+    if (pin && level && level !== "inherit") {
+      const valid = SUBAGENT_THINKING_LEVELS.find(candidate => candidate === level);
+      if (valid) pin.thinkingLevel = valid;
+      else errors.push(`fallbackThinkingLevels: unknown level "${level}" for ${value}`);
+    }
     if (pin && !fallbackModels.some((entry) => subagentModelKey(entry) === subagentModelKey(pin))) {
       fallbackModels.push(pin);
     }

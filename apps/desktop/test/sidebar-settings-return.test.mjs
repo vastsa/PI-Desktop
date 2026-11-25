@@ -6,26 +6,18 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const idle = (collapsed = false, presented = true) => ({ collapsed, presented, phase: "idle" });
 
-test("Settings hides the mounted chat shell and keeps its portal layers out of view", async () => {
-  const [appShell, styles, portalVisibility] = await Promise.all([
+test("Settings opens as a dialog over the mounted chat shell", async () => {
+  const [appShell, styles] = await Promise.all([
     readFile(new URL("../src/features/app/AppShell.tsx", import.meta.url), "utf8"),
     loadStyles(),
-    readFile(new URL("../src/lib/portal-visibility.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(appShell, /<PortalVisibilityProvider visible=\{page !== "settings"\}>/);
-  assert.match(appShell, /className="app-chat-shell"[\s\S]*?hidden=\{page === "settings"\}/);
-  assert.match(appShell, /inert=\{page === "settings" \? true : undefined\}/);
-  const chatShell = appShell.match(/<div\s+className="app-chat-shell"[\s\S]*?>/)?.[0];
-  assert.ok(chatShell, "chat shell must exist");
-  assert.doesNotMatch(chatShell, /aria-hidden/);
-  assert.match(appShell, /className="app-chat-shell"[\s\S]*?<ChatSurface visible=\{page === "chat"\} \/>/);
-  assert.match(appShell, /\{page === "settings" \? \([\s\S]*?<SettingsPage \/>/);
+  assert.doesNotMatch(appShell, /PortalVisibilityProvider|settings-mode/);
+  assert.match(appShell, /<div className="app-chat-shell">/);
   assert.match(appShell, /<ChatSurface visible=\{page === "chat"\} \/>/);
+  assert.match(appShell, /<AppOverlayHost active=\{!showSplash\} \/>/);
   assert.match(appShell, /<SearchDialog open=\{searchOpen\}/);
   assert.match(styles, /\.app-chat-shell\s*\{\s*display:\s*contents;/);
-  assert.match(styles, /\.app-chat-shell\[hidden\]\s*\{\s*display:\s*none;/);
-  assert.match(portalVisibility, /<PortalVisibilityContext\.Consumer>[\s\S]*visible \? node : null/);
-  assert.match(portalVisibility, /createPortal\(visiblePortalContent\(node\), document\.body\)/);
+  assert.match(styles, /\.settings-dialog\s*\{[^}]*width:\s*min\(100%, 1080px\);/);
 });
 
 test("initial shell presentation and settings return never play sidebar entrance", () => {
@@ -70,10 +62,7 @@ test("home and settings use the same material without animating the settings pla
   assert.match(settings, /className="settings-nav sidebar-surface"/);
   assert.match(styles, /\.sidebar-surface,\s*\.sidebar-rail\s*\{[^}]*background-color:\s*var\(--ds-bg-sidebar[^}]*background-image:\s*var\(--ds-bg-sidebar-image/);
   assert.match(styles, /:root\[data-platform="darwin"\] \.sidebar-surface,/);
-  assert.match(styles, /:root\[data-platform="darwin"\] \.settings-shell\s*\{\s*background:\s*transparent;/);
-  for (const selector of ["settings-content", "settings-titlebar"]) {
-    assert.match(styles, new RegExp(`\\.${selector}\\s*\\{[^}]*background:\\s*var\\(--ds-bg-primary\\);`));
-  }
+  assert.match(styles, /\.settings-content\s*\{[^}]*background:\s*var\(--ds-bg-primary\);/);
   assert.doesNotMatch(styles, /\.settings-shell-full \.settings-nav\s*\{[^}]*background:/);
   assert.match(styles, /\.route-surface,\s*\.settings-content-enter\s*\{[^}]*animation:\s*route-surface-in/);
   assert.doesNotMatch(styles, /\.route-surface,\s*\.settings-shell-full\s*\{/);

@@ -1,7 +1,11 @@
 import {
   IPC,
+  type ModeBundleContents,
+  type ModeBundleSettingsRequest,
+  type ModeBundleWriteRequest,
   type ModeCatalog,
   type ModeCatalogEntry,
+  type ModeCopyRequest,
   type ModeDiagnostic,
   type ModeControlRequest,
   type ModeDocumentReadResult,
@@ -9,6 +13,7 @@ import {
   type ModeDocumentWriteRequest,
   type ModeResolveRequest,
   type ModeRun,
+  type ModeSkillsResult,
   type ModesChangedEvent,
   type ModeUpdateRequest,
 } from "@pi-desktop/shared";
@@ -127,6 +132,21 @@ export const modesApi = {
   write: (request: ModeDocumentWriteRequest) =>
     invoke<unknown>(IPC.invoke.modesWrite, request).then(parseModeCatalog),
   remove: (id: string) => invoke<unknown>(IPC.invoke.modesDelete, id).then(parseModeCatalog),
+  /**
+   * `mode.yaml` bundles (issue #2544). Reading returns texts keyed by the
+   * relative reference the map declared; writing sends the map and those same
+   * keys, so the renderer never names a path of its own.
+   */
+  readBundle: (id: string) => invoke<ModeBundleContents>(IPC.invoke.modesBundleRead, id),
+  writeBundle: (request: ModeBundleWriteRequest) =>
+    invoke<unknown>(IPC.invoke.modesBundleWrite, request).then(parseModeCatalog),
+  copy: (request: ModeCopyRequest) =>
+    invoke<unknown>(IPC.invoke.modesCopy, request).then(parseModeCatalog),
+  saveBundleSettings: (request: ModeBundleSettingsRequest) =>
+    invoke<unknown>(IPC.invoke.modesBundleSettings, request).then(parseModeCatalog),
+  skills: (id: string) => invoke<ModeSkillsResult>(IPC.invoke.modesSkills, id),
+  openSkillsDirectory: (id: string) =>
+    invoke<{ directory: string }>(IPC.invoke.modesSkillsOpen, id),
   getRun: (sessionId: string) =>
     invoke<{ run?: unknown }>(IPC.invoke.modesRunGet, sessionId).then((result) => parseModeRun(result?.run)),
   controlRun: (request: ModeControlRequest) =>

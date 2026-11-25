@@ -71,13 +71,32 @@ describe("session job controls", () => {
     },
   );
 
-  it.each([["other"], ["delegate", "other"], "delegate", null].map(delegationIds => ({ delegationIds })))(
-    "rejects conflicting or malformed delegation selectors (%j) before dispatch",
+  it.each([["other"], ["delegate", "other"]].map(delegationIds => ({ delegationIds })))(
+    "falls through to multi-target delegation selectors when job conflicts (%j)",
+    async ({ delegationIds }) => {
+      const { wait, stop, dispatch, delegates } = fixture();
+      const params = {
+        job: { kind: "delegation", id: "delegate" }, delegationIds,
+        mode: "any", minCompleted: 2, timeoutSeconds: 180,
+      };
+      const signal = new AbortController().signal;
+      const update = vi.fn();
+      const waitResult = await wait.execute("wait", params, signal, update);
+      expect(waitResult.content).toEqual([{ type: "text", text: "delegate report" }]);
+      expect(delegates.wait.execute).toHaveBeenCalledWith("wait", params, signal, update);
+      await stop.execute("stop", params, signal, update);
+      expect(delegates.stop.execute).toHaveBeenCalledWith("stop", params, signal, update);
+      expect(dispatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["delegate", null, ["delegate", null], [42]].map(delegationIds => ({ delegationIds })))(
+    "rejects malformed delegation selectors (%j) with an actionable error",
     async ({ delegationIds }) => {
       const { wait, stop, dispatch, delegates } = fixture();
       const params = { job: { kind: "delegation", id: "delegate" }, delegationIds };
-      await expect(wait.execute("wait", params)).rejects.toThrow("omit delegationIds or pass only job.id");
-      await expect(stop.execute("stop", params)).rejects.toThrow("omit delegationIds or pass only job.id");
+      await expect(wait.execute("wait", params)).rejects.toThrow("delegationIds must be an array of delegation ids");
+      await expect(stop.execute("stop", params)).rejects.toThrow("delegationIds must be an array of delegation ids");
       expect(delegates.wait.execute).not.toHaveBeenCalled();
       expect(delegates.stop.execute).not.toHaveBeenCalled();
       expect(dispatch).not.toHaveBeenCalled();
