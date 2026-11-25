@@ -1565,7 +1565,7 @@ export class ModelsDevCatalog {
       const transcript = transcriptConfigFromPi(transport);
       baseline = { ...baseline, transcriptBinding: transcript.transcriptBinding,
         compat: { ...baseline.compat, ...transcript.compat },
-        ...(transport.promptCache && apiMatches(input.baseUrl, transport.baseUrl)
+        ...(transport.promptCache && (!input.baseUrl?.trim() || apiMatches(input.baseUrl, transport.baseUrl))
           ? { promptCache: transport.promptCache } : {}),
       };
     }
