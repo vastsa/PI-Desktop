@@ -296,7 +296,7 @@ export function useComposerDraft({
       nextValue,
       referenceByTokenRef.current,
       (reference) =>
-        t(isPluginMark(reference) ? "chat.removePluginMark" : "chat.removeFileReference", {
+        t(isPluginMark(reference) || reference.kind === "skill" ? "chat.removePluginMark" : "chat.removeFileReference", {
           name: reference.name,
         }),
       (token) => removeChipByTokenRef.current(token),
@@ -516,13 +516,12 @@ export function useComposerDraft({
     compositionRef.current = null;
     previousWorkspacePathRef.current = workspacePath;
     const current = fileReferencesRef.current;
-    // Plugin marks carry their text, not a workspace path, a session
-    // reference names a conversation and an agent chip names a subagent
-    // rather than a file in this project.
+    // Only workspace-relative file references belong to the previous project.
     const survives = (fileReference: ComposerFileReference) =>
       Boolean(fileReference.plugin) ||
       fileReference.kind === "session" ||
       fileReference.kind === "agent" ||
+      fileReference.kind === "skill" ||
       isPersistedScratchReference(fileReference.path);
     const kept = current.filter(survives);
     if (kept.length === current.length) return;

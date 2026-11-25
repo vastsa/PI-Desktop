@@ -1,4 +1,5 @@
 import {
+  composerMentionText,
   fileReferenceLabel,
   formatFileInsert,
 } from "@pi-desktop/shared";
@@ -42,7 +43,7 @@ export function createFileReference(
   metadata?: {
     size?: number;
     localReference?: string;
-    kind?: "image" | "file" | "session" | "directory" | "agent";
+    kind?: ComposerFileReference["kind"];
     mimeType?: string;
     token?: string;
     lineRange?: FileLineRange;
@@ -54,11 +55,9 @@ export function createFileReference(
     id: `composer-file-${composerFileReferenceSequence}`,
     sessionId,
     path,
-    // A plugin mark's label is shown as given; it is no path.
-    // A plugin mark's label is shown as given, and a session reference is
-    // named by its conversation; neither is a path.
+    // Catalog and plugin labels are not filenames.
     name:
-      isPluginMark(metadata) || metadata?.kind === "session" || metadata?.kind === "agent"
+      isPluginMark(metadata) || metadata?.kind === "session" || metadata?.kind === "agent" || metadata?.kind === "skill"
         ? (preferredName ?? "")
         : fileReferenceLabel(path, preferredName),
     kind: metadata?.kind ?? (isImageFilePath(path) ? "image" : "file"),
@@ -342,6 +341,7 @@ const CHIP_ICON_SVG: Record<string, string> = {
     '<path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z"/>',
   agent:
     '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  skill: '<path d="M12 7c-2-2-6-3-10-2v14c4-1 8 0 10 2 2-2 6-3 10-2V5c-4-1-8 0-10 2Zm0 0v14"/>',
   fold: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
 };
 
@@ -349,7 +349,7 @@ function chipIconKey(reference: ComposerFileReference): string {
   if (reference.plugin?.kind === "mark") return "plugin";
   if (reference.plugin?.kind === "fold") return "fold";
   if (reference.kind === "session") return "session";
-  if (reference.kind === "agent") return "agent";
+  if (reference.kind === "agent" || reference.kind === "skill") return reference.kind;
   if (reference.kind === "directory") return "dir";
   if (reference.lineRange) return "file";
   const mime = reference.mimeType ?? "";
@@ -371,7 +371,7 @@ function chipSvg(key: string, size = 13): string {
 
 export function isEditableTextReference(reference: ComposerFileReference): boolean {
   if (reference.localReference || reference.lineRange) return false;
-  if (isPluginMark(reference) || reference.kind === "directory" || reference.kind === "agent") return false;
+  if (isPluginMark(reference) || reference.kind === "directory" || reference.kind === "agent" || reference.kind === "skill") return false;
   return reference.mimeType?.toLowerCase() === "text/plain" || /\.txt$/i.test(reference.name);
 }
 
@@ -392,11 +392,10 @@ function buildChipElement(
   // A mark names the plugin that put it there where a file names its path.
   const origin = isPluginMark(reference)
     ? (reference.plugin?.pluginId ?? "")
-    : reference.kind === "agent"
-      ? `@${reference.path}`
-      : reference.path;
+    : composerMentionText(reference) ?? reference.path;
   if (isPluginMark(reference)) chip.dataset.pluginMark = reference.plugin?.kind;
   if (reference.kind === "agent") chip.dataset.agent = reference.path;
+  if (reference.kind === "skill") chip.dataset.skill = reference.path;
   chip.title = origin;
   // An image keeps the compact chip and opens its preview, a session chip opens
   // that conversation, and only plain text expands into editable draft text.
