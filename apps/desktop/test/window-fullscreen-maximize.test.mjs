@@ -246,7 +246,8 @@ test("the restore handler re-applies the work-area-based maximized rect", () => 
     block,
     /window\.setBounds\(maximizedBoundsForWorkArea\(bounds, workArea\)\)/,
   );
-  assert.match(block, /window\.on\("restore"/);\n  assert.match(block, /window\.on\("maximize"/);
+  assert.match(block, /window\.on\("restore"/);
+  assert.match(block, /window\.on\("maximize"/);
   // The OS finishes the restore after the event dispatch, so the correction
   // has to be repeated once the transition settles.
   assert.match(block, /windowBoundsSettleMs/);
