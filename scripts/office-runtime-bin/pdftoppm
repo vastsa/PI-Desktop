@@ -1,0 +1,6 @@
+#!/bin/bash
+set -euo pipefail
+
+base=$(cd -- "$(dirname -- "$0")/../poppler" && pwd -P)
+export LD_LIBRARY_PATH="$base/lib"
+exec "$base/bin/pdftoppm" "$@"

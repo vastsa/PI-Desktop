@@ -37,15 +37,24 @@ pub(super) fn configure(
             format!("Office Runtime is incomplete at {}: {detail}. Reinstall Pie Code or turn off Office Runtime in Extensions.", runtime.display()),
         )
     };
-    for name in ["node/bin/node", "python/bin/python", "python/bin/python3"] {
+    for name in [
+        "node/bin/node",
+        "python/bin/python",
+        "python/bin/python3",
+        "bin/soffice",
+        "bin/pdftoppm",
+    ] {
         if !shell::is_executable(&runtime.join(name)) {
             return Err(failed(name));
         }
     }
     for name in [
         "node/lib/node_modules/docx/package.json",
+        "node/lib/node_modules/pptxgenjs/package.json",
+        "python/lib/python3.12/site-packages/PIL/__init__.py",
         "python/lib/python3.12/site-packages/defusedxml/__init__.py",
         "python/lib/python3.12/site-packages/lxml/__init__.py",
+        "python/lib/python3.12/site-packages/markitdown/__init__.py",
     ] {
         if !runtime.join(name).is_file() {
             return Err(failed(name));
@@ -70,8 +79,10 @@ pub(super) fn configure(
         return Err(failed("unsupported Bash invocation"));
     }
     command.insert_str(0, concat!(
-        "export PATH=\"$PI_OFFICE_RUNTIME_ROOT/node/bin:$PI_OFFICE_RUNTIME_ROOT/python/bin${PATH:+:$PATH}\"\n",
+        "export PATH=\"$PI_OFFICE_RUNTIME_ROOT/node/bin:$PI_OFFICE_RUNTIME_ROOT/python/bin:$PI_OFFICE_RUNTIME_ROOT/bin${PATH:+:$PATH}\"\n",
         "export NODE_PATH=\"$PI_OFFICE_RUNTIME_ROOT/node/lib/node_modules${NODE_PATH:+:$NODE_PATH}\"\n",
+        // Importing scripts from the user's Skill must not write beside them.
+        "export PYTHONDONTWRITEBYTECODE=1\n",
         "unset PI_OFFICE_RUNTIME_ROOT\n",
     ));
     Ok(())

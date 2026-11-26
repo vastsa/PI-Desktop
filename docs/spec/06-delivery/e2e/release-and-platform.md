@@ -53,7 +53,29 @@
 - **Milestone**: M6+ (Pie Code 0.23.1).
 - **Status**: Automated by `node scripts/e2e-offline-office.mjs`. Record
   results against the exact Debian artifact. The superseded built-in Office
-  scenarios do not qualify self-installed Excel, PPT, PDF, or WX Skills.
+  scenarios do not qualify self-installed Excel, PowerPoint, PDF, or WX Skills.
+
+## E2E-PIE-OFFICE-PPTX: Offline PowerPoint on Kylin ARM64
+
+- **Preconditions**: Install the inspected ARM64 DEB on Kylin V10 SP1 with
+  only loopback networking, no CheeseAgent or additional system packages, and
+  a clean app profile. Supply the complete, unmodified user `pptx` Skill.
+- **Steps**: Run `node scripts/e2e-offline-office.mjs --pptx` with
+  `PI_CODE_E2E_APP_BIN` and `PI_CODE_E2E_PPTX_SKILL` set to the installed
+  binary and standalone Skill folder. Enable Office Runtime from Extensions,
+  find and load the Skill, deny one Bash write, then approve the real workflow.
+  Extract the two-slide source with MarkItDown, run the Skill's thumbnail
+  script, create editable text slides with PptxGenJS, and use the Skill's
+  unpack, clean, and pack scripts to save a first-slide edit to a new file.
+- **Expected**: The modules and rendering commands resolve from the bundled
+  runtime. No denied output appears. Both new files contain editable text and
+  keep the second slide in order. The source presentation and Skill files are
+  unchanged. All presentation names contain Chinese and a space.
+- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md).
+- **Acceptance criterion**: A, C, E, G, Quality.
+- **Milestone**: M6+ (Pie Code 0.23.1).
+- **Status**: Automated scenario; qualification requires a run against the
+  exact installed release candidate and its approved dependencies.
 
 ## Windows background process snapshot clock
 

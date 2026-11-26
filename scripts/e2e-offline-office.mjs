@@ -11,8 +11,13 @@ import { IPC } from "../packages/shared/dist/protocol.js";
 import { waitFor } from "./e2e/wait.mjs";
 
 const appBin = process.env.PI_CODE_E2E_APP_BIN;
-const sample = process.env.PI_CODE_E2E_DOCX_SKILL;
-assert.ok(appBin && sample, "Set PI_CODE_E2E_APP_BIN and PI_CODE_E2E_DOCX_SKILL to the installed binary and original docx Skill directory.");
+const pptx = process.argv.includes("--pptx");
+const skillName = pptx ? "pptx" : "docx";
+const sampleVariable = `PI_CODE_E2E_${skillName.toUpperCase()}_SKILL`;
+const sample = process.env[sampleVariable];
+assert.ok(appBin && sample, `Set PI_CODE_E2E_APP_BIN and ${sampleVariable} to the installed binary and original ${skillName} Skill directory.`);
+assert.ok(!pptx || (!process.argv.includes("--seed-legacy") && !process.env.PI_CODE_E2E_UPGRADE_STATE),
+  "Use the Word scenario for legacy upgrade verification.");
 assert.equal(process.platform + "/" + process.arch, "linux/arm64");
 assert.ok(Object.values(networkInterfaces()).flat().every((address) => address.internal),
   "Run in an isolated network namespace with only loopback enabled.");
@@ -21,8 +26,8 @@ await access(join(sample, "SKILL.md"));
 const root = await mkdtemp(join(tmpdir(), "pie-office-e2e-"));
 const workspace = join(root, "project");
 const otherProject = join(root, "Project");
-const skillPath = join(root, ".agents", "skills", "docx");
-const skillSource = join(root, "skill-source", "docx");
+const skillPath = join(root, ".agents", "skills", skillName);
+const skillSource = join(root, "skill-source", skillName);
 const skillLink = relative(dirname(skillPath), skillSource);
 const preserved = ["data", ".agents", "skill-source"];
 const resources = join(dirname(appBin), "resources");
@@ -316,6 +321,124 @@ async function checkProjectPicker(app, run, officeOn, officeOff) {
   await app.evaluate(`document.querySelector(".scope-popover-close").click()`);
 }
 
+async function discoverSkill(app) {
+  const { skills } = await app.invoke(IPC.invoke.skillList, { level: "global" });
+  const skill = skills.find((item) => item.name === skillName);
+  assert.equal(skill?.path, join(skillPath, "SKILL.md"));
+  skillId = skill.id;
+  assert.ok((await app.invoke(IPC.invoke.composerCommands)).commands.some((command) => command.skillId === skillId));
+}
+
+async function connectFixtureModel(app) {
+  const { provider: configured } = await app.invoke(IPC.invoke.providersCreate, {
+    name: "Office fixture", vendorKey: "custom", baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
+    authKind: "none", apiStyle: "chat_completions", defaultModelId: model, models: [bindingForCustomModel(model)],
+  });
+  return configured.id;
+}
+
+async function verifyPptx() {
+  const source = "原始 演示.pptx";
+  const fresh = "新建 演示.pptx";
+  const copy = "另存 演示.pptx";
+  const sourceTitle = "原始首页";
+  const updatedTitle = "另存后的首页";
+  const newTitle = "新建可编辑演示";
+  const secondTitle = "第二页保持原样";
+  await mkdir(workspace);
+  await installLinkedSkill();
+  const skillFiles = await snapshot(sample);
+  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  await writeFile(join(workspace, "make-ppt.cjs"), `
+const PptxGenJS = require('pptxgenjs');
+const fs = require('node:fs/promises');
+async function main() {
+  const pptx = new PptxGenJS();
+  for (const [title, color] of [[process.argv[3], '336699'], [${JSON.stringify(secondTitle)}, '993366']]) {
+    const slide = pptx.addSlide();
+    slide.background = { color };
+    slide.addText(title, { x: 0.7, y: 0.7, w: 8, h: 1, fontSize: 26 });
+  }
+  await fs.writeFile(process.argv[2], await pptx.write({ outputType: 'nodebuffer' }), { flag: 'wx' });
+}
+main().catch((error) => { console.error(error); process.exitCode = 1; });
+`);
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const app = await boot();
+  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
+  await discoverSkill(app);
+  const providerId = await connectFixtureModel(app);
+  await app.invoke(IPC.invoke.projectGroupCreate, { name: "PPT project", folders: [workspace] });
+  await selectOffice(app, "global");
+
+  const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
+  const make = (file, title) => `node make-ppt.cjs ${quote(file)} ${quote(title)}`;
+  const extract = (file) => `python -m markitdown ${quote(file)}`;
+  const script = (file) => quote(join(skillPath, "scripts", file));
+  const absent = (file) => assert.rejects(stat(join(workspace, file)), { code: "ENOENT" });
+  const denied = await run("Decline creating an editable presentation.", [bash(make(fresh, newTitle))], { deny: true });
+  assert.match(denied[0], /denied|rejected/i);
+  await absent(fresh);
+  stdout((await run("Prepare the original presentation.", [bash(make(source, sourceTitle))], {
+    beforeApprove: () => absent(source),
+  }))[0]);
+  const originalBytes = await readFile(join(workspace, source));
+
+  let bashApprovals = 0;
+  const ppt = await run("Use the installed pptx Skill to extract, create, and save a copy.", [
+    { name: "Skill", args: { id: skillId } },
+    bash([
+      `node -p ${quote("require.resolve('pptxgenjs')")}`,
+      `python -c ${quote("import markitdown, PIL; print(markitdown.__file__); print(PIL.__file__)")}`,
+      "command -v soffice && command -v pdftoppm",
+      extract(source),
+      `python ${script("thumbnail.py")} ${quote(source)} ${quote("原稿 缩略图")}`,
+      make(fresh, newTitle),
+      `python ${skillScript("unpack.py")} ${quote(source)} unpacked`,
+    ].join(" && ")),
+    { name: "Edit", args: { path: "unpacked/ppt/slides/slide1.xml", old_string: sourceTitle, new_string: updatedTitle } },
+    bash([
+      `test ! -e ${quote(copy)}`,
+      `python ${script("clean.py")} unpacked`,
+      `python ${skillScript("pack.py")} unpacked ${quote(copy)} --original ${quote(source)}`,
+      extract(fresh),
+      extract(copy),
+    ].join(" && ")),
+  ], {
+    beforeApprove: (name) => name === "Bash" ? absent(bashApprovals++ === 0 ? fresh : copy) : undefined,
+  });
+  const sourceText = stdout(ppt[1]);
+  for (const path of sourceText.split("\n").slice(0, 5)) {
+    assert.ok(path.startsWith(runtime + "/"), `PPT dependency came from outside Office Runtime: ${path}`);
+  }
+  assert.ok(sourceText.includes(sourceTitle) && sourceText.includes(secondTitle), sourceText);
+  const result = stdout(ppt[3]);
+  assert.match(result, /All validations PASSED!/);
+  for (const title of [newTitle, updatedTitle, secondTitle]) assert.ok(result.includes(title), result);
+  execFileSync(join(runtime, "python/bin/python3"), ["-I", "-B", "-c", `
+import sys
+from PIL import Image
+with Image.open(sys.argv[1]) as image:
+    pixels = image.convert("RGB").getdata()
+    for expected in [(51, 102, 153), (153, 51, 102)]:
+        count = sum(all(abs(actual - target) <= 12 for actual, target in zip(pixel, expected)) for pixel in pixels)
+        assert count > 1000, f"Slide color {expected} missing from the rendered thumbnail"
+`, join(workspace, "原稿 缩略图.jpg")]);
+  const readback = (name) => JSON.parse(execFileSync(join(runtime, "python/bin/python3"), ["-I", "-B", "-c", `
+import json, sys
+from pptx import Presentation
+print(json.dumps([[shape.text for shape in slide.shapes if shape.has_text_frame]
+                  for slide in Presentation(sys.argv[1]).slides]))
+`, join(workspace, name)], { encoding: "utf8" }));
+  assert.deepEqual(readback(fresh), [[newTitle], [secondTitle]]);
+  assert.deepEqual(readback(copy), [[updatedTitle], [secondTitle]]);
+  assert.deepEqual(await readFile(join(workspace, source)), originalBytes);
+  assert.equal(await readlink(skillPath), skillLink);
+  assert.deepEqual(await snapshot(skillSource), skillFiles, "Skill source changed after running its original commands");
+  console.log("PASS: linked pptx Skill discovery, permission denial and approval, extraction, thumbnails, editable creation, and save-as with source preservation.");
+}
+
 async function verifyWord() {
   await mkdir(workspace);
   if (upgradeState) {
@@ -362,16 +485,9 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
     assert.ok(sessions.some((session) => session.title === legacyTitle));
   }
   await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
-  const { skills } = await app.invoke(IPC.invoke.skillList, { level: "global" });
-  const skill = skills.find((item) => item.name === "docx");
-  assert.equal(skill?.path, join(skillPath, "SKILL.md"));
-  skillId = skill.id;
-  assert.ok((await app.invoke(IPC.invoke.composerCommands)).commands.some((command) => command.skillId === skillId));
-  const { provider: configured } = await app.invoke(IPC.invoke.providersCreate, {
-    name: "Office fixture", vendorKey: "custom", baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
-    authKind: "none", apiStyle: "chat_completions", defaultModelId: model, models: [bindingForCustomModel(model)],
-  });
-  const run = (label, plan, opts) => runTurn(app, configured.id, label, plan, opts);
+  await discoverSkill(app);
+  const providerId = await connectFixtureModel(app);
+  const run = (label, plan, opts) => runTurn(app, providerId, label, plan, opts);
   const off = stdout((await run("Check the Bash environment before enabling.", [bash(probe)]))[0]);
   assert.ok(!off.includes(runtime));
 
@@ -434,6 +550,7 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
 
 try {
   if (process.argv.includes("--seed-legacy")) await seedLegacy();
+  else if (pptx) await verifyPptx();
   else await verifyWord();
 } catch (error) {
   console.error(log.slice(-9000));

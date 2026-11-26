@@ -14,12 +14,17 @@ async fn office_runtime_is_opt_in_and_follows_the_session_scope() {
         ("node/bin/node", "#!/bin/sh\nprintf pie-office"),
         ("python/bin/python", ""),
         ("python/bin/python3", ""),
+        ("bin/soffice", ""),
+        ("bin/pdftoppm", "#!/bin/sh\nprintf ppt-thumbnail"),
+        ("python/lib/python3.12/site-packages/PIL/__init__.py", ""),
+        ("python/lib/python3.12/site-packages/markitdown/__init__.py", ""),
         ("python/lib/python3.12/site-packages/lxml/__init__.py", ""),
         (
             "python/lib/python3.12/site-packages/defusedxml/__init__.py",
             "",
         ),
         ("node/lib/node_modules/docx/package.json", "{}"),
+        ("node/lib/node_modules/pptxgenjs/package.json", "{}"),
     ] {
         let path = office.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -119,6 +124,13 @@ async fn office_runtime_is_opt_in_and_follows_the_session_scope() {
         .set_enabled("pie.office-runtime", true)
         .unwrap();
     assert_eq!(probe(temp.clone()).await["content"]["stdout"], "pie-office");
+    let thumbnail = execute(
+        temp.clone(),
+        "test \"$PYTHONDONTWRITEBYTECODE\" = 1 && pdftoppm".into(),
+        false,
+    )
+    .await;
+    assert_eq!(thumbnail["content"]["stdout"], "ppt-thumbnail");
     state
         .lock()
         .await
@@ -152,13 +164,13 @@ async fn office_runtime_is_opt_in_and_follows_the_session_scope() {
     })
     .await
     .unwrap();
-    fs::remove_file(office.join("node/bin/node")).unwrap();
+    fs::remove_file(office.join("bin/pdftoppm")).unwrap();
     let missing = probe(bound.clone()).await;
     assert_eq!(missing["errorCode"], "TOOL_FAILED");
     assert!(missing["content"]["error"]
         .as_str()
         .unwrap()
-        .contains("node/bin/node"));
+        .contains("bin/pdftoppm"));
     state
         .lock()
         .await
