@@ -20,10 +20,9 @@
  * GitHub auto-generated release bodies are web-only and are not a substitute.
  *
  * This script runs `scripts/check-release-docs.mjs <version>` after bumping and
- * refuses to tag while any surface disagrees. Prereleases skip that preflight
- * (changelog catalogs the next stable version, not `x.y.z-beta.*`); still run
- * `node scripts/check-release-docs.mjs x.y.z` against the stable version being
- * previewed. Use --skip-docs-check only for a deliberate non-release bump.
+ * refuses to tag while any surface disagrees. StarAI uses stable x.y.z
+ * versions for development and releases. Use --skip-docs-check only for
+ * a deliberate non-release bump.
  *
  * Pushing the tag triggers .github/workflows/release.yml, which builds the
  * macOS / Windows / Linux installers and publishes them to a GitHub Release:
@@ -39,11 +38,10 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const version = process.argv[2];
 const doTag = process.argv.includes("--tag");
 const skipDocsCheck = process.argv.includes("--skip-docs-check");
-const isPrerelease = version?.includes("-") ?? false;
 
-if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version)) {
+if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
   console.error(
-    "Usage: node scripts/release.mjs <version> [--tag] [--skip-docs-check]   e.g. 0.11.0 or 0.11.0-beta.1",
+    "Usage: node scripts/release.mjs <version> [--tag] [--skip-docs-check]   expected a stable version such as 0.24.1",
   );
   process.exit(1);
 }
@@ -91,7 +89,7 @@ if (changed.length === 0) {
 
 // Version surfaces, the shipped-locale changelog, and the README release line must
 // agree before a tag exists (D260). Bumping files is reversible; a tag is not.
-if (!skipDocsCheck && !isPrerelease) {
+if (!skipDocsCheck) {
   try {
     execFileSync(process.execPath, [path.join(root, "scripts/check-release-docs.mjs"), version], {
       cwd: root,
@@ -101,8 +99,6 @@ if (!skipDocsCheck && !isPrerelease) {
     console.error("\nRelease documentation check failed; not committing or tagging.");
     process.exit(1);
   }
-} else if (isPrerelease && !skipDocsCheck) {
-  console.log("Skipping stable release-document preflight for prerelease version.");
 }
 
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
