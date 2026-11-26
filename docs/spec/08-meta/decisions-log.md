@@ -5422,6 +5422,18 @@ See ADR 0344.
   holds: pill, label and native stop share one center for every stop count.
 - Escape clears a typed search first; a second Escape closes the menu.
 
+## 2026-11-26 — macOS main window first mouse press (D686)
+
+- A press in an inactive macOS main window first activated the window, and the
+  web contents never received it, so a drag over transcript text selected
+  nothing until the reader pressed a second time.
+- The main window now sets `acceptFirstMouse: true`, so the press that
+  activates the window also reaches the page and the drag selects immediately.
+- Links and controls inside the window receive that same first press and keep
+  their normal click handlers. No other platform, window, or protocol change.
+- Behavior is specified in `04-ux/09-interaction-patterns.md` and covered by
+  E2E-045.
+
 ## Bundled Official Enhancements defaults
 
 - Enable only generated session titles on first use. Keep next-message
