@@ -780,13 +780,16 @@ user's running instance.
 - **Preconditions:** Desktop is editing an unsent draft in A. The phone is
   paired. B is a closed multi-root group with existing sessions, one separately
   archived. Seed a duplicate display name.
-- **Steps:** Search for B, open it, pin and rename it; rename/pin/archive/restore
-  an idle session. Archive and restore B through the archived filter. Make a
-  competing rename from Desktop and submit the stale edit from the phone.
+- **Steps:** Search for B and tap its row. Open a session's action menu, close it,
+  then tap that session to read its history. Pin and rename B and rename, pin,
+  archive and restore an idle session. Archive and restore B through the
+  archived filter. Make a competing Desktop rename and submit the stale edit.
 - **Expected:** One row per group, stable IDs, correct filtered/recent/pinned
   lists; both clients show committed changes without reloading. Archive is not
   deletion and does not cascade; restoring B preserves the separately archived
   session. A stale writer sees the latest value instead of overwriting it.
+  A closed action menu does not cover the page or intercept taps; test row and
+  menu actions with browser hit testing, not direct calls to the controls.
   Desktop stays in A with draft, focus and scroll intact. Repeating the archive
   against a busy target fails without stopping work.
 - **Acceptance:** C, D; W02, W03, W05.

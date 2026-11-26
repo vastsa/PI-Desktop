@@ -33,6 +33,14 @@ const journey = String.raw`(async () => {
     throw new Error("timed out waiting for " + label);
   };
   const rowByTitle = (title) => [...document.querySelectorAll(".row")].find((row) => row.querySelector(".row-title")?.textContent === title);
+  // A direct control.click() bypasses hit testing and misses full-page interceptors.
+  const tap = (control) => {
+    control.scrollIntoView({ block: "center" });
+    const bounds = control.getBoundingClientRect();
+    const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+    if (!hit || !control.contains(hit)) throw new Error("Pointer blocked by " + (hit?.id || hit?.className || "no target"));
+    hit.click();
+  };
   const result = {};
 
   // Pair with the code shown on Desktop.
@@ -40,42 +48,48 @@ const journey = String.raw`(async () => {
   code.value = "123";
   const form = document.querySelector(".pair");
   const submit = form.querySelector("button[type=submit]");
-  submit.click();
+  tap(submit);
   await wait(() => /six digits|六位数字/.test(document.getElementById("pair-status").textContent), "client input validation");
   code.value = Array.from(window.__code, (digit) => String.fromCharCode(digit.charCodeAt(0) + 0xfee0)).join(" ");
-  submit.click();
+  tap(submit);
   form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
   // Redeeming the code connects immediately, without a second Desktop action.
   await wait(() => rowByTitle("Alpha"), "projects");
   result.projects = [...document.querySelectorAll(".row-title")].map((n) => n.textContent);
   const temporary = await wait(() => rowByTitle("Temporary conversations") ?? rowByTitle("临时会话"), "temporary entry");
-  temporary.querySelector(".row-main").click();
+  tap(temporary.querySelector(".row-main"));
   await wait(() => rowByTitle("Scratch") && document.querySelector("main > button.primary"), "temporary conversations");
   history.back();
   await wait(() => rowByTitle("Alpha"), "back to projects");
 
   // Open a project and see its sessions.
-  rowByTitle("Alpha").querySelector(".row-main").click();
+  tap(rowByTitle("Alpha").querySelector(".row-main"));
   await wait(() => rowByTitle("Fix login"), "sessions");
   result.sessions = [...document.querySelectorAll(".row-title")].map((n) => n.textContent);
   result.projectHash = location.hash;
   result.strayText = [document.getElementById("app").innerText];
 
   // Organize from the row menu: pin.
-  rowByTitle("Fix login").querySelector(".row-more").click();
+  tap(rowByTitle("Fix login").querySelector(".row-more"));
   await wait(() => !document.getElementById("sheet").hidden, "sheet");
-  document.querySelectorAll("#sheet-actions button")[1].click();
+  tap(document.querySelectorAll("#sheet-actions button")[1]);
   await wait(() => rowByTitle("Fix login")?.querySelector(".row-meta"), "pinned meta");
   result.pinnedMeta = rowByTitle("Fix login").querySelector(".row-meta").textContent;
 
+  // Closing the menu must let the next tap reach an existing conversation.
+  tap(rowByTitle("Fix login").querySelector(".row-main"));
+  await wait(() => document.querySelector(".msg.user")?.textContent.includes("hello"), "existing transcript");
+  history.back();
+  await wait(() => rowByTitle("Fix login"), "back from existing transcript");
+
   // Create a new conversation in this project and send a message.
-  document.querySelector("main > button.primary").click();
+  tap(document.querySelector("main > button.primary"));
   const input = await wait(() => document.getElementById("composer-input"), "composer");
   result.chatHash = location.hash;
   input.value = "hello from phone";
   input.dispatchEvent(new Event("input"));
-  document.querySelector(".composer button.primary").click();
+  tap(document.querySelector(".composer button.primary"));
   await wait(() => document.querySelectorAll(".msg").length >= 2 && input.isConnected === false || document.getElementById("composer-input")?.value === "", "sent");
   result.messages = [...document.querySelectorAll(".msg")].map((n) => n.className.split(" ")[1]);
   result.leaked = document.body.textContent.includes("/secret/path");
@@ -91,7 +105,7 @@ const journey = String.raw`(async () => {
   result.backHash = location.hash;
   history.back();
   await wait(() => rowByTitle("Alpha"), "back to projects before sign-out");
-  document.querySelector("main > button.link").click();
+  tap(document.querySelector("main > button.link"));
   await wait(() => document.getElementById("pair-code"), "sign-out returns to pairing");
   result.polledApproval = performance.getEntriesByType("resource").some((entry) => new URL(entry.name).pathname === "/pair/status");
   result.pairRequests = performance.getEntriesByType("resource").filter((entry) => new URL(entry.name).pathname === "/pair").length;

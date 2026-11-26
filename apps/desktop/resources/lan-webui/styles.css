@@ -67,7 +67,8 @@ label { display: block; font-weight: 600; margin: 12px 0 6px; }
 .composer textarea { flex: 1; resize: none; max-height: 40vh; }
 .composer .actions { display: flex; flex-direction: column; gap: 6px; }
 .toast { position: fixed; left: 12px; right: 12px; bottom: calc(88px + env(safe-area-inset-bottom)); margin: 0 auto; max-width: 520px; padding: 12px 14px; border-radius: var(--radius); background: var(--text); color: var(--bg); z-index: 5; }
-.sheet { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; z-index: 6; }
+/* An author display rule would override the browser's default hidden display. */
+.sheet:not([hidden]) { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; z-index: 6; }
 .sheet-panel { width: 100%; max-width: 520px; background: var(--surface); border-radius: 16px 16px 0 0; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
 .sheet-title { font-size: 16px; margin: 4px 4px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sheet-actions { display: flex; flex-direction: column; gap: 8px; }
