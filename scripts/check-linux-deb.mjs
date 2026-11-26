@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { MIN_LINUX_GLIBC, formatGlibcVersion, hostGlibcWithinFloor, maxNeededGlibc } from "../apps/desktop/electron/main/linux-glibc.ts";
 import { ModelsDevCatalog } from "../apps/desktop/electron/main/models-dev-catalog.ts";
-import { smokeTestOfflineOffice, verifyOfflineOfficeRuntime } from "./bundle-offline-office.mjs";
+import { smokeTestOfflineOffice, verifyOfflineOfficeRuntime, verifyOfflineWxRuntime } from "./bundle-offline-office.mjs";
 
 const [arch, deb, officeFlag, ...extra] = process.argv.slice(2);
 const targets = { arm64: { deb: "arm64", elf: 183 }, x64: { deb: "amd64", elf: 62 } };
@@ -56,17 +56,20 @@ try {
   const resources = path.join(app, "resources");
   const runtime = path.join(resources, "office-runtime");
   const officePlugin = path.join(resources, "plugins/pie.offline-office");
-  const withOffice = officeFlag || existsSync(runtime) || existsSync(officePlugin);
+  const wx = path.join(resources, "wx-runtime");
+  const withOffice = officeFlag || existsSync(runtime) || existsSync(officePlugin) || existsSync(wx);
   if (withOffice) {
     if (arch !== "arm64" || genericLabel) {
       throw new Error("Offline Office requires a dedicated ARM64 Debian package.");
     }
     await verifyOfflineOfficeRuntime(runtime);
+    await verifyOfflineWxRuntime(wx);
     for (const file of [
       "manifest.json", "main.cjs", "office_document.py",
       "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
       "excel/SKILL.md", "excel/excel.sh", "excel/spreadsheet.py",
       "ppt/SKILL.md", "ppt/ppt.sh", "ppt/presentation.py",
+      "wx/SKILL.md", "wx/wx.sh",
     ]) {
       if (!existsSync(path.join(officePlugin, file))) {
         throw new Error(`Missing bundled Offline Office plugin file: ${file}`);
@@ -145,7 +148,7 @@ try {
   console.log(`Verified ${verified} ${arch} ELF files at glibc <= ${floor}.`);
   if (withOffice) {
     await smokeTestOfflineOffice(resources);
-    console.log("Verified bundled Word and PowerPoint creation/extraction and Excel creation/read.");
+    console.log("Verified bundled Word and PowerPoint creation/extraction, Excel creation/read, and WX review.");
   }
 } finally {
   rmSync(root, { recursive: true, force: true });

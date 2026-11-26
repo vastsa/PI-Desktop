@@ -7,6 +7,7 @@ export const trEntries: ChangelogEntry[] = [
     highlights: [
       "Word belgeleri oluşturmak, metni ayıklamak veya bir kopya kaydetmek için Kylin ARM64 sürümünde Uzantılar bölümünden Çevrimdışı Ofis’i etkinleştirin.",
       "Çevrimdışı Ofis, Excel çalışma kitaplarını okuyabilir, oluşturabilir ve kopyalarını kaydedebilir; istek üzerine formülleri yeniden hesaplar.",
+      "Çevrimdışı Ofis, Markdown veya Word belgelerini WX şablonuyla biçimlendirip sonucu denetler. Ayrıca mevcut bir Word belgesinin biçimini puanlayıp asıl belgeyi değiştirmeden düzeltmeler önerir.",
     ],
   },
   {

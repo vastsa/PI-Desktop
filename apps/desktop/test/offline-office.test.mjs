@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, mkdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { verifyOfflineOfficeRuntime } from "../../../scripts/bundle-offline-office.mjs";
+import bundleOfflineOffice, { verifyOfflineOfficeRuntime } from "../../../scripts/bundle-offline-office.mjs";
 
 const plugin = new URL("../resources/offline-office/", import.meta.url);
 
@@ -61,6 +61,45 @@ async function withOfficeFixture(run) {
     await rm(root, { recursive: true, force: true });
   }
 }
+
+test("the Kylin Office package requires WX and registers its bundled Skill", async (t) => {
+  await withOfficeFixture(async ({ root, runtime }) => {
+    const wx = join(root, "wx input");
+    const appOutDir = join(root, "app");
+    const bundle = () => bundleOfflineOffice({
+      electronPlatformName: "linux", arch: 3, appOutDir, targets: [{ name: "deb" }],
+    });
+    for (const key of ["PI_CODE_OFFICE_RUNTIME_DIR", "PI_CODE_WX_RUNTIME_DIR"]) {
+      const previous = process.env[key];
+      t.after(() => {
+        if (previous === undefined) delete process.env[key];
+        else process.env[key] = previous;
+      });
+    }
+    process.env.PI_CODE_OFFICE_RUNTIME_DIR = runtime;
+    delete process.env.PI_CODE_WX_RUNTIME_DIR;
+    await assert.rejects(bundle, /PI_CODE_WX_RUNTIME_DIR/);
+    process.env.PI_CODE_WX_RUNTIME_DIR = wx;
+    await mkdir(wx);
+    await writeFile(join(wx, "VERSION"), "0.21.2\n");
+    await assert.rejects(bundle, /WX.*0\.21\.3/);
+    for (const file of ["OFFLINE_PACKAGE", "VERSION", "scripts/offline_install.py", "scripts/main.py",
+      "assets/wx_template.docx", "wheelhouse/manifest.json", "wheelhouse/wheels.tar.xz"]) {
+      await mkdir(dirname(join(wx, file)), { recursive: true });
+      await writeFile(join(wx, file), {
+        OFFLINE_PACKAGE: "version=0.21.3\nplatform=linux-arm64\n", VERSION: "0.21.3\n",
+        "wheelhouse/manifest.json": JSON.stringify({ platform: "linux-arm64", environments: { cp312: ["fixture"] } }),
+      }[file] ?? "fixture");
+    }
+    await bundle();
+    const resources = join(appOutDir, "resources");
+    const installed = join(resources, "plugins", "pie.offline-office");
+    const manifest = JSON.parse(await readFile(join(installed, "manifest.json"), "utf8"));
+    const skill = manifest.contributes.skills.find(({ id }) => id === "wx");
+    assert.match(await readFile(join(installed, skill.path), "utf8"), /wx\.sh/);
+    assert.equal(await readFile(join(resources, "wx-runtime", "wheelhouse", "wheels.tar.xz"), "utf8"), "fixture");
+  });
+});
 
 test("the package check requires the pinned pandas and python-dateutil distributions", async () => {
   await withOfficeFixture(async ({ runtime, put }) => {

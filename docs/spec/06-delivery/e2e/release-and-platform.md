@@ -87,6 +87,26 @@
 - **Milestone:** M6+ (Pie Code 0.23.1).
 - **Status:** Automated. Record the result against the exact candidate Debian package.
 
+## E2E-PIE-OFFICE-WX: Offline WX on Kylin ARM64
+
+- **Preconditions:** Install the inspected Office Debian candidate on Kylin
+  V10 SP1 ARM64. Make the install directory read-only, use a clean application
+  profile and an isolated network namespace with a loopback model.
+- **Steps:** In Extensions, enable Offline Office and load the WX Skill in
+  an Agent session. Approve Bash to format a Markdown and a DOCX fixture and
+  run a separate review of the original DOCX. Use filenames containing Chinese
+  characters and spaces. Try to write to an existing output directory.
+- **Expected:** The first call uses only bundled wheels and creates its cache
+  in the managed app data directory. Both converted DOCXs are readable and
+  audited. The standalone review returns a score and a remediation report.
+  Neither source changes, and a reused output directory is refused. The
+  Skill is absent in a new session after disabling the extension and restarting.
+- **Specs linked:** [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--wx-formatting-and-review).
+- **Acceptance criterion:** A, C, E, G, Quality.
+- **Milestone:** M6+ (Pie Code 0.23.1).
+- **Status:** Automated by `node scripts/e2e-offline-office.mjs`; record the
+  result against the exact Debian candidate.
+
 ## Windows background process snapshot clock
 
 - **Preconditions:** Isolated Windows Host and a synthetic background task.
