@@ -400,15 +400,17 @@
 }
 
 .subagent-transcript-list {
+  /* Keep the shared turn styles, but size them to this panel, not MainChat. */
+  --chat-prose-max-width: 100%;
   display: flex;
   min-width: 0;
   flex-direction: column;
 }
 
-/* A tab pane is narrower than the chat column, so the user plate's percentage
-   cap needs a definite floor of its own; the bubble still shrink-wraps. */
+/* Keep short prompts compact without carrying over MainChat's 600px cap. */
 .subagent-transcript-list .message-row.user .message-col {
-  max-width: min(100%, 520px);
+  width: min(max-content, 82%);
+  max-width: 82%;
 }
 
 .subagent-transcript-empty {

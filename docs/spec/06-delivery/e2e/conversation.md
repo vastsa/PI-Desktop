@@ -5069,3 +5069,17 @@ Build two actual runtimes with identical configuration and different scratch dir
 - With a side-question plugin, verify the quote preview can be removed
   atomically and the first explicitly sent prompt contains only the excerpt
   and the new question. The main conversation and its input remain intact.
+
+## E2E-CHAT-long-user-message-preview
+
+- **Steps**: Send a six-line message and a seven-line message. Expand the
+  longer message, then collapse it. Narrow the conversation until an
+  otherwise short message wraps beyond six lines. Search for content after
+  line six. Copy or edit the message, then restart the app.
+- **Expected**: Six lines or fewer have no button. Longer text starts folded
+  with a six-line preview, a bottom fade, and a centered text-and-chevron
+  button. Search reveals the matching message. Copy and edit use the full
+  text, and restart restores the default.
+- **Specs linked**: `04-ux/08-component-spec.md`
+- **Status**: Renderer interactions and resize covered by
+  `apps/desktop/test/subagent-conversation-user-path.test.mjs`.
