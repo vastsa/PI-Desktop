@@ -6,8 +6,22 @@ import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 
 const { catalogs, flattenCatalog } = await import("@pi-desktop/i18n");
-const { applyAppLanguage } = await import("../src/lib/renderer-language.ts");
+const { applyAppLanguage, resolveAppLanguage } = await import("../src/lib/renderer-language.ts");
 const { loadRendererCatalog, loadRendererResources } = await import("../src/lib/renderer-catalogs.ts");
+
+test("unset language defaults to zh-CN while explicit auto follows the OS locale", (t) => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { piDesktop: { locale: "en-US" } };
+  t.after(() => {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+
+  assert.equal(resolveAppLanguage(undefined), "zh-CN");
+  assert.equal(resolveAppLanguage("auto"), "en");
+  assert.equal(resolveAppLanguage("en"), "en");
+  assert.equal(resolveAppLanguage("zh-TW"), "zh-TW");
+});
 
 test("renderer locale resources load English fallback and the selected catalog", async () => {
   const resources = await loadRendererResources("zh-CN");

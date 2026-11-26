@@ -1,4 +1,12 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="32" height="32" rx="10" fill="#0A84FF"/>
-  <path d="M9 9.5C9 8.672 9.672 8 10.5 8H16.2C20.397 8 23 10.133 23 13.6C23 17.067 20.397 19.2 16.2 19.2H13.2V24H9V9.5ZM13.2 11.5V15.7H16.05C17.93 15.7 18.8 14.98 18.8 13.6C18.8 12.22 17.93 11.5 16.05 11.5H13.2Z" fill="white"/>
+  <defs>
+    <linearGradient id="starai-grad" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="38%" stop-color="#6366F1"/>
+      <stop offset="70%" stop-color="#EC4899"/>
+      <stop offset="100%" stop-color="#FACC15"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="9.5" fill="#F7F4EE" stroke="#E5DFD5"/>
+  <path d="M16 6.8L18.75 12.45L25 13.35L20.45 17.75L21.55 24L16 21.05L10.45 24L11.55 17.75L7 13.35L13.25 12.45L16 6.8Z" fill="url(#starai-grad)" stroke="url(#starai-grad)" stroke-width="1.4" stroke-linejoin="round"/>
 </svg>

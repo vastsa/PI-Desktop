@@ -55,7 +55,7 @@ test("macOS installs a standard application menu before window creation", () => 
   assert.match(menuSource, /role:\s*"help"/);
   assert.match(menuSource, /resolveLocale\(locale\)/);
   assert.match(mainSource, /app\.setName\(APP_NAME\)/);
-  assert.match(mainSource, /locale:\s*app\.getLocale\(\)/);
+  assert.match(mainSource, /locale:\s*"zh-CN"/);
   assert.match(menuSource, /Menu\.buildFromTemplate\(template\)/);
   assert.match(menuSource, /Menu\.setApplicationMenu/);
   assert.match(
@@ -65,7 +65,7 @@ test("macOS installs a standard application menu before window creation", () => 
   assert.match(menuSource, /Menu\.setApplicationMenu\(null\)/);
   assert.match(
     mainSource,
-    /installApplicationMenu\(\{\s+locale: app\.getLocale\(\),\s+dispatch: dispatchApplicationMenuCommand,\s+dispatchNative: dispatchNativeMenuAction,\s+\}\);/,
+    /installApplicationMenu\(\{\s+locale: "zh-CN",\s+dispatch: dispatchApplicationMenuCommand,\s+dispatchNative: dispatchNativeMenuAction,\s+\}\);/,
   );
   assert.ok(
     mainSource.indexOf("prewarmPluginLauncher();") < mainSource.indexOf("registerIpc();"),

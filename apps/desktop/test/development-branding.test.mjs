@@ -51,9 +51,9 @@ test("Windows runtime registers the canonical native application identity", () =
   );
 });
 
-test("Windows packages pin PI-Desktop executable and shortcut names", () => {
-  assert.equal(packageJson.build.win.executableName, "PI-Desktop");
-  assert.equal(packageJson.build.nsis.shortcutName, "PI-Desktop");
+test("Windows packages pin StarAI Desktop executable and shortcut names", () => {
+  assert.equal(packageJson.build.win.executableName, "StarAI-Desktop");
+  assert.equal(packageJson.build.nsis.shortcutName, "StarAI Desktop");
 });
 
 test("Windows packages and windows use the canonical PI-Desktop icon", () => {
@@ -226,8 +226,8 @@ test(
         ),
         "macOS-tray-icon",
       );
-      assert.match(plist, /<string>PI-Desktop<\/string>/);
-      assert.match(plist, /<string>net\.aiuo\.pi-desktop\.dev<\/string>/);
+      assert.match(plist, /<string>StarAI Desktop<\/string>/);
+      assert.match(plist, /<string>com\.starailink\.desktop\.dev<\/string>/);
       assert.equal(prepareMacDevelopmentBundle(options), brandedExecutable);
 
       await writeFile(trayIconMacPath, "updated-macOS-tray-icon");

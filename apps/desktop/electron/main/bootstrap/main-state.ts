@@ -94,7 +94,7 @@ export class MainProcessState {
   startupAnimation: ResolvedStartupAnimation | null = null;
   startupAnimationPlayed = false;
 
-  updaterLocale = "en";
+  updaterLocale = "zh-CN";
   pluginPanelTheme: PluginPanelTheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
   appThemePreference = "system";
   broadcastAppearanceSignature = "";

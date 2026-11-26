@@ -18,7 +18,7 @@ import {
 import { cx } from "../ui";
 import { IconCheck, IconChevronDown, IconSearch } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
-import { resolveAppLanguage } from "../../lib/app-language";
+import { DEFAULT_APP_LANGUAGE, resolveAppLanguage } from "../../lib/app-language";
 
 type LanguageOption = {
   id: AppLanguageSetting;
@@ -38,13 +38,13 @@ export function LanguageRow({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState<AppLanguageSetting>(
-    settings.language ?? "auto",
+    settings.language ?? DEFAULT_APP_LANGUAGE,
   );
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const detected = resolveAppLanguage("auto");
   const detectedInfo = localeInfo(detected);
-  const selectedId: AppLanguageSetting = settings.language ?? "auto";
+  const selectedId: AppLanguageSetting = settings.language ?? DEFAULT_APP_LANGUAGE;
   const autoLabel = t("settings.languageAuto");
 
   const options = useMemo<LanguageOption[]>(() => {

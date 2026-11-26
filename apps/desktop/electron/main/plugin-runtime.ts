@@ -5712,7 +5712,7 @@ export class PluginRuntime {
           this.services.getAppearance?.() ?? {
             theme: "system",
             base: "system",
-            locale: this.services.getLocale?.() ?? "en",
+            locale: this.services.getLocale?.() ?? "zh-CN",
             pluginTheme: null,
           },
         setTheme: async (themeId: string) => {

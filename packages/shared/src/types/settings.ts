@@ -139,7 +139,7 @@ export type AppSettings = {
    * be written for an existing installation to behave as it always did.
    */
   startupAnimation?: StartupAnimationSettings;
-  /** UI language; `auto` (and absent) follows the OS locale. */
+  /** UI language; defaults to `zh-CN` when absent, while `auto` follows the OS locale. */
   language?: "auto" | "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR";
   /**
    * Global UI font stack (CSS `font-family` value). Absent means the built-in

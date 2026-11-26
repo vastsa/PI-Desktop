@@ -230,7 +230,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       version: APP_VERSION,
     });
     installApplicationMenu({
-      locale: app.getLocale(),
+      locale: "zh-CN",
       dispatch: dispatchApplicationMenuCommand,
       dispatchNative: dispatchNativeMenuAction,
     });

@@ -1,13 +1,14 @@
 import type { AppSettings } from "@pi-desktop/shared";
 import {
   applyAppLanguage,
+  DEFAULT_APP_LANGUAGE,
   resolveAppLanguage,
   resolveOsLocale,
   type AppLanguageSetting,
 } from "./renderer-language.ts";
 import { useAppStore } from "../stores/app-store";
 
-export { applyAppLanguage, resolveAppLanguage, resolveOsLocale };
+export { applyAppLanguage, DEFAULT_APP_LANGUAGE, resolveAppLanguage, resolveOsLocale };
 export type { AppLanguageSetting };
 
 function applyStoreLanguage(language: AppSettings["language"]): Promise<void> {

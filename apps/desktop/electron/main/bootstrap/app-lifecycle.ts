@@ -221,7 +221,7 @@ export function createApplicationLifecycle({
     restoreMainWindow();
   }
 
-  function updateTrayMenu(locale = appearanceState.updaterLocale || app.getLocale()) {
+  function updateTrayMenu(locale = appearanceState.updaterLocale || "zh-CN") {
     if (!state.tray) return;
     const catalog = catalogs[resolveLocale(locale)];
     const labels = catalog.tray;
@@ -693,11 +693,11 @@ export function createApplicationLifecycle({
     fontScale?: unknown;
   } | null) {
     const locale =
-      typeof settings?.language === "string" &&
-      settings.language &&
-      settings.language !== "auto"
-        ? settings.language
-        : app.getLocale();
+      settings?.language === "auto"
+        ? app.getLocale()
+        : typeof settings?.language === "string" && settings.language
+          ? settings.language
+          : "zh-CN";
     if (locale !== appearanceState.updaterLocale) {
       appearanceState.updaterLocale = locale;
       refreshReleaseNotes();

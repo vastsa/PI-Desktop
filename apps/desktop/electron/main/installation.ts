@@ -12,7 +12,7 @@ installMainProcessErrorHandlers();
 export const isDevelopmentBuild = process.env.PI_DESKTOP_DEV === "1" || !app.isPackaged;
 // Electron initially reads productName from the packaged application metadata.
 export const isStarAiPreview = app.isPackaged && app.getName() === "StarAI Desktop";
-app.setName(isStarAiPreview ? "StarAI Desktop" : APP_NAME);
+app.setName(APP_NAME);
 if (isStarAiPreview && !app.commandLine.hasSwitch("user-data-dir")) {
   app.setPath("userData", join(app.getPath("appData"), "StarAI Desktop"));
 }

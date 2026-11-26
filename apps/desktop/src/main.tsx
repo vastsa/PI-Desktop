@@ -92,7 +92,7 @@ async function startRenderer(): Promise<void> {
     },
     interpolation: { escapeValue: false },
   });
-  document.documentElement.lang = "en";
+  document.documentElement.lang = "zh-CN";
   root.render(
     <React.StrictMode>
       <RoutePending />

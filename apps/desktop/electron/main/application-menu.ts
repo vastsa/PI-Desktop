@@ -52,7 +52,7 @@ function nativeAction(
 
 export function buildApplicationMenuTemplate({
   platform = process.platform,
-  locale = "en",
+  locale = "zh-CN",
   keybindings,
   developerMode = false,
   dispatch,

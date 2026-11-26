@@ -9,6 +9,7 @@ import type { AppSettings } from "@pi-desktop/shared";
 import { loadRendererCatalog } from "./renderer-catalogs.ts";
 
 export type AppLanguageSetting = NonNullable<AppSettings["language"]>;
+export const DEFAULT_APP_LANGUAGE: AppLocale = "zh-CN";
 
 /**
  * Authoritative OS locale for "auto" detection.
@@ -26,12 +27,13 @@ export function resolveOsLocale(): string {
   );
 }
 
-/** Concrete locale for a stored language setting; `auto`/absent follows the OS. */
+/** Concrete locale for a stored language setting; unset defaults to `zh-CN`, `auto` follows the OS. */
 export function resolveAppLanguage(
   language: AppSettings["language"],
 ): AppLocale {
-  if (language && language !== "auto" && isAppLocale(language)) return language;
-  return resolveLocale(resolveOsLocale());
+  if (language === "auto") return resolveLocale(resolveOsLocale());
+  if (language && isAppLocale(language)) return language;
+  return DEFAULT_APP_LANGUAGE;
 }
 
 let languageRequest = 0;
