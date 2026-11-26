@@ -57,6 +57,17 @@ const journey = String.raw`(async () => {
   // Redeeming the code connects immediately, without a second Desktop action.
   await wait(() => rowByTitle("Alpha"), "projects");
   result.projects = [...document.querySelectorAll(".row-title")].map((n) => n.textContent);
+
+  // Searching re-renders the list but keeps the field focused with its text.
+  const search = document.getElementById("list-search");
+  search.focus();
+  search.value = "Al";
+  search.dispatchEvent(new Event("input"));
+  await wait(() => rowByTitle("Alpha") && !rowByTitle("Beta"), "filtered projects");
+  result.searchKept = document.activeElement?.id === "list-search" && document.activeElement.value === "Al";
+  document.activeElement.value = "";
+  document.activeElement.dispatchEvent(new Event("input"));
+  await wait(() => rowByTitle("Beta"), "cleared search");
   const temporary = await wait(() => rowByTitle("Temporary conversations") ?? rowByTitle("临时会话"), "temporary entry");
   tap(temporary.querySelector(".row-main"));
   await wait(() => rowByTitle("Scratch") && document.querySelector("main > button.primary"), "temporary conversations");
@@ -77,11 +88,22 @@ const journey = String.raw`(async () => {
   await wait(() => rowByTitle("Fix login")?.querySelector(".row-meta"), "pinned meta");
   result.pinnedMeta = rowByTitle("Fix login").querySelector(".row-meta").textContent;
 
+  // Rename inside the action sheet, without a native prompt.
+  tap(rowByTitle("Fix login").querySelector(".row-more"));
+  await wait(() => !document.getElementById("sheet").hidden, "sheet for rename");
+  tap(document.querySelectorAll("#sheet-actions button")[0]);
+  const rename = await wait(() => document.getElementById("rename-input"), "rename field");
+  result.renameFocused = document.activeElement === rename && rename.value === "Fix login";
+  rename.value = "Fix login flow";
+  tap(document.querySelector("#sheet-actions button[type=submit]"));
+  await wait(() => rowByTitle("Fix login flow"), "renamed row");
+  result.sheetClosed = document.getElementById("sheet").hidden;
+
   // Closing the menu must let the next tap reach an existing conversation.
-  tap(rowByTitle("Fix login").querySelector(".row-main"));
+  tap(rowByTitle("Fix login flow").querySelector(".row-main"));
   await wait(() => document.querySelector(".msg.user")?.textContent.includes("hello"), "existing transcript");
   history.back();
-  await wait(() => rowByTitle("Fix login"), "back from existing transcript");
+  await wait(() => rowByTitle("Fix login flow"), "back from existing transcript");
 
   // Create a new conversation in this project and send a message.
   tap(document.querySelector("main > button.primary"));
@@ -101,7 +123,7 @@ const journey = String.raw`(async () => {
 
   // Back returns to the project's session list.
   history.back();
-  await wait(() => rowByTitle("Fix login"), "back to sessions");
+  await wait(() => rowByTitle("Fix login flow"), "back to sessions");
   result.backHash = location.hash;
   history.back();
   await wait(() => rowByTitle("Alpha"), "back to projects before sign-out");
@@ -174,6 +196,10 @@ test("a phone pairs with a formatted paste, uses projects and conversations, and
   assert.equal(result.projectHash, "#/p/g-a");
   assert.ok(result.pinnedMeta.length > 0, "the pinned label is shown");
   assert.equal(fake.meta.sessionMeta["s-a1"].pinned, true);
+  assert.equal(result.searchKept, true, "a live search keeps the focused field and its text");
+  assert.equal(result.renameFocused, true, "rename opens an in-page field with the current name");
+  assert.equal(result.sheetClosed, true);
+  assert.equal(fake.sessions.find((session) => session.id === "s-a1").title, "Fix login flow");
   assert.match(result.chatHash, /^#\/s\/s-new-1$/);
   assert.equal(fake.turns.length, 1);
   assert.equal(fake.turns[0].params.input.text, "hello from phone");

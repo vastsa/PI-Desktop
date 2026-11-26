@@ -240,6 +240,16 @@ and devices (16); never silently truncate input.
   token. Preserve Chinese IME composition; Enter for candidate selection must
   not submit. Ship localized controls/errors via Desktop's catalog conventions,
   with English fallback; verify English and Simplified Chinese.
+- The page follows the Desktop visual system
+  ([UI design system](../04-ux/07-ui-design-system.md)): the neutral
+  monochrome palette, divider-free tonal tiles, stroke plus shadow only on
+  floating layers (action sheet, toast, status pill), Lucide icons, and the
+  shared radius, type and motion ramps, mirrored as tokens in the page's own
+  stylesheet. Light or dark follows the phone's system preference. Phone-only
+  deviations: 16 px form fields so iOS does not zoom on focus, a New session
+  capsule pinned within thumb reach, a floating composer pill, and rename in
+  the action sheet instead of a native prompt. A live refresh keeps the
+  focused field, caret and draft; Back restores the list scroll position.
 - Qualification: physical iPhone/Safari and Android/Chrome on the same LAN,
   plus desktop Chromium; record browser/OS/build versions. Qualify listener
   start, shutdown and restart on every Desktop OS advertised as supported.
