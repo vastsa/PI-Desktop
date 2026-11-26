@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-26",
+    highlights: ["Los chats nuevos usan el modo totalmente automático de forma predeterminada. Se respeta tu elección de permisos guardada."],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [

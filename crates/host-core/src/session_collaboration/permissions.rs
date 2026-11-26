@@ -7,16 +7,8 @@ pub(super) fn effective_mode(db: &Database, session_id: &str) -> Result<String> 
     if mode != "inherit" {
         return Ok(mode);
     }
-    Ok(db
-        .get_setting("app")?
-        .and_then(|settings| {
-            settings
-                .get("defaultPermissionMode")
-                .and_then(|value| value.as_str())
-                .map(str::to_owned)
-        })
-        .filter(|mode| sessions::is_valid_permission_mode(mode) && mode != "inherit")
-        .unwrap_or_else(|| "ask".into()))
+    let settings = db.get_setting("app")?;
+    Ok(sessions::global_permission_mode(settings.as_ref()).to_owned())
 }
 
 pub(super) fn check_target(db: &Database, session_id: &str, ceiling: &str) -> Result<()> {

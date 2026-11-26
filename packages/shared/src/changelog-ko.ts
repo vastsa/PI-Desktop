@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-26",
+    highlights: ["새 대화의 기본 권한 모드는 완전 자동입니다. 저장한 권한 설정이 있으면 해당 설정을 사용합니다."],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [

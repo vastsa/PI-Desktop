@@ -331,7 +331,7 @@ export function Composer({
   // Permission mode (D115/D132): inherited sessions still resolve through the
   // global setting, but the composer presents only the effective mode.
   const globalPermissionMode: PermissionMode =
-    settings?.defaultPermissionMode ?? "ask";
+    settings?.defaultPermissionMode ?? "auto";
   const sessionPermissionMode: PermissionMode = activeSession
     ? isPermissionMode(activeSession.permissionMode)
       ? activeSession.permissionMode

@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-26",
+    highlights: ["Neue Chats verwenden standardmäßig den vollautomatischen Modus. Deine gespeicherte Berechtigungseinstellung hat Vorrang."],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [

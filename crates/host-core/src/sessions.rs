@@ -104,6 +104,18 @@ pub fn is_valid_permission_mode(mode: &str) -> bool {
     PERMISSION_MODES.contains(&mode)
 }
 
+/// Resolve an inherited session permission from the global app settings.
+pub fn global_permission_mode(settings: Option<&Value>) -> &'static str {
+    match settings.and_then(|settings| settings.get("defaultPermissionMode")) {
+        None => "auto",
+        Some(value) => match value.as_str() {
+            Some("auto") => "auto",
+            Some("accept-edits") => "accept-edits",
+            _ => "ask",
+        },
+    }
+}
+
 fn default_permission_mode() -> String {
     "inherit".to_string()
 }

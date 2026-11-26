@@ -1,6 +1,6 @@
 import type { GlobalPermissionMode, PermissionMode } from "@pi-desktop/shared";
 
-export const PLAN_APPROVAL_FALLBACK_MODE: GlobalPermissionMode = "ask";
+export const PLAN_APPROVAL_FALLBACK_MODE: GlobalPermissionMode = "auto";
 
 function isApprovalMode(value: unknown): value is GlobalPermissionMode {
   return value === "ask" || value === "accept-edits" || value === "auto";

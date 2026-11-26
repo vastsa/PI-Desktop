@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const ptBREntries: ChangelogEntry[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-26",
+    highlights: ["Novas conversas usam o modo totalmente automático por padrão. Sua preferência de permissão salva tem prioridade."],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [

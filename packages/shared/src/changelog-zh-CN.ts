@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-26",
+    highlights: ["新对话默认使用全自动权限。如果你已选择其他权限模式，将沿用你的设置。"],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-26",
     highlights: [

@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const enEntries: ChangelogEntry[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-26",
+    highlights: ["New chats default to full automation. Your saved permission choice takes priority."],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-26",
     highlights: [

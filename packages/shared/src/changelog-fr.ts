@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-26",
+    highlights: ["Les nouvelles conversations utilisent par défaut le mode entièrement automatique. Votre choix de permissions enregistré reste prioritaire."],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [

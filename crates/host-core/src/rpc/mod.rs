@@ -906,7 +906,9 @@ fn prompt_enhancement_template_error(field: &str, value: &Value) -> Option<Strin
 }
 
 fn normalize_settings_value(mut value: Value) -> Value {
+    let permission = sessions::global_permission_mode(Some(&value));
     if let Some(object) = value.as_object_mut() {
+        object.insert("defaultPermissionMode".into(), json!(permission));
         object.remove("planApprovalPermissionMode");
         if object.get("defaultMode").and_then(Value::as_str) == Some("chat") {
             object.insert("defaultMode".into(), Value::String("plan".into()));
@@ -4502,7 +4504,7 @@ async fn handle_request(
                     }
                     // Effective permission mode (D115): per-session override
                     // unless it is `inherit`, then the global settings default,
-                    // then `ask`. A subagent's tool call carries its own scope
+                    // then `auto`. A subagent's tool call carries its own scope
                     // (ADR 0089), which resolves the call under that mode
                     // instead; external-path gating and the contract modes'
                     // hard deny are untouched by the override.
@@ -4511,18 +4513,11 @@ async fn handle_request(
                         .filter(|m| m != "inherit");
                     let effective_pm = match session_pm {
                         Some(m) => m,
-                        None => st
-                            .db
-                            .get_setting("app")
-                            .ok()
-                            .flatten()
-                            .and_then(|s| {
-                                s.get("defaultPermissionMode")
-                                    .and_then(|v| v.as_str())
-                                    .map(str::to_string)
-                            })
-                            .filter(|m| sessions::is_valid_permission_mode(m) && m != "inherit")
-                            .unwrap_or_else(|| "ask".to_string()),
+                        None => {
+                            let settings = st.db.get_setting("app")
+                                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                            sessions::global_permission_mode(settings.as_ref()).to_owned()
+                        }
                     };
                     let effective_pm = match p.permission_scope.as_deref() {
                         Some(scope)
@@ -5319,23 +5314,14 @@ async fn handle_request(
             let session_pm = sessions::session_permission_mode(&st.db, session_id)
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?
                 .filter(|value| value != "inherit");
-            let effective_pm = session_pm
-                .or_else(|| {
-                    st.db
-                        .get_setting("app")
-                        .ok()
-                        .flatten()
-                        .and_then(|settings| {
-                            settings
-                                .get("defaultPermissionMode")
-                                .and_then(|value| value.as_str())
-                                .filter(|value| {
-                                    sessions::is_valid_permission_mode(value) && *value != "inherit"
-                                })
-                                .map(str::to_string)
-                        })
-                })
-                .unwrap_or_else(|| "ask".into());
+            let effective_pm = match session_pm {
+                Some(mode) => mode,
+                None => {
+                    let settings = st.db.get_setting("app")
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                    sessions::global_permission_mode(settings.as_ref()).to_owned()
+                }
+            };
             let effective_pm = authorization.cap_permission_mode(effective_pm);
             let args = params.get("args").cloned().unwrap_or_else(|| json!({}));
             let workspace_path = resolve_tool_workspace_for_call(&st, session_id, &args)?;

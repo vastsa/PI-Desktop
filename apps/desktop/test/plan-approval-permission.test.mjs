@@ -11,7 +11,7 @@ const compile = text => ts.transpileModule(text, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 
-function harness(permissionMode, defaultPermissionMode = "ask", remembered = "ask") {
+function harness(permissionMode, defaultPermissionMode, remembered = "ask") {
   const preferences = { exports: {} };
   vm.runInNewContext(compile(source("lib/plan-approval-preferences.ts")), {
     exports: preferences.exports,
@@ -93,7 +93,7 @@ test("approval follows session overrides and inherited settings, ignoring anothe
     ["inherit", "auto", "ask", "auto"],
     ["inherit", "accept-edits", "auto", "accept-edits"],
     ["inherit", "ask", "auto", "ask"],
-    [undefined, undefined, "auto", "ask"],
+    [undefined, undefined, "ask", "auto"],
   ]) {
     const h = harness(permissionMode, globalMode, remembered);
     const tree = h.mount();

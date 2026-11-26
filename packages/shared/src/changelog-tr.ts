@@ -2,6 +2,11 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-26",
+    highlights: ["Yeni sohbetlerde varsayılan izin modu tam otomatiktir. Kaydedilmiş izin tercihiniz önceliklidir."],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
