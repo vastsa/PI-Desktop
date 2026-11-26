@@ -1080,6 +1080,18 @@ describe("classifyAgentError", () => {
     });
   });
 
+  it("keeps the local request size guard terminal instead of retrying it", () => {
+    expect(
+      classifyAgentError(
+        new Error("CONTEXT_TOO_LARGE: the context returned by the extension context manager exceeds the safe model budget"),
+      ),
+    ).toMatchObject({
+      code: "CONTEXT_TOO_LARGE",
+      retriable: false,
+      details: { origin: "local" },
+    });
+  });
+
   it("classifies network failures via the cause chain", () => {
     const err = new Error("fetch failed");
     (err as any).cause = Object.assign(new Error("connect ECONNREFUSED"), {

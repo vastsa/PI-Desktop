@@ -2765,13 +2765,25 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
    */
   private async extensionContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
     const runner = this.extensionRunner;
-    if (!runner?.hasHandlers("context")) return messages;
-    const result = await runner.emit<{ messages?: AgentMessage[] }>(
-      "context",
-      { type: "context", messages },
-      (_acc, next) => next,
-    );
-    return Array.isArray(result?.messages) ? result.messages : messages;
+    const transformed = runner?.hasHandlers("context")
+      ? await runner.emit<{ messages?: AgentMessage[] }>(
+        "context",
+        { type: "context", messages },
+        (_acc, next) => next,
+      )
+      : undefined;
+    const result = Array.isArray(transformed?.messages) ? transformed.messages : messages;
+    // With an external context manager the hard guard checks what is actually
+    // sent: the raw history may be far larger than the request (issue #2596).
+    if (this.contextManagedExternally()) {
+      const budget = this.contextBudget(result);
+      if (budget.tokens >= budget.hardLimit) {
+        throw new Error(
+          "CONTEXT_TOO_LARGE: the context returned by the extension context manager exceeds the safe model budget",
+        );
+      }
+    }
+    return result;
   }
 
   /** Mirror pi-agent-core events to extension handlers (spec 16 §6). */
@@ -3161,7 +3173,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           tokens: budget.tokens,
           contextWindow: budget.hardLimit,
           percent: budget.hardLimit > 0 ? Math.round((budget.tokens / budget.hardLimit) * 100) : null,
-          autoCompactAt: runtime.compactionEnabled ? automaticCompactionThresholdFor(budget) : null,
+          autoCompactAt: runtime.nativeCompactionActive() ? automaticCompactionThresholdFor(budget) : null,
         };
       },
       compact: () => {
@@ -4401,7 +4413,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       }),
     ];
     for (const tool of subagentTools) this.builtinTools.add(tool);
-    const contextTools = this.compactionEnabled
+    const contextTools = this.nativeCompactionActive()
       ? [this.buildContextCompactionTool()]
       : [];
     // Trusted extension tools are non-core: the per-mode allowlist and
@@ -7433,6 +7445,20 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     this.setAgentTools(this.activeTools());
   }
 
+  /**
+   * A loaded trusted extension declared `setContextManagement("external")`
+   * (issue #2596). Unloading or disabling it disposes the runner, so native
+   * protection returns with the next runtime without any setting to restore.
+   */
+  private contextManagedExternally(): boolean {
+    return (this.extensionRunner?.getExternalContextManagers().length ?? 0) > 0;
+  }
+
+  /** Desktop's own compaction, its `new_context` tool, and budget reminders. */
+  private nativeCompactionActive(): boolean {
+    return this.compactionEnabled && !this.contextManagedExternally();
+  }
+
   private contextBudget(messages: AgentMessage[]): ContextBudget {
     const budget = contextBudgetFor(this.model, messages);
     // Calibration learns from message usage; the output-cap estimator adds the
@@ -7509,7 +7535,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const messages = [...context.messages, ...additionalMessages];
     const budget = this.contextBudget(messages);
     return (
-      this.compactionEnabled &&
+      this.nativeCompactionActive() &&
       budget.tokens >= automaticCompactionThresholdFor(budget)
     );
   }
@@ -7517,6 +7543,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private automaticCompactionWouldExceedHardLimit(
     additionalMessages: AgentMessage[] = [],
   ): boolean {
+    // An external context manager shrinks the request in the `context` hook;
+    // the raw history is not what the provider receives, so the guard runs on
+    // the hook's result instead (`extensionContext`).
+    if (this.contextManagedExternally()) return false;
     const context = this.liveSessionContext();
     const messages = [...context.messages, ...additionalMessages];
     const budget = this.contextBudget(messages);
@@ -7681,6 +7711,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     let context = this.rebuiltAgentContext();
     const budget = this.contextBudget(context.messages);
     const hardLimitReached = budget.tokens >= budget.hardLimit;
+    if (this.contextManagedExternally()) {
+      this.pendingModelCompaction = false;
+      return { context };
+    }
     if (!this.compactionEnabled) {
       this.pendingModelCompaction = false;
       if (hardLimitReached) {
@@ -9171,7 +9205,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             break;
           }
           const canRecoverOverflow =
-            this.compactionEnabled &&
+            this.nativeCompactionActive() &&
             overflow &&
             !this.overflowRecoveryAttempted;
           if (canRecoverOverflow) {

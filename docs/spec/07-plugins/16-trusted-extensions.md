@@ -281,7 +281,7 @@ unsupported ones.
 
 | Class | Members |
 |---|---|
-| Supported | `registerTool`, `registerCommand`, `registerAgent`, `registerProvider` (plugin-owned compatibility alias; same shape as `registerAgent`), `unregisterAgent`, `unregisterProvider`, `on(...)` for every event in §6, `exec`, `getActiveTools`, `getAllTools`, `setActiveTools`, `getCommands`, `setModel` (configured models and plugin agents; idle-only; persists the current session binding), `getThinkingLevel`, `setThinkingLevel`, `setSessionName`, `getSessionName`, `sendUserMessage` (Host-owned queue, D386), `getFlag` |
+| Supported | `registerTool`, `registerCommand`, `registerAgent`, `registerProvider` (plugin-owned compatibility alias; same shape as `registerAgent`), `unregisterAgent`, `unregisterProvider`, `on(...)` for every event in §6, `exec`, `getActiveTools`, `getAllTools`, `setActiveTools`, `getCommands`, `setModel` (configured models and plugin agents; idle-only; persists the current session binding), `getThinkingLevel`, `setThinkingLevel`, `setSessionName`, `getSessionName`, `sendUserMessage` (Host-owned queue, D386), `getFlag`, `setContextManagement` (Desktop extension; load time only) |
 | Supported on context | `ui.notify`, `ui.confirm`, `ui.select`, `ui.input`, `ui.setStatus`, `ui.setWorkingMessage`, `cwd`, `modelRegistry`, `isIdle`, `abort`, `hasPendingMessages`, `getContextUsage`, `compact`, `getSystemPrompt`, `waitForIdle`, `newSession`, `fork` |
 | Deferred to v2 | `sendMessage`, `appendEntry`, `setLabel`, `sessionManager` read API, `switchSession`, `registerShortcut`, `registerMarkdownTransformer`, `ui.setEditorText`, `ui.getEditorText`, `ui.addAutocompleteProvider`, `registerFlag` value editing |
 | Unsupported | `ui.setWidget`, `ui.setFooter`, `ui.setHeader`, `ui.setTitle`, `ui.custom`, `ui.overlay`, `ui.onTerminalInput`, `ui.setWorkingVisible`, `ui.setWorkingIndicator`, `ui.setHiddenThinkingLabel`, `ui.pasteToEditor`, `ui.editor`, `registerMessageRenderer`, `registerEntryRenderer`, `navigateTree`, `shutdown` |
@@ -290,6 +290,17 @@ unsupported ones.
 Plan/Goal can retain denied Write/Edit and configured Task-family declarations;
 the runtime mode gate runs before extension tool-call hooks or handlers. Plugins
 must not infer permission from the presence of a name in this list.
+
+`setContextManagement("external")`, called while the factory runs, hands the
+session's context management to the extension (ADR 0347, issue #2596). Desktop
+then registers no `new_context` tool, injects no context-budget reminder, runs no
+threshold compaction, and does not recover a provider overflow by compacting.
+The hard limit is checked against the messages the `context` hook returns for
+each request; a request above it fails locally as `CONTEXT_TOO_LARGE`. Manual
+`/compact` and `ctx.compact()` still emit `session_before_compact`. A call after
+the factory settled, or with a value other than `"native"` / `"external"`, is
+inert and reports `rejected_registration`. There is no user setting: disabling
+the extension restores native compaction with the next runtime.
 
 `registerAgent({ id, name?, models, stream? | complete? })` registers a
 session-scoped plugin-owned LLM integration. Each model declares bounded public

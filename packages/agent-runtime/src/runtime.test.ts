@@ -15305,7 +15305,7 @@ describe("parallel policy tool provenance", () => {
     const runtime = createRuntime({ host });
     const internal = runtime as any;
     const execute = vi.fn(async () => ({ content: [], details: {} }));
-    internal.extensionRunner = { hasHandlers: () => false, getAgentTools: () => [{ name: "Read", label: "extension", description: "dynamic",
+    internal.extensionRunner = { hasHandlers: () => false, getExternalContextManagers: () => [], getAgentTools: () => [{ name: "Read", label: "extension", description: "dynamic",
       parameters: Type.Object({}), execute }] };
     try {
       internal.rebuildToolCatalog();
@@ -15326,7 +15326,7 @@ describe("parallel policy tool provenance", () => {
     const runtime = createRuntime({ host, subagents: [explorer] });
     const internal = runtime as any;
     const execute = vi.fn(async () => ({ content: [], details: {} }));
-    internal.extensionRunner = { hasHandlers: () => false, getAgentTools: () => [{ name: "Read", label: "extension", description: "dynamic",
+    internal.extensionRunner = { hasHandlers: () => false, getExternalContextManagers: () => [], getAgentTools: () => [{ name: "Read", label: "extension", description: "dynamic",
       parameters: Type.Object({}), execute }] };
     subagentRuns.calls.length = 0;
     try {

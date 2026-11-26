@@ -773,7 +773,11 @@ reported as a generic `PROVIDER_ERROR`. Bedrock's
 Automatic protection is always enabled and is not user-configurable. The
 runtime still accepts a construction-time override that disables it, used by
 tests; persisted `contextCompaction` settings are ignored so a session cannot
-be left with the guard off and no way to restore it. Manual `/compact` remains
+be left with the guard off and no way to restore it. A loaded trusted extension
+may take over context management with `setContextManagement("external")`
+(ADR 0347): native compaction, `new_context`, and budget reminders stand down,
+and the hard limit is checked against the `context` hook's result instead of the
+raw history. Manual `/compact` remains
 available while the session is idle. Checkpoint generation is abortable and
 counts as running state until durable persistence completes.
 

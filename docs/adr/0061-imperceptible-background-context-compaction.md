@@ -1,6 +1,7 @@
 # ADR 0061: Imperceptible background context compaction
 
-- Status: Accepted (clauses 2, 4, 6, 7, 8 amended by ADR 0064)
+- Status: Accepted (clauses 2, 4, 6, 7, 8 amended by ADR 0064; a trusted
+  extension may take over context management per ADR 0347)
 - Date: 2026-08-06
 - Related: ADR 0030, ADR 0047, ADR 0049, ADR 0064, D158, D200
 
