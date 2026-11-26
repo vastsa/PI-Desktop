@@ -1,0 +1,6 @@
+#!/bin/bash
+set -euo pipefail
+runtime=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
+export HOME="${PI_OFFICE_RUNTIME_PROFILES:?Enable Office Runtime for this session}"
+export PATH="$runtime/libexec:$PATH"
+exec "$runtime/python/bin/python" "$@"

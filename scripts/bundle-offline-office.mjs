@@ -2,33 +2,35 @@ import { execFileSync } from "node:child_process";
 import { constants, mkdtempSync, rmSync } from "node:fs";
 import { access, chmod, cp, lstat, mkdir, readdir, readFile, readlink, realpath, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 const plugin = new URL("../apps/desktop/resources/office-runtime/", import.meta.url);
 const ARM64 = 3; // electron-builder's Arch.arm64.
 const stdlib = "python/lib/python3.12";
 const site = stdlib + "/site-packages";
-const renderCommands = ["soffice", "pdftoppm"];
+const runtimeCommands = ["bin/soffice", "bin/pdftoppm", "bin/office-python", "libexec/timeout"];
 const executables = ["node/bin/node", "python/bin/python3.12"];
 const nativeMetadata = "metadata/native-office";
 const nativeRuntime = ["libreoffice", "poppler", nativeMetadata];
-const requiredNativePackages = ["libreoffice-core", "libreoffice-impress", "poppler", "poppler-utils"];
+const requiredNativePackages = ["libreoffice-calc", "libreoffice-core", "libreoffice-impress", "poppler", "poppler-utils"];
 const metadata = ["metadata/runtime-source.json", "metadata/package-lock.json", "metadata/python-dependencies.json"];
 const pythonPackages = {
   beautifulsoup4: ["bs4"], certifi: ["certifi"], charset_normalizer: ["charset_normalizer"],
-  click: ["click"], defusedxml: ["defusedxml"], flatbuffers: ["flatbuffers"], idna: ["idna"],
+  click: ["click"], defusedxml: ["defusedxml"], et_xmlfile: ["et_xmlfile"], flatbuffers: ["flatbuffers"], idna: ["idna"],
   lxml: ["lxml"], magika: ["magika"], markdownify: ["markdownify"], markitdown: ["markitdown"],
-  numpy: ["numpy"], onnxruntime: ["onnxruntime"], packaging: ["packaging"], pillow: ["PIL"],
-  protobuf: ["google/protobuf", "google/_upb"], python_dotenv: ["dotenv"], python_pptx: ["pptx"],
+  numpy: ["numpy"], onnxruntime: ["onnxruntime"], openpyxl: ["openpyxl"], packaging: ["packaging"], pandas: ["pandas"], pillow: ["PIL"],
+  protobuf: ["google/protobuf", "google/_upb"], python_dateutil: ["dateutil"], python_dotenv: ["dotenv"], python_pptx: ["pptx"],
   requests: ["requests"], six: ["six.py"], soupsieve: ["soupsieve"],
   typing_extensions: ["typing_extensions.py"], urllib3: ["urllib3"], xlsxwriter: ["xlsxwriter"],
 };
 const nodePackages = ["docx", "fflate", "nanoid", "pptxgenjs", "image-size", "queue", "inherits",
   "jszip", "lie", "pako", "setimmediate", "immediate", "core-util-is", "process-nextick-args",
   "util-deprecate", "readable-stream", "isarray", "safe-buffer", "string_decoder"];
-const license = /^(?:license|copying|notice)(?:[._-].*)?$/i;
+const license = /^(?:licen[cs]e|copying|notice)(?:[._-].*)?$/i;
 const legacyPath = /(?:^|[\\/])(?:pie\.offline-office|wx-runtime|SKILL\.md)(?:[\\/]|$)/i;
 const archive = /\.(?:zip|whl|tgz|gz|xz|zst|tar|piplug|docx|pptx|xlsx)$/i;
+const timezoneData = `${site}/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz`;
+const excludedArchive = (name) => archive.test(name) && name !== timezoneData;
 const readJson = async (runtime, name) => JSON.parse(await readFile(join(runtime, name), "utf8"));
 
 async function verifyRuntimeLinks(runtime, checkPayload) {
@@ -37,7 +39,7 @@ async function verifyRuntimeLinks(runtime, checkPayload) {
   for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
     const link = join(entry.parentPath, entry.name);
     const name = relative(root, link);
-    if (checkPayload && (legacyPath.test(name) || archive.test(name))) throw new Error(`Unexpected Office Runtime file: ${name}`);
+    if (checkPayload && (legacyPath.test(name) || excludedArchive(name))) throw new Error(`Unexpected Office Runtime file: ${name}`);
     if (!entry.isSymbolicLink()) continue;
     if (isAbsolute(await readlink(link))) throw new Error(`Office Runtime link must be relative: ${name}`);
     const target = await realpath(link).catch((cause) => {
@@ -99,7 +101,7 @@ async function verifyNativeNotices(runtime) {
   const { packages } = await readJson(runtime, `${nativeMetadata}/sources.json`);
   if (!Array.isArray(packages) || !packages.length) throw new Error("Missing native dependency sources in Office Runtime.");
   const leaf = (name) => typeof name === "string" && name !== "." && name !== ".." && basename(name) === name && name.length > 0;
-  const seen = new Set();
+  const seen = new Map();
   for (const { name, version, source, notices } of packages) {
     if (!leaf(name) || typeof source?.url !== "string" || !source.url.trim() ||
         !Array.isArray(notices) || !notices.length || !notices.every(leaf)) {
@@ -109,7 +111,7 @@ async function verifyNativeNotices(runtime) {
       throw new Error(`Office Runtime native dependency version is missing: ${name}`);
     }
     if (seen.has(name)) throw new Error(`Duplicate native Office Runtime package: ${name}`);
-    seen.add(name);
+    seen.set(name, { version, source: source.url });
     for (const notice of notices) {
       const file = await stat(join(runtime, nativeMetadata, "licenses", name, notice));
       if (!file.isFile() || !file.size) throw new Error(`Office Runtime license notice is empty: ${name}/${notice}`);
@@ -118,19 +120,32 @@ async function verifyNativeNotices(runtime) {
   for (const name of requiredNativePackages) {
     if (!seen.has(name)) throw new Error("Missing native Office Runtime package: " + name);
   }
+  const calc = seen.get("libreoffice-calc");
+  const core = seen.get("libreoffice-core");
+  if (calc.version !== core.version || calc.source !== core.source) {
+    throw new Error("Office Runtime Calc must match the LibreOffice core build and source RPM.");
+  }
 }
 
 export async function verifyOfflineOfficeRuntime(runtime) {
   await verifyRuntimeLinks(runtime, true);
   for (const executable of [...executables, "python/bin/python", "python/bin/python3",
-    "libreoffice/program/oosplash", "poppler/bin/pdftoppm", ...renderCommands.map((name) => `bin/${name}`)]) {
+    "libreoffice/program/oosplash", "poppler/bin/pdftoppm", ...runtimeCommands]) {
     await access(join(runtime, executable), constants.X_OK);
   }
-  for (const name of [...metadata, "node/LICENSE", stdlib + "/LICENSE.txt", ...nativeRuntime, ...await pythonRuntimeFiles(runtime)]) {
+  for (const name of [...metadata, "node/LICENSE", stdlib + "/LICENSE.txt", ...nativeRuntime,
+    "libreoffice/program/libsclo.so", "libreoffice/presets/basic/script.xlc",
+    "libreoffice/presets/basic/Standard/script.xlb", ...await pythonRuntimeFiles(runtime)]) {
     await access(join(runtime, name), constants.R_OK);
   }
   await lockedNodePackages(runtime);
   await verifyNativeNotices(runtime);
+  const zones = execFileSync("tar", ["-tzf", join(runtime, timezoneData)], { encoding: "utf8" }).trimEnd().split("\n");
+  // dateutil reads this one upstream data archive when pandas initializes time zones.
+  if (!zones.includes("METADATA") || !zones.includes("UTC") ||
+      zones.some((name) => !/^[a-z0-9_+-]+(?:\/[a-z0-9_+-]+)*\/?$/i.test(name))) {
+    throw new Error("Unexpected files in the Office Runtime dateutil time zone archive.");
+  }
 }
 
 export function smokeTestOfflineOffice(resources) {
@@ -152,7 +167,7 @@ Promise.all([Packer.toBuffer(new Document({ sections: [] })), pptx.write({ outpu
 `], {
       ...opts, cwd: runtime, env: { ...process.env, NODE_OPTIONS: "", NODE_PATH: join(runtime, "node/lib/node_modules") },
     });
-    execFileSync(python, ["-I", "-B", "-c", "import defusedxml.minidom, lxml.etree, PIL.Image, pptx; from markitdown import MarkItDown; MarkItDown()"], opts);
+    execFileSync(python, ["-I", "-B", "-c", "import defusedxml.minidom, lxml.etree, openpyxl, pandas, PIL.Image, pptx; from markitdown import MarkItDown; MarkItDown()"], opts);
     const profiles = mkdtempSync(join(tmpdir(), "pie-office-inspection-"));
     try {
       execFileSync(join(runtime, "bin/soffice"), ["--headless", "--version"], {
@@ -184,10 +199,10 @@ export default async function bundleOfflineOffice(context, runtime = process.env
   const keep = (source) => {
     const name = relative(runtime, source).split(sep).join("/");
     if (name.startsWith("poppler/bin/")) return name === "poppler/bin/pdftoppm";
-    return !legacyPath.test(name) && !archive.test(name) &&
+    return !legacyPath.test(name) && !excludedArchive(name) &&
       !/(?:^|\/)(?:__pycache__|tests?|examples?)(?:\/|$)/.test(name) &&
       !/\.(?:pyc|map|h)$|\.d\.[cm]?ts$|(?:^|\/)_tkinter[^/]*\.so$/.test(name) &&
-      !/^libreoffice\/(?:presets\/(?:basic|database)|share\/autotext|program\/(?:gdbtrace|opencltest|JREProperties\.class))(?:\/|$)/.test(name);
+      !/^libreoffice\/(?:presets\/database|share\/autotext|program\/(?:gdbtrace|opencltest|JREProperties\.class))(?:\/|$)/.test(name);
   };
 
   const nodeRuntime = await lockedNodePackages(runtime);
@@ -203,10 +218,10 @@ export default async function bundleOfflineOffice(context, runtime = process.env
     await copy(name, (source) => keep(source) &&
       (name !== `${site}/lxml` || !/[\\/](?:includes|isoschematron|html)(?:[\\/]|$)/.test(relative(runtime, source))));
   }
-  await mkdir(join(output, "bin"));
-  for (const name of renderCommands) {
-    const destination = join(output, "bin", name);
-    await cp(new URL(`office-runtime-bin/${name}`, import.meta.url), destination);
+  for (const name of runtimeCommands) {
+    const destination = join(output, name);
+    await mkdir(dirname(destination), { recursive: true });
+    await cp(new URL(`office-runtime-bin/${basename(name)}`, import.meta.url), destination);
     await chmod(destination, 0o755);
   }
   await symlink("python3.12", join(output, "python/bin/python"));

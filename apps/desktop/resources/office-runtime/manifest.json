@@ -3,15 +3,15 @@
   "id": "pie.office-runtime",
   "name": "Office Runtime",
   "version": "1.0.0",
-  "description": "Make offline office tools available to Bash in selected local sessions. Install your own skills in Agent → Skills.",
+  "description": "Make offline office tools available to Bash in selected local sessions. Install your own skills in Agent → Skills. For Excel formula recalculation, ask the agent to run the Skill’s recalc.py with office-python.",
   "i18n": {
     "en": {
       "name": "Office Runtime",
-      "description": "Make offline office tools available to Bash in selected local sessions. Install your own skills in Agent → Skills."
+      "description": "Make offline office tools available to Bash in selected local sessions. Install your own skills in Agent → Skills. For Excel formula recalculation, ask the agent to run the Skill’s recalc.py with office-python."
     },
     "zh-CN": {
       "name": "办公运行时",
-      "description": "让所选本地会话的 Bash 使用离线办公工具。请在「Agent → Skills」中自行安装 Skill。"
+      "description": "让所选本地会话的 Bash 使用离线办公工具。请在「Agent → Skills」中自行安装 Skill。需要重算 Excel 公式时，请让 Agent 用 office-python 运行 Skill 的 recalc.py。"
     }
   },
   "main": "main.cjs",

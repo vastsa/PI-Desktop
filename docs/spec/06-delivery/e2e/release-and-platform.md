@@ -84,6 +84,27 @@
 - **Status**: Automated scenario; qualification requires a run against the
   exact installed release candidate and its approved dependencies.
 
+## E2E-PIE-OFFICE-XLSX: Offline Excel on Kylin ARM64
+
+- **Preconditions**: Install the inspected ARM64 DEB on Kylin V10 SP1 with
+  only loopback networking, no CheeseAgent or additional system packages, and
+  a clean app profile. Supply the complete, unmodified user `xlsx` Skill.
+- **Steps**: Run `node scripts/e2e-offline-office.mjs --xlsx` with
+  `PI_CODE_E2E_APP_BIN` and `PI_CODE_E2E_XLSX_SKILL`. Enable Office Runtime
+  from Extensions. Deny a Bash write, then approve the local workflow: load
+  the Skill, analyze the source with pandas, and create and save a copy using
+  openpyxl. Approve the Skill's original `scripts/recalc.py` for each output.
+- **Expected**: No denied output is written. The two-sheet workbooks have
+  Chinese names with spaces. Their formulas, untouched sheet and sample
+  styles survive. Formula caches are empty before the explicit recalc;
+  independent readback returns 250 and 260 afterward. The original workbook,
+  user Skill and the usual LibreOffice profile are unchanged.
+- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#self-installed-excel-skill).
+- **Acceptance criterion**: A, C, E, G, Quality.
+- **Milestone**: M6+ (Pie Code 0.23.1).
+- **Status**: Automated scenario; record the result against the exact
+  installed build. Skill JSON reporting success alone does not qualify.
+
 ## Windows background process snapshot clock
 
 - **Preconditions:** Isolated Windows Host and a synthetic background task.

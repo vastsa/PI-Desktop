@@ -6,10 +6,18 @@ export SAL_USE_VCLPLUGIN=svp SAL_ENABLE_FILE_LOCKING=1
 libraries="$base/program:$base/lib"
 
 # The host cleans this directory after the Bash runner exits, even on stop.
-profile=$(mktemp -d "${PI_OFFICE_RUNTIME_PROFILES:?Office rendering requires a managed profile directory}/impress.XXXXXXXX")
+profiles=${PI_OFFICE_RUNTIME_PROFILES:?Office rendering requires a managed profile directory}
+if [[ ${HOME:-} == "$profiles" ]]; then
+  # Some user scripts bootstrap a desktop profile and then call soffice again.
+  profile=$profiles
+  installation=$profile/.config/libreoffice/4
+else
+  profile=$(mktemp -d "$profiles/impress.XXXXXXXX")
+  installation=$profile/lo
+fi
 export HOME="$profile" XDG_CONFIG_HOME="$profile/.config" XDG_CACHE_HOME="$profile/.cache"
 export XDG_DATA_HOME="$profile/.local/share" XDG_RUNTIME_DIR="$profile" GNUPGHOME="$profile/.gnupg"
-mkdir -m 700 "$GNUPGHOME"
+mkdir -p -m 700 "$GNUPGHOME"
 
 for arg; do
   case "$arg" in
@@ -18,4 +26,4 @@ for arg; do
       ;;
   esac
 done
-LD_LIBRARY_PATH="$libraries" exec "$base/program/oosplash" "-env:UserInstallation=file://$profile/lo" --headless --nologo --norestore --nodefault "$@"
+LD_LIBRARY_PATH="$libraries" exec "$base/program/oosplash" "-env:UserInstallation=file://$installation" --headless --nologo --norestore --nodefault "$@"

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Keep the Skill's LibreOffice process in the Bash runner's process group.
+exec /usr/bin/timeout --foreground "$@"

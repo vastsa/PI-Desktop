@@ -7,6 +7,7 @@ export const zhCNEntries: ChangelogEntry[] = [
     highlights: [
       "在麒麟 ARM64 上，从「Agent → Skills」安装自己的 Word Skill，并在「扩展」中启用办公运行时，即可离线读取、新建或另存 Word 文档。",
       "在麒麟 ARM64 上启用办公运行时后，自装 PowerPoint Skill 可离线提取文字、生成缩略图、新建可编辑演示文稿并另存修改副本。",
+      "在麒麟 ARM64 上启用办公运行时后，自装 Excel Skill 可离线分析、新建和另存工作簿，并按需重算公式。",
     ],
   },
   {
