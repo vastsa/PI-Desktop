@@ -4453,7 +4453,7 @@ async fn handle_request(
             // an approval wait even when the tool does not own a process.
             // Bash and image generation retain their existing process registry;
             // all other calls use a typed registry to avoid cross-tool ID reuse.
-            let cancellation_receiver = if matches!(p.tool_name.as_str(), "Bash" | "GenerateImages")
+            let cancellation_receiver = if matches!(p.tool_name.as_str(), "Bash" | "GenerateImages" | "GenerateVideo")
             {
                 // Background Bash tasks are detached from the turn and must
                 // outlive a later Stop request.
@@ -5257,7 +5257,7 @@ async fn handle_request(
             let mut st = state.lock().await;
             let permission_found = st.cancel_pending_permission(session_id, tool_call_id);
             let (cancellation_found, queued) = match tool_name {
-                Some("Bash" | "GenerateImages") => st.abort_or_queue_bash(session_id, tool_call_id),
+                Some("Bash" | "GenerateImages" | "GenerateVideo") => st.abort_or_queue_bash(session_id, tool_call_id),
                 Some(name) => st.abort_or_queue_tool(session_id, tool_call_id, name),
                 None => {
                     let active_tool = st.abort_active_tool(session_id, tool_call_id);

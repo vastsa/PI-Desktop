@@ -1,6 +1,6 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { sortStarAiGroupsByRatio, STARAI_SERVICES, starAiGroupService, type StarAiCatalog } from "@pi-desktop/shared";
+import { sortStarAiGroupsByRatio, STARAI_CHAT_SERVICES, starAiGroupService, type StarAiCatalog } from "@pi-desktop/shared";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
 import { StarAiSetupCatalog } from "../../features/startup/star-ai-setup-context";
 import { api } from "../../lib/api";
@@ -60,22 +60,22 @@ export function StarAiAccountCard() {
     return () => { active = false; mounted.current = false; unsubscribe(); };
   }, [initialCatalog, refreshProviders]);
 
-  const services = useMemo(() => STARAI_SERVICES.flatMap((id) => {
+  const services = useMemo(() => STARAI_CHAT_SERVICES.flatMap((id) => {
     const groups = (catalog?.groups ?? []).filter((entry) =>
-      entry.models.length > 0 && entry.id !== "auto" && starAiGroupService(entry.id) === id,
+      (entry.chatModels?.length ?? 0) > 0 && entry.id !== "auto" && starAiGroupService(entry.id) === id,
     );
     return groups.length ? [{ id, count: groups.length, groups: sortStarAiGroupsByRatio(groups) }] : [];
   }), [catalog?.groups]);
-  const autoGroup = catalog?.groups.find((entry) => entry.id === "auto" && entry.models.length > 0);
+  const autoGroup = catalog?.groups.find((entry) => entry.id === "auto" && (entry.chatModels?.length ?? 0) > 0);
   const service = services.find((entry) => entry.id === draft.service);
   const group = draft.group === "auto" ? autoGroup : service?.groups.find((entry) => entry.id === draft.group);
   const chatModels = group?.chatModels;
   const modelChoices = useMemo(() => group ? [{
     providerName: group.id,
-    choices: group.models.map((modelId) => ({
-      value: modelId, modelId, disabledReason: chatModels?.includes(modelId) ? undefined : t("nonChatModel"),
+    choices: (chatModels ?? []).map((modelId) => ({
+      value: modelId, modelId,
     })),
-  }] : [], [group, chatModels, t]);
+  }] : [], [group, chatModels]);
   const saved = catalog?.selection;
   const isDefault = !!saved && draft.group === saved.group && draft.model === saved.model
     && defaultProvider === saved.providerId && defaultModel === saved.model;

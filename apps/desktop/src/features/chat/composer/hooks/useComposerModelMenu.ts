@@ -140,7 +140,7 @@ export function useComposerModelMenu({
             candidate,
             providerModels[candidate.id],
             imageGenerationCandidates,
-            true,
+            false,
           );
           return {
             provider: candidate,

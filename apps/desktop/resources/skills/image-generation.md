@@ -1,61 +1,24 @@
 ---
 name: imagegen
-description: Generate or edit raster images, illustrations, photos, banners, and project assets with the configured image model. Supports reference images, edits of earlier results, variants, and batches. Prefer existing code-native tools for SVG/CSS edits.
+description: Generate or edit raster images, illustrations, photos, posters, icons, and project assets directly with `GenerateImages` (defaults to StarAI `gpt-image-2.6-sunburst` when signed in). Supports reference images, edits of earlier results, aspect ratios, variants, and batches.
 ---
 
 # Image generation
 
-Use the desktop `GenerateImages` tool. The user selects its provider and model
-under Settings → Models → Image generation model; this is independent of the chat
-model. If ToolSearch is available and GenerateImages is not loaded, discover it
-there first. Do not install an SDK, run an API script, ask for a key in chat, or
-substitute the conversation model.
+Use the built-in `GenerateImages` tool directly whenever the user asks to draw, design, generate, or edit an image.
+
+- When signed in to StarAI, `GenerateImages` works automatically with no manual key setup and defaults to **`gpt-image-2.6-sunburst`** (at `2K`).
+- Optional per-item fields: `aspectRatio` (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`, `5:4`, `4:5`, `21:9`), `resolution` (`1K`/`2K`/`4K`, `gpt-image-2.6-sunburst` uses `2K`), and `model` (other StarAI image models include `gpt-image-2.6-flare`, `gpt-image-2.5-sunburst`, `gpt-image-2`, `gemini-3-pro-image-preview`, `gemini-3.1-flash-image-preview`).
+- Do not install an SDK, run curl/API scripts, ask the user for an API key, or refuse image generation when `GenerateImages` is available.
 
 ## Prepare the request
 
-- Preserve the requested subject, composition, style, exact text, and constraints.
-  Add useful detail to a vague prompt without inventing additional deliverables.
-- For a project asset, include its intended use and required framing. Prefer the
-  existing SVG/CSS asset system for changes to code-native icons or diagrams.
-- For an edit, pass the source file paths as `images` (one to four per item).
-  Specify what changes and what must stay unchanged. For a follow-up edit, use
-  the previous result path. Inputs must be under the current project, session
-  scratch directory, or attachment store. Do not use remote URLs.
-- Editing uses OpenAI Images multipart requests and depends on the selected
-  model supporting that endpoint. Do not silently replace an edit with a fresh
-  generation if it fails. Mask painting is not a desktop UI feature.
-
-## Generate one image or a batch
-
-Call `GenerateImages` with `items`, where each item has `prompt` and optional
-`count` (default 1), plus optional `images` for edits. Use one item with `count` for variants of the same prompt;
-use separate items for different assets. A batch permits at most 10 images
-total. For a larger explicitly requested set, split it into bounded batches.
-Generate only the quantity the user asked for; do not add unrequested variants.
-
-Example: two cover variants and one distinct icon:
-
-```json
-{"items":[{"prompt":"Editorial cover: a ceramic cup on a quiet desk, warm daylight, no text","count":2},{"prompt":"A small raster illustration of a green leaf on a white background","count":1}]}
-```
-
-Generation may incur cost. Do not retry failed or timed-out items automatically,
-including after cancellation: the provider may already have processed them.
-Report partial success and wait for a user request before retrying. If no image
-model is configured, direct the user to Settings → Models; do not select one silently.
+- Preserve the user's subject, composition, style, exact text, and constraints. Expand vague prompts into clear visual descriptions without inventing unrequested deliverables.
+- For an edit or image-to-image transformation, pass local file paths in `images` (from the project, session scratch directory, or attachments; do not pass remote URLs). Specify what changes and what must remain unchanged. For follow-up edits, pass the previous result path.
+- Use `count` for variants of one prompt and separate `items` for distinct subjects (at most 10 images total per call). Generate only the quantity requested.
 
 ## Deliver the result
 
-Results are ordered and contain a status and, for successes, a local image path.
-The desktop renders successful images directly from the tool result in the
-conversation. Do not repeat those result paths as Markdown image links; that
-would display the same images twice. Briefly confirm what was generated and
-report failed items.
-
-Use available image inspection tools to check the result when possible. Do not
-claim to have visually inspected an image if you only received its file path.
-For project deliverables, copy the selected image into the requested project
-location using existing file/shell tools and update the consuming reference.
-Use a new filename unless replacement was requested. Preview-only images may
-remain in session storage. Report the final project paths, the prompt used,
-and any requested images that did not complete.
+- Generation incurs account quota. Do not automatically retry failed or timed-out items; report partial failures and wait for the user.
+- The desktop renders successful images directly from the tool result in the conversation. Do not repeat result paths as Markdown image links (that would show duplicate images).
+- If the user asked for a project file deliverable, copy the selected generated file into the requested workspace path and report its path.

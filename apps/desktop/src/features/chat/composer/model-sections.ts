@@ -1,7 +1,7 @@
 import {
   isStarAiProviderId,
   sortStarAiGroupsByRatio,
-  STARAI_SERVICES,
+  STARAI_CHAT_SERVICES,
   starAiGroupService,
   type ModelInfo,
   type ProviderPublic,
@@ -34,17 +34,18 @@ export function composerModelSections(groups: ComposerModelGroup[]): Source[] {
       continue;
     }
     const channel = provider.starAiGroup;
-    if (!channel?.chatModels) continue;
+    if (!channel?.chatModels?.length) continue;
     if (channel.id === "auto") {
       otherSources.push({ id: "auto", kind: "auto", label: "auto", count: group.models.length, groups: [group] });
       continue;
     }
     const service = starAiGroupService(channel.id);
+    if (service === "media") continue;
     const options = services.get(service) ?? [];
     options.push(group);
     services.set(service, options);
   }
-  const serviceSources: Source[] = STARAI_SERVICES.flatMap((service) => {
+  const serviceSources: Source[] = STARAI_CHAT_SERVICES.flatMap((service) => {
     const options = services.get(service);
     if (!options?.length) return [];
     const sortedGroups = sortStarAiGroupsByRatio(options.map(group => ({ group, ratio: group.provider.starAiGroup?.ratio })));

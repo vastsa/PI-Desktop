@@ -24,7 +24,7 @@ test("site service cards count square-visible billing groups and preserve their 
     group("manual", "Local provider", ["custom"]),
   ];
   const sections = composerModelSections(groups);
-  assert.deepEqual(sections.map(({ id }) => id), ["service:gpt", "service:media", "service:other", "auto", "provider:manual"]);
+  assert.deepEqual(sections.map(({ id }) => id), ["service:gpt", "service:other", "auto", "provider:manual"]);
   assert.equal(sections[0].count, 2);
   assert.deepEqual(sections[0].groups.map(({ provider, models }) => [provider.id, models.map(model => model.modelId)]),
     [["starai-managed-high", ["gpt-5"]], ["starai-managed-low", ["gpt-5", "claude-sonnet"]]]);

@@ -170,6 +170,12 @@ export function createStarAiAccount(getHost: () => HostProcess | null, getWindow
       }
       return { ok: true };
     }),
+    isSignedIn: async () => Boolean(await account.session().catch(() => null)),
+    studioMedia: {
+      submit: (form: FormData, signal: AbortSignal) => account.submitStudioGeneration(form, signal),
+      get: (id: string, signal: AbortSignal) => account.getStudioGeneration(id, signal),
+      download: (path: string, signal: AbortSignal) => account.downloadStudioContent(path, signal),
+    },
     close,
   };
 }

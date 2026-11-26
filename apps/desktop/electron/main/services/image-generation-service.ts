@@ -6,15 +6,20 @@ import type { ImageApi, ImageModel } from "@earendil-works/pi-ai";
 import type { VendorOAuth } from "../oauth";
 import {
   CODEX_IMAGE_VENDOR_KEY,
-  imageGenerationPrompts,
+  imageGenerationItems,
   imageModelOfferedByProvider,
   parseImageGenerationBinding,
+  STARAI_DEFAULT_IMAGE_MODEL,
+  STARAI_PROVIDER_ID,
   type AppSettings,
+  type GeneratedImageResult,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 import type { HostProcess } from "../host-process";
 import type { LocalToolHandler } from "../agent-sidecar";
+import type { StarAiAccount } from "../star-ai-account";
 import { imageInputLoader } from "./image-inputs";
+import { runStarAiStudioGeneration } from "./star-ai-studio-media";
 
 function failure(errorCode: string, content: string) {
   return {
@@ -28,24 +33,116 @@ function failure(errorCode: string, content: string) {
 export function createImageGenerationTool(options: {
   dataDir: string;
   getHost: () => Pick<HostProcess, "call"> | null;
+  getStarAi?: () => Pick<StarAiAccount, "isSignedIn" | "studioMedia"> | undefined;
   fetchImpl?: typeof fetch;
   allowFakeIp?: () => boolean;
   resolveAuth?: VendorOAuth["resolveAuth"];
   resolveImageModel?: (provider: ProviderPublic, modelId: string) => Promise<ImageModel<ImageApi> | undefined>;
 }): LocalToolHandler {
   return async ({ sessionId, args, signal }) => {
-    imageGenerationPrompts(args);
+    const requestedItems = imageGenerationItems(args);
     const host = options.getHost();
     if (!host) return failure("HOST_UNAVAILABLE", "Host unavailable.");
     const settings = await host.call<AppSettings>("settings.get");
     const binding = parseImageGenerationBinding(settings.imageGeneration);
-    if (!binding)
+
+    const resolveSessionOutput = async () => {
+      const { path } = await host.call<{ path: string }>("session.getScratchPath", { sessionId });
+      const root = resolve(options.dataDir, "scratch");
+      const within = (base: string, target: string) => {
+        const rel = relative(base, target);
+        return !!rel && !rel.startsWith("..") && !isAbsolute(rel);
+      };
+      if (typeof path !== "string" || !within(root, resolve(path))) {
+        return { error: failure("INVALID_ARGUMENT", "Invalid image output directory.") };
+      }
+      await mkdir(path, { recursive: true });
+      const realRoot = await realpath(root);
+      const realDir = await realpath(path);
+      if (!within(realRoot, realDir)) {
+        return { error: failure("INVALID_ARGUMENT", "Invalid image output directory.") };
+      }
+      signal.throwIfAborted();
+      const { session } = await host.call<{ session?: { projectPath?: string } }>("session.get", {
+        id: sessionId,
+        messageLimit: 1,
+      });
+      if (!session) return { error: failure("SESSION_NOT_FOUND", "The image session no longer exists.") };
+      return { realDir, projectPath: session.projectPath };
+    };
+
+    if (!binding) {
+      const starAi = options.getStarAi?.();
+      if (starAi && (await starAi.isSignedIn())) {
+        const output = await resolveSessionOutput();
+        if ("error" in output && output.error) return output.error;
+        const loadImages = imageInputLoader({
+          dataDir: options.dataDir,
+          scratchPath: output.realDir,
+          projectPath: output.projectPath,
+        });
+        const results: GeneratedImageResult[] = [];
+        let usedModel: string = STARAI_DEFAULT_IMAGE_MODEL;
+        for (let index = 0; index < requestedItems.length; index++) {
+          const item = requestedItems[index];
+          if (signal.aborted) {
+            results.push({ index, status: "cancelled", errorCode: "IMAGE_CANCELLED" });
+            continue;
+          }
+          try {
+            const loaded = item.images?.length ? await loadImages(item.images.slice(0, 1)) : undefined;
+            const outcome = await runStarAiStudioGeneration(
+              starAi.studioMedia,
+              {
+                kind: "image",
+                model: item.model ?? STARAI_DEFAULT_IMAGE_MODEL,
+                prompt: item.prompt,
+                aspectRatio: item.aspectRatio,
+                resolution: item.resolution,
+                images: loaded,
+              },
+              signal,
+            );
+            usedModel = outcome.model;
+            for (const file of outcome.files) {
+              const target = join(output.realDir, `generated-${randomUUID()}.${file.extension}`);
+              await writeFile(target, file.bytes, { flag: "wx" });
+              results.push({ index: results.length, status: "succeeded", path: target, mimeType: file.mimeType });
+            }
+          } catch (error) {
+            const code =
+              signal.aborted
+                ? "IMAGE_CANCELLED"
+                : error && typeof error === "object" && "errorCode" in error && typeof error.errorCode === "string"
+                  ? error.errorCode.replace(/^MEDIA_/, "IMAGE_")
+                  : "IMAGE_REQUEST_FAILED";
+            results.push({
+              index: results.length,
+              status: code === "IMAGE_CANCELLED" ? "cancelled" : "failed",
+              errorCode: code,
+            });
+          }
+        }
+        const ok = results.some((result) => result.status === "succeeded");
+        return {
+          ok,
+          isError: !ok,
+          content: {
+            kind: "generated-images",
+            providerId: STARAI_PROVIDER_ID,
+            modelId: usedModel,
+            results,
+            operations: [],
+          },
+        };
+      }
       return failure(
         "IMAGE_NOT_CONFIGURED",
         // MCP image tools stay separate: they are discovered and called as
         // ordinary MCP tools and never back this built-in tool (#2563).
-        "Configure an image generation model in Settings > Models > Image generation model before generating images. Do not substitute another model. MCP image tools are separate tools and cannot back this one.",
+        "Sign in to your StarAI account (or configure an image generation model in Settings > Models > Image generation model) before generating images. Do not substitute another model. MCP image tools are separate tools and cannot back this one.",
       );
+    }
     const { provider } = await host.call<{ provider?: ProviderPublic }>("providers.get", {
       id: binding.providerId,
     });

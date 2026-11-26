@@ -239,3 +239,64 @@
   .generated-image-viewer-viewport { padding: 12px; }
   .generated-image-viewer-footer { padding: 0 8px; }
 }
+
+.generated-videos {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 100%;
+}
+.generated-video-card {
+  width: min(100%, 540px);
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--ds-border-default);
+  background: var(--ds-bg-secondary);
+}
+.generated-video-player {
+  display: block;
+  width: 100%;
+  max-height: min(68dvh, 520px);
+  background: #000;
+}
+.generated-video-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: var(--text-xs);
+  color: var(--ds-text-secondary);
+}
+.generated-video-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.generated-video-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  color: var(--ds-text-primary);
+}
+.generated-video-download:hover {
+  background: var(--ds-bg-hover);
+}
+.generated-video-download:focus-visible {
+  outline: 2px solid var(--ds-text-primary);
+  outline-offset: 2px;
+}
+.generated-video-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}

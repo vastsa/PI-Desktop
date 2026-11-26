@@ -21,6 +21,8 @@ export const PLUGIN_DEV_SKILL_FILE = "plugin-development.md";
 export const PLUGIN_DEV_SKILL_ID = "pi-desktop/plugin-development";
 export const IMAGE_GENERATION_SKILL_ID = "pi-desktop/imagegen";
 const IMAGE_GENERATION_SKILL_FILE = "image-generation.md";
+export const VIDEO_GENERATION_SKILL_ID = "pi-desktop/videogen";
+const VIDEO_GENERATION_SKILL_FILE = "video-generation.md";
 /** Inline visualization contract (ADR gen-ui-inline-visualization). */
 export const VISUALIZE_SKILL_ID = GEN_UI_SKILL_ID;
 const VISUALIZE_SKILL_FILE = "visualize.md";
@@ -98,6 +100,7 @@ export type BuiltinSkillInput = {
 
 const BUILTIN_SKILL_FILES = [
   [IMAGE_GENERATION_SKILL_ID, IMAGE_GENERATION_SKILL_FILE],
+  [VIDEO_GENERATION_SKILL_ID, VIDEO_GENERATION_SKILL_FILE],
   [VISUALIZE_SKILL_ID, VISUALIZE_SKILL_FILE],
   [PLUGIN_DEV_SKILL_ID, PLUGIN_DEV_SKILL_FILE],
 ] as const;
@@ -121,7 +124,7 @@ export function builtinSkillCatalog(): PluginSkillDef[] {
  * fresh so a packaged update takes effect without a restart.
  */
 export function builtinSkills(input: BuiltinSkillInput): PluginSkillDef[] {
-  const ids: string[] = [IMAGE_GENERATION_SKILL_ID];
+  const ids: string[] = [IMAGE_GENERATION_SKILL_ID, VIDEO_GENERATION_SKILL_ID];
   if (!input.remote) ids.push(VISUALIZE_SKILL_ID);
   if (isPluginWorkspace(input.workspacePath, input.pluginPaths)) ids.push(PLUGIN_DEV_SKILL_ID);
   const activeIds = new Set(ids);

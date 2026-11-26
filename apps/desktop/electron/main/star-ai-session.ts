@@ -168,6 +168,44 @@ export class StarAiSession {
     return result;
   }
 
+  async submitStudioGeneration(form: FormData, signal: AbortSignal) {
+    const session = await this.session();
+    if (!session) throw required();
+    const result = await this.request("/pg/studio/generations", {
+      method: "POST",
+      body: form,
+      signal,
+    }, session.token);
+    if (result.status === 401 && this.current === session) this.current = null;
+    return result;
+  }
+
+  async getStudioGeneration(id: string, signal: AbortSignal) {
+    const session = await this.session();
+    if (!session) throw required();
+    const result = await this.request(`/pg/studio/generations/${encodeURIComponent(id)}`, {
+      method: "GET",
+      signal,
+    }, session.token);
+    if (result.status === 401 && this.current === session) this.current = null;
+    return result;
+  }
+
+  async downloadStudioContent(path: string, signal: AbortSignal) {
+    if (!path.startsWith("/pg/studio/generations/")) {
+      throw starAiError("STARAI_INVALID_RESPONSE", "Unexpected StarAI media asset path.");
+    }
+    const session = await this.session();
+    if (!session) throw required();
+    const result = await this.request(path, {
+      method: "GET",
+      headers: { Accept: "*/*" },
+      signal,
+    }, session.token);
+    if (result.status === 401 && this.current === session) this.current = null;
+    return result;
+  }
+
   async revoke() {
     const sid = this.current?.sid;
     this.forget();

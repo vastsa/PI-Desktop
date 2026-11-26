@@ -111,7 +111,14 @@ export function isImageOnlyChatModel(
 export const MAX_GENERATED_IMAGES = 10;
 export const IMAGE_GENERATION_TIMEOUT_MS = 180_000;
 export const IMAGE_BATCH_TIMEOUT_MS = 950_000;
-export type ImageGenerationItem = { prompt: string; count?: number; images?: string[] };
+export type ImageGenerationItem = {
+  prompt: string;
+  count?: number;
+  images?: string[];
+  aspectRatio?: string;
+  resolution?: string;
+  model?: string;
+};
 export type ImageGenerationInput = { items: ImageGenerationItem[] };
 export type GeneratedImageResult = {
   index: number;
@@ -165,7 +172,7 @@ export function imageGenerationItems(value: unknown): ImageGenerationItem[] {
   const prompts: ImageGenerationItem[] = [];
   for (const item of items) {
     if (!item || typeof item !== "object" || Array.isArray(item)) invalid("invalid image item");
-    const { prompt, count = 1, images } = item as Record<string, unknown>;
+    const { prompt, count = 1, images, aspectRatio, resolution, model } = item as Record<string, unknown>;
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 32_000)
       invalid("prompt must contain 1–32000 characters");
     if (
@@ -182,12 +189,21 @@ export function imageGenerationItems(value: unknown): ImageGenerationItem[] {
         images.some((path) => typeof path !== "string" || !path.trim() || path.length > 4096))
     )
       invalid("images must contain at most 4 local image paths");
+    if (aspectRatio != null && (typeof aspectRatio !== "string" || aspectRatio.trim().length > 16))
+      invalid("aspectRatio must be a valid ratio string");
+    if (resolution != null && (typeof resolution !== "string" || resolution.trim().length > 16))
+      invalid("resolution must be a valid resolution string");
+    if (model != null && (typeof model !== "string" || !model.trim() || model.trim().length > 128))
+      invalid("model must be a non-empty model id");
     for (let i = 0; i < count; i++)
       prompts.push({
         prompt: prompt.trim(),
         ...(Array.isArray(images) && images.length
           ? { images: (images as string[]).map((path) => path.trim()) }
           : {}),
+        ...(typeof aspectRatio === "string" && aspectRatio.trim() ? { aspectRatio: aspectRatio.trim() } : {}),
+        ...(typeof resolution === "string" && resolution.trim() ? { resolution: resolution.trim() } : {}),
+        ...(typeof model === "string" && model.trim() ? { model: model.trim() } : {}),
       });
     if (prompts.length > MAX_GENERATED_IMAGES)
       invalid("at most 10 images may be generated per batch");

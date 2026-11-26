@@ -41,6 +41,12 @@ export const starAiEn = {
   logoutError: "Could not complete sign-out. Try again.",
   updateError: "Could not update the model list in this window. Refresh to try again.",
   applied: "New chats will use {{model}} ({{group}}).",
+  videoModel: "Video generation",
+  generatedVideo: "Generated video",
+  downloadGeneratedVideo: "Download generated video",
+  videoGenerationFailed: "Video generation failed",
+  videoSignInHint: "Sign in to your StarAI account in Settings > Models to generate videos.",
+  openSettings: "Open Models settings",
 };
 
 export const starAiZh: typeof starAiEn = {
@@ -86,4 +92,10 @@ export const starAiZh: typeof starAiEn = {
   logoutError: "未能退出登录，请重试。",
   updateError: "当前窗口的模型列表更新失败，请刷新后重试。",
   applied: "新对话将使用 {{group}} 的 {{model}}。",
+  videoModel: "视频生成",
+  generatedVideo: "生成的视频",
+  downloadGeneratedVideo: "下载生成的视频",
+  videoGenerationFailed: "视频生成失败",
+  videoSignInHint: "请先在「设置 → 模型」中登录 StarAI 账户后再生成视频。",
+  openSettings: "前往模型设置",
 };

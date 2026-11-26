@@ -1355,7 +1355,7 @@ pub async fn execute_tool_with_file_lease(
         // Both run in Electron main after the host authorises them:
         // image generation needs a provider SDK, and computer use needs
         // a provider plus Chromium capture (ADR 0342).
-        "GenerateImages" | "Computer" => Ok(serde_json::json!({ "authorized": true })),
+        "GenerateImages" | "GenerateVideo" | "Computer" => Ok(serde_json::json!({ "authorized": true })),
         "Read" | "Glob" | "Grep" | "Write" | "Edit" => {
             run_file_tool(
                 FileToolPaths {

@@ -15,9 +15,11 @@ test("only a valid saved route restores the default on entry", () => {
   assert.deepEqual(starAiDraft({ ...catalog, groups: [] }), emptyStarAiDraft);
 });
 
-test("refresh preserves a browsed service without applying a group or model", () => {
-  const browsing = { service: "media", group: "", model: "" };
-  assert.deepEqual(starAiDraft(catalog, browsing), browsing);
+test("refresh preserves a browsed chat service and drops view-only media service", () => {
+  const browsingMedia = { service: "media", group: "", model: "" };
+  assert.deepEqual(starAiDraft(catalog, browsingMedia), emptyStarAiDraft);
+  const browsingGpt = { service: "gpt", group: "", model: "" };
+  assert.deepEqual(starAiDraft(catalog, browsingGpt), browsingGpt);
   const groupOnly = { service: "gpt", group: groups[1].id, model: "" };
   assert.deepEqual(starAiDraft(catalog, groupOnly), groupOnly);
   assert.deepEqual(starAiDraft(catalog, { ...groupOnly, model: "gpt-image-1" }), groupOnly);

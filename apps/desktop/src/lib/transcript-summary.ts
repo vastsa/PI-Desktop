@@ -21,6 +21,7 @@ export type AssistantTurnSummary = {
   activityItems: AssistantActivityItem[];
   toolItems: Extract<AssistantActivityItem, { kind: "tool" }>[];
   generatedImages: UiMessage[];
+  generatedVideos: UiMessage[];
   actionMessage?: UiMessage;
   metaMessage?: UiMessage;
   latestUsageMessage?: UiMessage;
@@ -47,7 +48,7 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
   const cached = summaries.get(entry.parts);
   if (cached) return cached;
   const result: AssistantTurnSummary = {
-    messages: [], tools: [], activityItems: [], toolItems: [], generatedImages: [],
+    messages: [], tools: [], activityItems: [], toolItems: [], generatedImages: [], generatedVideos: [],
     responseOutputEstimated: false, hasError: false, streaming: false,
     hasContent: false, process: [], responses: [],
   };
@@ -62,6 +63,7 @@ export function getAssistantTurnSummary(entry: AssistantTurnEntry): AssistantTur
         result.toolItems.push(item);
         result.tools.push(item.message);
         if (item.message.toolName === "GenerateImages") result.generatedImages.push(item.message);
+        if (item.message.toolName === "GenerateVideo") result.generatedVideos.push(item.message);
       }
       continue;
     }

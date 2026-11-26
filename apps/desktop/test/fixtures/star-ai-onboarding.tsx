@@ -91,15 +91,9 @@ async function probe() {
   await click("button", "Sign in to StarAI");
   await until(() => document.querySelector('button[aria-label="Model"]')?.textContent === "gpt-4o"
     && [...document.querySelectorAll(".settings-row-detail")].some((entry) => entry.textContent === "Current default"));
-  await click('button[data-service="media"]');
-  await until(() => !document.querySelector('button[aria-label="Model"]'));
-  await click('button[aria-label="Model group"]');
-  await click('[role="option"]', "视频生成组");
-  await until(() => [...document.querySelectorAll(".settings-row-detail")].some((entry) => entry.textContent === "0 of 2 models support chat"));
-  await click('button[aria-label="Model"]');
-  await until(() => document.querySelectorAll('button[role="option"]:disabled').length === 2);
-  if (document.querySelector('button[role="option"]:enabled')) throw new Error("Media-only group offers a chat default");
-  await click('button[aria-label="Model"]');
+  if (document.querySelector('button[data-service="media"]')) {
+    throw new Error("View-only media service card should not appear in model picker");
+  }
   await click('button[data-service="gpt"]');
   await click('button[aria-label="Model group"]');
   if ([...document.querySelectorAll('[role="option"]')].some((entry) => entry.textContent?.includes("视频生成组"))) {
@@ -113,7 +107,9 @@ async function probe() {
   await until(() => !document.querySelector('[role="tooltip"]'));
   await click('[role="option"]', "gpt ultra fast · 3×");
   await click('button[aria-label="Model"]');
-  await until(() => [...document.querySelectorAll('button[role="option"]:disabled')].some((entry) => entry.textContent?.includes("gpt-image-1")));
+  if ([...document.querySelectorAll('button[role="option"]')].some((entry) => entry.textContent?.includes("gpt-image-1"))) {
+    throw new Error("View-only image model should not appear in chat model selector");
+  }
   const headings = [...document.querySelectorAll(".provider-service-group")].map((entry) => entry.textContent);
   if (headings.length !== 1 || headings[0] !== "gpt ultra fast") throw new Error("Model list is split by model name instead of site group");
   await click('[role="option"]', "gpt-4o");

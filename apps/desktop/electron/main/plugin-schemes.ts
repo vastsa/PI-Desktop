@@ -3,6 +3,7 @@ import { GEN_UI_SCHEME_PRIVILEGES } from "./gen-ui-protocol";
 import { PLUGIN_ASSET_SCHEME_PRIVILEGES } from "./plugin-asset-protocol";
 import { PLUGIN_RENDERER_SCHEME_PRIVILEGES } from "./plugin-renderer-protocol";
 import { STARTUP_ANIMATION_SCHEME_PRIVILEGES } from "./startup-animation-protocol";
+import { GENERATED_MEDIA_SCHEME_PRIVILEGES } from "./star-ai-media-protocol";
 
 /**
  * Reserve every host-owned scheme before the app is ready: the plugin
@@ -20,5 +21,6 @@ export function registerPluginSchemes(): void {
     PLUGIN_RENDERER_SCHEME_PRIVILEGES,
     GEN_UI_SCHEME_PRIVILEGES,
     STARTUP_ANIMATION_SCHEME_PRIVILEGES,
+    GENERATED_MEDIA_SCHEME_PRIVILEGES,
   ]);
 }

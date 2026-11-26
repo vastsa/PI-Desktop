@@ -24,6 +24,7 @@ import { isValidToolCall, recoverMalformedToolCalls } from "./tool-call-recovery
 import { textToolCallDiagnostic } from "./text-tool-call.js";
 import { computerUseDescription, computerUseParameters } from "./computer-use/tool.js";
 import { imageGenerationDescription, imageGenerationParameters } from "./image-generation/tool.js";
+import { videoGenerationDescription, videoGenerationParameters } from "./video-generation/tool.js";
 import { todoWriteDescription, todoWriteParameters } from "./todo-tool.js";
 import { createJevClassifierTool } from "./jev-classifier-tool.js";
 import { CODEMODE_TOOL_NAME } from "./codemode/limits.js";
@@ -865,6 +866,8 @@ const AGENT_CORE_TOOL_NAMES = new Set([
   // model has to go looking for is one it will not use. Registration keeps its
   // own gate: the tool only exists when the catalog is non-empty.
   SKILL_TOOL_NAME,
+  "GenerateImages",
+  "GenerateVideo",
 ]);
 const MAX_ON_DEMAND_TOOL_PROMPT_ENTRIES = 64;
 const MAX_TOOL_SEARCH_RESULT_NAMES = 24;
@@ -3527,6 +3530,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       " An explicit path outside the workspace and session scratch roots requires permission unless the effective mode is Auto.";
     const describe = (toolName: string): string => {
       if (toolName === "GenerateImages") return imageGenerationDescription;
+      if (toolName === "GenerateVideo") return videoGenerationDescription;
       if (toolName === "Computer") return computerUseDescription;
       if (scheduledToolDescriptions[toolName]) return scheduledToolDescriptions[toolName];
       switch (toolName) {
@@ -3583,6 +3587,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // stopped being readable.
     const parameters: Record<string, Parameters<typeof Type.Object>[0]> = {
       GenerateImages: imageGenerationParameters,
+      GenerateVideo: videoGenerationParameters,
       Computer: computerUseParameters,
       TodoWrite: todoWriteParameters,
       Read: {
@@ -3773,7 +3778,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // Computer use joins them: main owns a loop that must settle before
         // the turn is reported stopped, not be abandoned mid-action.
         const hostAbortsProcess =
-          isBash || toolName === "GenerateImages" || toolName === "Computer";
+          isBash || toolName === "GenerateImages" || toolName === "GenerateVideo" || toolName === "Computer";
         const canAbandonWait = READ_ONLY_CORE_TOOLS.has(toolName);
         const abortedMarker = Symbol("tool-aborted");
         let resolveAborted: (marker: typeof abortedMarker) => void = () => undefined;
@@ -4289,7 +4294,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
             "TodoWrite",
           ]
         : ["Read", "Glob", "Grep", "BrowserPreview", "Bash", "Write", "Edit"];
-    if (agentLevel) tools.push("PluginScaffold", "PluginPack", "GenerateImages");
+    if (agentLevel) tools.push("PluginScaffold", "PluginPack", "GenerateImages", "GenerateVideo");
     // Scheduled tasks and computer use belong to the builtin Agent mode
     // itself; the Host refuses them in every other mode.
     if (agentLevel && this.modeState.offersAgentModeOnlyTools()) {

@@ -7,7 +7,9 @@ export const emptyStarAiDraft: StarAiDraft = { service: null, group: "", model: 
 export function starAiDraft(catalog: StarAiCatalog, preferred?: StarAiDraft | null): StarAiDraft {
   const choice = preferred ?? catalog.selection;
   if (!choice) return emptyStarAiDraft;
-  const group = catalog.groups.find((entry) => entry.id === choice.group && entry.models.length > 0);
+  const isChatGroup = (entry: StarAiCatalog["groups"][number]) =>
+    (entry.chatModels?.length ?? 0) > 0 && (entry.id === "auto" || starAiGroupService(entry.id) !== "media");
+  const group = catalog.groups.find((entry) => entry.id === choice.group && isChatGroup(entry));
   if (group) {
     return {
       service: group.id === "auto" ? null : starAiGroupService(group.id),
@@ -16,7 +18,7 @@ export function starAiDraft(catalog: StarAiCatalog, preferred?: StarAiDraft | nu
     };
   }
   const service = preferred?.service;
-  if (service && catalog.groups.some((entry) => entry.id !== "auto" && entry.models.length && starAiGroupService(entry.id) === service)) {
+  if (service && service !== "media" && catalog.groups.some((entry) => entry.id !== "auto" && isChatGroup(entry) && starAiGroupService(entry.id) === service)) {
     return { service, group: "", model: "" };
   }
   return emptyStarAiDraft;

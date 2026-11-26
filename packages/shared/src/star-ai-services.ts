@@ -1,5 +1,7 @@
 /** Service order and channel classification used by the site's API key selector. */
 export const STARAI_SERVICES = ["gpt", "claude", "gemini", "domestic", "grok", "media", "other"] as const;
+/** Chat-capable services shown in the desktop model pickers (media routes run through built-in tools). */
+export const STARAI_CHAT_SERVICES = ["gpt", "claude", "gemini", "domestic", "grok", "other"] as const;
 export type StarAiService = (typeof STARAI_SERVICES)[number];
 
 export function starAiGroupService(groupId: string): StarAiService {

@@ -858,6 +858,7 @@ const sidecarRuntime = createSidecarRuntime({
   disabledBuiltinSkills: runtimeDisabledBuiltinSkills,
   pluginActiveInProject,
   currentNetworkProxy,
+  getStarAi: () => starAi,
   computerCursorOverlay,
   publishComputerGrant,
 });

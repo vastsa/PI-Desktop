@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { COMPUTER_CALL_TIMEOUT_MS, DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, imageGenerationPrompts, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
+import { COMPUTER_CALL_TIMEOUT_MS, DEFAULT_RPC_TIMEOUT_MS, IMAGE_BATCH_TIMEOUT_MS, VIDEO_GENERATION_TIMEOUT_MS, imageGenerationPrompts, parseVideoGenerationInput, readNdjsonLines, rpcTimeoutMs, rpcErrorFromWire, rpcErrorToWire } from "@pi-desktop/shared";
 import type { ProcessExitHandler, StderrHandler } from "./host-process.js";
 
 // stderr lines kept per sidecar so an unexpected exit can be reported with the
@@ -289,22 +289,26 @@ export class AgentSidecar {
     const controller = new AbortController();
     this.localToolControllers.set(key, controller);
     const imageGeneration = params.toolName === "GenerateImages";
+    const videoGeneration = params.toolName === "GenerateVideo";
     const computerUse = params.toolName === "Computer";
     // High-risk local tools must be authorised by host-core before the local
     // handler runs. Running first and asking later would let a local tool
     // bypass the permission broker, which is the whole point of the gate.
-    const hostAuthorised = imageGeneration || computerUse;
+    const hostAuthorised = imageGeneration || videoGeneration || computerUse;
     const budget = imageGeneration
       ? IMAGE_BATCH_TIMEOUT_MS + 130_000
-      : computerUse
-        ? COMPUTER_CALL_TIMEOUT_MS + 30_000
-        : DEFAULT_RPC_TIMEOUT_MS;
+      : videoGeneration
+        ? VIDEO_GENERATION_TIMEOUT_MS + 60_000
+        : computerUse
+          ? COMPUTER_CALL_TIMEOUT_MS + 30_000
+          : DEFAULT_RPC_TIMEOUT_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
         (async () => {
           if (hostAuthorised) {
             if (imageGeneration) imageGenerationPrompts(input.args);
+            if (videoGeneration) parseVideoGenerationInput(input.args);
             if (!this.host) throw new Error("host unavailable");
             const gate = await this.host.call<LocalToolResult>("tools.execute", params);
             if (!gate.ok) return gate;

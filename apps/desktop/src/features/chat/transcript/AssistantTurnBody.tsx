@@ -16,6 +16,7 @@ import { cachedVisibleProcessSteps } from "../../../lib/transcript-activity-summ
 import { useAppStore } from "../../../stores/app-store";
 import { ReviewChangeCard } from "../../../components/ReviewChangeCard";
 import { GeneratedImages } from "./GeneratedImages";
+import { GeneratedVideos } from "./GeneratedVideos";
 import { ToolRow } from "./ToolRow";
 import { AssistantTurnParts } from "./AssistantTurnParts";
 import { TurnProcess } from "./TurnProcess";
@@ -115,6 +116,9 @@ export const AssistantTurnBody = memo(function AssistantTurnBody({
   const generatedImages = useMemo(() => tools
     .filter((message) => message.toolName === "GenerateImages")
     .map((message) => <GeneratedImages key={message.id} message={message} />), [tools]);
+  const generatedVideos = useMemo(() => tools
+    .filter((message) => message.toolName === "GenerateVideo")
+    .map((message) => <GeneratedVideos key={message.id} message={message} />), [tools]);
   const partContext = { isActive, activePart, runtimeActivity, turnDelegationStatuses, turnDelegationTimings };
   return (
     <>
@@ -143,6 +147,7 @@ export const AssistantTurnBody = memo(function AssistantTurnBody({
           produced, not part of what it did. */}
       <AssistantTurnParts parts={responses} {...partContext} />
       {generatedImages}
+      {generatedVideos}
     </>
   );
 });

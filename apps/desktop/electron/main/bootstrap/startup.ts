@@ -21,6 +21,7 @@ import {
   type ResolvedStartupAnimation,
 } from "../startup-animation";
 import { installStartupAnimationProtocol } from "../startup-animation-protocol";
+import { installGeneratedMediaProtocol } from "../star-ai-media-protocol";
 import { applyNetworkProxyFromAppSettings } from "../network-proxy";
 import { readCloseBehavior } from "../window-preferences";
 import { createAgentHostBridge, type AgentHostBridge } from "../agent-host-bridge";
@@ -217,6 +218,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
     // handler is installed here so it is already in place when the first
     // window's `<video>` asks for the bytes.
     installStartupAnimationProtocol(() => state.startupAnimation);
+    installGeneratedMediaProtocol(dataDir);
     // Load the close-behavior preference before the first window exists: the
     // close handler reads `closeBehavior` synchronously, and a window created
     // while it still held the "ask" default would prompt a user who already

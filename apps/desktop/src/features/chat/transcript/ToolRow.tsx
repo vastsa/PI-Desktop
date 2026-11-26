@@ -4,6 +4,7 @@ import { PlanHistoryCard } from "./PlanHistoryCard";
 import { planSubmission } from "../../../lib/plan-history";
 import { reviewChangeFromMessage } from "../../../lib/workspace-review";
 import { GeneratedImages } from "./GeneratedImages";
+import { GeneratedVideos } from "./GeneratedVideos";
 import "../../../styles/generated-images.css";
 import {
   memo,
@@ -599,6 +600,7 @@ function HostToolRow({
         </div>
       ) : null}
       {!imagesInTurn && <GeneratedImages message={message} />}
+      {!imagesInTurn && <GeneratedVideos message={message} />}
       {inlineOpen && delegate ? (
         <SubagentRunRows
           run={delegate}

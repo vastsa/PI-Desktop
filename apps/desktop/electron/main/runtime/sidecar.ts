@@ -12,6 +12,8 @@ import {
   loadBuiltinSkillBody,
 } from "../builtin-skills";
 import { createImageGenerationTool } from "../services/image-generation-service";
+import { createVideoGenerationTool } from "../services/video-generation-service";
+import type { StarAiAccount } from "../star-ai-account";
 import { createComputerUseTool } from "../computer-use/service";
 import { resolveComputerUseProvider } from "../computer-use/provider";
 import type { ComputerCursorOverlay } from "../computer-use/cursor-overlay";
@@ -81,6 +83,8 @@ export type SidecarRuntimeDependencies = {
   computerCursorOverlay: Pick<ComputerCursorOverlay, "apply">;
   /** Push the live computer-use grant to the renderer's indicator. */
   publishComputerGrant: (grant: ComputerGrantView | null) => void;
+  /** Signed-in StarAI account used for built-in image and video generation. */
+  getStarAi?: () => Pick<StarAiAccount, "isSignedIn" | "studioMedia"> | undefined;
 };
 
 export function createSidecarRuntime({
@@ -117,6 +121,7 @@ export function createSidecarRuntime({
   currentNetworkProxy,
   computerCursorOverlay,
   publishComputerGrant,
+  getStarAi,
 }: SidecarRuntimeDependencies): {
   emitAgentEvent: (envelope: AgentEventEnvelope) => void;
   wireSidecar: (sidecar: AgentSidecar) => void;
@@ -590,6 +595,7 @@ export function createSidecarRuntime({
   s.setLocalTool("GenerateImages", createImageGenerationTool({
     dataDir,
     getHost: () => runtimeState.host,
+    getStarAi,
     resolveAuth: providerId => vendorOAuth.resolveAuth(providerId),
     resolveImageModel: async (provider, modelId) => {
       await modelsDevCatalog.ensureLoaded();
@@ -599,6 +605,11 @@ export function createSidecarRuntime({
     },
     // Fake-IP tolerance belongs to the network policy, not to the proxy switch.
     allowFakeIp: () => relaxedNetworkPolicyEnabled(),
+  }));
+  s.setLocalTool("GenerateVideo", createVideoGenerationTool({
+    dataDir,
+    getHost: () => runtimeState.host,
+    getStarAi: () => getStarAi?.(),
   }));
   // Granted native application control (ADR 0342, ADR 0344). The host
   // authorises the call through `tools.execute` before this handler runs, and
