@@ -5,6 +5,7 @@ export const frEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Ouvrez le gestionnaire de fichiers une fois pour ajouter son onglet aux autres sessions du projet. Fermer cet onglet ou ouvrir le panneau latéral ne concerne que la session en cours.",
       "Les sauts de ligne ne créent plus de lignes vides ni de caractères invisibles en trop. Annuler restaure une dernière ligne vide supprimée.",
       "Les compétences choisies dans le menu / apparaissent sous forme de pastilles dans le champ de saisie.",
       "Modifiez les rôles et compétences intégrés dans les réglages des Modes, organisez les rôles d'agent privés et limitez les tâches déléguées aux outils et fichiers nécessaires.",

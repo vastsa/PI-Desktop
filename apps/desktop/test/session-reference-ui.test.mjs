@@ -146,6 +146,8 @@ const { MessageRow } = load(new URL("../src/features/chat/transcript/MessageRow.
   "./ActionBarSlots": { ActionSlotSide: () => null },
   "./SessionMessageOrigin": { SessionMessageOrigin: () => null },
   "./extra-attachments": { getExtraMessageAttachments },
+   "./CollapsibleUserText": { CollapsibleUserText: ({ children }) =>
+     React.createElement("div", { className: "message-user-text selectable" }, children) },
   "./TranscriptMenu": {
     useTranscriptMenu: () => () => {},
     useChatTextActions: () => ({ copyText: () => {}, selectText: () => {} }),

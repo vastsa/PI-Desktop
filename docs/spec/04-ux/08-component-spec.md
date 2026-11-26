@@ -2084,6 +2084,11 @@ Single message render — either user (plaintext) or assistant (markdown streami
   background or outer border. Its Sparkles/chevron trigger uses secondary text,
   and the expanded markdown is indented by a subtle theme-token left rule. It
   is never concatenated into answer markdown.
+ - Long user messages default to a six-line preview, measured at the rendered
+   width and font. The preview fades at the bottom and has a centered text
+   button with a chevron to show or hide the full message. Six or fewer lines
+   have no button. The choice is renderer-local; search reveals a matching
+   message, and copying and editing still use the complete original text.
 - Hover actions: quiet icon-only action chips under the bubble — Copy on idle
   assistant turns; Fork and Regenerate on completed assistant turns; Edit and
   Delete on user turns. A streaming assistant turn omits its Copy action until
@@ -2835,6 +2840,9 @@ as a conversation:
   activity groups where the selected layout allows them, and individual tool
   and thinking details. The final answer stays outside the process. Search
   reveals the matching levels; manual choices are scoped to each tab and session.
+   Task bubbles and assistant replies reflow within the available panel width
+   when resized or maximized. Short Task bubbles stay compact; longer Task
+   prompts use the same six-line preview as user messages.
 - The footer reuses the main composer shell with a localized read-only notice.
   The latest Task’s recorded model and thinking level are passive labels,
   omitted when unknown. There is no editor, send path, composer slot, or mode,
