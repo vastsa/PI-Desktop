@@ -7,6 +7,7 @@ export const zhTWEntries: ChangelogEntry[] = [
     highlights: [
       "在麒麟 ARM64 上，從「Agent → Skills」安裝自己的 Word Skill，並在「擴充功能」中啟用辦公執行環境，即可離線讀取、新建或另存 Word 文件。",
       "在麒麟 ARM64 上啟用辦公執行環境後，自裝 PowerPoint Skill 可離線擷取文字、產生縮圖、新建可編輯簡報並另存修改副本。",
+      "在麒麟 ARM64 上，自行安裝的 PDF Skill 可離線擷取文字和合併 PDF；辦公執行環境也可將 Word、PowerPoint 和 Excel 檔案匯出為 PDF。",
     ],
   },
   {

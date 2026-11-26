@@ -84,6 +84,26 @@
 - **Status**: Automated scenario; qualification requires a run against the
   exact installed release candidate and its approved dependencies.
 
+## E2E-PIE-OFFICE-PDF: Offline PDF and Office export on Kylin ARM64
+
+- **Preconditions**: The inspected Debian package is installed on Kylin V10
+  SP1 with a clean profile, loopback-only networking, no CheeseAgent, and
+  the standalone, unmodified user `pdf` Skill.
+- **Steps**: Enable Office Runtime and run `e2e-offline-office.mjs --pdf`
+  with a loopback model. Reject a Bash write, load the PDF Skill, extract
+  text and merge two PDFs in reverse input filename order with approved
+  Bash calls. Export independent DOCX, PPTX and XLSX inputs with the
+  packaged LibreOffice, and read each PDF back in the local Agent session.
+- **Expected**: A rejected call produces no files. The extracted text,
+  exact merged page order and expected Chinese text from all three
+  exported PDFs are readable. Files with Chinese names and spaces work,
+  inputs and the user Skill stay unchanged, and the package carries only
+  the selected runtime dependencies with their licenses.
+- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#self-installed-pdf-skill-and-office-export).
+- **Acceptance criterion**: A, C, E, G, Quality.
+- **Milestone**: M6+ (Pie Code 0.23.1).
+- **Status**: Automated scenario; retain results for the exact tested DEB.
+
 ## Windows background process snapshot clock
 
 - **Preconditions:** Isolated Windows Host and a synthetic background task.

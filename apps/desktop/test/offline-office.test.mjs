@@ -10,7 +10,9 @@ import bundleOfflineOffice from "../../../scripts/bundle-offline-office.mjs";
 const site = "python/lib/python3.12/site-packages";
 const nativePackages = Object.entries({
   "libreoffice-core": "7.1.8.1-3.el8_10.alma.1",
+  "libreoffice-calc": "7.1.8.1-3.el8_10.alma.1",
   "libreoffice-impress": "7.1.8.1-3.el8_10.alma.1",
+  "libreoffice-writer": "7.1.8.1-3.el8_10.alma.1",
   "poppler": "20.11.0-14.el8_10",
   "poppler-utils": "20.11.0-14.el8_10",
 }).map(([name, version]) => ({
@@ -57,7 +59,7 @@ async function withRuntime(run, { wordOnly = false } = {}) {
         beautifulsoup4: "bs4", certifi: "certifi", charset_normalizer: "charset_normalizer", click: "click",
         flatbuffers: "flatbuffers", idna: "idna", magika: "magika", markdownify: "markdownify", markitdown: "markitdown",
         numpy: "numpy", onnxruntime: "onnxruntime", packaging: "packaging", pillow: "PIL", protobuf: "google/protobuf",
-        python_dotenv: "dotenv", python_pptx: "pptx", requests: "requests", six: "six.py", soupsieve: "soupsieve",
+        pypdf: "pypdf", python_dotenv: "dotenv", python_pptx: "pptx", requests: "requests", six: "six.py", soupsieve: "soupsieve",
         typing_extensions: "typing_extensions.py", urllib3: "urllib3", xlsxwriter: "xlsxwriter",
       };
       for (const [name, path] of Object.entries(modules)) {
@@ -72,6 +74,8 @@ async function withRuntime(run, { wordOnly = false } = {}) {
         await put("metadata/native-office/licenses/" + name + "/LICENSE", "Renderer license notice.\n");
       }
       await put("libreoffice/program/oosplash", "#!/bin/bash\nprintf '%s\\n' \"$HOME\" \"\${!#}\"\n", 0o755);
+      for (const file of ["program/libwriterfilterlo.so", "share/registry/writer.xcd",
+        "program/libsclo.so", "program/libforuilo.so", "share/registry/calc.xcd"]) await put("libreoffice/" + file);
       await put("poppler/bin/pdftoppm", "#!/bin/sh\nprintf '%s\\n' \"$1\"\n", 0o755);
     }
     for (const file of ["node/bin/node", "python/bin/python3.12"]) await put(file, "#!/bin/sh\n", 0o755);
@@ -113,7 +117,9 @@ test("the Kylin package installs only the runtime and a disabled extension witho
     const files = await readdir(join(resources, "office-runtime"), { recursive: true });
     assert.ok(files.includes("node/lib/node_modules/docx/package.json"));
     for (const name of ["node/lib/node_modules/pptxgenjs/package.json", "bin/soffice", "bin/pdftoppm",
-      `${site}/markitdown/__init__.py`, `${site}/PIL/__init__.py`, `${site}/typing_extensions.py`]) {
+      `${site}/markitdown/__init__.py`, `${site}/PIL/__init__.py`, `${site}/typing_extensions.py`,
+      `${site}/pypdf/__init__.py`, `${site}/pypdf-1.0.0.dist-info/LICENSE.txt`,
+      "libreoffice/program/libwriterfilterlo.so", "libreoffice/program/libsclo.so"]) {
       assert.ok(files.includes(name), `${name} was not packaged`);
     }
     assert.ok(files.includes(`${site}/lxml/__init__.py`));
@@ -181,5 +187,14 @@ test("the Kylin package requires a native dependency version", { skip: process.p
       (pkg) => pkg.name === "poppler-utils" ? { ...pkg, version: undefined } : pkg,
     ) }));
     await assert.rejects(bundle(), /version is missing: poppler-utils/);
+  });
+});
+
+test("the Kylin package rejects a runtime without the Calc export dependencies", {
+  skip: process.platform === "win32",
+}, async () => {
+  await withRuntime(async ({ bundle, runtime }) => {
+    await rm(join(runtime, "libreoffice/program/libforuilo.so"));
+    await assert.rejects(bundle(), /libforuilo\.so/);
   });
 });

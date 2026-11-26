@@ -12,14 +12,15 @@ const renderCommands = ["soffice", "pdftoppm"];
 const executables = ["node/bin/node", "python/bin/python3.12"];
 const nativeMetadata = "metadata/native-office";
 const nativeRuntime = ["libreoffice", "poppler", nativeMetadata];
-const requiredNativePackages = ["libreoffice-core", "libreoffice-impress", "poppler", "poppler-utils"];
+const requiredNativePackages = ["libreoffice-core", "libreoffice-writer", "libreoffice-impress",
+  "libreoffice-calc", "poppler", "poppler-utils"];
 const metadata = ["metadata/runtime-source.json", "metadata/package-lock.json", "metadata/python-dependencies.json"];
 const pythonPackages = {
   beautifulsoup4: ["bs4"], certifi: ["certifi"], charset_normalizer: ["charset_normalizer"],
   click: ["click"], defusedxml: ["defusedxml"], flatbuffers: ["flatbuffers"], idna: ["idna"],
   lxml: ["lxml"], magika: ["magika"], markdownify: ["markdownify"], markitdown: ["markitdown"],
   numpy: ["numpy"], onnxruntime: ["onnxruntime"], packaging: ["packaging"], pillow: ["PIL"],
-  protobuf: ["google/protobuf", "google/_upb"], python_dotenv: ["dotenv"], python_pptx: ["pptx"],
+  protobuf: ["google/protobuf", "google/_upb"], pypdf: ["pypdf"], python_dotenv: ["dotenv"], python_pptx: ["pptx"],
   requests: ["requests"], six: ["six.py"], soupsieve: ["soupsieve"],
   typing_extensions: ["typing_extensions.py"], urllib3: ["urllib3"], xlsxwriter: ["xlsxwriter"],
 };
@@ -126,7 +127,10 @@ export async function verifyOfflineOfficeRuntime(runtime) {
     "libreoffice/program/oosplash", "poppler/bin/pdftoppm", ...renderCommands.map((name) => `bin/${name}`)]) {
     await access(join(runtime, executable), constants.X_OK);
   }
-  for (const name of [...metadata, "node/LICENSE", stdlib + "/LICENSE.txt", ...nativeRuntime, ...await pythonRuntimeFiles(runtime)]) {
+  for (const name of [...metadata, "node/LICENSE", stdlib + "/LICENSE.txt", ...nativeRuntime,
+    "libreoffice/program/libwriterfilterlo.so", "libreoffice/share/registry/writer.xcd",
+    "libreoffice/program/libsclo.so", "libreoffice/program/libforuilo.so", "libreoffice/share/registry/calc.xcd",
+    ...await pythonRuntimeFiles(runtime)]) {
     await access(join(runtime, name), constants.R_OK);
   }
   await lockedNodePackages(runtime);
@@ -152,7 +156,7 @@ Promise.all([Packer.toBuffer(new Document({ sections: [] })), pptx.write({ outpu
 `], {
       ...opts, cwd: runtime, env: { ...process.env, NODE_OPTIONS: "", NODE_PATH: join(runtime, "node/lib/node_modules") },
     });
-    execFileSync(python, ["-I", "-B", "-c", "import defusedxml.minidom, lxml.etree, PIL.Image, pptx; from markitdown import MarkItDown; MarkItDown()"], opts);
+    execFileSync(python, ["-I", "-B", "-c", "import defusedxml.minidom, lxml.etree, PIL.Image, pptx; from markitdown import MarkItDown; from pypdf import PdfReader, PdfWriter; MarkItDown()"], opts);
     const profiles = mkdtempSync(join(tmpdir(), "pie-office-inspection-"));
     try {
       execFileSync(join(runtime, "bin/soffice"), ["--headless", "--version"], {

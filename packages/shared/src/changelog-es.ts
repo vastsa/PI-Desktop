@@ -7,6 +7,7 @@ export const esEntries: ChangelogEntry[] = [
     highlights: [
       "En Kylin ARM64, instala tu propia habilidad de Word en Agente → Skills y activa el entorno de Office en Extensiones para leer, crear y editar copias de documentos sin conexión.",
       "En Kylin ARM64, con el entorno de Office tu propia habilidad de PowerPoint puede extraer texto, generar miniaturas, crear presentaciones editables y guardar los cambios en una copia sin conexión.",
+      "En Kylin ARM64, tu propia habilidad de PDF puede extraer texto y combinar archivos sin conexión. El entorno de Office también exporta archivos de Word, PowerPoint y Excel a PDF.",
     ],
   },
   {
