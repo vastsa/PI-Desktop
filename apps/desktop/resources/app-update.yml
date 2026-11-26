@@ -1,4 +1,4 @@
 provider: github
-owner: vastsa
-repo: PI-Desktop
-updaterCacheDirName: '@pi-desktopdesktop-updater'
+owner: gexing521
+repo: StarAi-Desktop
+updaterCacheDirName: starai-desktop-updater

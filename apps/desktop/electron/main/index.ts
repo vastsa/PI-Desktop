@@ -255,7 +255,7 @@ const updater = new AppUpdaterController({
   logger,
   send: sendToRenderer,
   currentVersion: APP_VERSION,
-  isPackaged: !isDevelopmentBuild && !isStarAiPreview,
+  isPackaged: !isDevelopmentBuild,
   getLocale: () => mainState.updaterLocale,
   readUpdateSettings: async () => {
     const host = getHost();

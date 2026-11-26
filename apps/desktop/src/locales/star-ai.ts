@@ -47,6 +47,8 @@ export const starAiEn = {
   videoGenerationFailed: "Video generation failed",
   videoSignInHint: "Sign in to your StarAI account in Settings > Models to generate videos.",
   openSettings: "Open Models settings",
+  repository: "Repository & Releases",
+  openReleases: "Open Releases",
 };
 
 export const starAiZh: typeof starAiEn = {
@@ -98,4 +100,6 @@ export const starAiZh: typeof starAiEn = {
   videoGenerationFailed: "视频生成失败",
   videoSignInHint: "请先在「设置 → 模型」中登录 StarAI 账户后再生成视频。",
   openSettings: "前往模型设置",
+  repository: "项目仓库与版本发布",
+  openReleases: "查看发布页",
 };

@@ -20,11 +20,14 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { app, shell } from "electron";
+import { app, net, shell } from "electron";
 import electronUpdaterPkg from "electron-updater";
 import type { AppUpdater, UpdateInfo, ProgressInfo } from "electron-updater";
 import {
   formatChangelogNotes,
+  GITHUB_LATEST_RELEASE_API,
+  GITHUB_RELEASES_URL,
+  GITHUB_REPO_URL,
   IPC,
   type UpdatePreference,
   type UpdateState,
@@ -72,7 +75,56 @@ function createRelocatedUpdater(
   return platform === "win32" ? new RelocatedNsisUpdater(baseCachePath) : null;
 }
 
-export const RELEASES_URL = "https://github.com/vastsa/PI-Desktop/releases/latest";
+export const RELEASES_URL = GITHUB_RELEASES_URL;
+
+function parseSemverParts(raw: string): { core: number[]; pre: Array<number | string> } | null {
+  const cleaned = raw.trim().replace(/^v/i, "").split("+")[0] ?? "";
+  if (!cleaned) return null;
+  const dash = cleaned.indexOf("-");
+  const corePart = dash >= 0 ? cleaned.slice(0, dash) : cleaned;
+  const prePart = dash >= 0 ? cleaned.slice(dash + 1) : "";
+  const core = corePart.split(".").map((part) => Number.parseInt(part, 10));
+  if (core.length === 0 || core.some((n) => !Number.isFinite(n))) return null;
+  const pre = prePart
+    ? prePart.split(".").map((part) => (/^\d+$/.test(part) ? Number.parseInt(part, 10) : part))
+    : [];
+  return { core, pre };
+}
+
+/** Compare two semver strings; returns >0 when `left` is newer than `right`. */
+export function compareReleaseVersions(left: string, right: string): number {
+  const a = parseSemverParts(left);
+  const b = parseSemverParts(right);
+  if (!a || !b) return left.localeCompare(right);
+  const len = Math.max(a.core.length, b.core.length);
+  for (let i = 0; i < len; i += 1) {
+    const diff = (a.core[i] ?? 0) - (b.core[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  if (a.pre.length === 0 && b.pre.length === 0) return 0;
+  if (a.pre.length === 0) return 1;
+  if (b.pre.length === 0) return -1;
+  const preLen = Math.max(a.pre.length, b.pre.length);
+  for (let i = 0; i < preLen; i += 1) {
+    const x = a.pre[i];
+    const y = b.pre[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    if (x === y) continue;
+    if (typeof x === "number" && typeof y === "number") return x - y;
+    if (typeof x === "number") return -1;
+    if (typeof y === "number") return 1;
+    return x.localeCompare(y);
+  }
+  return 0;
+}
+
+function isRecoverableFeedMissingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /404|no published versions|unable to find latest version|cannot find latest|app-update\.yml|enoent/i.test(
+    message,
+  );
+}
 
 const AUTO_CHECK_INITIAL_DELAY_MS = 15_000;
 const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -111,6 +163,7 @@ export type UpdaterOptions = {
   platform?: NodeJS.Platform;
   isPackaged?: boolean;
   distribution?: WindowsDistribution;
+  fetchImpl?: typeof fetch;
 };
 
 export class AppUpdaterController {
@@ -143,6 +196,7 @@ export class AppUpdaterController {
     cancel: () => void;
   };
   private manualRequested = false;
+  private suppressRecoverableAutoError = false;
   private initialTimer: NodeJS.Timeout | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private listenersAttached = false;
@@ -155,6 +209,7 @@ export class AppUpdaterController {
    */
   private installRequested = false;
   private readonly autoUpdater: AppUpdater;
+  private readonly fetchImpl: typeof fetch;
   private readonly cacheMaintenance: UpdateCacheMaintenance;
 
   private readPackagedDistribution(
@@ -247,6 +302,12 @@ export class AppUpdaterController {
       );
     }
     this.autoUpdater = options.autoUpdater ?? relocated ?? autoUpdater;
+    this.fetchImpl =
+      options.fetchImpl ??
+      ((input, init) =>
+        typeof net?.fetch === "function"
+          ? net.fetch(String(input), init)
+          : fetch(input, init));
     this.cacheMaintenance = new UpdateCacheMaintenance({
       resourcesPath: process.resourcesPath,
       activeBasePath,
@@ -565,6 +626,12 @@ export class AppUpdaterController {
       });
     });
     this.autoUpdater.on("error", (error: Error) => {
+      if (this.suppressRecoverableAutoError && isRecoverableFeedMissingError(error)) {
+        this.logger.app("updater", "info", "updater feed missing; falling back to GitHub releases API", {
+          data: { detail: error.message },
+        });
+        return;
+      }
       // Auto checks fail quietly (offline, private repo, rate limits);
       // the renderer only surfaces errors when `manual` is set.
       this.logger.app("updater", "warn", "updater error", { data: String(error) });
@@ -593,6 +660,90 @@ export class AppUpdaterController {
     return this.state;
   }
 
+  /**
+   * Fallback check against our GitHub Releases API when electron-updater's
+   * `latest*.yml` metadata is absent (e.g., before the first release or for a
+   * release published without auto-update manifests).
+   */
+  private async checkGitHubReleaseFallback(timeoutMs: number): Promise<UpdateState> {
+    const response = await this.fetchImpl(GITHUB_LATEST_RELEASE_API, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "StarAI-Desktop",
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (response.status === 404) {
+      this.setState({
+        status: "up-to-date",
+        availableVersion: undefined,
+        releaseNotes: undefined,
+        progressPercent: undefined,
+        manualReminder: false,
+        error: undefined,
+        releasesUrl: RELEASES_URL,
+      });
+      return this.state;
+    }
+    if (!response.ok) {
+      throw new Error(`GitHub releases check failed (HTTP ${response.status})`);
+    }
+    const payload = (await response.json()) as {
+      tag_name?: unknown;
+      body?: unknown;
+      html_url?: unknown;
+      draft?: unknown;
+    };
+    const tag = typeof payload.tag_name === "string" ? payload.tag_name.trim() : "";
+    const latestVersion = tag.replace(/^v/i, "");
+    if (!latestVersion || payload.draft === true) {
+      this.setState({
+        status: "up-to-date",
+        availableVersion: undefined,
+        releaseNotes: undefined,
+        progressPercent: undefined,
+        manualReminder: false,
+        error: undefined,
+        releasesUrl: RELEASES_URL,
+      });
+      return this.state;
+    }
+    if (compareReleaseVersions(latestVersion, this.state.currentVersion) > 0) {
+      if (this.dismissedVersion && this.dismissedVersion !== latestVersion) {
+        this.dismissedVersion = undefined;
+        void this.persistDismissedVersionInOrder(null);
+      }
+      const dismissed = this.dismissedVersion === latestVersion;
+      const htmlUrl =
+        typeof payload.html_url === "string" && payload.html_url.startsWith(`${GITHUB_REPO_URL}/`)
+          ? payload.html_url
+          : RELEASES_URL;
+      const bodyNotes = typeof payload.body === "string" && payload.body.trim() ? payload.body.trim() : undefined;
+      this.setState({
+        mode: "manual",
+        status: "available",
+        availableVersion: latestVersion,
+        releaseNotes: this.notesFor(latestVersion) ?? bodyNotes,
+        releasesUrl: htmlUrl,
+        progressPercent: undefined,
+        dismissed,
+        manualReminder: dismissed ? false : this.manualReminderFor(latestVersion),
+        error: undefined,
+      });
+      return this.state;
+    }
+    this.setState({
+      status: "up-to-date",
+      availableVersion: undefined,
+      releaseNotes: undefined,
+      progressPercent: undefined,
+      manualReminder: false,
+      error: undefined,
+      releasesUrl: RELEASES_URL,
+    });
+    return this.state;
+  }
+
   /** User- or schedule-triggered check. Resolves with the settled state. */
   async check(options: { manual?: boolean } = {}): Promise<UpdateState> {
     await this.ensureSettingsLoaded();
@@ -610,6 +761,7 @@ export class AppUpdaterController {
     const timeoutMs = this.manualRequested
       ? MANUAL_CHECK_TIMEOUT_MS
       : AUTO_CHECK_TIMEOUT_MS;
+    this.suppressRecoverableAutoError = true;
     try {
       // Fire-and-forget relative to boot: callers must not await this from the
       // first-window path. The race only bounds *our* wait; electron-updater
@@ -621,6 +773,21 @@ export class AppUpdaterController {
       );
       await raceWithTimeout(checkPromise, timeoutMs, "update check");
     } catch (error) {
+      this.suppressRecoverableAutoError = false;
+      if (isRecoverableFeedMissingError(error)) {
+        try {
+          return await this.checkGitHubReleaseFallback(timeoutMs);
+        } catch (fallbackError) {
+          const message =
+            fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          this.logger.app("updater", "warn", "GitHub releases fallback check failed", {
+            data: { detail: message },
+          });
+          this.setState({ status: "error", error: message });
+          if (options.manual) throw fallbackError;
+          return this.state;
+        }
+      }
       const timedOut =
         (error as { code?: unknown } | null)?.code === UPDATE_CHECK_TIMEOUT_CODE;
       if (timedOut) {
@@ -641,6 +808,8 @@ export class AppUpdaterController {
       // The 'error' listener already recorded state; rethrow for manual
       // callers so the invoke rejects and the UI can toast it.
       if (options.manual) throw error;
+    } finally {
+      this.suppressRecoverableAutoError = false;
     }
     return this.state;
   }
@@ -686,7 +855,13 @@ export class AppUpdaterController {
   }
 
   async openReleases(): Promise<void> {
-    const url = parseAllowedExternalUrl(RELEASES_URL);
+    const candidate =
+      this.state.releasesUrl &&
+      (this.state.releasesUrl === GITHUB_REPO_URL ||
+        this.state.releasesUrl.startsWith(`${GITHUB_REPO_URL}/`))
+        ? this.state.releasesUrl
+        : RELEASES_URL;
+    const url = parseAllowedExternalUrl(candidate);
     if (!url) throw new Error("DISALLOWED_EXTERNAL_URL");
     await shell.openExternal(url);
   }

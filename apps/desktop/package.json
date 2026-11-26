@@ -4,10 +4,10 @@
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "StarAI Desktop Electron application",
-  "homepage": "https://github.com/vastsa/PI-Desktop",
+  "homepage": "https://github.com/gexing521/StarAi-Desktop",
   "author": {
-    "name": "vastsa",
-    "email": "hhxk666@gmail.com"
+    "name": "StarAI",
+    "url": "https://github.com/gexing521/StarAi-Desktop"
   },
   "main": "./out/main/index.js",
   "type": "module",
@@ -90,8 +90,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "vastsa",
-        "repo": "PI-Desktop"
+        "owner": "gexing521",
+        "repo": "StarAi-Desktop"
       }
     ],
     "extraMetadata": {
@@ -176,6 +176,10 @@
         ]
       },
       "extraResources": [
+        {
+          "from": "resources/app-update.yml",
+          "to": "app-update.yml"
+        },
         {
           "from": "../../target/release/pi-desktop-host-core",
           "to": "bin/pi-desktop-host-core"

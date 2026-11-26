@@ -1,6 +1,9 @@
-export const GITHUB_REPO = "vastsa/PI-Desktop";
+export const GITHUB_REPO = "gexing521/StarAi-Desktop";
 export const GITHUB_BUG_TEMPLATE = "bug_report.yml";
 export const GITHUB_ISSUE_ORIGIN = "https://github.com";
+export const GITHUB_REPO_URL = `${GITHUB_ISSUE_ORIGIN}/${GITHUB_REPO}`;
+export const GITHUB_RELEASES_URL = `${GITHUB_REPO_URL}/releases`;
+export const GITHUB_LATEST_RELEASE_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
 export type FeedbackIssueContext = {
   version: string;
@@ -27,7 +30,7 @@ export function osLabelForFeedback(platform: string): FeedbackOsLabel {
 
 export function formatFeedbackEnvironment(info: FeedbackIssueContext): string {
   const host = info.hostVersion?.trim() || "unknown";
-  return `PI-Desktop ${info.version} · ${info.platform} ${info.arch} · protocol ${info.protocolVersion} · host ${host}`;
+  return `StarAI Desktop ${info.version} · ${info.platform} ${info.arch} · protocol ${info.protocolVersion} · host ${host}`;
 }
 
 export function buildBugReportUrl(info: FeedbackIssueContext): string {

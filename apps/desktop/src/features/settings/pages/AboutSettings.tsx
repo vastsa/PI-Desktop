@@ -3,7 +3,7 @@
  * a problem (logs, bug report). The Developer card stays here because the
  * things it unlocks are diagnostics, not preferences.
  */
-import type { AppSettings } from "@pi-desktop/shared";
+import { GITHUB_REPO, type AppSettings } from "@pi-desktop/shared";
 import { useTranslation } from "react-i18next";
 import { api } from "../../../lib/api";
 import { useAppStore } from "../../../stores/app-store";
@@ -30,7 +30,7 @@ export function AboutSettings({
           {t("settings.aboutVersion", { version: version?.version ?? "" })}
         </div>
         <div className="settings-about-hero-meta">
-          protocol {version?.protocolVersion} · host {version?.hostVersion}
+          protocol {version?.protocolVersion} · host {version?.hostVersion} · {GITHUB_REPO}
         </div>
       </div>
       <UpdatesRow
@@ -54,6 +54,17 @@ export function AboutSettings({
         <SettingsRow title={t("settings.logs")}>
           <Button variant="secondary" onClick={() => void api.openLogs()}>
             {t("settings.openLogs")}
+          </Button>
+        </SettingsRow>
+        <SettingsRow
+          title={t("repository", { ns: "starAi" })}
+          description={GITHUB_REPO}
+        >
+          <Button
+            variant="secondary"
+            onClick={() => void api.updatesOpenReleases().catch(() => undefined)}
+          >
+            {t("openReleases", { ns: "starAi" })}
           </Button>
         </SettingsRow>
         <SettingsRow

@@ -103,6 +103,7 @@ export function SidebarFooter() {
   const openSettings = useAppStore((s) => s.openSettings);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const setSettingsAnchor = useAppStore((s) => s.setSettingsAnchor);
+  const showToast = useAppStore((s) => s.showToast);
   const version = useAppStore((s) => s.version);
   const showBuildVersion = useAppStore((s) =>
     sidebarModuleVisible(s.settings?.sidebarModules, "buildVersion"),
@@ -154,8 +155,18 @@ export function SidebarFooter() {
             }
             void (async () => {
               try {
-                await api.updatesCheck();
-              } catch { /* ignore */ }
+                const next = await api.updatesCheck();
+                if (next.status === "up-to-date") {
+                  showToast(t("updates.upToDate"), { variant: "success" });
+                } else if (next.status === "available" && next.availableVersion) {
+                  showToast(t("updates.available", { version: next.availableVersion }), {
+                    variant: "info",
+                  });
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                showToast(t("updates.error", { message }), { variant: "error" });
+              }
             })();
           }}
         >

@@ -3,8 +3,13 @@ import type { ChangelogEntry } from "./changelog.js";
 export const enEntries: ChangelogEntry[] = [
   {
     version: "0.24.0",
-    date: "2026-11-24",
+    date: "2026-11-26",
     highlights: [
+      "Sign in directly with your StarAI account to sync model groups, service categories, and context windows automatically.",
+      "Default app language to Simplified Chinese (zh-CN) with refreshed StarAI Desktop branding, icons, and mascot.",
+      "Built-in image generation (default gpt-image-2.6-sunburst) and video generation (default minimax_h3_768p) tools and skills with inline playback, using your signed-in StarAI account with no API key setup.",
+      "Default reasoning effort to high across models and sort StarAI models newest-first by release date so new releases stay at the top.",
+      "Point update checks, release pages, and issue feedback to gexing521/StarAi-Desktop.",
       "Composer line breaks no longer add phantom lines or characters, and undo restores a deleted empty last line.",
       "Skills selected from the / menu appear as individual chips in the composer.",
       "Edit bundled role and skill definitions in Modes, organize private agent roles, and scope delegated work to the tools and files each role needs.",
@@ -12,11 +17,6 @@ export const enEntries: ChangelogEntry[] = [
       "Long-running Bash commands return control after an initial wait and can continue in the background; optionally report results and resume an idle conversation when finished.",
       "Send selected text and file-line references from the File Manager to the Composer, and paste image files as image attachments.",
       "Reconnect legacy MCP servers after transient HTTP+SSE failures instead of leaving them unusable.",
-      "Opt into sandboxed Codemode scripts with bounded execution and model helpers, while keeping the feature off by default.",
-      "Configure custom Anthropic-compatible models to replay unsigned thinking blocks; existing provider behavior remains unchanged unless enabled.",
-      "Mistral-compatible Chat Completions requests no longer receive an unsupported OpenAI store field.",
-      "Recent project labels keep their space beside long conversation titles, and projects stay reachable at high zoom.",
-      "Improve Composer file references, image paste, session restoration after compaction, and Windows/macOS window-state recovery.",
       "Fix configuration sync after one-sided deletion, MCP reconnects, malformed tool paths, and several sidebar, model-picker, and plugin-panel issues.",
     ],
   },
