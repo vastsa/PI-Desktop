@@ -76,6 +76,8 @@ const origin = loadComponent("SessionMessageOrigin");
 const { MessageRow } = loadComponent("MessageRow", {
   "./SessionMessageOrigin": origin,
   "./extra-attachments": { getExtraMessageAttachments },
+   "./CollapsibleUserText": { CollapsibleUserText: ({ children }) =>
+     React.createElement("div", { className: "message-user-text selectable" }, children) },
 });
 const userMessage = {
   id: "incoming-row",

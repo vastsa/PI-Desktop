@@ -89,7 +89,7 @@ test("the delegation tab renders a message list with a read-only composer", () =
   assert.match(tabSource, /data-testid="subagent-transcript-tab"/);
   assert.match(tabSource, /buildSubagentTranscript\(messages, delegationId\)/);
   assert.match(tabSource, /className="message-row user"/);
-  assert.match(tabSource, /className="message-user-text selectable"/);
+  assert.match(tabSource, /<CollapsibleUserText messageId=\{call\.id\}/);
   assert.match(tabSource, /<AssistantTurnBody[\s\S]*entry=\{reply\}/);
   assert.match(tabSource, /<TranscriptSearchContext.Provider value=\{searchTarget\}>/);
   assert.match(tabSource, /className="composer-shell"/);
