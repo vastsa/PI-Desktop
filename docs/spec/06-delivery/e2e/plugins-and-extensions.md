@@ -3567,7 +3567,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2, ADR 0276 §7
 - **Acceptance**: G (remote marketplace source) + Security
 - **Milestone**: M6+
-- **Status**: Draft
+- **Status**: Partially automated by `cargo test -p host-core marketplace_rpc_tests`.
+  The HTTP fixture sends only headers; the host test checks that a wrong id
+  leaves the socket open, a matching id disconnects it, and no plugin row or
+  directory is created. This test does not exercise the desktop dialog.
 
 ## E2E-PLUGIN-failed-install-lists-tried-mirrors: A failed install keeps the dialog open and lists the mirrors it tried with a copy action
 

@@ -26,7 +26,7 @@ mod session_mode_create_tests;
 mod session_mode_migration_tests;
 
 #[cfg(test)]
-mod market_browse_rpc_tests;
+mod marketplace_rpc_tests;
 #[cfg(test)]
 mod plugin_reviews_rpc_tests;
 #[cfg(test)]

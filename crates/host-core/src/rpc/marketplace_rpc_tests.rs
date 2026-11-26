@@ -5,11 +5,13 @@
 
 use std::ffi::OsString;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
+use std::time::Duration;
 
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
+use tokio::time::timeout;
 
 use super::handle_request;
 use crate::plugins::market_browse::clear_browse_cache;
@@ -98,7 +100,7 @@ impl Center {
     }
 }
 
-async fn serve(mut stream: TcpStream, status: u16, body: String, seen: Arc<StdMutex<Vec<String>>>) {
+async fn read_request_target(stream: &mut TcpStream) -> String {
     let mut buffer = Vec::new();
     let mut chunk = [0_u8; 4096];
     while let Ok(read) = stream.read(&mut chunk).await {
@@ -111,25 +113,36 @@ async fn serve(mut stream: TcpStream, status: u16, body: String, seen: Arc<StdMu
         }
     }
     let request = String::from_utf8_lossy(&buffer);
-    let target = request
+    request
         .lines()
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
         .unwrap_or("/")
-        .to_string();
+        .to_string()
+}
+
+async fn serve(mut stream: TcpStream, status: u16, body: String, seen: Arc<StdMutex<Vec<String>>>) {
+    let target = read_request_target(&mut stream).await;
     let (status, body) = if target.starts_with("/api/v1/catalog/search") {
         seen.lock().unwrap().push(target);
         (status, body)
     } else {
         (404, "{}".to_string())
     };
+    let _ = write_json_response(&mut stream, status, &body).await;
+}
+
+async fn write_json_response(
+    stream: &mut TcpStream,
+    status: u16,
+    body: &str,
+) -> std::io::Result<()> {
     let head = format!(
         "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
         body.len()
     );
-    let _ = stream.write_all(head.as_bytes()).await;
-    let _ = stream.write_all(body.as_bytes()).await;
-    let _ = stream.flush().await;
+    stream.write_all(head.as_bytes()).await?;
+    stream.write_all(body.as_bytes()).await
 }
 
 fn remote_page() -> Value {
@@ -297,4 +310,114 @@ async fn browse_backs_off_a_failing_center_and_refresh_clears_it() {
     clear_browse_cache();
     browse(&state, &tx, json!({ "query": "abc" })).await;
     assert_eq!(center.searches().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn market_cancel_disconnects_a_stalled_http_download_for_the_matching_id() {
+    const ID: &str = "acme.stalled-download";
+    const WRONG_ID: &str = "acme.other";
+    const DEADLINE: Duration = Duration::from_secs(5);
+
+    let env = MarketEnv::hold();
+    env.point_at(OFFLINE_MARKET_URL);
+    let (_data, state, tx) = fixture_state();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    env.point_at(&format!("http://{address}/catalog.json"));
+    let catalog = json!({
+        "providerId": "fixture",
+        "plugins": [{
+            "id": ID, "name": "Stalled download", "description": "", "author": "acme",
+            "versions": [{
+                "version": "1.0.0", "publishedAt": "2026-03-01T00:00:00Z",
+                "url": "package.piplug", "shasum": "ab".repeat(32),
+                "sizeBytes": 1, "permissions": []
+            }]
+        }]
+    })
+    .to_string();
+    let install = tokio::spawn(handle_request(
+        state.clone(),
+        "market.install",
+        json!({ "id": ID }),
+        tx.clone(),
+    ));
+    let mut mirror = timeout(DEADLINE, async {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        assert_eq!(read_request_target(&mut stream).await, "/catalog.json");
+        write_json_response(&mut stream, 200, &catalog)
+            .await
+            .unwrap();
+        drop(stream);
+
+        let (mut stream, _) = listener.accept().await.unwrap();
+        assert_eq!(read_request_target(&mut stream).await, "/package.piplug");
+        // Promise a package body but leave the connection open at zero bytes.
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        stream
+    })
+    .await
+    .expect("the install should reach the HTTP package mirror");
+
+    let cancel = |id| {
+        timeout(
+            DEADLINE,
+            handle_request(
+                state.clone(),
+                "market.cancelInstall",
+                json!({ "id": id }),
+                tx.clone(),
+            ),
+        )
+    };
+    assert_eq!(
+        cancel(WRONG_ID)
+            .await
+            .expect("wrong-ID cancel should reply while the download is stalled")
+            .unwrap(),
+        json!({ "id": WRONG_ID, "cancelled": false })
+    );
+    let mut byte = [0];
+    assert!(
+        timeout(Duration::from_millis(500), mirror.read(&mut byte))
+            .await
+            .is_err(),
+        "wrong-ID cancel should leave the download connection open"
+    );
+    assert!(!install.is_finished());
+
+    assert_eq!(
+        cancel(ID)
+            .await
+            .expect("matching cancel should reply while the download is stalled")
+            .unwrap(),
+        json!({ "id": ID, "cancelled": true })
+    );
+    assert_eq!(
+        timeout(DEADLINE, mirror.read(&mut byte))
+            .await
+            .expect("matching cancel should disconnect the HTTP client")
+            .unwrap(),
+        0
+    );
+    let error = timeout(DEADLINE, install)
+        .await
+        .expect("matching cancel should finish the install RPC")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.code, 1019);
+    assert_eq!(error.data, Some(json!({ "errorCode": "PLUGIN_CANCELLED" })));
+
+    let installed = handle_request(state.clone(), "plugins.list", json!({}), tx)
+        .await
+        .unwrap();
+    assert!(installed["plugins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|plugin| plugin["id"] != ID));
+    assert!(!state.lock().await.plugins.installed_dir(ID).exists());
 }
