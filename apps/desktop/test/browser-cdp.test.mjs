@@ -137,3 +137,44 @@ test("legacy renderer browser IPC cannot place an unclamped guest", () => {
   assert.match(visibleBody, /plugins\.getLoaded\(BROWSER_PLUGIN_ID\)/);
   assert.doesNotMatch(visibleBody, /browserPane\.setVisible/);
 });
+
+test("passive attach keeps Runtime/Console off so anti-bot pages keep their guest (#2599)", () => {
+  const attachBlock = cdpSource.match(
+    /async attach\(wc: WebContents, options: \{ interactive\?: boolean \} = \{\}\): Promise<void> \{[\s\S]*?\n  \}/,
+  )?.[0] ?? "";
+  assert.ok(attachBlock.length > 0, "tiered attach not found");
+  // The unconditional (passive) tier enables only Page + Accessibility.
+  assert.match(attachBlock, /sendCommand\("Page\.enable"\)/);
+  assert.match(attachBlock, /sendCommand\("Accessibility\.enable"\)/);
+  assert.doesNotMatch(attachBlock, /sendCommand\("Runtime\.enable"\)/);
+  assert.doesNotMatch(attachBlock, /sendCommand\("Console\.enable"\)/);
+  assert.doesNotMatch(attachBlock, /sendCommand\("DOM\.enable"\)/);
+  assert.doesNotMatch(attachBlock, /setFocusEmulationEnabled/);
+  // The interactive domains live behind the escalation, one-way.
+  const escalation = cdpSource.match(
+    /private async enableInteractiveDomains\(wc: WebContents\): Promise<void> \{[\s\S]*?\n  \}/,
+  )?.[0] ?? "";
+  assert.ok(escalation.length > 0, "interactive escalation not found");
+  assert.match(escalation, /Runtime\.enable/);
+  assert.match(escalation, /Console\.enable/);
+  assert.match(escalation, /DOM\.enable/);
+  assert.match(escalation, /setFocusEmulationEnabled/);
+  assert.match(cdpSource, /if \(interactive && !this\.interactive\) await this\.enableInteractiveDomains\(wc\)/);
+});
+
+test("read-only operations attach passively; page-driving operations escalate", () => {
+  const snapshotBlock = cdpSource.match(/async snapshot\(wc: WebContents\): Promise<SnapshotResult> \{[\s\S]*?\n  \}/)?.[0] ?? "";
+  assert.match(snapshotBlock, /await this\.attach\(wc\);/);
+  const screenshotBlock = cdpSource.match(/async screenshot\([\s\S]*?\n  \}/)?.[0] ?? "";
+  assert.match(screenshotBlock, /await this\.attach\(wc\);/);
+  for (const method of ["click", "fill", "evaluate"]) {
+    const block = cdpSource.match(new RegExp(`async ${method}\\([\\s\\S]*?\\n  \\}`))?.[0] ?? "";
+    assert.ok(block.length > 0, `${method} block not found`);
+    assert.match(block, /attach\(wc, \{ interactive: true \}\)/, `${method} must escalate`);
+  }
+  // The generic passthrough infers the tier from the method prefix.
+  assert.match(cdpSource, /interactive: methodIsInteractive\(method\)/);
+  assert.match(cdpSource, /const INTERACTIVE_CDP_PREFIXES = \["Runtime\.", "Console\.", "DOM\.", "Input\.", "Emulation\."\]/);
+  // Reading the console needs message capture, so it escalates too.
+  assert.match(hostSource, /page\.cdp\.attach\(wc, \{ interactive: true \}\)/);
+});

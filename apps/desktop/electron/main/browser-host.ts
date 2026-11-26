@@ -559,7 +559,9 @@ export class BrowserHost {
     const page = this.operationPage(sessionId, tabId);
     if (!page.started) return { messages: [] };
     const wc = this.requireWebContents(page);
-    void page.cdp.attach(wc);
+    // Capturing console messages requires the interactive domains; reading
+    // the console is an explicit user intent, so the escalation is fine.
+    void page.cdp.attach(wc, { interactive: true });
     return { messages: page.cdp.console(limit) };
   }
   async cdpCommand(method: string, params?: unknown, sessionId?: string, tabId?: string): Promise<unknown> {

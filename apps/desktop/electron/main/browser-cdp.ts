@@ -41,6 +41,17 @@ const MAX_CONSOLE_MESSAGES = 100;
 const SCREENSHOT_MAX_WIDTH = 1280;
 const SCREENSHOT_MAX_HEIGHT = 2048;
 
+/**
+ * CDP methods that only make sense with the interactive domain set enabled.
+ * Everything else (Page.reload, captureScreenshot, the accessibility tree)
+ * works on the passive domains alone.
+ */
+const INTERACTIVE_CDP_PREFIXES = ["Runtime.", "Console.", "DOM.", "Input.", "Emulation."];
+
+function methodIsInteractive(method: string): boolean {
+  return INTERACTIVE_CDP_PREFIXES.some((prefix) => method.startsWith(prefix));
+}
+
 export type BrowserConsoleMessage = {
   type: string;
   text: string;
@@ -131,6 +142,7 @@ function consoleText(args: unknown): string {
  */
 export class BrowserCdp {
   private attachedId: number | null = null;
+  private interactive = false;
   private uids = new Map<string, number>();
   private messages: BrowserConsoleMessage[] = [];
   private onDebuggerMessage?: (
@@ -143,11 +155,26 @@ export class BrowserCdp {
     return this.attachedId === wc.id && !wc.isDestroyed() && wc.debugger.isAttached();
   }
 
-  async attach(wc: WebContents): Promise<void> {
+  /**
+   * Attach with the passive domain set (Page + Accessibility) unless the
+   * caller needs interactivity. With Runtime/Console enabled, CDP serializes
+   * console arguments, and anti-bot pages detect that through bait getters
+   * and answer by closing the guest (issue #2599: the reporter's BOSS resume
+   * tab closed ~1.7s after DevTools opened; PI's unconditional full attach
+   * tripped the same detector). Snapshots and screenshots never need those
+   * domains, so read-only sessions can keep a page alive indefinitely.
+   * Escalation is one-way: once the caller drives the page (click/fill/
+   * evaluate), the interactive domains stay on.
+   */
+  async attach(wc: WebContents, options: { interactive?: boolean } = {}): Promise<void> {
     if (wc.isDestroyed()) {
       throw new Error("browser guest is not available");
     }
-    if (this.isAttached(wc)) return;
+    const interactive = options.interactive === true;
+    if (this.isAttached(wc)) {
+      if (interactive && !this.interactive) await this.enableInteractiveDomains(wc);
+      return;
+    }
     this.detach();
     if (!wc.debugger.isAttached()) {
       wc.debugger.attach(BROWSER_CDP_PROTOCOL);
@@ -172,11 +199,17 @@ export class BrowserCdp {
       if (this.messages.length > MAX_CONSOLE_MESSAGES) this.messages.shift();
     };
     wc.debugger.on("message", this.onDebuggerMessage);
+    await wc.debugger.sendCommand("Page.enable");
+    await wc.debugger.sendCommand("Accessibility.enable");
+    this.interactive = false;
+    if (interactive) await this.enableInteractiveDomains(wc);
+  }
+
+  private async enableInteractiveDomains(wc: WebContents): Promise<void> {
+    this.interactive = true;
     await wc.debugger.sendCommand("Runtime.enable");
     await wc.debugger.sendCommand("Console.enable");
-    await wc.debugger.sendCommand("Page.enable");
     await wc.debugger.sendCommand("DOM.enable");
-    await wc.debugger.sendCommand("Accessibility.enable");
     // Chromium ignores input on detached guests unless it emulates focus.
     // This does not focus or attach a native window, so background tools can
     // interact with their own page without disturbing the visible session.
@@ -197,6 +230,7 @@ export class BrowserCdp {
     }
     this.onDebuggerMessage = undefined;
     this.attachedId = null;
+    this.interactive = false;
     this.uids.clear();
   }
 
@@ -206,7 +240,7 @@ export class BrowserCdp {
         code: "PERMISSION_DENIED",
       });
     }
-    await this.attach(wc);
+    await this.attach(wc, { interactive: methodIsInteractive(method) });
     return wc.debugger.sendCommand(
       method,
       (params && typeof params === "object" ? params : {}) as Record<string, unknown>,
@@ -261,7 +295,7 @@ export class BrowserCdp {
 
   async click(wc: WebContents, uid: string): Promise<void> {
     const backendNodeId = this.requireUid(uid);
-    await this.attach(wc);
+    await this.attach(wc, { interactive: true });
     await wc.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: false });
     await wc.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
     const resolved = (await wc.debugger.sendCommand("DOM.resolveNode", { backendNodeId })) as {
@@ -317,7 +351,7 @@ export class BrowserCdp {
 
   async fill(wc: WebContents, uid: string, text: string): Promise<void> {
     const backendNodeId = this.requireUid(uid);
-    await this.attach(wc);
+    await this.attach(wc, { interactive: true });
     const resolved = (await wc.debugger.sendCommand("DOM.resolveNode", { backendNodeId })) as {
       object?: { objectId?: string };
     };
@@ -343,7 +377,7 @@ export class BrowserCdp {
   }
 
   async evaluate(wc: WebContents, expression: string): Promise<unknown> {
-    await this.attach(wc);
+    await this.attach(wc, { interactive: true });
     const result = (await wc.debugger.sendCommand("Runtime.evaluate", {
       expression,
       returnByValue: true,
