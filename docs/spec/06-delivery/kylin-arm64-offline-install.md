@@ -153,8 +153,8 @@ node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
 
 The package check inspects the extracted payload and uses its own Node and
 Python to read back a newly created Word document, a pandas Excel table,
-and a PowerPoint presentation. It also uses bundled LibreOffice to export
-a Word document and checks that the PDF text is readable.
+and a PowerPoint presentation. It also checks text extraction from a PDF.
+LibreOffice export uses the Kylin system libraries and is tested on Kylin.
 Keep the exact Office Debian package, the candidate commit, the package
 inspection output, and the Kylin run output together. Link those results in the PR or release record;
 generic CI artifacts and results from a different package do not qualify.

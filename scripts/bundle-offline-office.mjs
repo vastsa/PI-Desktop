@@ -86,8 +86,14 @@ export async function smokeTestOfflineOffice(resources) {
     if (run("ppt", ["extract", ppt]) !== `Slide 1\n${text}\nEditable\n`) throw new Error("Unexpected PPTX readback.");
     skill = "PDF";
     const pdf = "PDF smoke.pdf";
-    run("word", ["create", "PDF source.docx", ""], "Offline PDF smoke\n");
-    run("pdf", ["export", "PDF source.docx", pdf]);
+    // The packaged LibreOffice uses Kylin system libraries; its exports are checked on Kylin.
+    execFileSync(join(resources, "office-runtime/python/bin/python3.12"), ["-I", "-B", "-c", `
+from reportlab.pdfgen import canvas
+import sys
+document = canvas.Canvas(sys.argv[1])
+document.drawString(72, 720, "Offline PDF smoke")
+document.save()
+`, pdf], { cwd: workspace, stdio: "pipe", timeout: 30_000 });
     if (!run("pdf", ["extract", pdf]).includes("Offline PDF smoke")) throw new Error("Unexpected PDF readback.");
   } catch (error) {
     throw new Error(`Office ${skill} package smoke test failed: ${error.message}`, { cause: error });

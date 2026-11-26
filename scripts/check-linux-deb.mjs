@@ -146,7 +146,7 @@ try {
   console.log(`Verified ${verified} ${arch} ELF files at glibc <= ${floor}.`);
   if (withOffice) {
     await smokeTestOfflineOffice(resources);
-    console.log("Verified bundled Word and PowerPoint creation/extraction and Excel creation/read.");
+    console.log("Verified bundled Word, Excel, and PowerPoint readback and PDF text extraction.");
   }
 } finally {
   rmSync(root, { recursive: true, force: true });
