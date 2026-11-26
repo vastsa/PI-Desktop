@@ -97,9 +97,9 @@ impl PluginManager {
     ///
     /// The token is held here rather than passed around, because the cancel
     /// action arrives as its own RPC while the install is still running.
-    pub(crate) fn set_install_cancel(&mut self, token: Option<CancelToken>) {
+    pub(crate) fn set_install_cancel(&mut self, plugin_id: &str, token: Option<CancelToken>) {
         match &token {
-            Some(value) => super::progress::arm_active_cancel(value),
+            Some(value) => super::progress::arm_active_cancel(plugin_id, value),
             None => super::progress::disarm_active_cancel(),
         }
         self.install_cancel = token;
