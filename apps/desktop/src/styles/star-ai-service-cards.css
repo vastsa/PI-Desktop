@@ -1,0 +1,78 @@
+.starai-services {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.starai-service-label,
+.composer-service-group-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-strong);
+  color: var(--ds-text-primary);
+}
+
+.starai-service-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@container (max-width: 410px) {
+  .starai-service-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.composer-service-card,
+.starai-auto-route {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ds-text-primary);
+  text-align: start;
+}
+
+.composer-service-card:hover:not(:disabled),
+.starai-auto-route:hover:not(:disabled) {
+  background: var(--ds-bg-hover);
+}
+
+.composer-service-card[aria-checked="true"],
+.starai-auto-route[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--ds-accent) 55%, var(--ds-border-default));
+  background: color-mix(in srgb, var(--ds-accent) 7%, transparent);
+}
+
+.composer-service-card:focus-visible,
+.starai-auto-route:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 1px;
+}
+
+.starai-service-icon {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-secondary);
+}
+
+.composer-service-card[aria-checked="true"] .starai-service-icon,
+.starai-service-check { color: var(--ds-accent); }
+
+.starai-service-check { flex: 0 0 auto; margin-inline-start: auto; }
+.starai-service-copy { display: grid; gap: 1px; min-width: 0; }
+.starai-service-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-compact);
+}
+.composer-service-count { color: var(--ds-text-muted); font-size: var(--text-xs); }
+.starai-auto-route { width: 100%; font-size: var(--text-sm); }

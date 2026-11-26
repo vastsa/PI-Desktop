@@ -2,6 +2,7 @@ import {
   bindingSupportsImages,
   effectiveContextWindow,
   isImageOnlyChatModel,
+  isStarAiProviderId,
   type ImageGenerationBindings,
   modelMatchesFilter,
   modelWireIdsEqual,
@@ -10,7 +11,7 @@ import {
   type ProviderPublic,
 } from "@pi-desktop/shared";
 
-type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId">;
+type ConfiguredProvider = Pick<ProviderPublic, "id" | "models" | "defaultModelId" | "starAiGroup">;
 
 /** UI identity is the complete wire id, not a catalog alias or a route suffix. */
 export function sameComposerModelId(left: string, right: string): boolean {
@@ -31,19 +32,19 @@ export function composerModelMetadata(
   return (discovered ?? []).find((model) => sameComposerModelId(model.modelId, modelId));
 }
 
-/**
- * One chat-eligibility answer everywhere: a model bound for image generation
- * stays chat-eligible unless its discovered metadata names no text output or
- * its id is a pure image-generation endpoint (#2253).
- */
+/** Managed chat capability comes from the same model-square snapshot that grants visibility. */
+export function chatRowSelectable(provider: Pick<ProviderPublic, "id" | "starAiGroup">, modelId: string): boolean {
+  return !isStarAiProviderId(provider.id) || provider.starAiGroup?.chatModels?.includes(modelId) === true;
+}
+
 export function composerModelChatEligible(
   imageGeneration: ImageGenerationBindings | null | undefined,
-  providerId: string | undefined,
-  modelId: string | undefined,
-  discovered?: readonly ModelInfo[],
+  provider: Pick<ProviderPublic, "id" | "starAiGroup">,
+  modelId: string,
+  metadata?: ModelInfo,
 ): boolean {
-  const metadata = composerModelMetadata(discovered, modelId);
-  return !isImageOnlyChatModel(imageGeneration, providerId, modelId, metadata);
+  if (isStarAiProviderId(provider.id)) return chatRowSelectable(provider, modelId);
+  return !isImageOnlyChatModel(imageGeneration, provider.id, modelId, metadata);
 }
 
 function configuredModelIds(provider: ConfiguredProvider): string[] {
@@ -66,11 +67,19 @@ export function composerModelsForProvider(
   provider: ConfiguredProvider,
   discovered: readonly ModelInfo[] | undefined,
   imageGeneration?: ImageGenerationBindings | null,
+  includeNonChat = false,
 ): ModelInfo[] {
-  return configuredModelIds(provider).filter((modelId) => {
+  const managed = isStarAiProviderId(provider.id);
+  const chatModels = provider.starAiGroup?.chatModels;
+  if (managed && !chatModels) return [];
+  const ids = managed ? provider.models.map((model) => model.id) : configuredModelIds(provider);
+  return ids.filter((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),
     );
+    // For a managed channel the verified square, including its chat subset,
+    // is authoritative. Local discovery can enrich but cannot add or remove rows.
+    if (managed) return includeNonChat || chatRowSelectable(provider, modelId);
     // Only a pure image-generation endpoint is excluded: a model the user
     // marked for image generation that also supports conversation stays in
     // the Composer list (#2253).

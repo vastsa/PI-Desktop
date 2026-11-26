@@ -65,7 +65,9 @@ export function StartupGuideDialog({
                 </span>
               ) : null}
               <h2 id="startup-guide-title">{t(`startupGuide.${step}.title`)}</h2>
-              <p id="startup-guide-description">{t(`startupGuide.${step}.description`)}</p>
+              <p id="startup-guide-description">
+                {t(step === "model" ? "starAi:guide" : `startupGuide.${step}.description`)}
+              </p>
             </div>
             <TooltipButton
               type="button"

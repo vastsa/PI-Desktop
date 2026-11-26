@@ -307,6 +307,10 @@ export const IPC = {
     remoteHostSessions: "pi-desktop/remoteHost/sessions",
     remoteHostCreateSession: "pi-desktop/remoteHost/createSession",
     remoteHostSyncProviders: "pi-desktop/remoteHost/syncProviders",
+    starAiLogin: "pi-desktop/starai/login",
+    starAiCatalog: "pi-desktop/starai/catalog",
+    starAiActivate: "pi-desktop/starai/activate",
+    starAiLogout: "pi-desktop/starai/logout",
     providersList: "pi-desktop/providers/list",
     providersReorder: "pi-desktop/providers/reorder",
     providersCreate: "pi-desktop/providers/create",
@@ -507,6 +511,8 @@ export const IPC = {
     nativeMenuAction: "pi-desktop/menu/nativeAction",
   },
   event: {
+    /** Main completed a foreground StarAI setup check; the shell owns the model picker. */
+    starAiSetupRequired: "pi-desktop/starai/event/setupRequired",
     pluginChanged: "pi-desktop/event/pluginChanged",
     /** Progress of an install or update, while it is still running. */
     pluginInstallProgress: "pi-desktop/plugin/event/installProgress",

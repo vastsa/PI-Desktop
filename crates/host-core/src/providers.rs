@@ -16,6 +16,7 @@ mod credentials;
 mod model;
 mod order;
 mod repository;
+pub(crate) mod star_ai;
 mod validation;
 
 pub use catalog::{cache_discovered_models, list_models};

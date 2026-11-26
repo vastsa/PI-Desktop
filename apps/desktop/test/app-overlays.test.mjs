@@ -23,25 +23,6 @@ test("only one app overlay shows, by priority guide > announcement > settings", 
   );
 });
 
-test("startup guide: new users configure a model, returning users learn the launcher", () => {
-  assert.deepEqual(
-    model.planStartupGuide({ completedVersion: 0, hasUsableModel: false }),
-    { audience: "new", steps: ["model", "launcher"] },
-  );
-  assert.deepEqual(
-    model.planStartupGuide({ completedVersion: 0, hasUsableModel: true }),
-    { audience: "returning", steps: ["launcher"] },
-  );
-  assert.equal(
-    model.planStartupGuide({
-      completedVersion: model.STARTUP_GUIDE_VERSION,
-      hasUsableModel: false,
-    }),
-    null,
-    "a finished or skipped guide version never returns",
-  );
-});
-
 test("announcement is off by default and shows at most once per release", () => {
   const release = { id: "0.24.0" };
   const empty = { shownIds: [] };
@@ -143,9 +124,10 @@ test("guide replay and launcher detection are wired end to end", async () => {
     read("../src/features/startup/StartupGuideDialog.tsx"),
     read("../electron/main/bootstrap/launcher.ts"),
   ]);
-  // Settings → About replays the guide without touching the first-launch marker.
+  // A fresh or migrated profile only gets a guide on explicit request.
   assert.match(about, /useStartupGuideRequest\.getState\(\)\.request\(\)/);
-  assert.match(host, /if \(guide\?\.source === "auto"\) saveStartupGuideCompletedVersion/);
+  assert.match(host, /if \(!replayRequested\) return;\s*clearReplay\(\);\s*setGuide/);
+  assert.doesNotMatch(host, /planStartupGuide|loadStartupGuideCompletedVersion/);
   // Keycaps light up when the launcher actually opens.
   assert.match(guide, /api\.onPluginLauncherShown\(\(\) => setPressed\(true\)\)/);
   assert.match(guide, /keybindingMatchesEvent\(binding, event, platform\)/);

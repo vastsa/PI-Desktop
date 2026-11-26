@@ -65,6 +65,8 @@ export * from "./image-dimensions.js";
 export * from "./speech.js";
 export * from "./gen-ui.js";
 export * from "./image-generation.js";
+export * from "./star-ai-model-family.js";
+export * from "./star-ai-services.js";
 export * from "./computer-use.js";
 export * from "./font-size.js";
 export * from "./chat-content-width.js";

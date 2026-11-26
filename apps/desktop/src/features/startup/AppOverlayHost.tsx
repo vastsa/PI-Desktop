@@ -1,25 +1,22 @@
-import { imageGenerationBindings } from "@pi-desktop/shared";
+import { imageGenerationBindings, type StarAiCatalog } from "@pi-desktop/shared";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { providerServesChatModels } from "../../components/settings/default-model";
 import { useAppStore } from "../../stores/app-store";
 import {
   type AnnouncementSchedule,
   announcementShown,
-  planStartupGuide,
   resolveAppOverlay,
   shouldShowAnnouncement,
-  STARTUP_GUIDE_VERSION,
   startupGuideFor,
   type StartupGuidePlan,
 } from "./app-overlay-model";
 import {
   loadAnnouncementRecord,
-  loadStartupGuideCompletedVersion,
   saveAnnouncementRecord,
-  saveStartupGuideCompletedVersion,
 } from "./app-overlay-preferences";
 import { hasAnnouncementContent, RELEASE_ANNOUNCEMENT } from "./announcements/catalog";
 import { useStartupGuideRequest } from "./startup-guide-request";
+import { StarAiSetupCatalog } from "./star-ai-setup-context";
 import type { StartupGuideExit } from "./StartupGuideDialog";
 
 // The dialogs carry the Settings destinations and a Markdown renderer; keep
@@ -48,18 +45,9 @@ function useHasUsableModel(): boolean {
   }, [providers, providerModels, imageGeneration, imageGenerationModels]);
 }
 
-type ActiveGuide = { plan: StartupGuidePlan; source: "auto" | "manual" };
-
 /**
- * Owns the app-level modal overlays and shows at most one of them, by
- * priority: startup guide > release announcement > Settings. A Settings
- * request made while a higher overlay is up stays pending (`settingsOpen`)
- * and opens once they are gone.
- *
- * The automatic guide and the announcement are decided once, when the shell
- * first becomes interactive (`active`), so the audience cannot change
- * mid-guide. A replay requested from Settings shows the guide for the user's
- * current state and never touches the first-launch marker.
+ * The guide can be opened from Settings. Account sign-in owns first launch.
+ * A release announcement is considered once when the shell becomes interactive.
  */
 export function AppOverlayHost({ active }: { active: boolean }) {
   const settingsOpen = useAppStore((s) => s.settingsOpen);
@@ -68,10 +56,13 @@ export function AppOverlayHost({ active }: { active: boolean }) {
   const replayRequested = useStartupGuideRequest((s) => s.requested);
   const clearReplay = useStartupGuideRequest((s) => s.clear);
   const suppressed = useStartupGuideRequest((s) => s.suppressed);
+  const starAiSetup = useStartupGuideRequest((s) => s.starAiSetup);
+  const settingsTab = useAppStore((s) => s.settingsTab);
   const hasUsableModel = useHasUsableModel();
   const [decided, setDecided] = useState(false);
-  const [guide, setGuide] = useState<ActiveGuide | null>(null);
+  const [guide, setGuide] = useState<StartupGuidePlan | null>(null);
   const [announcement, setAnnouncement] = useState<AnnouncementSchedule | null>(null);
+  const [initialCatalog, setInitialCatalog] = useState<StarAiCatalog | null>(null);
 
   useEffect(() => {
     if (!active || decided) return;
@@ -79,11 +70,6 @@ export function AppOverlayHost({ active }: { active: boolean }) {
     // Screenshot capture and automation drive a fixed scene; first-run hints
     // would cover it.
     if (window.__PI_CAPTURE__ || suppressed) return;
-    const plan = planStartupGuide({
-      completedVersion: loadStartupGuideCompletedVersion(),
-      hasUsableModel,
-    });
-    if (plan) setGuide({ plan, source: "auto" });
     const schedule = RELEASE_ANNOUNCEMENT;
     if (
       schedule &&
@@ -92,20 +78,32 @@ export function AppOverlayHost({ active }: { active: boolean }) {
     ) {
       setAnnouncement(schedule);
     }
-  }, [active, decided, hasUsableModel, suppressed]);
+  }, [active, decided, suppressed]);
+
+  useEffect(() => {
+    if (!active || !starAiSetup) return;
+    setGuide(null);
+    setAnnouncement(null);
+    setInitialCatalog(starAiSetup.catalog);
+    setSettingsTab("agent");
+    useStartupGuideRequest.getState().setStarAiSetup(null);
+  }, [active, starAiSetup, setSettingsTab]);
+
+  useEffect(() => {
+    if (!starAiSetup && (!settingsOpen || settingsTab !== "agent")) setInitialCatalog(null);
+  }, [settingsOpen, settingsTab, starAiSetup]);
 
   // Suppression may arrive after the decision: drop what is showing without
   // recording it as seen.
   useEffect(() => {
     if (!suppressed) return;
-    setGuide((current) => (current?.source === "auto" ? null : current));
     setAnnouncement(null);
   }, [suppressed]);
 
   useEffect(() => {
     if (!replayRequested) return;
     clearReplay();
-    setGuide((current) => current ?? { plan: startupGuideFor(hasUsableModel), source: "manual" });
+    setGuide((current) => current ?? startupGuideFor(hasUsableModel));
   }, [replayRequested, clearReplay, hasUsableModel]);
 
   const overlay = active
@@ -124,10 +122,9 @@ export function AppOverlayHost({ active }: { active: boolean }) {
   }, [overlay, announcement]);
 
   const exitGuide = useCallback((exit: StartupGuideExit) => {
-    if (guide?.source === "auto") saveStartupGuideCompletedVersion(STARTUP_GUIDE_VERSION);
     setGuide(null);
     if (exit === "openShortcuts") setSettingsTab("shortcuts");
-  }, [guide?.source, setSettingsTab]);
+  }, [setSettingsTab]);
 
   const closeAnnouncement = useCallback(() => setAnnouncement(null), []);
 
@@ -135,7 +132,7 @@ export function AppOverlayHost({ active }: { active: boolean }) {
   if (overlay === "guide" && guide) {
     dialog = (
       <StartupGuideDialog
-        plan={guide.plan}
+        plan={guide}
         hasUsableModel={hasUsableModel}
         onExit={exitGuide}
       />
@@ -149,7 +146,11 @@ export function AppOverlayHost({ active }: { active: boolean }) {
       />
     );
   } else if (overlay === "settings") {
-    dialog = <SettingsDialog onClose={closeSettings} />;
+    dialog = (
+      <StarAiSetupCatalog.Provider value={initialCatalog}>
+        <SettingsDialog onClose={closeSettings} />
+      </StarAiSetupCatalog.Provider>
+    );
   }
   return dialog ? <Suspense fallback={null}>{dialog}</Suspense> : null;
 }

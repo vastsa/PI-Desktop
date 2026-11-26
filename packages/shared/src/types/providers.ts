@@ -3,9 +3,34 @@ import type { ModelBinding, ThinkingLevel } from "./models.js";
 
 export const OAUTH_AUTH_KIND = "oauth";
 
+export const STARAI_PROVIDER_ID = "starai-managed";
+export function isStarAiProviderId(id?: string): boolean {
+  return id === STARAI_PROVIDER_ID || Boolean(id?.startsWith(STARAI_PROVIDER_ID + "-"));
+}
+
+export type StarAiSelection = { group: string; model: string; providerId: string };
+export type StarAiGroupRatio = number | "auto";
+export type StarAiGroupInfo = {
+  /** Site channel name and billing route, verbatim. */
+  id: string;
+  description?: string;
+  ratio?: StarAiGroupRatio;
+  /** Verified chat subset of this group's marketplace models. Missing in legacy directories. */
+  chatModels?: string[];
+  /** Exact wire model ID to site publisher name. */
+  modelVendors?: Record<string, string>;
+};
+export type StarAiGroup = StarAiGroupInfo & { label: string; models: string[] };
+export type StarAiCatalog = {
+  account: { id: number; name: string } | null;
+  groups: StarAiGroup[];
+  selection: StarAiSelection | null;
+};
+
 export type ProviderPublic = {
   id: string;
   name: string;
+  starAiGroup?: StarAiGroupInfo;
   vendorKey: string;
   type: "native" | "openai_compatible" | "custom";
   protocol: string;

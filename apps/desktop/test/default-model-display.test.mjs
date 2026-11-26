@@ -13,6 +13,7 @@ import test from "node:test";
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const {
   defaultModelIdOf,
+  defaultModelOptions,
   displayedDefaultModelId,
   keepsAppDefaultModel,
   loginDefaultModel,
@@ -325,4 +326,16 @@ test("a login skips a pure image endpoint but may claim a dual-capability image-
     loginDefaultModel([dual], "acct", {}, { providerId: "acct", modelId: "gpt6.1-terra" }),
     { providerId: "acct", modelId: "gpt6.1-terra" },
   );
+});
+
+test("managed chat defaults and subagent choices use only the current group's marketplace chat models", () => {
+  const p = provider({
+    id: "starai-managed-example",
+    models: [binding("video"), binding("gpt"), binding("old-unlisted")],
+    starAiGroup: { id: "gpt满血渠道", chatModels: ["gpt"] },
+  });
+  assert.deepEqual(defaultModelOptions([p]).map(option => option.modelId), ["gpt"]);
+  assert.equal(displayedDefaultModelId(p, "video"), "gpt");
+  assert.equal(providerOffersModel(p, "old-unlisted"), false);
+  assert.deepEqual(defaultModelOptions([{ ...p, starAiGroup: undefined }]), []);
 });

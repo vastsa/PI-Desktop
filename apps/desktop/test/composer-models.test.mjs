@@ -10,6 +10,7 @@ import {
   sameComposerModelId,
 } from "../src/lib/composer-models.ts";
 import { thinkingProviderForModel } from "../src/features/chat/composer/model.ts";
+import { resolveKnownContextWindow } from "../src/lib/context-usage.ts";
 
 const binding = (id) => ({
   id,
@@ -61,6 +62,25 @@ test("configured models remain selectable when discovery is unavailable", () => 
   assert.equal(models.length, 1);
   assert.equal(models[0].modelId, "my-model-v2");
   assert.equal(models[0].displayName, "my-model-v2");
+});
+
+test("the StarAI model menu and context meter agree even with a stale discovery cache", () => {
+  const provider = {
+    id: "starai-managed-default",
+    starAiGroup: { id: "default", chatModels: ["anthropic/claude-sonnet-5-5", "deepseek-v4-pro"] },
+    models: [
+      { ...binding("anthropic/claude-sonnet-5-5"), contextWindow: 1_000_000, contextWindowSource: "user" },
+      { ...binding("deepseek-v4-pro"), contextWindow: 256_000, contextWindowSource: "user" },
+    ],
+  };
+  const stale = provider.models.map(({ id }) => ({ ...model(id), providerId: provider.id, contextWindow: 128_000 }));
+  for (const cache of [[], stale]) {
+    const options = composerModelsForProvider(provider, cache);
+    assert.deepEqual(options.map((option) => option.contextWindow), [1_000_000, 256_000]);
+    for (const option of options) {
+      assert.equal(resolveKnownContextWindow(provider.id, option.modelId, { [provider.id]: cache }, [provider]), option.contextWindow);
+    }
+  }
 });
 
 test("Composer context labels use configured limits and retain them without discovery", () => {
@@ -424,4 +444,15 @@ test("unlisted configured models leave the menu without deleting bindings or cha
   assert.deepEqual(composerModelsForProvider({ id: "relay", defaultModelId: "beta" }, [
     { ...model("beta"), discoveryState: "unlisted" },
   ]), []);
+});
+
+
+test("managed model browsers require a verified group and separate square visibility from chat eligibility", () => {
+  const provider = { id: "starai-managed-media", models: [binding("chat"), binding("video")], defaultModelId: "retired" };
+  const discovered = ["chat", "video", "retired", "access-only"].map(id => model(id));
+  assert.deepEqual(composerModelsForProvider(provider, discovered, null, true), []);
+  provider.starAiGroup = { id: "图像与视频", chatModels: ["chat"] };
+  assert.deepEqual(composerModelsForProvider(provider, discovered, null, true).map(row => row.modelId), ["chat", "video"]);
+  assert.deepEqual(composerModelsForProvider(provider, discovered).map(row => row.modelId), ["chat"]);
+  assert.deepEqual(composerModelsForProvider({ ...provider, models: [] }, discovered, null, true), []);
 });

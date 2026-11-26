@@ -1,5 +1,6 @@
 import {
   IPC,
+  isStarAiProviderId,
   ErrorCodes,
   inferEndpointProfile,
   normalizeApiStyle,
@@ -350,6 +351,10 @@ export function registerProviderIpc({
     ) => {
       if (!host) throw new Error("host unavailable");
       const req = typeof input === "string" ? { providerId: input } : input ?? {};
+      if (isStarAiProviderId(req.providerId) &&
+        [req.baseUrl, req.headers, req.apiStyle, req.apiKey].some((value) => value !== undefined)) {
+        throw new Error("Use StarAI account settings to select a group and model");
+      }
       const providers = req.source === "cache"
         ? (await host.call<{ providers: RuntimeProvider[] }>("providers.list", {
             includeDisabled: true,
@@ -546,6 +551,16 @@ export function registerProviderIpc({
           });
         }
       };
+
+      // Account catalog bindings are authoritative. The loopback endpoint only
+      // serves chat and must never be probed as a generic provider.
+      if (provider && isStarAiProviderId(provider.id)) {
+        const models = (provider.models ?? []).map((binding) => {
+          const info = decorate({ modelId: binding.id, displayName: binding.id, source: "user" });
+          return { ...info, contextWindow: binding.contextWindow, limit: { ...("limit" in info ? info.limit : {}), context: binding.contextWindow } };
+        });
+        return { models, source: "cache" as const };
+      }
 
       // A signed-in vendor account has no API key. VendorOAuth.listModels
       // reads that account's model endpoint; pi-ai is only the fallback.

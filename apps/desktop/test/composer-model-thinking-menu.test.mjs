@@ -17,27 +17,27 @@ test("Composer uses one searchable model menu with a source rail", () => {
   assert.doesNotMatch(composerSource, /ComposerMenuView|composer-menu-back|showView|otherModelsExpanded/);
   assert.match(pickerSource, /<ComposerModelList/);
   assert.match(pickerSource, /composer-model-menu composer-model-thinking-menu \$\{showSectionRail \? "has-rail" : ""\}/);
-  // Every source is one click away: the rail lists recent + each provider,
-  // its items are radios, and search spans every source at once.
+  assert.match(listSource, /<StarAiServiceCards/);
+  assert.match(listSource, /className="composer-service-group-select"/);
   assert.match(listSource, /className="composer-model-rail" role="group" aria-label=\{t\("chat\.modelSources"\)\}/);
   assert.match(listSource, /aria-checked=\{current\}/);
   assert.match(listSource, /onClick=\{\(\) => selectSection\(section\.id\)\}/);
   assert.match(modelMenuSource, /showSectionRail: sections\.length > 1/);
-  assert.match(modelMenuSource, /searching\s*\? filteredModelGroups/);
-  assert.match(stylesSource, /\.composer-model-body\[data-rail\] \{[^}]*grid-template-columns: 116px minmax\(0, 1fr\)/);
+  assert.match(modelMenuSource, /if \(!searching && source\.id !== activeSection\)/);
+  assert.match(modelMenuSource, /group\.provider\.id !== selectedGroup\?\.provider\.id/);
+  assert.match(stylesSource, /\.composer-model-body\[data-rail\] \{[^}]*grid-template-columns: clamp\(128px, 39%, 226px\) minmax\(0, 1fr\)/);
   // Switching sources never resizes the menu under the pointer.
   assert.match(modelMenuSource, /const paneRows = Math\.max\(/);
   assert.match(stylesSource, /\.composer-model-body\[data-rail\] \.composer-model-list,[\s\S]*?height: min\(264px, calc\(var\(--model-pane-rows, 8\) \* 30px \+ 4px\)\)/);
 });
 
 test("the source rail and pane move with the selection instead of snapping", () => {
-  // One marker travels between rail items; its step matches the 28px row
-  // plus the 2px gap, and it fades out while search releases the rail.
+  // The marker follows the active row even when a long name spans several lines.
   assert.match(listSource, /className="composer-model-rail-indicator"/);
-  assert.match(listSource, /data-hidden=\{railIndex < 0 \? "true" : undefined\}/);
-  assert.match(stylesSource, /\.composer-model-rail-item \{[^}]*height: 28px;/);
+  assert.match(stylesSource, /\.composer-model-rail:not\(:has\(\.composer-model-rail-item.active\)\) \.composer-model-rail-indicator/);
+  assert.match(stylesSource, /\.composer-model-rail-item \{[^}]*min-height: 28px;/);
   assert.match(stylesSource, /\.composer-model-rail \{[^}]*gap: 2px;/);
-  assert.match(stylesSource, /transform: translateY\(calc\(var\(--rail-index, 0\) \* 30px\)\)/);
+  assert.match(stylesSource, /position-anchor: --selected-model-source;\s*top: anchor\(center\)/);
   // The pane is keyed by source and slides in from the side the rail moved
   // toward; the first render after opening does not animate.
   assert.match(listSource, /key=\{activeSection \?\? "search"\}/);

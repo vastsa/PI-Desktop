@@ -10,11 +10,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  isStarAiProviderId,
   isImageOnlyChatModel,
   vendorAccountImageCandidates,
   type ImageGenerationBinding,
   type ModelBinding,
-  type ModelInfo,
   type ProviderPublic,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
@@ -26,7 +26,7 @@ import {
   IconPlus,
   IconServer,
 } from "../icons";
-import { providerServesChatModels } from "./default-model";
+import { defaultModelOptions as chatModelOptions, providerServesChatModels } from "./default-model";
 import {
   imageGenerationPickerCandidates,
   isImageGenerationPickerCandidate,
@@ -37,6 +37,7 @@ import { ImageGenerationModelRow } from "./ImageGenerationModelRow";
 import { OAuthLoginDialog } from "./OAuthLoginDialog";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
 import { ServiceList } from "./ServiceList";
+import { StarAiAccountCard } from "./StarAiAccountCard";
 import { serviceRowKind } from "./service-row-status";
 import { useVendorAccounts } from "./useVendorAccounts";
 import { VendorAccountDialog, type VendorAccountForm } from "./VendorAccountDialog";
@@ -76,32 +77,10 @@ function imageCandidates(
   return result;
 }
 
-function chatModelOptions(
-  providers: readonly ProviderPublic[],
-  imageModels: readonly ImageGenerationBinding[],
-  discovered?: Record<string, readonly ModelInfo[] | undefined>,
-) {
-  return providers.flatMap((provider) => {
-    const ids = provider.models?.length
-      ? provider.models.map((model) => model.id)
-      : [provider.defaultModelId ?? ""];
-    // Only a pure image-generation endpoint is excluded from chat; a
-    // dual-capability model stays selectable (#2253). The discovered row's
-    // modalities are the same answer session launch reads, so the page and
-    // launch cannot disagree.
-    return ids.filter((id) => !!id.trim() && !isImageOnlyChatModel(
-      imageModels,
-      provider.id,
-      id,
-      discovered?.[provider.id]?.find((model) => sameWireId(model.modelId, id)),
-    )).map((modelId) => ({ provider, modelId }));
-  });
-}
-
-
 export function ModelConfigPage() {
   const { t, i18n } = useTranslation();
   const providers = useAppStore((s) => s.providers);
+  const manualProviders = useMemo(() => providers.filter((provider) => !isStarAiProviderId(provider.id)), [providers]);
   const providerModels = useAppStore((s) => s.providerModels);
   const settings = useAppStore((s) => s.settings);
   const refreshProviders = useAppStore((s) => s.refreshProviders);
@@ -452,12 +431,13 @@ export function ModelConfigPage() {
 
   return (
     <div className="settings-stack model-config-page">
+      <StarAiAccountCard />
       <section className="settings-card-block">
         <div className="model-config-section-head">
           <div className="settings-card-heading-line">
             <h3 className="settings-card-heading">{t("settings.providers")}</h3>
-            {providers.length > 0 ? (
-              <span className="provider-section-count">{providers.length}</span>
+            {manualProviders.length > 0 ? (
+              <span className="provider-section-count">{manualProviders.length}</span>
             ) : null}
           </div>
           <div className="provider-section-head-actions">
@@ -488,6 +468,7 @@ export function ModelConfigPage() {
           <ModelConfigImportPanel />
         </div>
 
+        {manualProviders.length > 0 || providers.length === 0 ? (
         <div className="settings-panel model-provider-panel">
           {providers.length === 0 ? (
             <div className="model-provider-empty">
@@ -505,7 +486,7 @@ export function ModelConfigPage() {
             </div>
           ) : (
             <ServiceList
-              providers={providers}
+              providers={manualProviders}
               accountFor={accountFor}
               busy={
                 setupFor !== null ||
@@ -541,6 +522,7 @@ export function ModelConfigPage() {
             />
           )}
         </div>
+        ) : null}
       </section>
 
       <div className="model-catalog-status">

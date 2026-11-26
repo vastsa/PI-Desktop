@@ -1,4 +1,6 @@
 import { app } from "electron";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { APP_ID, APP_NAME } from "@pi-desktop/shared";
 import { applyDevelopmentUserData, desktopDataDir } from "./data-paths";
 import { ignoreBrokenStdio } from "./logger";
@@ -8,7 +10,12 @@ import { installMainProcessErrorHandlers } from "./main-process-errors";
 ignoreBrokenStdio();
 installMainProcessErrorHandlers();
 export const isDevelopmentBuild = process.env.PI_DESKTOP_DEV === "1" || !app.isPackaged;
-app.setName(APP_NAME);
+// Electron initially reads productName from the packaged application metadata.
+export const isStarAiPreview = app.isPackaged && app.getName() === "StarAI Desktop";
+app.setName(isStarAiPreview ? "StarAI Desktop" : APP_NAME);
+if (isStarAiPreview && !app.commandLine.hasSwitch("user-data-dir")) {
+  app.setPath("userData", join(app.getPath("appData"), "StarAI Desktop"));
+}
 applyDevelopmentUserData(app, isDevelopmentBuild);
 if (process.platform === "win32") app.setAppUserModelId(APP_ID);
 
@@ -16,7 +23,9 @@ if (process.platform === "win32") app.setAppUserModelId(APP_ID);
 if (process.argv.includes("--pi-managed-storage")) delete process.env.PI_DESKTOP_DATA_DIR;
 export const singleInstanceRequired = !process.env.PI_DESKTOP_DATA_DIR;
 export const hasSingleInstanceLock = singleInstanceRequired ? app.requestSingleInstanceLock() : true;
-export const defaultDataDir = desktopDataDir(isDevelopmentBuild);
+export const defaultDataDir = isStarAiPreview && !process.env.PI_DESKTOP_DATA_DIR?.trim()
+  ? join(homedir(), ".starai-desktop")
+  : desktopDataDir(isDevelopmentBuild);
 if (!hasSingleInstanceLock) app.quit();
 
 // Preserve the existing Chromium accessibility crash workaround before ready.

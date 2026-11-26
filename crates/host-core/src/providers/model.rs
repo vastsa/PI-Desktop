@@ -5,6 +5,8 @@ use super::*;
 pub struct ProviderPublic {
     pub id: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub star_ai_group: Option<super::star_ai::GroupInfo>,
     pub vendor_key: String,
     #[serde(rename = "type")]
     pub provider_type: String,

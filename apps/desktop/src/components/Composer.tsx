@@ -14,9 +14,9 @@ import type {
 } from "@pi-desktop/shared";
 import {
   imageGenerationBindings,
+  isStarAiProviderId,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
-  isImageOnlyChatModel,
   normalizeLargePasteThreshold,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
@@ -24,7 +24,8 @@ import { latestTurnContextInspector } from "../lib/latest-turn-context";
 import { isActivePlanExecution } from "../lib/plan-mode-state";
 import { headAsk, queuedAskCount } from "../lib/pending-asks";
 import type { QueuedPrompt } from "../lib/queued-prompts";
-import { composerModelDisplayName, sameComposerModelId } from "../lib/composer-models";
+import { composerModelChatEligible, composerModelDisplayName, sameComposerModelId } from "../lib/composer-models";
+import { providerDisplayName } from "../lib/provider-display";
 import { sessionFastModeActive } from "../lib/fast-mode-command";
 import {
   resolveComposerThinkingProvider,
@@ -417,9 +418,9 @@ export function Composer({
       !!modelId &&
       // Same eligibility session launch enforces: the discovered/catalog row's
       // output modalities decide, so canSend and launch cannot disagree (#2253).
-      !isImageOnlyChatModel(
+      composerModelChatEligible(
         imageGenerationCandidates,
-        provider.id,
+        provider,
         modelId,
         selectedModelInfo,
       ) &&
@@ -654,6 +655,7 @@ export function Composer({
             showToast={showToast}
             modelMenu={modelMenu}
             modelLabel={modelLabel}
+            modelGroupLabel={provider && isStarAiProviderId(provider.id) ? providerDisplayName(provider) : undefined}
             thinkingLabel={thinkingLabel}
             modelFastMode={sessionFastModeActive(provider, modelId, activeSession ?? draftConfiguration)}
             contextUsage={composerContextUsage ?? null}

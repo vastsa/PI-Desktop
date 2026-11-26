@@ -47,7 +47,8 @@ test("native compact and session-addressed queue endpoints reject before host or
 // Real slices/IPC with synthetic state; no Electron process or native home.
 const { register } = await import("node:module");
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const { IPC, isImageOnlyChatModel, imageGenerationBindings } = await import("@pi-desktop/shared");
+const { composerModelChatEligible } = await import("../src/lib/composer-models.ts");
+const { IPC, imageGenerationBindings } = await import("@pi-desktop/shared");
 const { registerAgentIpc } = await import("../electron/main/ipc/agent-ipc.ts");
 const { localNativeProjectPaths, searchSessionsAcrossSources } = await import("../electron/main/services/session-search.ts");
 const { createEventsSlice } = await import("../src/stores/slices/events-slice.ts");
@@ -161,15 +162,20 @@ test("native prompt only dispatches sidecar and cannot create a host queue entry
 
 test("native model readiness never depends on a Desktop provider but read-only fails closed", () => {
   const expression = composer.match(/const modelReady = ([\s\S]*?);/)[1];
-  const evaluateReady = new Function("isImageOnlyChatModel", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", "remoteSession", "promptAllowed", "selectedModelInfo", `return ${expression}`);
+  const evaluateReady = new Function("composerModelChatEligible", "imageGenerationCandidates", "settings", "nativeSession", "activeSessionSummary", "provider", "modelId", "remoteSession", "promptAllowed", "selectedModelInfo", `return ${expression}`);
   const ready = (nativeSession, activeSessionSummary, provider, modelId, settings, remoteSession = false, promptAllowed = false, selectedModelInfo = undefined) =>
-    evaluateReady(isImageOnlyChatModel, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId, remoteSession, promptAllowed, selectedModelInfo);
+    evaluateReady(composerModelChatEligible, imageGenerationBindings(settings?.imageGenerationModels, settings?.imageGeneration), settings, nativeSession, activeSessionSummary, provider, modelId, remoteSession, promptAllowed, selectedModelInfo);
   assert.equal(ready(true, { capabilities: { canPrompt: true } }, undefined, undefined), true);
   assert.equal(ready(true, { capabilities: { canPrompt: false } }, { enabled: true, hasSecret: true }, "model"), false);
   assert.equal(ready(true, {}, undefined, undefined), false);
   assert.equal(ready(false, {}, undefined, undefined), false);
   assert.equal(ready(false, {}, { enabled: true, hasSecret: false }, "model"), false);
   assert.equal(ready(false, {}, { enabled: true, hasSecret: true }, "model"), true);
+  const managed = { id: "starai-managed-media", enabled: true, hasSecret: true };
+  assert.equal(ready(false, {}, managed, "former-model"), false);
+  managed.starAiGroup = { id: "media", chatModels: ["talk"] };
+  assert.equal(ready(false, {}, managed, "former-model"), false);
+  assert.equal(ready(false, {}, managed, "talk"), true);
   const settings = { imageGeneration: { providerId: "images", modelId: "model" } };
   const imageProvider = { id: "images", enabled: true, hasSecret: true };
   // "model" is a conversation-capable id, so an image designation on it does

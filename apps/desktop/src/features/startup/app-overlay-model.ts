@@ -21,9 +21,6 @@ export function resolveAppOverlay(pending: {
 // ---------------------------------------------------------------------------
 // Startup guide
 
-/** Bump to show the guide again to everyone after it gains new steps. */
-export const STARTUP_GUIDE_VERSION = 1;
-
 export type StartupGuideStep = "model" | "launcher";
 
 export type StartupGuidePlan = {
@@ -40,19 +37,6 @@ export function startupGuideFor(hasUsableModel: boolean): StartupGuidePlan {
   return hasUsableModel
     ? { audience: "returning", steps: ["launcher"] }
     : { audience: "new", steps: ["model", "launcher"] };
-}
-
-/**
- * The guide a launch shows automatically, or null once this guide version was
- * finished or skipped. Decided once per launch: configuring a model during
- * the guide must not switch the audience underneath the user.
- */
-export function planStartupGuide(input: {
-  completedVersion: number;
-  hasUsableModel: boolean;
-}): StartupGuidePlan | null {
-  if (input.completedVersion >= STARTUP_GUIDE_VERSION) return null;
-  return startupGuideFor(input.hasUsableModel);
 }
 
 // ---------------------------------------------------------------------------

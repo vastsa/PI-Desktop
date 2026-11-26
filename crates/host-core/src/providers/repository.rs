@@ -11,9 +11,29 @@ pub(crate) fn provider_from_row(
     let models = config_model_bindings(&config_raw, legacy_model_id.clone(), &id);
     let has_api_key = secret_ref.as_ref().map(|r| secrets.has(r)).unwrap_or(false);
     let has_oauth = secrets.has(&secret_ref_for_provider_oauth(&id));
+    let star_ai_group: Option<star_ai::GroupInfo> = if star_ai::is_managed(&id) {
+        config_value(&config_raw)
+            .and_then(|mut config| serde_json::from_value(config["starAiGroup"].take()).ok())
+    } else {
+        None
+    };
+    let default_model_id = if star_ai::is_managed(&id) {
+        legacy_model_id.filter(|id| {
+            star_ai_group
+                .as_ref()
+                .and_then(|g| g.chat_models.as_ref())
+                .is_some_and(|chat| chat.contains(id))
+        })
+    } else {
+        models
+            .first()
+            .map(|binding| binding.id.clone())
+            .or(legacy_model_id)
+    };
     Ok(ProviderPublic {
         id,
         name: row.get(1)?,
+        star_ai_group,
         vendor_key: row.get(2)?,
         provider_type: row.get(3)?,
         protocol: row.get(4)?,
@@ -30,10 +50,7 @@ pub(crate) fn provider_from_row(
             .get::<_, String>(11)
             .ok()
             .and_then(|raw| config_headers(&raw)),
-        default_model_id: models
-            .first()
-            .map(|binding| binding.id.clone())
-            .or(legacy_model_id),
+        default_model_id,
         models,
         api_style: row.get(10)?,
         supports_reasoning: row
@@ -222,6 +239,7 @@ pub(crate) fn create_provider_with_id(
     if id.trim().is_empty() || id.len() > 128 {
         bail!("PROVIDER_INVALID: provider id is invalid");
     }
+    star_ai::ensure_unmanaged(id)?;
     if db
         .conn()
         .query_row("SELECT 1 FROM providers WHERE id = ?1", params![id], |_| {
@@ -307,6 +325,7 @@ pub fn update_provider(
     secrets: &SecretStore,
     input: ProviderUpdateInput,
 ) -> Result<Option<ProviderPublic>> {
+    star_ai::ensure_unmanaged(&input.id)?;
     let Some(current) = get_provider(db, secrets, &input.id)? else {
         return Ok(None);
     };
@@ -486,6 +505,7 @@ pub fn update_provider(
 /// Delete a user-owned provider row. A plugin-declared row is refused here:
 /// only its plugin (or the user disabling/uninstalling it) may remove it.
 pub fn delete_provider(db: &Database, secrets: &SecretStore, id: &str) -> Result<bool> {
+    star_ai::ensure_unmanaged(id)?;
     if let Some(owner) = provider_owner_plugin(db, id)? {
         bail!("PROVIDER_OWNED_BY_PLUGIN: provider {id} belongs to plugin {owner}");
     }
@@ -547,6 +567,7 @@ pub fn set_provider_secret(
     id: &str,
     secret_value: Option<&str>,
 ) -> Result<Option<ProviderPublic>> {
+    star_ai::ensure_unmanaged(id)?;
     if get_provider(db, secrets, id)?.is_none() {
         return Ok(None);
     }

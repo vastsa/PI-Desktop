@@ -1,0 +1,81 @@
+/* The account site owns the form, its validation, legal links and OAuth flows.
+   Only its first-party presentation is embedded in the desktop theme. */
+:root {
+  --login-bg: Canvas;
+  --login-panel: light-dark(#f9f9f9, #212121);
+  --login-field: light-dark(#ededed, #303030);
+  --login-text: CanvasText;
+  --login-muted: color-mix(in srgb, CanvasText 72%, transparent);
+  --login-border: color-mix(in srgb, CanvasText 12%, transparent);
+  --login-accent: CanvasText;
+  --login-accent-hover: color-mix(in srgb, CanvasText 90%, Canvas);
+  --login-focus: CanvasText;
+  --login-error: light-dark(#c13432, #ff6764);
+  --background: var(--login-bg) !important;
+  --foreground: var(--login-text) !important;
+  --muted-foreground: var(--login-muted) !important;
+  --primary: var(--login-accent) !important;
+  --primary-foreground: var(--login-bg) !important;
+  --border: var(--login-border) !important;
+  --input: var(--login-border) !important;
+  --ring: var(--login-focus) !important;
+  --card: var(--login-panel) !important;
+  --card-foreground: var(--login-text) !important;
+  --destructive: var(--login-error) !important;
+}
+html, body, .tech-auth {
+  color: var(--login-text) !important;
+  background: var(--login-bg) !important;
+}
+.tech-auth::before, .tech-auth::after {
+  background: none !important;
+  box-shadow: none !important;
+}
+.tech-auth > a:first-child { color: var(--login-text) !important; }
+.tech-auth-panel {
+  color: var(--login-text) !important;
+  background: var(--login-panel) !important;
+  border: 1px solid var(--login-border) !important;
+  border-radius: 16px !important;
+  box-shadow: none !important;
+}
+.tech-auth-panel h2 { text-align: start !important; }
+.tech-auth-panel :is(input:not([type=checkbox]),textarea,[data-slot=select-trigger]) {
+  color: var(--login-text) !important;
+  background: var(--login-field) !important;
+  border-color: var(--login-border) !important;
+  box-shadow: none !important;
+  caret-color: var(--login-text) !important;
+}
+.tech-auth-panel input::placeholder { color: var(--login-muted) !important; }
+.tech-auth-panel :is(a, [data-slot=button][data-variant=link]) { color: var(--login-text) !important; }
+.tech-auth-panel :is([data-slot=button][data-variant=default], button[type=submit]) {
+  color: var(--login-bg) !important;
+  background: var(--login-accent) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.tech-auth-panel button[type=submit]:enabled:hover { background: var(--login-accent-hover) !important; }
+.tech-auth-panel button[type=submit]:disabled { opacity: .5 !important; }
+.tech-auth-panel :is([data-slot=button][data-variant=outline], [role=checkbox]) {
+  background: var(--login-field) !important;
+  color: var(--login-text) !important;
+  border-color: color-mix(in srgb, var(--login-text) 32%, transparent) !important;
+  box-shadow: none !important;
+}
+.tech-auth-panel [role=checkbox][aria-checked=true] {
+  color: var(--login-bg) !important;
+  background: var(--login-accent) !important;
+}
+.tech-auth-panel form div:has(> #legal-consent) {
+  background: transparent !important;
+  border-color: var(--login-border) !important;
+}
+.tech-auth-panel :is(a,button,input,textarea,[role=combobox]):focus-visible {
+  outline: 2px solid var(--login-focus) !important;
+  outline-offset: 2px !important;
+}
+.tech-auth-panel [aria-invalid=true] {
+  border-color: var(--login-error) !important;
+}
+.tech-auth-panel [data-slot=form-message] { color: var(--login-error) !important; }

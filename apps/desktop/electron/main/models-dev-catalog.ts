@@ -14,6 +14,7 @@ import {
   MODEL_VENDOR_PREFIXES,
   NAMED_ENDPOINT_PRESETS,
   catalogModelIdsMatch,
+  isStarAiProviderId,
   stripReleaseSuffix,
   stripVariantSuffix,
 } from "@pi-desktop/shared";
@@ -1567,6 +1568,11 @@ export class ModelsDevCatalog {
         compat: { ...baseline.compat, ...transcript.compat } };
     }
     if (!binding) return baseline;
+    // These bindings are the relay's own limits. Using a publisher's smaller
+    // ceiling here would silently shorten both request and compaction budgets.
+    if (isStarAiProviderId(input.providerId) && binding.contextWindowSource === "user") {
+      baseline = { ...baseline, catalogContextWindow: binding.contextWindow };
+    }
     const limits = resolveBindingLimits(baseline, binding);
     return modelConfigWithBinding(limits.catalogConfig, limits.binding);
   }
