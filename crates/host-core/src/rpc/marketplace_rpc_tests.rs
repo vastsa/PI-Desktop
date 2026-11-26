@@ -342,25 +342,43 @@ async fn market_cancel_disconnects_a_stalled_http_download_for_the_matching_id()
         json!({ "id": ID }),
         tx.clone(),
     ));
+    // The market source is process-global, so a catalog fetch that another
+    // test starts while this install runs can land on this listener before
+    // the package request. Answer every catalog request and keep waiting for
+    // the one target this install owns; anything else is refused and skipped.
+    let seen = Arc::new(StdMutex::new(Vec::new()));
+    let recorded = seen.clone();
     let mut mirror = timeout(DEADLINE, async {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        assert_eq!(read_request_target(&mut stream).await, "/catalog.json");
-        write_json_response(&mut stream, 200, &catalog)
-            .await
-            .unwrap();
-        drop(stream);
-
-        let (mut stream, _) = listener.accept().await.unwrap();
-        assert_eq!(read_request_target(&mut stream).await, "/package.piplug");
-        // Promise a package body but leave the connection open at zero bytes.
-        stream
-            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nConnection: close\r\n\r\n")
-            .await
-            .unwrap();
-        stream
+        loop {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let target = read_request_target(&mut stream).await;
+            recorded.lock().unwrap().push(target.clone());
+            match target.as_str() {
+                "/catalog.json" => {
+                    write_json_response(&mut stream, 200, &catalog)
+                        .await
+                        .unwrap();
+                }
+                "/package.piplug" => {
+                    // Promise a package body but leave the connection open at
+                    // zero bytes.
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\nConnection: close\r\n\r\n",
+                        )
+                        .await
+                        .unwrap();
+                    break stream;
+                }
+                _ => {
+                    let _ = write_json_response(&mut stream, 404, "{}").await;
+                }
+            }
+            drop(stream);
+        }
     })
     .await
-    .expect("the install should reach the HTTP package mirror");
+    .unwrap_or_else(|_| panic!("the install should reach the HTTP package mirror; saw {seen:?}"));
 
     let cancel = |id| {
         timeout(
