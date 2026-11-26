@@ -67,6 +67,7 @@ try {
       "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
       "excel/SKILL.md", "excel/excel.sh", "excel/spreadsheet.py",
       "ppt/SKILL.md", "ppt/ppt.sh", "ppt/presentation.py",
+      "pdf/SKILL.md", "pdf/pdf.sh", "pdf/pdf_document.py",
     ]) {
       if (!existsSync(path.join(officePlugin, file))) {
         throw new Error(`Missing bundled Offline Office plugin file: ${file}`);
@@ -145,7 +146,7 @@ try {
   console.log(`Verified ${verified} ${arch} ELF files at glibc <= ${floor}.`);
   if (withOffice) {
     await smokeTestOfflineOffice(resources);
-    console.log("Verified bundled Word and PowerPoint creation/extraction and Excel creation/read.");
+    console.log("Verified bundled Word, Excel, and PowerPoint readback and PDF text extraction.");
   }
 } finally {
   rmSync(root, { recursive: true, force: true });

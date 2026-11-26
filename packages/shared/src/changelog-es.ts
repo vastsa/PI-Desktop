@@ -7,6 +7,7 @@ export const esEntries: ChangelogEntry[] = [
     highlights: [
       "Activa Office sin conexión en Extensiones de Kylin ARM64 para crear documentos de Word, extraer su texto o guardar una copia.",
       "Office sin conexión también permite leer, crear y guardar copias de libros de Excel y recalcular las fórmulas cuando lo solicites.",
+      "Office sin conexión extrae texto de PDF, combina archivos PDF y exporta documentos de Word, PowerPoint y Excel a PDF.",
     ],
   },
   {

@@ -45,7 +45,9 @@ export async function verifyOfflineOfficeRuntime(runtime) {
     if (installed.version !== locked.version) throw new Error(`Office Runtime version mismatch: ${relative}`);
   }
   const site = join(runtime, "python/lib/python3.12/site-packages");
-  for (const module of ["lxml", "docx", "openpyxl", "pandas", "numpy", "dateutil", "pptx", "PIL", "xlsxwriter"]) {
+  for (const module of [
+    "lxml", "docx", "openpyxl", "pandas", "numpy", "dateutil", "pptx", "PIL", "xlsxwriter", "pypdf", "reportlab",
+  ]) {
     await access(join(site, module, "__init__.py"));
   }
   await access(join(site, "six.py"));
@@ -82,6 +84,17 @@ export async function smokeTestOfflineOffice(resources) {
     const ppt = "PPT smoke.pptx";
     run("ppt", ["create", ppt], JSON.stringify([{ title: text, body: "Editable" }]));
     if (run("ppt", ["extract", ppt]) !== `Slide 1\n${text}\nEditable\n`) throw new Error("Unexpected PPTX readback.");
+    skill = "PDF";
+    const pdf = "PDF smoke.pdf";
+    // The packaged LibreOffice uses Kylin system libraries; its exports are checked on Kylin.
+    execFileSync(join(resources, "office-runtime/python/bin/python3.12"), ["-I", "-B", "-c", `
+from reportlab.pdfgen import canvas
+import sys
+document = canvas.Canvas(sys.argv[1])
+document.drawString(72, 720, "Offline PDF smoke")
+document.save()
+`, pdf], { cwd: workspace, stdio: "pipe", timeout: 30_000 });
+    if (!run("pdf", ["extract", pdf]).includes("Offline PDF smoke")) throw new Error("Unexpected PDF readback.");
   } catch (error) {
     throw new Error(`Office ${skill} package smoke test failed: ${error.message}`, { cause: error });
   } finally {

@@ -7,6 +7,7 @@ export const zhTWEntries: ChangelogEntry[] = [
     highlights: [
       "在麒麟 ARM64 版的「擴充功能」中啟用離線辦公，即可離線建立 Word 文件、擷取正文或另存副本。",
       "離線辦公也能讀取、建立和另存 Excel 活頁簿，並可按需重算副本的公式。",
+      "離線辦公可擷取 PDF 文字、依序合併 PDF，並將 Word、PowerPoint 和 Excel 檔案匯出為 PDF。",
     ],
   },
   {
