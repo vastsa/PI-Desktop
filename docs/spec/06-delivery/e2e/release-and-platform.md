@@ -35,19 +35,24 @@
 - **Steps**: Discover the Skill through Agent → Skills. Verify Office Runtime
   starts off, then enable it in Extensions. Check ordinary Bash in an
   unbound session and compare the system terminal. Select both case-variant
-  folders in the Extensions project picker, then deselect one and check Bash in
-  both. Deny one Bash write. Load the linked docx Skill and approve its
-  original commands to extract text, generate an editable document and save an
-  edited copy. Use Chinese file names with spaces. Disable the extension, restart,
-  and open a new session.
+  folders in the Extensions project picker, then switch which one is selected
+  and check ordinary Bash in both. Switch back to Everywhere, check both
+  projects, then narrow to the Word project again. Restart, switch projects,
+  and check Bash in new selected, unselected and unbound sessions. Confirm the
+  Skill remains available outside the scope. In the selected project, deny one
+  Bash write, then load the linked docx Skill and
+  approve its original commands to extract text, generate an editable document
+  and save an edited copy. Use Chinese file names with spaces. Disable the
+  extension and check Bash in the existing session, then in a new session in the
+  same project after restarting.
 - **Expected**: The normal permissions hold before any write. The selected
-  Bash uses packaged tools; disabled Bash and the system terminal keep their
-  original environment. Both output files read back. The source document, Skill
-  files and link targets are unchanged, with no new Python cache files. The
-  disabled extension leaves the user Skill available. Repeat after seeding an
-  enabled project scope in the previous
-  installed candidate and upgrading it. Package inspection and Host tests
-  cover the dependency and local dispatch boundaries.
+  scope survives restart. Bash uses packaged tools only where enabled; the
+  system terminal keeps its original environment. Both output files read back.
+  The source document, Skill files and link targets are unchanged, with no new
+  Python cache files. The disabled extension leaves the user Skill available.
+  Repeat after seeding an enabled project scope in the previous installed
+  candidate and upgrading it. The runbook also gives a separate loopback fixture
+  to compare remote Bash's `PATH` and `NODE_PATH` while Office Runtime is enabled locally.
 - **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#office-runtime-and-a-self-installed-word-skill).
 - **Acceptance criterion**: A, C, E, G, Quality.
 - **Milestone**: M6+ (Pie Code 0.23.1).

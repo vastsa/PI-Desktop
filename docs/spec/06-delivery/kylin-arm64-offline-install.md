@@ -171,14 +171,33 @@ new and edited DOCX files. It uses the Skill's unpack, validate and pack
 scripts using the Skill's original Python commands without `-B`, and its
 CommonJS docx-js authoring path. It checks that the document, the linked Skill
 source and link targets stay unchanged and that no Python cache files are
-added. It tests denied Bash and global Bash in an unbound session, then adds
-and removes two case-variant folders through the Extensions project picker and
-checks Bash in each folder. Finally it disables the extension and restarts. For an upgrade test,
+added. It checks global Bash in an unbound session, then adds and removes two
+case-variant folders through the Extensions project picker and checks Bash in
+each folder. It checks both projects after switching back to Everywhere,
+restarts with only the Word project selected, and checks Bash in new selected,
+unselected and unbound sessions. The Skill remains callable outside the runtime
+scope. The denial and Word workflow run in the selected project. After disabling
+the runtime, the scenario checks Bash in the existing session and then in a new
+session in the same project after another restart. For an upgrade test,
 run the same command against an installed legacy candidate with
 `--seed-legacy` and `PI_CODE_E2E_UPGRADE_STATE` pointing to a new disposable
 directory. Upgrade the installation, keep the same environment variable,
 and run without `--seed-legacy` to verify the old session and user Skill
 survive and the old activation state does not enable the new runtime.
+
+Run the separate loopback remote-workspace fixture after `pnpm build:js`, using
+the inspected package's resources and its matching Host binary:
+
+```sh
+export PI_CODE_E2E_OFFICE_RESOURCES='/opt/Pie Code/resources'
+PI_HOST_CORE_BINARY="$PI_CODE_E2E_OFFICE_RESOURCES/bin/pi-desktop-host-core" \
+  node scripts/e2e-local-agent-remote-tools.mjs
+```
+
+The fixture enables Office Runtime globally on the local Host and compares
+remote Bash's `PATH` and `NODE_PATH` with an ordinary login Bash on the fixture
+host. It uses a loopback model and tool relay; it requires no external host.
+
 Keep the candidate revision, DEB digest, package inspection, and target
 result together. Earlier candidates with built-in Skills are not evidence
 for this package.

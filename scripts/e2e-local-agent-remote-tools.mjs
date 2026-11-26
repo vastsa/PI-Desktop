@@ -2,6 +2,7 @@
 /** Isolated local model -> real Main relay -> loopback RACP -> real Rust tools.
  * The Host has no providers. No SSH, credentials, paid APIs or user app is used. */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
@@ -26,10 +27,10 @@ assert.ok(process.env.PI_HOST_CORE_BINARY, "PI_HOST_CORE_BINARY must name the cu
 const root = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? tmpdir(), "local-agent-remote-tools-"));
 const remoteRoot = join(root, "remote-workspace");
 const officeResources = process.env.PI_CODE_E2E_OFFICE_RESOURCES;
-const marker = officeResources ? `REMOTE_BASH_FIXTURE\n${process.env.NODE_PATH ?? ""}\n` : "REMOTE_BASH_FIXTURE\n";
-const remoteCommand = officeResources
-  ? 'printf "%s\\n" "REMOTE_BASH_FIXTURE" "$NODE_PATH" > marker.txt'
-  : "printf 'REMOTE_BASH_FIXTURE\\n' > marker.txt";
+const remoteProbe = officeResources
+  ? 'printf "%s\\n" "REMOTE_BASH_FIXTURE" "$PATH" "${NODE_PATH-}"'
+  : "printf 'REMOTE_BASH_FIXTURE\\n'";
+const remoteCommand = `${remoteProbe} > marker.txt`;
 await mkdir(remoteRoot); await mkdir(join(root, "desktop"));
 await writeFile(join(remoteRoot, "README.md"), "REMOTE_READ_FIXTURE\n");
 await writeFile(join(remoteRoot, "AGENTS.md"), "REMOTE_REPOSITORY_INSTRUCTIONS_FIXTURE\n");
@@ -132,7 +133,10 @@ try {
   assert.equal(modelError, undefined);
   assert.equal(modelCalls, 3);
   assert.equal(localPermissions, 1, "Bash is approved by local permissions before remote dispatch");
-  assert.equal(await readFile(join(remoteRoot, "marker.txt"), "utf8"), marker);
+  const expected = officeResources
+    ? execFileSync("/bin/bash", ["-lc", remoteProbe], { cwd: remoteRoot, encoding: "utf8" })
+    : "REMOTE_BASH_FIXTURE\n";
+  assert.equal(await readFile(join(remoteRoot, "marker.txt"), "utf8"), expected);
   assert.deepEqual(wireCalls.map(call => call.toolName), ["Read", "Bash"]);
   assert.ok(!JSON.stringify(wireCalls).includes(KEY), "local provider key never crosses the workspace boundary");
   assert.ok(wireCalls.every(call => !Object.keys(call).some(key => /provider|model|secret|auth/i.test(key))));

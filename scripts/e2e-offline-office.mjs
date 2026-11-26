@@ -28,7 +28,6 @@ const preserved = ["data", ".agents", "skill-source"];
 const resources = join(dirname(appBin), "resources");
 const runtime = join(resources, "office-runtime");
 const model = "offline-office-fixture";
-const marker = "OFFICE_RUNTIME_FIXTURE_COMPLETE";
 const original = "原始 文档.docx";
 const created = "新建 文档.docx";
 const edited = "另存 文档.docx";
@@ -69,6 +68,9 @@ let desktop;
 let connected;
 let log = "";
 let modelError;
+let turn = 0;
+const toolPrefix = () => `office_${turn}_`;
+const completionMarker = () => `OFFICE_RUNTIME_FIXTURE_${turn}_COMPLETE`;
 let steps = [];
 let results = [];
 
@@ -83,7 +85,7 @@ const provider = createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     const request = JSON.parse(raw);
     const tools = request.tools.map((tool) => tool.function.name);
-    results = request.messages.filter((message) => message.role === "tool" && /^office_\d+$/.test(message.tool_call_id))
+    results = request.messages.filter((message) => message.role === "tool" && message.tool_call_id?.startsWith(toolPrefix()))
       .map((message) => toolText(message.content));
     const tool = steps[results.length];
     if (steps[0]?.name === "Skill" && results.length) {
@@ -92,9 +94,9 @@ const provider = createServer(async (req, res) => {
     }
     if (tool) assert.ok(tools.includes(tool.name), `Missing ${tool.name}`);
     const delta = tool ? { role: "assistant", tool_calls: [{
-      index: 0, id: `office_${results.length}`, type: "function",
+      index: 0, id: `${toolPrefix()}${results.length}`, type: "function",
       function: { name: tool.name, arguments: JSON.stringify(tool.args) },
-    }] } : { role: "assistant", content: marker };
+    }] } : { role: "assistant", content: completionMarker() };
     const frame = (change, reason) => "data: " + JSON.stringify({
       id: "office-fixture", object: "chat.completion.chunk", created: 1, model,
       choices: [{ index: 0, delta: change, finish_reason: reason }],
@@ -173,6 +175,24 @@ async function stop() {
   try { await exited; } finally { clearTimeout(force); }
 }
 
+async function restart({ evaluate, invoke }) {
+  const quit = async () => {
+    await invoke(IPC.invoke.appQuit);
+    await waitFor(() => evaluate(`(() => {
+      const confirm = document.querySelector(".lifecycle-confirmation-actions button:last-child");
+      if (!confirm) return false;
+      confirm.click(); return true;
+    })()`), 10_000, "Quit confirmation");
+  };
+  const [[code]] = await Promise.all([
+    once(desktop, "exit", { signal: AbortSignal.timeout(20_000) }),
+    quit(),
+  ]);
+  assert.equal(code, 0, "Pie Code should exit normally before restart");
+  connected.close();
+  return boot();
+}
+
 async function selectOffice({ evaluate }, mode) {
   const label = { global: "Everywhere", projects: "Projects", off: "Off" }[mode];
   const row = `[...document.querySelectorAll(".plugins-row")].find(
@@ -200,14 +220,15 @@ async function selectOffice({ evaluate }, mode) {
     20_000, "extension state " + label);
 }
 
-async function runTurn({ invoke }, providerId, label, plan, { projectPath, deny, beforeApprove } = {}) {
+async function runTurn({ invoke }, providerId, label, plan, { projectPath, sessionId, deny, beforeApprove } = {}) {
+  const { session } = sessionId
+    ? await invoke(IPC.invoke.sessionGet, sessionId)
+    : await invoke(IPC.invoke.sessionCreate, { title: label, projectPath, mode: "agent", providerId, modelId: model });
+  assert.equal(session.projectPath ?? undefined, projectPath);
+  turn++;
   steps = plan;
   results = [];
   modelError = undefined;
-  const { session } = await invoke(IPC.invoke.sessionCreate, {
-    title: label, projectPath, mode: "agent", providerId, modelId: model,
-  });
-  assert.equal(session.projectPath ?? undefined, projectPath);
   await invoke(IPC.invoke.agentPrompt, {
     sessionId: session.id, content: label, permissionMode: "ask",
   });
@@ -228,7 +249,10 @@ async function runTurn({ invoke }, providerId, label, plan, { projectPath, deny,
   }
   await waitFor(async () => {
     if (modelError) throw modelError;
-    return JSON.stringify(await invoke(IPC.invoke.sessionGet, session.id)).includes(marker);
+    const result = await invoke(IPC.invoke.sessionGet, session.id);
+    if (!JSON.stringify(result).includes(completionMarker())) return false;
+    const { runningSessionIds } = await invoke(IPC.invoke.sessionList);
+    return !runningSessionIds.includes(session.id);
   }, 45_000, `${label}: completion`, 150);
   assert.equal(results.length, plan.length);
   return [...results];
@@ -282,7 +306,7 @@ async function snapshot(directory) {
     })));
 }
 
-async function checkProjectPicker(app, run, officeOn, officeOff) {
+async function checkProjectPicker(app, checkBash, officeOn, officeOff) {
   await selectOffice(app, "projects");
   const option = (path) => `[...document.querySelectorAll(".scope-popover [role=option]")].find(
     option => option.querySelector(".scope-option-path")?.textContent === ${JSON.stringify(path)})`;
@@ -298,11 +322,6 @@ async function checkProjectPicker(app, run, officeOn, officeOff) {
     await waitFor(() => app.evaluate(`(${option(path)})?.getAttribute("aria-selected") === ${JSON.stringify(String(selected))}`),
       10_000, "project picker selection " + path);
   };
-  const checkBash = async (path, expected) => {
-    const result = await run(`Check project scope for ${path}.`, [bash(probe)], { projectPath: path });
-    assert.equal(stdout(result[0]), expected);
-  };
-
   await select(workspace, true);
   await select(otherProject, false);
   await checkBash(workspace, officeOn);
@@ -313,6 +332,9 @@ async function checkProjectPicker(app, run, officeOn, officeOff) {
   await select(workspace, false);
   await checkBash(workspace, officeOff);
   await checkBash(otherProject, officeOn);
+  // Leave only the project that contains the Word fixture selected.
+  await select(workspace, true);
+  await select(otherProject, false);
   await app.evaluate(`document.querySelector(".scope-popover-close").click()`);
 }
 
@@ -372,6 +394,11 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
     authKind: "none", apiStyle: "chat_completions", defaultModelId: model, models: [bindingForCustomModel(model)],
   });
   const run = (label, plan, opts) => runTurn(app, configured.id, label, plan, opts);
+  const checkBash = async (projectPath, expected, sessionId) => {
+    const [result] = await run(`Check the Bash environment for ${projectPath ?? "an unbound session"}.`,
+      [bash(probe)], { projectPath, sessionId });
+    assert.equal(stdout(result), expected);
+  };
   const off = stdout((await run("Check the Bash environment before enabling.", [bash(probe)]))[0]);
   assert.ok(!off.includes(runtime));
 
@@ -384,8 +411,26 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
   assert.ok(on.includes(join(runtime, "node/bin/node")), on);
   assert.ok(on.includes(join(runtime, "python/bin/python")), on);
   assert.equal(system(), terminal);
-  await checkProjectPicker(app, run, on, off);
+  await checkProjectPicker(app, checkBash, on, off);
+  await checkBash(undefined, off);
   await selectOffice(app, "global");
+  await checkBash(workspace, on);
+  await checkBash(otherProject, on);
+  await selectOffice(app, "projects");
+
+  app = await restart(app);
+  const scoped = await row();
+  assert.equal(scoped?.enabled, true);
+  assert.deepEqual(scoped.scope, { mode: "projects", projects: [workspace] });
+  assert.equal((await app.invoke(IPC.invoke.projectSet, otherProject)).workspace?.path, otherProject);
+  for (const projectPath of [otherProject, undefined]) {
+    await checkBash(projectPath, off);
+    await run("Find the user Skill outside the Office Runtime scope.", [{ name: "Skill", args: { id: skillId } }],
+      { projectPath });
+  }
+  assert.equal((await app.invoke(IPC.invoke.projectSet, workspace)).workspace?.path, workspace);
+  await checkBash(workspace, on);
+  assert.equal(system(), terminal);
 
   const rejectPath = join(workspace, "不得 创建.docx");
   const denied = await run("Decline the document write.", [
@@ -394,9 +439,13 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
   assert.match(denied[0], /denied|rejected/i);
   await assert.rejects(stat(rejectPath), { code: "ENOENT" });
 
+  const { session: wordSession } = await app.invoke(IPC.invoke.sessionCreate, {
+    title: "Word in the selected project", projectPath: workspace, mode: "agent", providerId: configured.id, modelId: model,
+  });
   let bashApprovals = 0;
   const word = await run("Use the installed docx Skill to extract, create and save a copy.", wordSteps(), {
     projectPath: workspace,
+    sessionId: wordSession.id,
     async beforeApprove(name) {
       if (name !== "Bash") return;
       const output = bashApprovals++ === 0 ? created : edited;
@@ -421,15 +470,15 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
   assert.deepEqual(await snapshot(skillSource), skillFiles, "Skill source changed after running the original commands");
 
   await selectOffice(app, "off");
-  await stop();
-  app = await boot();
+  await checkBash(workspace, off, wordSession.id);
+  app = await restart(app);
   assert.equal((await row())?.enabled, false);
-  assert.equal(stdout((await run("Check a new local session after disabling.", [bash(probe)]))[0]), off);
+  await checkBash(workspace, off);
   assert.equal((await app.invoke(IPC.invoke.skillList, { level: "global" })).skills.find((item) => item.id === skillId)?.path,
     join(skillPath, "SKILL.md"));
   assert.equal(await readlink(skillPath), skillLink);
   assert.deepEqual(await snapshot(skillSource), skillFiles);
-  console.log(`PASS: ${upgradeState ? "legacy upgrade" : "clean installation"}, global unbound and selected project Bash, separate terminal, permission denial, linked docx Skill discovery and invocation with original commands, Chinese DOCX readback and source preservation, disablement after restart.`);
+  console.log(`PASS: ${upgradeState ? "legacy upgrade" : "clean installation"}, global and project-scoped Bash, selected scope after restart, separate terminal, permission denial and linked docx Skill in the selected project, Chinese DOCX readback and source preservation, disablement before and after restart.`);
 }
 
 try {
