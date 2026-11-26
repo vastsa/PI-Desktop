@@ -225,14 +225,48 @@ It compares the original bytes and every package part outside the edited slide.
 In a local Agent session, enable `pie.offline-office/wx` to format Markdown
 or DOCX with the bundled WX template. Use a new output directory under an
 authorized path. Formatting writes `formatted.docx` and `audit.json`.
+The audit must allow delivery before the Agent returns the finished DOCX.
+Allowed warnings are shown with their diagnostic codes. An invalid or failed
+audit or a manual review requirement stops delivery and leaves the report
+available for review.
 Standalone review accepts DOCX and writes `review.md` with its score and
 recommended fixes. Neither operation edits the source. AI enhancement is
 outside this release.
 
 WX uses the bundled Python 3.12 with the original WX offline wheelhouse.
-On first use it extracts those wheels to `offline-office/wx-0.21.3/deps`
-under the managed Pie Code data directory. No package manager or network
-is needed. Keep the installed application read-only during the disconnected
+On first use it extracts those wheels to `offline-office/wx-<version>/deps`
+under the managed Pie Code data directory, using the bundled WX package's
+version. It needs no package manager or network. Keep the installed
+application read-only during the disconnected
 Kylin acceptance run, and confirm both audit reports, the independent review,
 and the unchanged source bytes using the installed Office scenario above.
 Confirm redistribution permission for WX and its dependencies before release.
+
+### WX candidate evidence (2026-11-26)
+
+PR #27 head `0fae387f4` plus the WX review fixes, on maintenance baseline
+`b8667f4d3`. The same `pie-code_0.23.1_arm64.deb` was inspected and installed.
+SHA-256: `0677d3c321f04210e82b9855bfeed0c56aa30a0a9b672ffe6cd4782a763c897c`.
+
+- [ARM64 package inspection output](#wx-arm64-package-inspection).
+- [Installed Kylin scenario output](#wx-installed-kylin-scenario).
+
+These results apply to this exact package. Rerun acceptance for a different
+release package.
+
+#### WX ARM64 package inspection
+
+```text
+Verified 511 arm64 ELF files at glibc <= 2.31.
+Verified bundled Word and PowerPoint creation/extraction, Excel creation/read, and WX review.
+```
+
+#### WX installed Kylin scenario
+
+UTM Galaxy Kylin V10 SP1, ARM64, glibc 2.31, system Python 3.8.10. The
+install was read-only during the user session and the network namespace had
+only loopback. The package digest matched on the guest.
+
+```text
+PASS: offline Office enablement, Bash approval, Word readback, Excel pandas read/write and formula cache 250 → 260, PowerPoint readback, WX first-use cache and conversion audits for Markdown and DOCX, independent WX review, source preservation, and disablement after restart
+```

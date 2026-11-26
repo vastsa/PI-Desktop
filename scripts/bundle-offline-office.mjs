@@ -6,6 +6,7 @@ import { isAbsolute, join, relative, sep } from "node:path";
 
 const plugin = new URL("../apps/desktop/resources/offline-office/", import.meta.url);
 const ARM64 = 3; // electron-builder's Arch.arm64 in the afterPack context.
+const WX_VERSION = "0.21.3";
 
 async function verifyRuntimeLinks(runtime, label) {
   if (!(await lstat(runtime)).isDirectory()) {
@@ -62,13 +63,30 @@ export async function verifyOfflineOfficeRuntime(runtime) {
 
 export async function verifyOfflineWxRuntime(runtime) {
   await verifyRuntimeLinks(runtime, "WX offline package");
-  if ((await readFile(join(runtime, "VERSION"), "utf8")).trim() !== "0.21.3" ||
-      (await readFile(join(runtime, "OFFLINE_PACKAGE"), "utf8")).trim() !== "version=0.21.3\nplatform=linux-arm64") {
-    throw new Error("Expected the WX 0.21.3 Linux ARM64 offline package.");
+  if ((await readFile(join(runtime, "VERSION"), "utf8")).trim() !== WX_VERSION ||
+      (await readFile(join(runtime, "OFFLINE_PACKAGE"), "utf8")).trim() !== `version=${WX_VERSION}\nplatform=linux-arm64`) {
+    throw new Error(`Expected the WX ${WX_VERSION} Linux ARM64 offline package.`);
   }
   const manifest = JSON.parse(await readFile(join(runtime, "wheelhouse/manifest.json"), "utf8"));
-  if (manifest.platform !== "linux-arm64" || !manifest.environments?.cp312?.length) {
+  const selection = manifest?.environments?.cp312;
+  if (manifest?.platform !== "linux-arm64" || !Array.isArray(selection) || !selection.length ||
+      !Array.isArray(manifest.wheels)) {
     throw new Error("The WX offline wheelhouse must support bundled Linux ARM64 Python 3.12.");
+  }
+  const names = new Set();
+  const validComponent = (value) => typeof value === "string" && /^(?!\.)[^/\\]+$/.test(value);
+  for (const record of manifest.wheels) {
+    const { python_tag, wheel, sha256 } = record ?? {};
+    if (!validComponent(python_tag) || !validComponent(wheel) || !wheel.endsWith(".whl") ||
+        typeof sha256 !== "string" || sha256.length !== 64 || !/^[a-f0-9]+$/.test(sha256)) {
+      throw new Error("Invalid wheel record in the WX offline wheelhouse.");
+    }
+    const name = `${python_tag}/${wheel}`;
+    if (names.has(name)) throw new Error("Duplicate wheel record in the WX offline wheelhouse.");
+    names.add(name);
+  }
+  if (new Set(selection).size !== selection.length || selection.some((name) => !names.has(name))) {
+    throw new Error("Invalid Python 3.12 wheel selection in the WX offline wheelhouse.");
   }
   for (const file of ["scripts/offline_install.py", "scripts/main.py", "assets/wx_template.docx", "wheelhouse/wheels.tar.xz"]) {
     await access(join(runtime, file), constants.R_OK);

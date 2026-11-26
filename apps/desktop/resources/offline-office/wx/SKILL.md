@@ -9,8 +9,13 @@ use only user-authorized paths. Choose a new output directory under an existing
 authorized directory; the source is read-only.
 
 - Format and audit: `/bin/sh "SKILL_DIR/wx.sh" convert "Source.md" "WX output"`.
-  Markdown and DOCX inputs are accepted. Read `WX output/audit.json` and return
-  `WX output/formatted.docx` with the audit result and any manual review items.
+  Markdown and DOCX inputs are accepted. Read `public_summary` in
+  `WX output/audit.json` if present. Return `WX output/formatted.docx` with
+  the audit result only if the command succeeds. For
+  `completed_with_warnings`, list the affected audits and diagnostic codes.
+  If delivery is blocked or manual review is required, report the reason,
+  diagnostic codes and review items from the report. Do not deliver the
+  DOCX as a finished document or mark manual checks complete.
 - Review without converting: `/bin/sh "SKILL_DIR/wx.sh" review "Source.docx" "WX review"`.
   Read `WX review/review.md` and report the score and recommended fixes.
 

@@ -344,7 +344,8 @@ doc.add_heading("2. 验证结果", level=1)
 doc.add_paragraph("验证完成。")
 doc.save(sys.argv[1])`, wx.docx);
   const originalWxDocx = await readFile(join(workspace, wx.docx));
-  const wxCache = join(root, "data/offline-office/wx-0.21.3/deps/.wxdf-state.json");
+  const wxVersion = (await readFile(join(wxRuntime, "VERSION"), "utf8")).trim();
+  const wxCache = join(root, "data/offline-office", `wx-${wxVersion}`, "deps/.wxdf-state.json");
   await assert.rejects(stat(wxCache), { code: "ENOENT" });
   await writeFile(join(workspace, "slides.json"), JSON.stringify([
     { title: "中文标题", body: pptBody }, { title: "新建第二页", body: "可编辑正文" },
@@ -403,6 +404,7 @@ deck.save(sys.argv[1])`, ppt.input);
   for (const directory of [wx.output, wx.docxOutput]) {
     const summary = JSON.parse(await readFile(join(workspace, directory, "audit.json"), "utf8")).public_summary;
     assert.equal(summary.status, "completed");
+    assert.equal(summary.manual_review_required, false);
     assert.equal(summary.unexpected_styles_count, 0);
     const audits = Object.values(summary.audits).map((audit) => typeof audit === "string" ? audit : audit.status);
     assert.ok(audits.includes("passed") && audits.every((status) =>

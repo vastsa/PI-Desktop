@@ -98,7 +98,10 @@
   characters and spaces. Try to write to an existing output directory.
 - **Expected:** The first call uses only bundled wheels and creates its cache
   in the managed app data directory. Both converted DOCXs are readable and
-  audited. The standalone review returns a score and a remediation report.
+  their audits allow delivery without manual review. Separately, the launcher
+  regression tests verify that an audit requiring manual review blocks delivery
+  even when conversion succeeds. The standalone review returns a score and a
+  remediation report.
   Neither source changes, and a reused output directory is refused. The
   Skill is absent in a new session after disabling the extension and restarting.
 - **Specs linked:** [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--wx-formatting-and-review).
