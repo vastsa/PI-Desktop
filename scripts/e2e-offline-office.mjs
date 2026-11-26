@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { access, cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import { bindingForCustomModel } from "../packages/shared/dist/model-catalog.js";
 import { IPC } from "../packages/shared/dist/protocol.js";
 import { waitFor } from "./e2e/wait.mjs";
@@ -19,6 +20,8 @@ assert.ok(Object.values(networkInterfaces()).flat().every((address) => address.i
 await access(join(sample, "SKILL.md"));
 
 const root = await mkdtemp(join(tmpdir(), "pie-office-e2e-"));
+const shellEnv = { HOME: root, PATH: process.env.PATH, SHELL: "/bin/bash" };
+const runFile = promisify(execFile);
 const workspace = join(root, "project");
 const otherProject = join(root, "Project");
 const skillPath = join(root, ".agents", "skills", "docx");
@@ -36,16 +39,17 @@ const after = "这是修改正文";
 const untouched = "这一段保持原样";
 const createdText = "这是可编辑的新文档";
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
-const probe = "printf '%s\\n' \"\${NODE_PATH-}\"; command -v node || :; command -v python || :";
+const probe = "printf '%s\\n' \"$PATH\" \"\${NODE_PATH-}\"; command -v node || :; command -v python || :";
 const skillScript = (name) => quote(join(skillPath, "scripts", "office", name));
 const bash = (command) => ({ name: "Bash", args: { command } });
+const loadWordSkill = () => ({ name: "Skill", args: { id: skillId } });
 const words = [
   "import sys, xml.etree.ElementTree as E",
   "root = E.parse(sys.argv[1])",
   "for node in root.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'): print(node.text or '')",
 ].join("\n");
 const wordSteps = () => [
-  { name: "Skill", args: { id: skillId } },
+  loadWordSkill(),
   bash([
     `node make.cjs ${quote(created)} ${quote(createdText)}`,
     `python ${skillScript("validate.py")} ${quote(created)}`,
@@ -114,9 +118,9 @@ async function boot() {
   desktop = spawn(appBin, ["--remote-debugging-port=0", "--user-data-dir=" + join(root, "profile")], {
     cwd: dirname(appBin),
     env: {
-      PATH: process.env.PATH, DISPLAY: process.env.DISPLAY, XAUTHORITY: process.env.XAUTHORITY,
+      ...shellEnv, DISPLAY: process.env.DISPLAY, XAUTHORITY: process.env.XAUTHORITY,
       DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS,
-      HOME: root, PI_DESKTOP_DATA_DIR: join(root, "data"), PI_CODING_AGENT_DIR: join(root, "agent"),
+      PI_DESKTOP_DATA_DIR: join(root, "data"), PI_CODING_AGENT_DIR: join(root, "agent"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -179,7 +183,8 @@ async function restart({ evaluate, invoke }) {
   const quit = async () => {
     await invoke(IPC.invoke.appQuit);
     await waitFor(() => evaluate(`(() => {
-      const confirm = document.querySelector(".lifecycle-confirmation-actions button:last-child");
+      const dialog = document.querySelector('[role="dialog"][aria-labelledby="lifecycle-confirmation-title"]');
+      const confirm = [...(dialog?.querySelectorAll("button") ?? [])].find(button => button.textContent.trim() === "Quit");
       if (!confirm) return false;
       confirm.click(); return true;
     })()`), 10_000, "Quit confirmation");
@@ -255,7 +260,34 @@ async function runTurn({ invoke }, providerId, label, plan, { projectPath, sessi
     return !runningSessionIds.includes(session.id);
   }, 45_000, `${label}: completion`, 150);
   assert.equal(results.length, plan.length);
-  return [...results];
+  return { sessionId: session.id, results: [...results] };
+}
+
+async function newProjectSession({ evaluate, invoke }, path) {
+  const group = `[data-sidebar-project-group=${JSON.stringify(path)}]`;
+  await waitFor(() => evaluate(`(() => {
+    const button = document.querySelector(${JSON.stringify(group + ' [data-action="toggle-project-collapse"]')});
+    if (!button?.getClientRects().length) return false;
+    button.click(); return true;
+  })()`), 20_000, "sidebar project " + path);
+  await waitFor(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(group + '[data-current-workspace="true"]')}))`),
+    20_000, "active sidebar project " + path);
+
+  const { sessions } = await invoke(IPC.invoke.sessionList);
+  const existing = new Set(sessions.map(session => session.id));
+  await waitFor(() => evaluate(`(() => {
+    const button = [...document.querySelectorAll('[data-nav="new-task"]')].find(item => item.getClientRects().length);
+    if (!button) return false;
+    button.click(); return true;
+  })()`), 20_000, "New Task");
+  let session;
+  await waitFor(async () => {
+    const { sessions } = await invoke(IPC.invoke.sessionList);
+    session = sessions.find(item => !existing.has(item.id));
+    return session;
+  }, 20_000, "new sidebar session");
+  assert.equal(session.projectPath, path, "New Task should use the selected project");
+  return session.id;
 }
 
 const legacyId = "pie.offline-office";
@@ -325,12 +357,12 @@ async function checkProjectPicker(app, checkBash, officeOn, officeOff) {
   await select(workspace, true);
   await select(otherProject, false);
   await checkBash(workspace, officeOn);
-  await checkBash(otherProject, officeOff);
+  await checkBash(otherProject, officeOff.get(otherProject));
   await select(otherProject, true);
   await checkBash(workspace, officeOn);
   await checkBash(otherProject, officeOn);
   await select(workspace, false);
-  await checkBash(workspace, officeOff);
+  await checkBash(workspace, officeOff.get(workspace));
   await checkBash(otherProject, officeOn);
   // Leave only the project that contains the Word fixture selected.
   await select(workspace, true);
@@ -364,8 +396,10 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
     cwd: workspace, env: { ...process.env, NODE_PATH: join(runtime, "node/lib/node_modules") },
   });
   const originalBytes = await readFile(join(workspace, original));
-  const system = () => execFileSync("/bin/bash", ["-lc", probe], { encoding: "utf8" });
-  const terminal = system();
+  const system = async () => (await runFile("/bin/bash", ["-lc", probe], {
+    cwd: root, env: shellEnv, encoding: "utf8", timeout: 5_000,
+  })).stdout;
+  const terminal = await system();
   assert.ok(!terminal.includes(runtime));
 
   provider.listen(0, "127.0.0.1");
@@ -393,59 +427,66 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
     name: "Office fixture", vendorKey: "custom", baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
     authKind: "none", apiStyle: "chat_completions", defaultModelId: model, models: [bindingForCustomModel(model)],
   });
+  await app.invoke(IPC.invoke.settingsSet, { defaultProviderId: configured.id, defaultModelId: model });
   const run = (label, plan, opts) => runTurn(app, configured.id, label, plan, opts);
-  const checkBash = async (projectPath, expected, sessionId) => {
-    const [result] = await run(`Check the Bash environment for ${projectPath ?? "an unbound session"}.`,
+  const readBash = async (projectPath, sessionId) => {
+    const { results: [result] } = await run(`Check the Bash environment for ${projectPath ?? "an unbound session"}.`,
       [bash(probe)], { projectPath, sessionId });
-    assert.equal(stdout(result), expected);
+    return stdout(result);
   };
-  const off = stdout((await run("Check the Bash environment before enabling.", [bash(probe)]))[0]);
-  assert.ok(!off.includes(runtime));
+  const checkBash = async (projectPath, expected, sessionId) => {
+    assert.equal(await readBash(projectPath, sessionId), expected);
+  };
 
   await mkdir(otherProject);
   for (const path of [workspace, otherProject]) {
     await app.invoke(IPC.invoke.projectGroupCreate, { name: path.split("/").at(-1), folders: [path] });
   }
+  const off = new Map();
+  for (const path of [workspace, otherProject, undefined]) {
+    const baseline = await readBash(path);
+    assert.ok(!baseline.includes(runtime));
+    off.set(path, baseline);
+  }
   await selectOffice(app, "global");
-  const on = stdout((await run("Check the runtime in an unbound local session.", [bash(probe)]))[0]);
+  const on = await readBash(undefined);
   assert.ok(on.includes(join(runtime, "node/bin/node")), on);
   assert.ok(on.includes(join(runtime, "python/bin/python")), on);
-  assert.equal(system(), terminal);
+  assert.equal(await system(), terminal);
   await checkProjectPicker(app, checkBash, on, off);
-  await checkBash(undefined, off);
+  await checkBash(undefined, off.get(undefined));
   await selectOffice(app, "global");
   await checkBash(workspace, on);
   await checkBash(otherProject, on);
   await selectOffice(app, "projects");
 
+  // Registered project groups are not automatically opened in the sidebar.
+  const sidebar = await app.invoke(IPC.invoke.sidebarPreferencesGet);
+  await app.invoke(IPC.invoke.sidebarPreferencesSet, { ...sidebar, openProjectPaths: [workspace, otherProject] });
   app = await restart(app);
   const scoped = await row();
   assert.equal(scoped?.enabled, true);
   assert.deepEqual(scoped.scope, { mode: "projects", projects: [workspace] });
-  assert.equal((await app.invoke(IPC.invoke.projectSet, otherProject)).workspace?.path, otherProject);
-  for (const projectPath of [otherProject, undefined]) {
-    await checkBash(projectPath, off);
-    await run("Find the user Skill outside the Office Runtime scope.", [{ name: "Skill", args: { id: skillId } }],
-      { projectPath });
-  }
-  assert.equal((await app.invoke(IPC.invoke.projectSet, workspace)).workspace?.path, workspace);
-  await checkBash(workspace, on);
-  assert.equal(system(), terminal);
+  const checkSkillOutsideScope = async (projectPath, sessionId) => {
+    const { results } = await run("Load the user Skill and check Bash outside Office Runtime.",
+      [loadWordSkill(), bash(probe)], { projectPath, sessionId });
+    assert.equal(stdout(results[1]), off.get(projectPath));
+  };
+  await checkSkillOutsideScope(otherProject, await newProjectSession(app, otherProject));
+  await checkBash(workspace, on, await newProjectSession(app, workspace));
+  await checkSkillOutsideScope(undefined);
+  assert.equal(await system(), terminal);
 
   const rejectPath = join(workspace, "不得 创建.docx");
-  const denied = await run("Decline the document write.", [
+  const { results: denied } = await run("Decline the document write.", [
     bash(`node make.cjs ${quote(rejectPath)} ${quote(createdText)}`),
   ], { projectPath: workspace, deny: true });
   assert.match(denied[0], /denied|rejected/i);
   await assert.rejects(stat(rejectPath), { code: "ENOENT" });
 
-  const { session: wordSession } = await app.invoke(IPC.invoke.sessionCreate, {
-    title: "Word in the selected project", projectPath: workspace, mode: "agent", providerId: configured.id, modelId: model,
-  });
   let bashApprovals = 0;
-  const word = await run("Use the installed docx Skill to extract, create and save a copy.", wordSteps(), {
+  const { sessionId: wordSessionId, results: word } = await run("Use the installed docx Skill to extract, create and save a copy.", wordSteps(), {
     projectPath: workspace,
-    sessionId: wordSession.id,
     async beforeApprove(name) {
       if (name !== "Bash") return;
       const output = bashApprovals++ === 0 ? created : edited;
@@ -470,10 +511,10 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
   assert.deepEqual(await snapshot(skillSource), skillFiles, "Skill source changed after running the original commands");
 
   await selectOffice(app, "off");
-  await checkBash(workspace, off, wordSession.id);
+  await checkBash(workspace, off.get(workspace), wordSessionId);
   app = await restart(app);
   assert.equal((await row())?.enabled, false);
-  await checkBash(workspace, off);
+  await checkBash(workspace, off.get(workspace));
   assert.equal((await app.invoke(IPC.invoke.skillList, { level: "global" })).skills.find((item) => item.id === skillId)?.path,
     join(skillPath, "SKILL.md"));
   assert.equal(await readlink(skillPath), skillLink);

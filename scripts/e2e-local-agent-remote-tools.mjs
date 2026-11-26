@@ -2,13 +2,13 @@
 /** Isolated local model -> real Main relay -> loopback RACP -> real Rust tools.
  * The Host has no providers. No SSH, credentials, paid APIs or user app is used. */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { register } from "node:module";
+import { setTimeout as delay } from "node:timers/promises";
 register(new URL("../apps/desktop/test/helpers/ts-import-hooks.mjs", import.meta.url));
 const { DesktopAgentRuntime } = await import("../packages/agent-runtime/dist/index.js");
 const { HostProcess, createHostSessionPort } = await import("../packages/host-runtime/dist/index.js");
@@ -27,6 +27,10 @@ assert.ok(process.env.PI_HOST_CORE_BINARY, "PI_HOST_CORE_BINARY must name the cu
 const root = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? tmpdir(), "local-agent-remote-tools-"));
 const remoteRoot = join(root, "remote-workspace");
 const officeResources = process.env.PI_CODE_E2E_OFFICE_RESOURCES;
+const shellEnv = officeResources ? {
+  HOME: root, SHELL: "/bin/bash", BASH_ENV: "", ENV: "",
+  NODE_PATH: join(root, "remote-node-path"),
+} : {};
 const remoteProbe = officeResources
   ? 'printf "%s\\n" "REMOTE_BASH_FIXTURE" "$PATH" "${NODE_PATH-}"'
   : "printf 'REMOTE_BASH_FIXTURE\\n'";
@@ -45,6 +49,7 @@ let localPermissions = 0;
 let binding;
 let boot;
 let runtime;
+let turnId;
 let h;
 const wireCalls = [];
 const model = createServer(async (req, res) => {
@@ -64,7 +69,7 @@ const model = createServer(async (req, res) => {
       if (modelCalls === 2) assert.ok(JSON.stringify(input.messages).includes("REMOTE_READ_FIXTURE"), "actual remote Read enters local model context");
       const name = modelCalls === 1 ? "Read" : "Bash";
       const args = name === "Read" ? { path: "README.md" } : { command: remoteCommand };
-      frame({ role: "assistant", tool_calls: [{ index: 0, id: `local-tool-${modelCalls}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] });
+      frame({ role: "assistant", tool_calls: [{ index: 0, id: `${turnId}-tool-${modelCalls}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] });
       frame({}, "tool_calls");
     } else {
       assert.equal(modelCalls, 3, "model/tool execution is not replayed");
@@ -77,7 +82,7 @@ const model = createServer(async (req, res) => {
 model.listen(0, "127.0.0.1"); await once(model, "listening");
 const deadline = setTimeout(() => { console.error("local-Agent remote-tool acceptance exceeded 60s"); process.exit(1); }, 60_000);
 try {
-  host = new HostProcess({ binaryPath: resolve(process.env.PI_HOST_CORE_BINARY), dataDir: join(root, "host"), onStderr: () => {} });
+  host = new HostProcess({ binaryPath: resolve(process.env.PI_HOST_CORE_BINARY), dataDir: join(root, "host"), env: shellEnv, onStderr: () => {} });
   await host.handshake();
   const tools = createWorkspaceTools(() => host);
   let remotePrompts = 0;
@@ -100,17 +105,12 @@ try {
     { hostKey: "fixture", path: remoteRoot }, { entries: [{ source: "local-global", content: "LOCAL_GLOBAL_INSTRUCTIONS_FIXTURE" }] });
   localHost = new HostProcess({
     binaryPath: resolve(process.env.PI_HOST_CORE_BINARY), dataDir: join(root, "local-host"), onStderr: () => {},
-    ...(officeResources ? { env: { PI_DESKTOP_BUILTIN_PLUGINS_DIR: join(officeResources, "plugins") } } : {}),
+    ...(officeResources ? { env: { ...shellEnv, PI_DESKTOP_BUILTIN_PLUGINS_DIR: join(officeResources, "plugins") } } : {}),
   });
   await localHost.handshake();
-  if (officeResources) {
-    const { plugin } = await localHost.call("plugins.enable", { id: "pie.office-runtime" });
-    assert.equal(plugin?.bundled, true);
-    assert.equal(plugin?.enabled, true);
-  }
   const created = await localHost.call("project.group.createRemote", { name: "Locally named remote project", remote: { hostKey: "fixture", path: remoteRoot } });
   const localSession = await localHost.call("session.create", { projectPath: created.group.primaryPath, mode: "agent" });
-  relay = createRemoteWorkspaceToolRelay(localHost, { getBoot: () => boot, isCurrent: () => true, isTurnDispatchable: (sessionId, turnId) => sessionId === localSession.session.id && turnId === "local-turn", log: () => {} });
+  relay = createRemoteWorkspaceToolRelay(localHost, { getBoot: () => boot, isCurrent: () => true, isTurnDispatchable: (sessionId, candidateTurnId) => sessionId === localSession.session.id && candidateTurnId === turnId, log: () => {} });
   localHost.onNotification((method, params) => {
     if (method === "tools.remoteExecute") void relay.execute(params);
     if (method === "tools.remoteAbort") relay.cancel(params);
@@ -119,25 +119,57 @@ try {
       void localHost.call("permissions.resolve", { requestId: params.requestId, decision: "allow-once" });
     }
   });
-  let ended;
-  const done = new Promise((resolveDone, rejectDone) => { ended = envelope => { if (envelope.event.type === "error") rejectDone(new Error(JSON.stringify(envelope.event))); if (envelope.event.type === "agent_end") resolveDone(); }; });
-  runtime = new DesktopAgentRuntime({
-    sessionId: localSession.session.id, mode: "agent", thinkingLevel: "off", commandShell: shell,
-    projectInstructions,
-    remoteWorkspace: { hostKey: "fixture", path: remoteRoot },
-    provider: { id: "local-provider", name: "Local fixture", modelId: "local-fixture", baseUrl: `http://127.0.0.1:${model.address().port}/v1`, apiStyle: "chat_completions", apiKey: KEY, authKind: "api_key", supportsReasoning: false, supportedThinkingLevels: ["off"] },
-    host: { call: (method, params) => localHost.call(method, params), onNotification: handler => localHost.onNotification(handler) },
-    onEvent: envelope => ended(envelope),
-  });
-  await Promise.all([runtime.prompt("Read README.md and write marker.txt using Bash.", "user-1", "local-turn"), done]);
-  assert.equal(modelError, undefined);
-  assert.equal(modelCalls, 3);
-  assert.equal(localPermissions, 1, "Bash is approved by local permissions before remote dispatch");
-  const expected = officeResources
-    ? execFileSync("/bin/bash", ["-lc", remoteProbe], { cwd: remoteRoot, encoding: "utf8" })
-    : "REMOTE_BASH_FIXTURE\n";
-  assert.equal(await readFile(join(remoteRoot, "marker.txt"), "utf8"), expected);
-  assert.deepEqual(wireCalls.map(call => call.toolName), ["Read", "Bash"]);
+  async function runProbe(id) {
+    const marker = join(remoteRoot, "marker.txt");
+    await rm(marker, { force: true });
+    turnId = id;
+    modelCalls = 0;
+    localPermissions = 0;
+    const firstCall = wireCalls.length;
+    let ended;
+    const done = new Promise((resolveDone, rejectDone) => { ended = envelope => { if (envelope.event.type === "error") rejectDone(new Error(JSON.stringify(envelope.event))); if (envelope.event.type === "agent_end") resolveDone(); }; });
+    runtime = new DesktopAgentRuntime({
+      sessionId: localSession.session.id, mode: "agent", thinkingLevel: "off", commandShell: shell,
+      projectInstructions,
+      remoteWorkspace: { hostKey: "fixture", path: remoteRoot },
+      provider: { id: "local-provider", name: "Local fixture", modelId: "local-fixture", baseUrl: `http://127.0.0.1:${model.address().port}/v1`, apiStyle: "chat_completions", apiKey: KEY, authKind: "api_key", supportsReasoning: false, supportedThinkingLevels: ["off"] },
+      host: { call: (method, params) => localHost.call(method, params), onNotification: handler => localHost.onNotification(handler) },
+      onEvent: envelope => ended(envelope),
+    });
+    const timer = new AbortController();
+    try {
+      await Promise.race([
+        Promise.all([runtime.prompt("Read README.md and write marker.txt using Bash.", id + "-user", id), done]),
+        delay(20_000, undefined, { signal: timer.signal }).then(() => { throw new Error(id + ": remote Bash timed out"); }),
+      ]);
+    } finally {
+      timer.abort();
+      await runtime.dispose();
+      runtime = undefined;
+    }
+    assert.equal(modelError, undefined);
+    assert.equal(modelCalls, 3);
+    assert.equal(localPermissions, 1, "Bash is approved by local permissions before remote dispatch");
+    assert.deepEqual(wireCalls.slice(firstCall).map(call => call.toolName), ["Read", "Bash"]);
+    return readFile(marker, "utf8");
+  }
+
+  if (officeResources) {
+    const { plugins } = await localHost.call("plugins.list");
+    const disabled = plugins.find(plugin => plugin.id === "pie.office-runtime");
+    assert.equal(disabled?.bundled, true);
+    assert.equal(disabled.enabled, false);
+    const baseline = await runProbe("office-disabled");
+    const [marker, path, nodePath] = baseline.trimEnd().split("\n");
+    assert.equal(marker, "REMOTE_BASH_FIXTURE");
+    assert.ok(path && !path.includes(join(officeResources, "office-runtime")));
+    assert.equal(nodePath, shellEnv.NODE_PATH);
+    const { plugin } = await localHost.call("plugins.enable", { id: "pie.office-runtime" });
+    assert.equal(plugin?.enabled, true);
+    assert.equal(await runProbe("office-enabled"), baseline, "Remote PATH and NODE_PATH should not change");
+  } else {
+    assert.equal(await runProbe("local-turn"), "REMOTE_BASH_FIXTURE\n");
+  }
   assert.ok(!JSON.stringify(wireCalls).includes(KEY), "local provider key never crosses the workspace boundary");
   assert.ok(wireCalls.every(call => !Object.keys(call).some(key => /provider|model|secret|auth/i.test(key))));
   const providers = await host.call("providers.list", {});

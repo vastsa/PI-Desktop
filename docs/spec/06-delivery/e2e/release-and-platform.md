@@ -37,22 +37,24 @@
   unbound session and compare the system terminal. Select both case-variant
   folders in the Extensions project picker, then switch which one is selected
   and check ordinary Bash in both. Switch back to Everywhere, check both
-  projects, then narrow to the Word project again. Restart, switch projects,
-  and check Bash in new selected, unselected and unbound sessions. Confirm the
-  Skill remains available outside the scope. In the selected project, deny one
+  projects, then narrow to the Word project again. Restart, select each project
+  in the sidebar and use New Task. Verify the new chats belong to those projects.
+  In the unselected and unbound chats, load the Skill and check Bash in the same
+  turn. In the selected project, check ordinary Bash, deny one
   Bash write, then load the linked docx Skill and
   approve its original commands to extract text, generate an editable document
   and save an edited copy. Use Chinese file names with spaces. Disable the
   extension and check Bash in the existing session, then in a new session in the
   same project after restarting.
 - **Expected**: The normal permissions hold before any write. The selected
-  scope survives restart. Bash uses packaged tools only where enabled; the
-  system terminal keeps its original environment. Both output files read back.
+  scope survives restart. Bash uses packaged tools only where enabled; outside
+  the scope and in the system terminal, `PATH` and `NODE_PATH` match the
+  disabled baseline. Both output files read back.
   The source document, Skill files and link targets are unchanged, with no new
   Python cache files. The disabled extension leaves the user Skill available.
   Repeat after seeding an enabled project scope in the previous installed
-  candidate and upgrading it. The runbook also gives a separate loopback fixture
-  to compare remote Bash's `PATH` and `NODE_PATH` while Office Runtime is enabled locally.
+  candidate and upgrading it. The runbook's separate loopback fixture compares
+  the same remote Bash path before and after enabling Office Runtime locally.
 - **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#office-runtime-and-a-self-installed-word-skill).
 - **Acceptance criterion**: A, C, E, G, Quality.
 - **Milestone**: M6+ (Pie Code 0.23.1).

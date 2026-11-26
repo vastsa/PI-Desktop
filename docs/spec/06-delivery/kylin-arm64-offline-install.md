@@ -173,10 +173,13 @@ CommonJS docx-js authoring path. It checks that the document, the linked Skill
 source and link targets stay unchanged and that no Python cache files are
 added. It checks global Bash in an unbound session, then adds and removes two
 case-variant folders through the Extensions project picker and checks Bash in
-each folder. It checks both projects after switching back to Everywhere,
-restarts with only the Word project selected, and checks Bash in new selected,
-unselected and unbound sessions. The Skill remains callable outside the runtime
-scope. The denial and Word workflow run in the selected project. After disabling
+each folder. It checks both projects after switching back to Everywhere, then
+restarts with only the Word project selected. It selects each project in the
+sidebar, opens a New Task, and verifies the new chat's project. The unselected
+and unbound chats load the Skill and run Bash in the same turn. Their
+`PATH` and `NODE_PATH` match the baseline recorded with Office Runtime off,
+as do the system terminal's. The denial and Word workflow run in the selected
+project. After disabling
 the runtime, the scenario checks Bash in the existing session and then in a new
 session in the same project after another restart. For an upgrade test,
 run the same command against an installed legacy candidate with
@@ -194,9 +197,10 @@ PI_HOST_CORE_BINARY="$PI_CODE_E2E_OFFICE_RESOURCES/bin/pi-desktop-host-core" \
   node scripts/e2e-local-agent-remote-tools.mjs
 ```
 
-The fixture enables Office Runtime globally on the local Host and compares
-remote Bash's `PATH` and `NODE_PATH` with an ordinary login Bash on the fixture
-host. It uses a loopback model and tool relay; it requires no external host.
+The fixture uses the same loopback model, relay and remote Host to compare
+remote Bash's `PATH` and `NODE_PATH` before and after enabling Office Runtime
+globally on the local Host. It uses a temporary login profile and requires no
+external host.
 
 Keep the candidate revision, DEB digest, package inspection, and target
 result together. Earlier candidates with built-in Skills are not evidence
