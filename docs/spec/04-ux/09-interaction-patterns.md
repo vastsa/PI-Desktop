@@ -553,6 +553,13 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 1.8 Work panel entry and resources (D128, D142, D154, D173, D179, D207, D221)
 
+- Opening the bundled File Manager opts the project into a default tab for this
+  renderer lifetime. Each existing or new local project session receives one plain
+  entry, without opening its dock, replacing a selection, or copying a file location.
+  Closing that entry (including bulk close) opts out only that session until it
+  reopens the view itself. Closing the last tab does not reset the project default.
+  Temporary sessions, remote sessions, and other projects do not inherit the tab.
+
 - The shell starts without a visible work panel. The viewport-fixed toggle and
   `Cmd/Ctrl + J` both toggle the active session's panel: they reveal the
   retained context without creating a resource tab, and collapse the visible

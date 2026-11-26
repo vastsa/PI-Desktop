@@ -170,7 +170,6 @@ function clearLocalSessionState(
     const sessionOutcomes = { ...state.sessionOutcomes };
     delete sessionOutcomes[id];
     const queuedPrompts = withoutRecordKey(state.queuedPrompts, id);
-    const workPanelContexts = withoutRecordKey(state.workPanelContexts, id);
     const pendingPermissions = clearSessionPermissions(
       state.pendingPermissions,
       id,
@@ -196,7 +195,8 @@ function clearLocalSessionState(
       agentStatuses,
       sessionOutcomes,
       queuedPrompts,
-      workPanelContexts,
+      workPanelContexts: withoutRecordKey(state.workPanelContexts, id),
+      fileManagerTabReceipts: withoutRecordKey(state.fileManagerTabReceipts, id),
       activeSessionId:
         state.activeSessionId === id ? undefined : state.activeSessionId,
       selectingSessionId:

@@ -17,11 +17,13 @@ import { IPC } from "@pi-desktop/shared";
 import { en } from "@pi-desktop/i18n/locales/en";
 import { ConversationSettings } from "./features/settings/pages/ConversationSettings";
 import { AssistantTurn } from "./features/chat/transcript/AssistantTurn";
+import { MessageRow } from "./features/chat/transcript/MessageRow";
 import { TranscriptDisclosureProvider } from "./features/chat/transcript/disclosure";
 import { SubagentTranscriptTab } from "./components/workpanel/SubagentTranscriptTab";
 import { SlotSessionProvider } from "./plugins/renderer-slots/use-slots";
 import { buildTranscriptEntries } from "./lib/assistant-turns";
 import { useAppStore } from "./stores/app-store";
+import { TranscriptSearchContext } from "./lib/transcript-search-context";
 import "./styles/globals.css";
 
 const sessionId = "fixture";
@@ -35,7 +37,7 @@ const task = (id, delegationId, description, status, modelId, resume) => tool(id
   toolArgs: { agent: "explorer", task: description, resume },
   toolResult: { details: { delegationId, status, modelId, thinkingLevel: "medium" } },
 });
-const first = task("task-first", "delegate-first", "Initial inspection", "completed", "earlier-model");
+const first = task("task-first", "delegate-first", "Initial inspection. " + "A long task prompt should wrap to the available panel width. ".repeat(7), "completed", "earlier-model");
 const latest = task("task-latest", "delegate-latest", "Follow-up inspection", "running", "latest-model", "delegate-first");
 const child = { parentToolCallId: "task-first" };
 const messages = [
@@ -46,16 +48,18 @@ const messages = [
   message("thinking", "assistant", "", { ...child, thinking: "Delegate reasoning" }),
   tool("read", "Read", "delegate search needle", { ...child, toolResult: { content: [{ type: "text", text: "delegate search needle" }] } }),
   tool("run", "Bash", "delegate output", { ...child, toolArgs: { command: "echo delegate" } }),
-  message("answer", "assistant", "Delegate final answer.", child),
+  message("answer", "assistant", "Delegate final answer. " + "A long reply should reflow instead of leaving space unused. ".repeat(8), child),
   latest,
   task("task-other", "delegate-other", "Other delegate", "running", "other-model"),
   message("main-answer", "assistant", "Main answer."),
 ];
 const entry = buildTranscriptEntries(messages).entries.find((item) => item.kind === "assistant-turn");
+const sixLines = message("six-lines", "user", Array(6).fill("Line").join("\\n"));
+const sevenLines = message("seven-lines", "user", Array(7).fill("Line").join("\\n"));
 const requests = [];
-const session = { id: sessionId, title: "Fixture", messages, navigationParent: first };
+const session = { id: sessionId, title: "Fixture", messages: [...messages, sixLines, sevenLines] };
 window.piDesktop = { invoke: async (channel, args) => {
-  if (channel === IPC.invoke.sessionGet) return { ok: true, data: { session } };
+  if (channel === IPC.invoke.sessionGet) return { ok: true, data: { session: { ...session, navigationParent: args.messageAround === "read" ? first : undefined } } };
   requests.push({ channel, args });
   return { ok: true, data: { pending: args.delegationIds } };
 } };
@@ -66,6 +70,7 @@ useAppStore.setState({ activeSessionId: sessionId, retainedSessionIds: [sessionI
 
 function Harness() {
   const settings = useAppStore((state) => state.settings);
+  const focus = useAppStore((state) => state.transcriptViews[sessionId]?.focus ?? null);
   const tabs = useAppStore((state) => state.workPanelTabs);
   const active = useAppStore((state) => state.activeWorkPanelTabId);
   const tab = tabs.find((item) => item.id === active);
@@ -75,10 +80,14 @@ function Harness() {
     }} /></section>
     <section id="main"><SlotSessionProvider sessionId={sessionId}>
       <TranscriptDisclosureProvider sessionId={sessionId}>
+        <TranscriptSearchContext.Provider value={focus}>
+        <MessageRow message={sixLines} isRunning={false} />
+        <MessageRow message={sevenLines} isRunning={false} />
         <AssistantTurn entry={entry} isActive={false} delegationsLive />
+        </TranscriptSearchContext.Provider>
       </TranscriptDisclosureProvider>
     </SlotSessionProvider></section>
-    <aside id="panel" style={{ width: 340, height: 370, display: "flex" }}>
+    <aside id="panel" style={{ position: "fixed", top: 0, left: 0, width: 340, height: 540, display: "flex" }}>
       {tab?.kind === "subagent" ? <SubagentTranscriptTab delegationId={tab.resource} /> : null}
     </aside>
   </>;
@@ -102,17 +111,54 @@ window.probe = async () => {
   const unfold = (item) => { if (!open(item)) click(item); };
   const visible = (selector) => Boolean(q(selector) && !q(selector).closest("[hidden]"));
   const until = async (condition, message) => {
-    const deadline = performance.now() + 3000;
+    const deadline = performance.now() + 5000;
     while (!condition()) {
       check(performance.now() < deadline, message);
       await new Promise(requestAnimationFrame);
     }
   };
+  const six = q('[data-message-id="six-lines"]');
+  const seven = q('[data-message-id="seven-lines"]');
+  check(!six.querySelector(".user-text-toggle"), "six rendered lines should not fold");
+  const longToggle = seven.querySelector(".user-text-toggle");
+  const preview = seven.querySelector(".user-text-preview");
+  const height = (element) => element.getBoundingClientRect().height;
+  check(longToggle && !open(longToggle) && longToggle.querySelector("svg"), "seven lines should default to a folded text button with an icon");
+  const collapsedHeight = height(preview);
+   check(Math.abs(collapsedHeight - height(seven.querySelector(".message-user-text")) * 6 / 7) < 1 &&
+     getComputedStyle(preview).maskImage !== "none", "folded preview should show six lines with a fade");
+  click(longToggle);
+  check(open(longToggle) && height(preview) > collapsedHeight && getComputedStyle(preview).maskImage === "none", "expand should reveal the full message without a fade");
+  click(longToggle);
+  check(!open(longToggle) && Math.abs(height(preview) - collapsedHeight) < 1, "collapse should restore the six-line preview");
   unfold(q("#main .turn-process > button"));
   const node = (id) => q('#main [data-message-id="' + id + '"] .subagent-topology-node-header');
   click(node("task-first"));
   check(q("#panel").textContent.includes("Initial inspection") && q("#panel").textContent.includes("Follow-up inspection"), "resume chain did not open as two prompts");
   check(!open(process()) && visible('#panel [data-message-id="answer"]'), "settled process must be closed while the answer stays visible");
+  const panel = q("#panel");
+  const list = q("#panel .subagent-transcript-list");
+  const prompt = q("#panel .message-row.user .message-bubble");
+  const shortPrompt = [...list.querySelectorAll(".message-row.user .message-bubble")].at(-1);
+  const answer = q('#panel [data-message-id="answer"]');
+  const width = (element) => element.getBoundingClientRect().width;
+  const narrow = { prompt: width(prompt), answer: width(answer), height: answer.getBoundingClientRect().height };
+  panel.style.width = "980px";
+  check(width(answer) >= width(list) - 1, "expanded panel reply did not fill its available width");
+  check(width(prompt) >= width(list) * 0.8, "expanded panel prompt was capped at a fixed width");
+  prompt.scrollIntoView({ block: "start" });
+  await until(() => !prompt.querySelector(".user-text-toggle"), "prompt that fits at full width should stop folding");
+  check(width(shortPrompt) < width(prompt) && answer.getBoundingClientRect().height < narrow.height,
+    "short prompts should remain compact and long replies should reflow");
+  panel.style.width = "244px";
+  prompt.scrollIntoView({ block: "start" });
+  await until(() => Boolean(prompt.querySelector(".user-text-toggle")), "narrowing should make a long wrapped prompt fold again");
+  check(width(answer) < narrow.answer && width(prompt) < narrow.prompt && list.scrollWidth <= list.clientWidth + 1,
+    "messages should reflow without horizontal overflow at the minimum width");
+  panel.style.width = "340px";
+  check(Math.abs(width(answer) - narrow.answer) < 1 && Math.abs(width(prompt) - narrow.prompt) < 1,
+    "messages did not shrink back with the panel");
+  check(list.scrollWidth <= list.clientWidth + 1, "narrow messages overflowed their transcript column");
   unfold(process());
   check(!open(group()), "settled group must default to folded");
   click(toggle("Fold finished groups"));
@@ -161,6 +207,8 @@ window.probe = async () => {
   click(footer.querySelector(".stop-btn"));
   check(JSON.stringify(requests) === JSON.stringify([{ channel: IPC.invoke.agentStopSubagents,
     args: { sessionId, delegationIds: ["delegate-latest"] } }]), "stop was not scoped to the latest delegate");
+  await useAppStore.getState().navigateTranscript({ sessionId, messageId: "seven-lines", query: "Line" });
+  await until(() => open(longToggle), "search should reveal a folded user message");
 };
 `;
 

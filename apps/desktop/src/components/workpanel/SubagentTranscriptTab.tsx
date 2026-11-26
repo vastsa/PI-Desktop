@@ -1,6 +1,7 @@
 import { Fragment, useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AssistantTurnBody } from "../../features/chat/transcript/AssistantTurnBody";
+import { CollapsibleUserText } from "../../features/chat/transcript/CollapsibleUserText";
 import { SubagentStopButton } from "../../features/chat/transcript/SubagentStopButton";
 import { TranscriptDisclosureProvider } from "../../features/chat/transcript/disclosure";
 import { delegateModelId, delegateThinkingLevel } from "../../features/chat/transcript/model";
@@ -103,7 +104,9 @@ function SubagentTranscriptSurface({ sessionId, delegationId }: { sessionId: str
                   <div className="message-row user">
                     <div className="message-col">
                       <div className="message-bubble">
-                        <div className="message-user-text selectable">{task || t("panel.subagentTaskEmpty")}</div>
+                        <CollapsibleUserText messageId={call.id} dir="auto">
+                          {task || t("panel.subagentTaskEmpty")}
+                        </CollapsibleUserText>
                       </div>
                     </div>
                   </div>
