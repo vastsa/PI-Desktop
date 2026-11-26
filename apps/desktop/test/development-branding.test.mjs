@@ -51,9 +51,9 @@ test("Windows runtime registers the canonical native application identity", () =
   );
 });
 
-test("Windows packages pin StarAI Desktop executable and shortcut names", () => {
-  assert.equal(packageJson.build.win.executableName, "StarAI-Desktop");
-  assert.equal(packageJson.build.nsis.shortcutName, "StarAI Desktop");
+test("Windows packages pin StarAI executable and shortcut names", () => {
+  assert.equal(packageJson.build.win.executableName, "StarAI");
+  assert.equal(packageJson.build.nsis.shortcutName, "StarAI");
 });
 
 test("Windows packages and windows use the canonical PI-Desktop icon", () => {
@@ -126,7 +126,7 @@ test("macOS development launches from a branded host bundle", () => {
   assert.match(devScriptSource, /CFBundleName", APP_NAME/);
   assert.match(devScriptSource, /CFBundleExecutable", APP_NAME/);
   assert.match(devScriptSource, /CFBundleIconFile", "icon\.icns"/);
-  assert.match(devScriptSource, /BRANDING_SCHEMA = "v4"/);
+  assert.match(devScriptSource, /BRANDING_SCHEMA = "v5"/);
   assert.match(
     devScriptSource,
     /copyFileSync\(iconPath, join\(resources, "icon\.icns"\)\)/,
@@ -226,7 +226,7 @@ test(
         ),
         "macOS-tray-icon",
       );
-      assert.match(plist, /<string>StarAI Desktop<\/string>/);
+      assert.match(plist, /<string>StarAI<\/string>/);
       assert.match(plist, /<string>com\.starailink\.desktop\.dev<\/string>/);
       assert.equal(prepareMacDevelopmentBundle(options), brandedExecutable);
 

@@ -30,7 +30,7 @@ export function osLabelForFeedback(platform: string): FeedbackOsLabel {
 
 export function formatFeedbackEnvironment(info: FeedbackIssueContext): string {
   const host = info.hostVersion?.trim() || "unknown";
-  return `StarAI Desktop ${info.version} · ${info.platform} ${info.arch} · protocol ${info.protocolVersion} · host ${host}`;
+  return `StarAI ${info.version} · ${info.platform} ${info.arch} · protocol ${info.protocolVersion} · host ${host}`;
 }
 
 export function buildBugReportUrl(info: FeedbackIssueContext): string {

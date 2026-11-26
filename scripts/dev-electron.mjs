@@ -16,9 +16,9 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const APP_NAME = "StarAI Desktop";
+const APP_NAME = "StarAI";
 const DEV_BUNDLE_ID = "com.starailink.desktop.dev";
-const BRANDING_SCHEMA = "v4";
+const BRANDING_SCHEMA = "v5";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESKTOP_ROOT = join(ROOT, "apps", "desktop");
 

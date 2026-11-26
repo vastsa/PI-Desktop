@@ -11,10 +11,12 @@ ignoreBrokenStdio();
 installMainProcessErrorHandlers();
 export const isDevelopmentBuild = process.env.PI_DESKTOP_DEV === "1" || !app.isPackaged;
 // Electron initially reads productName from the packaged application metadata.
-export const isStarAiPreview = app.isPackaged && app.getName() === "StarAI Desktop";
+export const isStarAiPreview = app.isPackaged && app.getName() === "StarAI";
+// Keep the pre-rename profile folder so upgrades from "StarAI Desktop" retain local state.
+const STARAI_LEGACY_USER_DATA_NAME = "StarAI Desktop";
 app.setName(APP_NAME);
 if (isStarAiPreview && !app.commandLine.hasSwitch("user-data-dir")) {
-  app.setPath("userData", join(app.getPath("appData"), "StarAI Desktop"));
+  app.setPath("userData", join(app.getPath("appData"), STARAI_LEGACY_USER_DATA_NAME));
 }
 applyDevelopmentUserData(app, isDevelopmentBuild);
 if (process.platform === "win32") app.setAppUserModelId(APP_ID);

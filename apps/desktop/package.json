@@ -3,7 +3,7 @@
   "version": "0.24.0-beta.5",
   "desktopName": "pi-desktop.desktop",
   "private": true,
-  "description": "StarAI Desktop Electron application",
+  "description": "StarAI Electron application",
   "homepage": "https://github.com/gexing521/StarAi-Desktop",
   "author": {
     "name": "StarAI",
@@ -83,7 +83,7 @@
   },
   "build": {
     "appId": "com.starailink.desktop",
-    "productName": "StarAI Desktop",
+    "productName": "StarAI",
     "directories": {
       "output": "release"
     },
@@ -152,7 +152,7 @@
       }
     ],
     "mac": {
-      "artifactName": "StarAI-Desktop-${version}-${arch}-mac.${ext}",
+      "artifactName": "StarAI-${version}-${arch}-mac.${ext}",
       "target": [
         {
           "target": "dmg"
@@ -168,8 +168,8 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSLocalNetworkUsageDescription": "StarAI Desktop needs local network access so agents can reach OpenAI-compatible providers, Ollama, and other AI endpoints running on your LAN. / StarAI Desktop 需要本地网络访问权限，以便助手请求同一局域网中的 OpenAI 兼容服务、Ollama 等本地 AI 端点。",
-        "NSMicrophoneUsageDescription": "StarAI Desktop uses the microphone for Live voice calls and authorized plugin audio access. / StarAI Desktop 使用麦克风进行实时语音通话，以及你已授权的插件音频访问。",
+        "NSLocalNetworkUsageDescription": "StarAI needs local network access so agents can reach OpenAI-compatible providers, Ollama, and other AI endpoints running on your LAN. / StarAI 需要本地网络访问权限，以便助手请求同一局域网中的 OpenAI 兼容服务、Ollama 等本地 AI 端点。",
+        "NSMicrophoneUsageDescription": "StarAI uses the microphone for Live voice calls and authorized plugin audio access. / StarAI 使用麦克风进行实时语音通话，以及你已授权的插件音频访问。",
         "NSBonjourServices": [
           "_http._tcp",
           "_https._tcp"
@@ -191,7 +191,7 @@
       ]
     },
     "dmg": {
-      "artifactName": "StarAI-Desktop-${version}-${arch}.${ext}",
+      "artifactName": "StarAI-${version}-${arch}.${ext}",
       "background": "build/dmg-background.png",
       "icon": "build/icon.icns",
       "window": {
@@ -214,8 +214,8 @@
       ]
     },
     "win": {
-      "executableName": "StarAI-Desktop",
-      "artifactName": "StarAI-Desktop-Portable-${version}.${ext}",
+      "executableName": "StarAI",
+      "artifactName": "StarAI-Portable-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -255,11 +255,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "StarAI Desktop",
-      "artifactName": "StarAI-Desktop-Setup-${version}.${ext}"
+      "shortcutName": "StarAI",
+      "artifactName": "StarAI-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "StarAI-Desktop-Portable-${version}.${ext}"
+      "artifactName": "StarAI-Portable-${version}.${ext}"
     },
     "deb": {
       "packageName": "pi-desktop",
@@ -276,7 +276,7 @@
     "linux": {
       "executableName": "pi-desktop",
       "syncDesktopName": true,
-      "artifactName": "StarAI-Desktop-${version}-linux-${arch}.${ext}",
+      "artifactName": "StarAI-${version}-linux-${arch}.${ext}",
       "target": [
         {
           "target": "AppImage"

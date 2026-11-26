@@ -669,7 +669,7 @@ export class AppUpdaterController {
     const response = await this.fetchImpl(GITHUB_LATEST_RELEASE_API, {
       headers: {
         Accept: "application/vnd.github+json",
-        "User-Agent": "StarAI-Desktop",
+        "User-Agent": "StarAI",
       },
       signal: AbortSignal.timeout(timeoutMs),
     });

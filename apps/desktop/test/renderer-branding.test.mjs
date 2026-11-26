@@ -32,11 +32,11 @@ const [
     read("../src/lib/renderer-language.ts"),
   ]);
 
-test("renderer surfaces the StarAI Desktop brand instead of the Codex shell brand", () => {
-  assert.match(english, /shellName:\s*"StarAI Desktop"/);
-  assert.match(chinese, /shellName:\s*"StarAI Desktop"/);
-  assert.match(english, /placeholder:\s*"Ask StarAI Desktop to help with anything"/);
-  assert.match(chinese, /placeholder:\s*"让 StarAI Desktop 帮你做任何事"/);
+test("renderer surfaces the StarAI brand instead of the Codex shell brand", () => {
+  assert.match(english, /shellName:\s*"StarAI"/);
+  assert.match(chinese, /shellName:\s*"StarAI"/);
+  assert.match(english, /placeholder:\s*"Ask StarAI to help with anything"/);
+  assert.match(chinese, /placeholder:\s*"让 StarAI 帮你做任何事"/);
   assert.doesNotMatch(english, /shellName:\s*"Codex"/);
   assert.doesNotMatch(chinese, /shellName:\s*"Codex"/);
   // Codex remains a supported external import source, not the app identity.

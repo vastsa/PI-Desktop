@@ -50,7 +50,7 @@ test("StarAI repo metadata and feedback links point to gexing521/StarAi-Desktop"
     }),
   );
   assert.equal(url.pathname, "/gexing521/StarAi-Desktop/issues/new");
-  assert.match(url.searchParams.get("environment") ?? "", /^StarAI Desktop 0\.24\.0-beta\.5/);
+  assert.match(url.searchParams.get("environment") ?? "", /^StarAI 0\.24\.0-beta\.5/);
 });
 
 test("compareReleaseVersions orders stable releases above beta prereleases", () => {
@@ -105,7 +105,7 @@ test("updater falls back to GitHub Releases API when feed manifest is absent", a
     fetchImpl: async () =>
       Response.json({
         tag_name: "v0.25.0",
-        body: "StarAI Desktop 0.25.0 release notes",
+        body: "StarAI 0.25.0 release notes",
         html_url: "https://github.com/gexing521/StarAi-Desktop/releases/tag/v0.25.0",
         draft: false,
       }),

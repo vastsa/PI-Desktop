@@ -6,7 +6,7 @@ export const enEntries: ChangelogEntry[] = [
     date: "2026-11-26",
     highlights: [
       "Sign in directly with your StarAI account to sync model groups, service categories, and context windows automatically.",
-      "Default app language to Simplified Chinese (zh-CN) with refreshed StarAI Desktop branding, icons, and mascot.",
+      "Default app language to Simplified Chinese (zh-CN) with refreshed StarAI branding, icons, and mascot.",
       "Built-in image generation (default gpt-image-2.6-sunburst) and video generation (default minimax_h3_768p) tools and skills with inline playback, using your signed-in StarAI account with no API key setup.",
       "Default reasoning effort to high across models and sort StarAI models newest-first by release date so new releases stay at the top.",
       "Point update checks, release pages, and issue feedback to gexing521/StarAi-Desktop.",
