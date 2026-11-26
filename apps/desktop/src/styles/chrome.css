@@ -626,7 +626,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--ct-inline-padding);
-  background: var(--ds-bg-primary);
   /* Keep the conversation surface visually continuous with the titlebar. */
   border-bottom: 0;
   /* Where the returning dock toggle sits; platform rules below override it. */
@@ -641,6 +640,20 @@
   --window-drag-region: drag;
   -webkit-app-region: drag;
   app-region: drag;
+}
+
+/* Paint the whole pane in one layer: clamping the actions must not uncover
+ * scrolling messages, even at fractional scale. The dock owns its own header. */
+.conversation-topbar::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: anchor(--main-pane left);
+  right: anchor(--main-pane right);
+  height: inherit;
+  z-index: -1;
+  background: var(--ds-bg-primary);
+  pointer-events: none;
 }
 
 .conversation-topbar.ct-collapsed {

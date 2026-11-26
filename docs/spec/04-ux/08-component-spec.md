@@ -371,9 +371,11 @@ titles are host-owned. The editor closes if the active session changes.
   window controls (112px of hit targets plus an 8px visual buffer). The
   conversation titlebar follows the pane edges and keeps at least 8px
   between its action group and the viewport-fixed work-panel
-  toggle, including during dock animations and on narrow windows. The open
-  panel header ends its box before the native control band so its tab strip and
-  `+` stay clear of the window controls.
+  toggle, including during dock animations and on narrow windows. Its background
+  continues to the chat pane edge behind the transparent toggle, so scrolling
+  messages cannot show through and the open dock still paints its own header.
+  The open panel header ends its box before the native control band so its tab
+  strip and `+` stay clear of the window controls.
   In preview mode the header's left border box starts after the shell actions
   plus an 8px gap, including expanded-sidebar New Task, on every platform.
   The left inset is 8px except collapsed-sidebar windowed macOS (88px through

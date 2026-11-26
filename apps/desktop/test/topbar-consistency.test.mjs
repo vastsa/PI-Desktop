@@ -15,8 +15,10 @@ test("shell titlebar surfaces share the toolbar metric and borderless surface", 
   ]) {
     const block = styleBlock(selector);
     assert.match(block, /height:\s*var\(--ds-toolbar-height\);/);
-    assert.match(block, /background:\s*var\(--ds-bg-primary\);/);
     assert.match(block, /border-bottom:\s*0;/);
+  }
+  for (const surface of ["\\.main-titlebar", "\\.conversation-topbar::before"]) {
+    assert.match(styleBlock(surface), /background:\s*var\(--ds-bg-primary\);/);
   }
 });
 
