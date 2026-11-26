@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -20,6 +21,7 @@ assert.ok(Object.values(networkInterfaces()).flat().every((address) => address.i
 const root = await mkdtemp(join(tmpdir(), "pie-office-e2e-"));
 const workspace = join(root, "project");
 const resources = join(dirname(appBin), "resources");
+const wxRuntime = join(resources, "wx-runtime");
 const python = join(resources, "office-runtime/python/bin/python3.12");
 const launcher = join(resources, "plugins/pie.offline-office/word/word.sh");
 const model = "offline-office-fixture";
@@ -115,7 +117,26 @@ const pdf = {
     assert.match(stderr, /Output already exists/);
   },
 };
-const scenarios = [pdf, word, excel, ppt];
+
+const wx = {
+  skill: "wx", output: "WX 排版 Markdown", input: "WX 原稿.md", docx: "WX 原稿.docx",
+  docxOutput: "WX 排版 Word", reviewOutput: "WX 独立审查",
+  get commands() {
+    return [
+      `convert ${[this.input, this.output].map(quote).join(" ")}`,
+      `convert ${[this.docx, this.docxOutput].map(quote).join(" ")}`,
+      `review ${[this.docx, this.reviewOutput].map(quote).join(" ")}`,
+    ];
+  },
+  get rejectedCommand() {
+    return `review ${[this.docx, this.output].map(quote).join(" ")}`;
+  },
+  verify(stdout, stderr) {
+    assert.match(stdout, /Review complete: \d+(?:\.\d+)?\/100/);
+    assert.match(stderr, /File exists/);
+  },
+};
+const scenarios = [pdf, word, excel, ppt, wx];
 const skillId = (scenario) => `pie.offline-office/${scenario.skill}`;
 const toolText = (content) => Array.isArray(content)
   ? content.map((part) => part.text ?? "").join("\n")
@@ -318,6 +339,8 @@ function verifyPdf() {
 }
 
 try {
+  await assert.rejects(access(wxRuntime, constants.W_OK), (error) => ["EACCES", "EROFS"].includes(error.code),
+    "Run against a read-only WX installation as a normal user.");
   await mkdir(workspace);
   await writeFile(join(workspace, "body.txt"), "新建正文含中文\n");
   const py = (script, ...args) => execFileSync(python, ["-I", "-B", "-X", "utf8", "-c", script, ...args], { cwd: workspace });
@@ -347,6 +370,23 @@ p.add_run()._r.append(tab)
 p.add_run("乙")
 doc.save(sys.argv[1])`, original);
   const originalBytes = await readFile(join(workspace, original));
+  const wxBody = "本段用于确认正文内容没有丢失。";
+  const originalMarkdown = `# 离线办公技术说明\n\n## 1. 验证目标\n\n${wxBody}\n\n` +
+    "## 2. 验证结果\n\n| 项目 | 结果 |\n| --- | --- |\n| 文件转换 | 通过 |\n";
+  await writeFile(join(workspace, wx.input), originalMarkdown);
+  py(`from docx import Document
+import sys
+doc = Document()
+doc.add_heading("离线办公技术说明", level=0)
+doc.add_heading("1. 验证目标", level=1)
+doc.add_paragraph(${JSON.stringify(wxBody)})
+doc.add_heading("2. 验证结果", level=1)
+doc.add_paragraph("验证完成。")
+doc.save(sys.argv[1])`, wx.docx);
+  const originalWxDocx = await readFile(join(workspace, wx.docx));
+  const wxVersion = (await readFile(join(wxRuntime, "VERSION"), "utf8")).trim();
+  const wxCache = join(root, "data/offline-office", `wx-${wxVersion}`, "deps/.wxdf-state.json");
+  await assert.rejects(stat(wxCache), { code: "ENOENT" });
   await writeFile(join(workspace, "slides.json"), JSON.stringify([
     { title: "中文标题", body: pptBody }, { title: "新建第二页", body: "可编辑正文" },
   ]));
@@ -414,6 +454,28 @@ for path, pages in [(sys.argv[1], ("PDF-A1", "PDF-A2")), (sys.argv[2], ("PDF-B1"
       }
     }
   }
+  assert.equal(await readFile(join(workspace, wx.input), "utf8"), originalMarkdown);
+  assert.deepEqual(await readFile(join(workspace, wx.docx)), originalWxDocx);
+  assert.equal(JSON.parse(await readFile(wxCache, "utf8")).python_tag, "cp312");
+  await assert.rejects(stat(join(wxRuntime, ".deps")), { code: "ENOENT" });
+  await assert.rejects(stat(join(workspace, wx.output, "review.md")), { code: "ENOENT" });
+  for (const directory of [wx.output, wx.docxOutput]) {
+    const summary = JSON.parse(await readFile(join(workspace, directory, "audit.json"), "utf8")).public_summary;
+    assert.equal(summary.status, "completed");
+    assert.equal(summary.manual_review_required, false);
+    assert.equal(summary.unexpected_styles_count, 0);
+    const audits = Object.values(summary.audits).map((audit) => typeof audit === "string" ? audit : audit.status);
+    assert.ok(audits.includes("passed") && audits.every((status) =>
+      ["passed", "not_run", "not_applicable", "skipped"].includes(status)), JSON.stringify(summary));
+    py(`from docx import Document
+import sys
+doc = Document(sys.argv[1])
+assert any(${JSON.stringify(wxBody)} in para.text for para in doc.paragraphs)`, join(directory, "formatted.docx"));
+  }
+  const review = await readFile(join(workspace, wx.reviewOutput, "review.md"), "utf8");
+  assert.match(review, /总分：\d+(?:\.\d+)?\/100/);
+  assert.match(review, /## 问题清单/);
+  assert.match(review, /## 整改建议[\s\S]*开头的手工编号多余，请删掉/);
   assert.deepEqual(await readFile(join(workspace, excel.input)), originalExcel);
   runExcelFixture("verify");
   assert.deepEqual(await readFile(join(workspace, ppt.input)), originalPpt);
@@ -470,7 +532,7 @@ with ZipFile(original) as a, ZipFile(edited) as b:
   const restarted = await boot();
   assert.equal((await row(restarted))?.enabled, false);
   for (const current of scenarios) await runTurn(restarted, configured.id, current, false);
-  console.log("PASS: offline Office enablement, Bash approval, Word readback, Excel formula cache 250 → 260, PowerPoint readback, PDF extraction and ordered merge, DOCX/PPTX/XLSX PDF export with Chinese readback, copy preservation, and disablement after restart");
+  console.log("PASS: offline Office enablement, Bash approval, Word readback, Excel pandas read/write and formula cache 250 → 260, PowerPoint readback, PDF extraction and ordered merge, DOCX/PPTX/XLSX PDF export with Chinese readback, WX first-use cache and conversion audits for Markdown and DOCX, independent WX review, source preservation, and disablement after restart");
 } catch (error) {
   console.error(log.slice(-6000));
   const pluginLog = await readFile(join(root, "data/logs/app/plugin.log"), "utf8").catch(() => "");

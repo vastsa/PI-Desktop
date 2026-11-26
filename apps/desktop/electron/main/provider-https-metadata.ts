@@ -60,11 +60,9 @@ export async function fetchHttpsMetadata(
   }
   const agent = new Agent({ keepAlive: false, maxCachedSessions: 0 });
   agent.createConnection = () => socket;
-  const abort = () => socket.destroy(new DOMException("The operation was aborted", "AbortError"));
-  init.signal.addEventListener("abort", abort, { once: true });
   try {
-    const connected = once(socket, "secureConnect", { signal: init.signal });
-    await connected;
+    // Let cancellation reject this wait; finally closes the socket without emitting a second error.
+    await once(socket, "secureConnect", { signal: init.signal });
     init.signal.throwIfAborted();
     return await new Promise<Response>((resolve, reject) => {
       const req = request(target, {
@@ -101,7 +99,6 @@ export async function fetchHttpsMetadata(
     init.signal.throwIfAborted();
     throw error;
   } finally {
-    init.signal.removeEventListener("abort", abort);
     socket.destroy();
     agent.destroy();
   }

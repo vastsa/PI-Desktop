@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, mkdir, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { verifyOfflineOfficeRuntime } from "../../../scripts/bundle-offline-office.mjs";
+import bundleOfflineOffice, { verifyOfflineOfficeRuntime } from "../../../scripts/bundle-offline-office.mjs";
 
 const plugin = new URL("../resources/offline-office/", import.meta.url);
 
@@ -99,6 +99,122 @@ async function withOfficeFixture(run) {
     await rm(root, { recursive: true, force: true });
   }
 }
+
+test("the Kylin Office package requires WX and registers its bundled Skill", async (t) => {
+  await withOfficeFixture(async ({ root, runtime }) => {
+    const wx = join(root, "wx input");
+    const appOutDir = join(root, "app");
+    const bundle = () => bundleOfflineOffice({
+      electronPlatformName: "linux", arch: 3, appOutDir, targets: [{ name: "deb" }],
+    });
+    for (const key of ["PI_CODE_OFFICE_RUNTIME_DIR", "PI_CODE_WX_RUNTIME_DIR"]) {
+      const previous = process.env[key];
+      t.after(() => {
+        if (previous === undefined) delete process.env[key];
+        else process.env[key] = previous;
+      });
+    }
+    process.env.PI_CODE_OFFICE_RUNTIME_DIR = runtime;
+    delete process.env.PI_CODE_WX_RUNTIME_DIR;
+    await assert.rejects(bundle, /PI_CODE_WX_RUNTIME_DIR/);
+    process.env.PI_CODE_WX_RUNTIME_DIR = wx;
+    await mkdir(wx);
+    await writeFile(join(wx, "VERSION"), "0.21.2\n");
+    await assert.rejects(bundle, /WX.*0\.21\.3/);
+    for (const file of ["OFFLINE_PACKAGE", "VERSION", "scripts/offline_install.py", "scripts/main.py",
+      "assets/wx_template.docx", "wheelhouse/wheels.tar.xz"]) {
+      await mkdir(dirname(join(wx, file)), { recursive: true });
+      await writeFile(join(wx, file), {
+        OFFLINE_PACKAGE: "version=0.21.3\nplatform=linux-arm64\n", VERSION: "0.21.3\n",
+      }[file] ?? "fixture");
+    }
+    const wheel = "lxml-6.1.1-cp312-cp312-manylinux_2_26_aarch64.whl";
+    const manifestPath = join(wx, "wheelhouse", "manifest.json");
+    const selection = ["cp312/" + wheel];
+    const record = { python_tag: "cp312", wheel, sha256: "a".repeat(64) };
+    const writeManifest = (cp312, wheels) => writeFile(manifestPath, JSON.stringify({
+      platform: "linux-arm64", environments: { cp312 }, wheels,
+    }));
+    for (const [cp312, wheels] of [
+      [selection[0], [record]],
+      [selection, undefined],
+      [["cp312/missing.whl"], [record]],
+      [[...selection, ...selection], [record]],
+      [selection, [{ ...record, sha256: "invalid" }]],
+    ]) {
+      await writeManifest(cp312, wheels);
+      await assert.rejects(bundle, /WX offline wheelhouse/);
+    }
+    await writeManifest(selection, [record]);
+    await bundle();
+    const resources = join(appOutDir, "resources");
+    const installed = join(resources, "plugins", "pie.offline-office");
+    const manifest = JSON.parse(await readFile(join(installed, "manifest.json"), "utf8"));
+    const skill = manifest.contributes.skills.find(({ id }) => id === "wx");
+    assert.match(await readFile(join(installed, skill.path), "utf8"), /wx\.sh/);
+    assert.equal(await readFile(join(resources, "wx-runtime", "wheelhouse", "wheels.tar.xz"), "utf8"), "fixture");
+  });
+});
+
+test("WX blocks delivery when the converter succeeds but its audit requires review", {
+  skip: process.platform === "win32",
+}, async () => {
+  await withOfficeFixture(async ({ root, put }) => {
+    // Substitute only the external converter; the installed launcher still makes the delivery decision.
+    await put("python/bin/python3.12", '#!/bin/sh\nexec python3 "$@"\n');
+    const wx = join(root, "wx-runtime");
+    await mkdir(join(wx, "scripts"), { recursive: true });
+    await mkdir(join(wx, "assets"));
+    await writeFile(join(wx, "VERSION"), "9.8.7\n");
+    await writeFile(join(wx, "assets/wx_template.docx"), "");
+    await writeFile(join(wx, "scripts/offline_install.py"), `
+from pathlib import Path
+import sys
+Path(sys.argv[2]).mkdir(parents=True, exist_ok=True)
+`);
+    await writeFile(join(wx, "scripts/main.py"), `
+from pathlib import Path
+import argparse
+parser = argparse.ArgumentParser()
+for arg in ("input", "output", "report", "template"):
+    parser.add_argument("--" + arg, type=Path)
+args = parser.parse_args()
+args.output.write_text("formatted")
+args.report.write_bytes(args.input.read_bytes())
+`);
+    const source = join(root, "source.md");
+    const run = async (output, public_summary) => {
+      await writeFile(source, JSON.stringify({ public_summary }));
+      return spawnSync("/bin/sh", [join(root, "plugins/pie.offline-office/wx/wx.sh"), "convert", source, output], {
+        cwd: root, encoding: "utf8", env: { ...process.env, PI_DESKTOP_DATA_DIR: join(root, "data") },
+      });
+    };
+    const clean = {
+      schema_version: "1.0", status: "completed",
+      audits: { audit: "passed", model_audit: "passed", saved_output_audit: "passed", appendix_preservation_audit: "not_run" },
+      unexpected_styles_count: 0, manual_review_required: false, diagnostic_codes: [],
+    };
+    const warning = { ...clean, status: "completed_with_warnings", diagnostic_codes: ["WXDF-W-SAMPLE"] };
+    for (const [directory, summary] of [
+      ["manual", { ...warning, manual_review_required: true }],
+      ["audit-failed", { ...clean, audits: { ...clean.audits, saved_output_audit: "failed" } }],
+      ["style-count", { ...clean, unexpected_styles_count: true }],
+      ["missing-summary", undefined],
+    ]) {
+      const result = await run(directory, summary);
+      assert.equal(result.status, 1, result.error?.message ?? result.stderr);
+      assert.match(result.stderr, /WX audit: delivery blocked/);
+      assert.deepEqual(JSON.parse(await readFile(join(root, directory, "audit.json"), "utf8")).public_summary, summary);
+    }
+    for (const [directory, summary] of [["clean", clean], ["warning", warning]]) {
+      const result = await run(directory, summary);
+      assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+      assert.equal(await readFile(join(root, directory, "formatted.docx"), "utf8"), "formatted");
+      if (directory === "warning") assert.match(result.stderr, /WXDF-W-SAMPLE/);
+    }
+    assert.ok((await stat(join(root, "data/offline-office/wx-9.8.7/deps"))).isDirectory());
+  });
+});
 
 test("the package check requires the pinned pandas and python-dateutil distributions", async () => {
   await withOfficeFixture(async ({ runtime, put }) => {

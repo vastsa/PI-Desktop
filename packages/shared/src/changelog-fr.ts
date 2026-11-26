@@ -8,6 +8,7 @@ export const frEntries: ChangelogEntry[] = [
       "Activez Office hors connexion dans Extensions sur Kylin ARM64 pour créer un document Word, extraire son texte ou enregistrer une copie.",
       "Office hors connexion permet aussi de lire, de créer et de copier des classeurs Excel, et de recalculer les formules sur demande.",
       "Office hors ligne extrait le texte des PDF, fusionne des PDF et exporte les fichiers Word, PowerPoint et Excel en PDF.",
+      "Office hors connexion met en forme les fichiers Markdown ou Word selon le modèle WX et vérifie le résultat. Il peut aussi noter la mise en forme d’un document Word et proposer des corrections sans modifier l’original.",
     ],
   },
   {

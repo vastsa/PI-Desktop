@@ -11,7 +11,7 @@ in the release notes and check the same subtitle in the package description.
 The inherited multi-platform tag workflow is not the
 first-release delivery procedure.
 
-1. For the Word-enabled 0.23.1 candidate, use the dedicated build below.
+1. For the 0.23.1 Offline Office candidate, use the dedicated build below.
    The generic Linux package workflow does not have the approved Office Runtime.
    For generic validation, use the `pie-code-linux-arm64-generic-deb` workflow artifact or
    build on an ARM64 Linux runner with Docker
@@ -22,7 +22,7 @@ first-release delivery procedure.
    inside the package. Keep the candidate commit, inspection output (including
    the catalog date), and package together.
    The workflow names its downloaded package `*_generic.deb`; use the
-   dedicated Office build for Kylin Word qualification.
+   dedicated Office build for Kylin Offline Office qualification.
    The optional microphone binaries are reported separately and are outside this
    candidate's scope.
 2. On the target, record `uname -m`, `getconf GNU_LIBC_VERSION`, and
@@ -118,8 +118,8 @@ loopback proxy alone can miss direct connections from child processes.
 On the Pie Code maintenance line, the ARM64 Debian package includes one
 shared Office Runtime and the built-in Offline Office extension. In a
 fresh profile the extension is off. Enable it in Extensions to expose
-`pie.offline-office/word`, `pie.offline-office/excel`,
-`pie.offline-office/ppt`, and `pie.offline-office/pdf` in local Agent sessions.
+`pie.offline-office/word`, `pie.offline-office/excel`, `pie.offline-office/ppt`,
+`pie.offline-office/pdf`, and `pie.offline-office/wx` in local Agent sessions.
 The skills use ordinary Bash approval and packaged executables without
 installing dependencies or falling back to system Node, Python, or LibreOffice.
 
@@ -140,12 +140,17 @@ dependencies. Keep the LibreOffice entry point at
 `metadata/runtime-source.json`, the Node dependency lock as
 `metadata/package-lock.json`, and the components' licenses. Set
 `PI_CODE_OFFICE_RUNTIME_DIR` to the absolute path of this staging directory.
-The candidate build fails when this input is missing; the installed app
-never needs the original archive or Cheese. On an ARM64 Linux runner with
-Docker, run the dedicated build and require Office in the package check:
+Unpack the published [WX 0.21.3 Linux ARM64 offline package](https://github.com/mh567/wx-doc-format-skill/releases/tag/v0.21.3)
+into a separate staging directory and set `PI_CODE_WX_RUNTIME_DIR` to its
+absolute path. Preserve the package and dependency notices and verify the
+release asset digest before staging. The candidate build requires both
+inputs; the installed app needs neither original archive nor Cheese. On an
+ARM64 Linux runner with Docker, run the dedicated build and require Office
+in the package check:
 
 ```sh
 export PI_CODE_OFFICE_RUNTIME_DIR=/absolute/path/to/staged/office-runtime
+export PI_CODE_WX_RUNTIME_DIR=/absolute/path/to/unpacked/wx-doc-format-0.21.3
 pnpm --filter @pi-desktop/desktop run dist:kylin
 deb=apps/desktop/release/kylin-offline-office/pie-code_0.23.1_arm64.deb
 node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
@@ -153,8 +158,9 @@ node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
 
 The package check inspects the extracted payload and uses its own Node and
 Python to read back a newly created Word document, a pandas Excel table,
-and a PowerPoint presentation. It also checks text extraction from a PDF.
-LibreOffice export uses the Kylin system libraries and is tested on Kylin.
+a PowerPoint presentation, text extraction from a PDF, and a WX review of
+the Word document. LibreOffice export uses the Kylin system libraries and
+is tested on Kylin.
 Keep the exact Office Debian package, the candidate commit, the package
 inspection output, and the Kylin run output together. Link those results in the PR or release record;
 generic CI artifacts and results from a different package do not qualify.
@@ -163,13 +169,12 @@ With no public route, install that package in a clean application test
 environment and run the Office scenario against the installed binary. Build
 the shared JS package beforehand and use Node 22+ to run the scenario
 (the bundled Node can run it). The scenario enables the extension through
-the UI, loads all four skills through a loopback model, and checks that Bash
+the UI, loads all five skills through a loopback model, and checks that Bash
 is held for approval. It reads back Office results with python-docx, openpyxl,
 and python-pptx. The PDF scenario uses ReportLab from the existing Python
 dependency layer for fixtures and Kylin's `pdftotext` for independent readback.
-The scenario checks that the sources are unchanged and
-disables the extension and verifies the skills are absent from new sessions
-after restarting.
+The scenario checks that the sources are unchanged, disables the extension,
+and verifies that the skills are absent from new sessions after restarting.
 
 ```sh
 PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
@@ -235,3 +240,54 @@ three pages in the requested order, all three Office exports contain the
 expected Chinese text on independent readback, and the five inputs remain
 byte identical. The exports use the Office fixtures prepared before the
 session; they do not depend on any document the Agent created or edited.
+
+## Offline Office — WX formatting and review
+
+In a local Agent session, enable `pie.offline-office/wx` to format Markdown
+or DOCX with the bundled WX template. Use a new output directory under an
+authorized path. Formatting writes `formatted.docx` and `audit.json`.
+The audit must allow delivery before the Agent returns the finished DOCX.
+Allowed warnings are shown with their diagnostic codes. An invalid or failed
+audit or a manual review requirement stops delivery and leaves the report
+available for review.
+Standalone review accepts DOCX and writes `review.md` with its score and
+recommended fixes. Neither operation edits the source. AI enhancement is
+outside this release.
+
+WX uses the bundled Python 3.12 with the original WX offline wheelhouse.
+On first use it extracts those wheels to `offline-office/wx-<version>/deps`
+under the managed Pie Code data directory, using the bundled WX package's
+version. It needs no package manager or network. Keep the installed
+application read-only during the disconnected
+Kylin acceptance run, and confirm both audit reports, the independent review,
+and the unchanged source bytes using the installed Office scenario above.
+Confirm redistribution permission for WX and its dependencies before release.
+
+### WX candidate evidence (2026-11-26)
+
+PR #27 head `0fae387f4` plus the WX review fixes, on maintenance baseline
+`b8667f4d3`. The same `pie-code_0.23.1_arm64.deb` was inspected and installed.
+SHA-256: `0677d3c321f04210e82b9855bfeed0c56aa30a0a9b672ffe6cd4782a763c897c`.
+
+- [ARM64 package inspection output](#wx-arm64-package-inspection).
+- [Installed Kylin scenario output](#wx-installed-kylin-scenario).
+
+These results apply to this exact package. Rerun acceptance for a different
+release package.
+
+#### WX ARM64 package inspection
+
+```text
+Verified 511 arm64 ELF files at glibc <= 2.31.
+Verified bundled Word and PowerPoint creation/extraction, Excel creation/read, and WX review.
+```
+
+#### WX installed Kylin scenario
+
+UTM Galaxy Kylin V10 SP1, ARM64, glibc 2.31, system Python 3.8.10. The
+install was read-only during the user session and the network namespace had
+only loopback. The package digest matched on the guest.
+
+```text
+PASS: offline Office enablement, Bash approval, Word readback, Excel pandas read/write and formula cache 250 → 260, PowerPoint readback, WX first-use cache and conversion audits for Markdown and DOCX, independent WX review, source preservation, and disablement after restart
+```

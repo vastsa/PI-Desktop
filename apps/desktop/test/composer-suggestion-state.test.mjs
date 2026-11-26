@@ -133,10 +133,11 @@ test("taking a suggestion the draft no longer fits is refused, not applied", () 
   assert.equal(bridge.get(), null);
 });
 
-test("typing, switching session and losing the composer all end the suggestion", () => {
+test("typing, switching session and losing the composer all end the suggestion", (t) => {
   const bridge = new ComposerSuggestionBridge();
   const handle = makeHandle();
-  bridge.register(handle);
+  const unregister = bridge.register(handle);
+  t.after(unregister);
 
   bridge.offer(offer());
   handle.state.text = "x";
@@ -159,6 +160,8 @@ test("typing, switching session and losing the composer all end the suggestion",
 
   bridge.offer(offer());
   assert.equal(bridge.get()?.text, "Explain the failing test");
+  unregister();
+  assert.equal(bridge.get(), null, "removing the composer ends the suggestion");
 });
 
 test("the host's clear names a plugin, a session, or nothing", () => {
@@ -195,9 +198,9 @@ test("a newer suggestion takes the slot, and the old one expires on its own cloc
   assert.equal(bridge.get(), null, "a suggestion ends when its lifetime does");
 });
 
-test("listeners see every change of the slot", () => {
+test("listeners see every change of the slot", (t) => {
   const bridge = new ComposerSuggestionBridge();
-  bridge.register(makeHandle());
+  t.after(bridge.register(makeHandle()));
   let changes = 0;
   const off = bridge.subscribe(() => {
     changes += 1;

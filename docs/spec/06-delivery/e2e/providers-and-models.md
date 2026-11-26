@@ -2388,8 +2388,10 @@ conversation content or credentials. A skipped test remains NOT RUN, not PASS.
   refuses cross-origin redirects and aborts with the original signal.
 - **Security coverage:** `provider-https-metadata.test.mjs` additionally checks
   mandatory client authentication, untrusted server certificates, hostname
-  mismatch, compressed responses, and late-tunnel cleanup. The metadata policy
-  tests reject fallback on other TLS/network errors or HTTP failures.
+  mismatch, compressed responses, and late-tunnel cleanup. Cancelling during
+  a TLS handshake closes the tunnel and preserves the original timeout reason.
+  The metadata policy tests reject fallback on other TLS/network errors or
+  HTTP failures.
 - **Specs linked:** `03-runtime/07-process-model.md`,
   ADR `provider-metadata-client-certificate-retry`, issue #1676.
 - **Acceptance:** Recovery without an Electron major upgrade, TLS verification

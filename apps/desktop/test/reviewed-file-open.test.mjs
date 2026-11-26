@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { openReviewedFile } from "../electron/main/reviewed-file-open.ts";
@@ -8,7 +8,9 @@ import { openReviewedFile } from "../electron/main/reviewed-file-open.ts";
 async function fixture(t) {
   const dir = await mkdtemp(join(process.env.PI_SCRATCH_DIR || tmpdir(), "review-open-boundary-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const path = join(dir,"outside.txt"); await writeFile(path,"controlled test\n");
+  // The host returns the canonical path, even when the temp directory is an alias.
+  const path = join(await realpath(dir), "outside.txt");
+  await writeFile(path, "controlled test\n");
   const calls = { opened: [], revealed: [], targets: [] };
   let current = true;
   const deps = { target: async (...args) => { calls.targets.push(args); return {path}; }, isCurrent: () => current,

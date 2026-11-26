@@ -3,15 +3,15 @@
   "id": "pie.offline-office",
   "name": "Offline Office",
   "version": "0.3.0",
-  "description": "Work with Word, Excel, PowerPoint, and PDF files using the bundled offline runtime.",
+  "description": "Work with Word, Excel, PowerPoint, and PDF files offline, and format and review documents with the WX template.",
   "i18n": {
     "en": {
       "name": "Offline Office",
-      "description": "Work with Word, Excel, PowerPoint, and PDF files using the bundled offline runtime."
+      "description": "Work with Word, Excel, PowerPoint, and PDF files offline, and format and review documents with the WX template."
     },
     "zh-CN": {
       "name": "离线办公",
-      "description": "使用随包运行时离线处理 Word、Excel、PowerPoint 和 PDF 文件。"
+      "description": "离线处理 Word、Excel、PowerPoint 和 PDF 文件，并使用 WX 模板进行排版和格式审查。"
     }
   },
   "main": "main.cjs",
@@ -22,7 +22,8 @@
       { "id": "word", "path": "word/SKILL.md" },
       { "id": "excel", "path": "excel/SKILL.md" },
       { "id": "ppt", "path": "ppt/SKILL.md" },
-      { "id": "pdf", "path": "pdf/SKILL.md" }
+      { "id": "pdf", "path": "pdf/SKILL.md" },
+      { "id": "wx", "path": "wx/SKILL.md" }
     ]
   }
 }
