@@ -7,6 +7,7 @@ import {
   imageGenerationBindings,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
+  isStarAiProviderId,
 } from "@pi-desktop/shared";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -284,15 +285,19 @@ export function useComposerModelMenu({
         activeSessionId &&
         candidate.id === provider?.id &&
         sameComposerModelId(modelId ?? "", nextModelId);
+      const effectiveNextBinding =
+        isStarAiProviderId(candidate.id) && !nextBinding?.thinkingLevels.length
+          ? undefined
+          : nextBinding;
       const nextThinkingLevel = selectedSameModel
         ? thinkingLevelForProvider(nextModelProvider, thinkingLevel)
         : (nextModel?.catalogSource === "models.dev"
           ? initialThinkingLevelForBinding(
-              nextBinding,
+              effectiveNextBinding,
               nextModelProvider?.supportedThinkingLevels,
             )
           : initialThinkingLevelForUnmatchedModel(
-              nextBinding,
+              effectiveNextBinding,
               nextModelProvider?.supportedThinkingLevels,
             ));
       await configureActiveSession({

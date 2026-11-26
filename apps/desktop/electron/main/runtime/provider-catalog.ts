@@ -3,6 +3,7 @@ import {
   SESSION_THINKING_LEVELS,
   defaultCommandShellForPlatform,
   isCommandShellId,
+  isStarAiProviderId,
   normalizeRadialMenuPreferences,
   radialMenuWriteError,
   normalizeSidebarModulePreferences,
@@ -81,6 +82,30 @@ export function createProviderCatalogRuntime({
       binding.id.trim().toLowerCase() === modelId.trim().toLowerCase(),
     );
 
+  // StarAI managed providers cannot be edited in Settings; their bindings are
+  // auto-generated with empty `thinkingLevels`, which means "follow the catalog"
+  // rather than a manual user opt-out.
+  const effectiveBindingForCatalog = (
+    providerId: string,
+    binding: ModelBinding | undefined,
+    catalogConfig: ModelConfig,
+  ): ModelBinding | undefined => {
+    if (!binding) return undefined;
+    if (
+      isStarAiProviderId(providerId) &&
+      binding.thinkingLevels.length === 0 &&
+      catalogConfig.source !== "generic" &&
+      catalogConfig.reasoning &&
+      catalogConfig.supportedThinkingLevels?.length
+    ) {
+      return {
+        ...binding,
+        thinkingLevels: [...catalogConfig.supportedThinkingLevels],
+      };
+    }
+    return binding;
+  };
+
   const modelsDevModelFor = (provider: RuntimeProvider, modelId: string) =>
     modelsDevCatalog.findModel({
       providerId: provider.id,
@@ -105,7 +130,7 @@ export function createProviderCatalogRuntime({
     }, catalogModelConfig);
     const effectiveModelConfig = modelConfigWithBinding(
       modelConfig,
-      bindingForModel(provider, modelId),
+      effectiveBindingForCatalog(provider.id, bindingForModel(provider, modelId), modelConfig),
     );
     return {
       modelConfig: effectiveModelConfig,
@@ -129,17 +154,18 @@ export function createProviderCatalogRuntime({
     });
     const modelConfig = modelConfigWithBinding(
       catalogConfig,
-      bindingForModel(provider, modelId),
+      effectiveBindingForCatalog(provider.id, bindingForModel(provider, modelId), catalogConfig),
     );
     const models = provider.models?.map((binding) => {
       const catalogConfig = catalogModelConfigFor(modelsDevCatalog, {
         providerId: provider.id, vendorKey: provider.vendorKey, baseUrl: provider.baseUrl, modelId: binding.id,
       });
+      const effectiveBinding = effectiveBindingForCatalog(provider.id, binding, catalogConfig) ?? binding;
       // A user-pinned window/cap is never replaced by the published number
       // (spec §9.1, issue #1176); an inherited one keeps following the catalog.
-      const limits = resolveBindingLimits(catalogConfig, binding);
+      const limits = resolveBindingLimits(catalogConfig, effectiveBinding);
       return {
-        ...binding,
+        ...effectiveBinding,
         contextWindow: limits.binding.contextWindow ?? limits.catalogConfig.contextWindow,
         maxTokens: limits.binding.maxTokens ?? limits.catalogConfig.maxTokens,
         maxTokensSource: binding.maxTokensSource ?? "user" as const,
@@ -476,7 +502,7 @@ export function createProviderCatalogRuntime({
     });
     const modelConfig = modelConfigWithBinding(
       catalogConfig,
-      bindingForModel(provider, modelId),
+      effectiveBindingForCatalog(provider.id, bindingForModel(provider, modelId), catalogConfig),
     );
     return {
       ...session,

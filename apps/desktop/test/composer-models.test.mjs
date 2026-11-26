@@ -427,6 +427,13 @@ test("trusted matches retain published capabilities and explicit empty bindings"
   const reasoning = { ...row, reasoning: true, supportedThinkingLevels: ["low", "high"] };
   assert.deepEqual(thinkingProviderForModel(provider, "route/model", [reasoning]).supportedThinkingLevels, ["low", "high"]);
   assert.equal(thinkingProviderForModel({ ...provider, models: [binding("route/model")] }, "route/model", [reasoning]).supportsReasoning, false);
+  // StarAI managed providers auto-generate bindings with empty thinkingLevels;
+  // trusted catalog reasoning capabilities must stay selectable after loading.
+  const starAiProvider = { id: "starai-managed-group", models: [binding("route/model")] };
+  const starAiResult = thinkingProviderForModel(starAiProvider, "route/model", [reasoning]);
+  assert.equal(starAiResult.supportsReasoning, true);
+  assert.deepEqual(starAiResult.supportedThinkingLevels, ["low", "high"]);
+  assert.equal(thinkingProviderForModel(starAiProvider, "route/model", [row]).supportsReasoning, false);
 });
 
 test("unlisted configured models leave the menu without deleting bindings or changing the current default", () => {

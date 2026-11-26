@@ -20,6 +20,7 @@ import {
   isActiveInProject,
   isCommandShellCatalog,
   isImageOnlyChatModel,
+  isStarAiProviderId,
   JEV_API_KEY_SECRET_REF,
   type McpServerRecord,
   type Mode,
@@ -470,8 +471,20 @@ export function createSessionLaunchRuntime({
     // row that would undo it (#2120). The subagent path and enrichProvider
     // already apply the binding; the main session was the one path that
     // dropped it. Without a stored binding the catalog answer stands.
-    const boundModelConfig = storedModel
-      ? modelConfigWithBinding(catalogModelConfig, storedModel)
+    const effectiveStoredModel =
+      storedModel &&
+      isStarAiProviderId(provider.id) &&
+      storedModel.thinkingLevels.length === 0 &&
+      catalogModelConfig.source !== "generic" &&
+      catalogModelConfig.reasoning &&
+      catalogModelConfig.supportedThinkingLevels?.length
+        ? {
+            ...storedModel,
+            thinkingLevels: [...catalogModelConfig.supportedThinkingLevels],
+          }
+        : storedModel;
+    const boundModelConfig = effectiveStoredModel
+      ? modelConfigWithBinding(catalogModelConfig, effectiveStoredModel)
       : catalogModelConfig;
     // The saved endpoint can serve a different window from the published model.
     // Follow its discovered value for catalog-owned bindings, like the inspector.

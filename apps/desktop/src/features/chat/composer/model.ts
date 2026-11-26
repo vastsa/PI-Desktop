@@ -9,6 +9,7 @@ import type {
 } from "@pi-desktop/shared";
 import {
   isSessionThinkingLevel,
+  isStarAiProviderId,
   PERMISSION_MODES,
   sessionThinkingMenuLevels,
 } from "@pi-desktop/shared";
@@ -127,9 +128,15 @@ export function thinkingProviderForModel(
   const binding = provider.models.find((candidate) =>
     sameComposerModelId(candidate.id, modelId),
   );
-  const configuredLevels = binding
+  const rawConfiguredLevels = binding
     ? THINKING_LEVELS.filter((level) => binding.thinkingLevels.includes(level))
     : undefined;
+  // StarAI managed providers cannot be edited in Settings; their bindings are
+  // auto-generated with empty `thinkingLevels`, never an explicit opt-out.
+  const configuredLevels =
+    isStarAiProviderId(provider.id) && rawConfiguredLevels?.length === 0
+      ? undefined
+      : rawConfiguredLevels;
 
   if (model?.catalogSource !== "models.dev") {
     // Discovery/user rows are not trusted capability matches.
@@ -151,11 +158,15 @@ export function thinkingProviderForModel(
   const supportsReasoning = configuredLevels
     ? configuredLevels.some((level) => level !== "off")
     : model.reasoning === true || model.capabilities.includes("reasoning");
+  const catalogLevels = model.supportedThinkingLevels?.length
+    ? model.supportedThinkingLevels
+    : supportsReasoning
+      ? (["low", "medium", "high"] as ThinkingLevel[])
+      : provider.supportedThinkingLevels;
   return {
     ...provider,
     supportsReasoning,
-    supportedThinkingLevels:
-      configuredLevels ?? model.supportedThinkingLevels ?? provider.supportedThinkingLevels,
+    supportedThinkingLevels: configuredLevels ?? catalogLevels,
   };
 }
 

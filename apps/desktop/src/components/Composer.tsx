@@ -377,13 +377,17 @@ export function Composer({
   );
   // A draft without a session starts at the selected model's stored default
   // thinking level, clamped onto that binding's enabled ladder.
+  const effectiveThinkingBinding =
+    provider && isStarAiProviderId(provider.id) && !selectedBinding?.thinkingLevels.length
+      ? undefined
+      : selectedBinding;
   const draftThinkingLevel = selectedModelInfo?.catalogSource === "models.dev"
     ? initialThinkingLevelForBinding(
-        selectedBinding,
+        effectiveThinkingBinding,
         thinkingProvider?.supportedThinkingLevels,
       )
     : initialThinkingLevelForUnmatchedModel(
-        selectedBinding,
+        effectiveThinkingBinding,
         thinkingProvider?.supportedThinkingLevels,
       );
   const sessionThinkingLevel =
