@@ -121,11 +121,21 @@ describe("codemode tool", () => {
       active -= 1;
       return "ok";
     });
+    // Two setImmediate gates used to produce the overlap, but under CI
+    // runner load the event loop can drain both before the next Read is
+    // dispatched, serializing them and failing `maxRead > 1` spuriously.
+    // Hold each read on a latch instead: overlap is then guaranteed by the
+    // harness actually dispatching concurrently — the property under test —
+    // and true serialization still fails the assertion via the timeout.
+    let releaseReads: () => void = () => undefined;
+    const readsInFlight = new Promise<void>((resolve) => {
+      releaseReads = resolve;
+    });
     const read = textTool("Read", "parallel", async () => {
       readActive += 1;
       maxRead = Math.max(maxRead, readActive);
-      await gate();
-      await gate();
+      if (readActive >= 2) releaseReads();
+      await Promise.race([readsInFlight, new Promise((resolve) => setTimeout(resolve, 2_000))]);
       readActive -= 1;
       return "ok";
     });
