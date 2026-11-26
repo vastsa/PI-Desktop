@@ -1,4 +1,4 @@
-# Bounded session context restoration
+# ADR: Bounded session context restoration
 
 - Status: Accepted
 - Date: 2026-11-26
