@@ -269,13 +269,14 @@ export function createRemoteBackend(options: RemoteBackendOptions): RemoteBacken
       case IPC.invoke.sessionConfigure: {
         const remoteSessionId = remoteIdFor(args);
         const config = (args[1] ?? {}) as Partial<
-          Pick<SessionSummary, "mode" | "providerId" | "modelId" | "thinkingLevel" | "permissionMode" | "fastMode">
+          Pick<SessionSummary, "mode" | "providerId" | "modelId" | "thinkingLevel" | "permissionMode" | "fastMode" | "fastModeTier">
         >;
         if (
           config.providerId !== undefined ||
           config.modelId !== undefined ||
           config.thinkingLevel !== undefined ||
-          config.fastMode !== undefined
+          config.fastMode !== undefined ||
+          config.fastModeTier !== undefined
         ) {
           throw capabilityUnavailable("remote sessions use the Host model configuration");
         }

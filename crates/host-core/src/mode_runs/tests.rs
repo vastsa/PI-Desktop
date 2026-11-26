@@ -61,6 +61,7 @@ pub(super) fn configure(
         None,
         None,
         None,
+        None,
         prepared.snapshot_hash(),
     )?;
     configure_session_mode(db, prepared)

@@ -1,6 +1,7 @@
 import type { RecentModel } from "../lib/recent-models";
 import type { RemoteProjectTarget } from "../lib/remote-project-session";
 import type {
+  FastModeTier,
   AgentEventEnvelope,
   BrowserState,
   AgentQueueChangedEvent,
@@ -116,6 +117,8 @@ export type DraftSessionConfiguration = {
   permissionMode?: PermissionMode;
   /** Session `/fast` switch carried into the created session (ADR 0334). */
   fastMode?: boolean;
+  /** Tier chosen by `/fast` or `/ultrafast` (#2507). */
+  fastModeTier?: FastModeTier;
 };
 
 
@@ -242,6 +245,7 @@ export type AppState = {
     thinkingLevel: SessionThinkingLevel;
     permissionMode?: PermissionMode;
     fastMode?: boolean;
+    fastModeTier?: FastModeTier;
   }) => Promise<void>;
   /** Returns true once accepted unless concurrent smart Stop restores it. */
   sendPrompt: (

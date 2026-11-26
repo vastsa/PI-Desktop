@@ -2421,9 +2421,15 @@ conversation content or credentials. A skipped test remains NOT RUN, not PASS.
   the field. Remote sessions refuse `/fast`. A trusted extension that switches
   the session to its own Responses model sends its next request without the
   field.
+- **Ultrafast (#2507)**: on the same allowed model, `/ultrafast` shows the
+  Ultrafast icon on the model chip and the request body carries
+  `service_tier: "ultrafast"`; `/fast` then switches back to `"priority"`
+  without turning the switch off, and `/ultrafast` sent twice turns it off. A
+  model without the Fast mode opt-in refuses `/ultrafast` with the same hint.
+  The tier survives fork and restart.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`,
-  `03-runtime/04-data-storage.md` (v27), `04-ux/04-builtin-commands.md`,
-  ADR 0334, issue #1657.
+  `03-runtime/04-data-storage.md` (v27, v35), `04-ux/04-builtin-commands.md`,
+  ADR 0334, issues #1657, #2507.
 - **Status**: Automated coverage: `apps/desktop/test/fast-mode-command.test.mjs`
   (draft → created session, toggle, refusals, remote, chip),
   `apps/desktop/test/fast-mode-session-launch.test.mjs` (launch resolution),

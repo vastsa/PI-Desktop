@@ -1,4 +1,4 @@
-import { appendLocalFileReferenceContext } from "@pi-desktop/shared";
+import { appendLocalFileReferenceContext, normalizeFastModeTier, type FastModeTier } from "@pi-desktop/shared";
 import { buildJobTools } from "./background-job-tools.js";
 import {
   MAX_MUTATION_RECOVERY_FAILURES, BASH_PATCH_FAILURE_KEY,
@@ -1125,6 +1125,8 @@ export type AgentRuntimeOptions = {
    * session `/fast` switch and the model binding's opt-in (ADR 0334).
    */
   fastMode?: boolean;
+  /** Which tier `fastMode` asks for: `/fast` or `/ultrafast` (#2507). */
+  fastModeTier?: FastModeTier;
   /** TypeSafe Jev credential, resolved by Electron main only when enabled. */
   jevApiKey?: string;
   /**
@@ -2075,6 +2077,7 @@ export class DesktopAgentRuntime {
   private infiniteProviderRetry = false;
   private backgroundJobContinuationEnabled = false;
   private fastMode = false;
+  private fastModeTier: FastModeTier = "fast";
   private jevApiKey?: string;
   private computerUseEnabled = false;
   private codemodeEnabled = false;
@@ -2194,6 +2197,7 @@ export class DesktopAgentRuntime {
     this.infiniteProviderRetry = opts.infiniteProviderRetry === true;
     this.backgroundJobContinuationEnabled = opts.backgroundJobContinuationEnabled === true;
     this.fastMode = opts.fastMode === true;
+    this.fastModeTier = normalizeFastModeTier(opts.fastModeTier);
     this.jevApiKey = opts.jevApiKey;
     this.computerUseEnabled = opts.computerUseEnabled === true;
     this.codemodeEnabled = opts.codemodeEnabled === true;
@@ -2386,6 +2390,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
           ),
           m.api,
           this.fastMode,
+          this.fastModeTier,
         );
         // Both output clamps, ours and pi-ai's inside `streamSimple`, must see
         // the instructions the adapter sends, not every superseded snapshot.
@@ -2548,9 +2553,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   /** Apply the session `/fast` switch to the next turn of a reused runtime. */
-  setFastMode(enabled: boolean): void {
+  setFastMode(enabled: boolean, tier: FastModeTier = "fast"): void {
     if (this.disposed) throw new Error("runtime disposed");
     this.fastMode = enabled;
+    this.fastModeTier = normalizeFastModeTier(tier);
   }
 
   /** Refresh catalog instructions without changing the running session owner. */
@@ -3042,6 +3048,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     // tier along. The next launch re-applies the switch from the session's
     // stored model through `setFastMode`.
     this.fastMode = false;
+    this.fastModeTier = "fast";
     this.provider = this.extensionProviderFor(agent, model);
     this.model = model;
     this.models = createExtensionAgentModels({

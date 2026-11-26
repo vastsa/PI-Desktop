@@ -27,6 +27,7 @@ import {
   type ModelBinding,
   type ModelInfo,
   modelWireIdsEqual,
+  normalizeFastModeTier,
   normalizeMode,
   type Risk,
   type SessionThinkingLevel,
@@ -825,6 +826,8 @@ export function createSessionLaunchRuntime({
         // The session `/fast` switch only reaches a model the user allowed it
         // for in model settings (ADR 0334).
         fastMode: session.fastMode === true && storedModel?.fastModeAllowed === true,
+        // `/ultrafast` shares that switch and opt-in; only the tier differs (#2507).
+        fastModeTier: normalizeFastModeTier(session.fastModeTier),
         ...(jevApiKey ? { jevApiKey } : {}),
         // A disabled feature is absent from the prompt rather than advertised
         // and refused on every call (ADR 0342 §13).

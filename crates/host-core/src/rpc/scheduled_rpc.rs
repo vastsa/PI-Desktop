@@ -205,6 +205,7 @@ fn handle_with_workspace_policy(
                     .or_else(|| automatic.then(|| "ask".into())),
                 // Unattended runs keep the default tier (ADR 0334).
                 fast_mode: false,
+                fast_mode_tier: None,
             };
             let uses_task_execution_settings = task.permission_mode.is_some()
                 || task.thinking_level.is_some()

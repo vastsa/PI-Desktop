@@ -19,7 +19,8 @@ import {
   type RuntimeProviderConfig,
 } from "./runtime.js";
 import type { PluginSkillDef } from "./plugin-skills-prompt.js";
-import type { SessionMessageOrigin, TrustedExtensionSpec } from "@pi-desktop/shared";
+import type { FastModeTier, SessionMessageOrigin, TrustedExtensionSpec } from "@pi-desktop/shared";
+import { normalizeFastModeTier } from "@pi-desktop/shared";
 import type { ProjectInstructions } from "./project-instructions.js";
 import type { CustomSystemPrompt } from "./custom-system-prompt.js";
 import {
@@ -123,6 +124,8 @@ type RuntimeParams = {
   backgroundCompletion?: UiMessage;
   /** Session `/fast` switch AND the model's opt-in, resolved by main (ADR 0334). */
   fastMode?: boolean;
+  /** Which tier `fastMode` asks for: `/fast` or `/ultrafast` (#2507). */
+  fastModeTier?: FastModeTier;
   /** Opt-in TypeSafe classifier credential resolved by Electron main. */
   jevApiKey?: string;
   /** Set by main only for Agent sessions with computer use switched on. */
@@ -285,7 +288,7 @@ async function runtimeFor(
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
     reusable.setBackgroundJobContinuationEnabled(params.backgroundJobContinuationEnabled === true);
-    reusable.setFastMode(params.fastMode === true);
+    reusable.setFastMode(params.fastMode === true, normalizeFastModeTier(params.fastModeTier));
     reusable.setMode(mode, modeDefinition);
     return reusable;
   }
@@ -345,6 +348,7 @@ async function runtimeFor(
     infiniteProviderRetry: params.infiniteProviderRetry === true,
     backgroundJobContinuationEnabled: params.backgroundJobContinuationEnabled === true,
     fastMode: params.fastMode === true,
+    fastModeTier: normalizeFastModeTier(params.fastModeTier),
     jevApiKey: params.jevApiKey,
     computerUseEnabled: config.computerUseEnabled,
     codemodeEnabled: config.codemodeEnabled,

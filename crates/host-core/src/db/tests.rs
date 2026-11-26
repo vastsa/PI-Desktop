@@ -464,6 +464,53 @@ fn v25_database_gains_session_fast_mode_defaulting_off() {
     assert!(!summary.fast_mode);
 }
 
+/// v35 adds the per-session speed tier (#2507). A session that already had
+/// `/fast` on keeps it and requests the only tier older versions knew.
+#[test]
+fn v34_database_gains_session_fast_mode_tier_defaulting_to_fast() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let session_id = {
+        let db = Database::open(&path).unwrap();
+        let session = crate::sessions::create_session_with_thinking(
+            &db,
+            Some("Fast".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        db.conn()
+            .execute(
+                "UPDATE sessions SET fast_mode = 1 WHERE id = ?1",
+                [&session.id],
+            )
+            .unwrap();
+        db.conn()
+            .execute_batch("ALTER TABLE sessions DROP COLUMN fast_mode_tier;")
+            .unwrap();
+        db.conn().pragma_update(None, "user_version", 34).unwrap();
+        session.id
+    };
+
+    let db = Database::open(&path).unwrap();
+    assert_eq!(schema_version(db.conn()), SCHEMA_VERSION);
+    assert!(migration_backup_path(&path, 34).exists());
+    let summary = crate::sessions::get_session(&db, &session_id)
+        .unwrap()
+        .unwrap()
+        .summary;
+    assert!(summary.fast_mode);
+    assert_eq!(summary.fast_mode_tier, "fast");
+    let rejected = db.conn().execute(
+        "UPDATE sessions SET fast_mode_tier = 'turbo' WHERE id = ?1",
+        [&session_id],
+    );
+    assert!(rejected.is_err(), "the column only accepts known tiers");
+}
+
 /// v21 owns the session checklist. A real v20 database has neither the
 /// `sessions` stamps nor the `session_todo` table, so the upgrade must add
 /// both, keep the v20 rows, leave a readable pre-migration backup, and stay

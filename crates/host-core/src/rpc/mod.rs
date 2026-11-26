@@ -797,6 +797,25 @@ fn fast_mode_param(params: &Value) -> Result<Option<bool>, JsonRpcError> {
     }
 }
 
+/// Optional tier for the session speed switch (issue #2507). Absent or null
+/// leaves the stored value; only the known tier names are accepted.
+fn fast_mode_tier_param(params: &Value) -> Result<Option<String>, JsonRpcError> {
+    match params.get("fastModeTier") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(tier)) if sessions::is_valid_fast_mode_tier(tier) => {
+            Ok(Some(tier.clone()))
+        }
+        Some(_) => Err(rpc_err(
+            1002,
+            format!(
+                "fastModeTier must be one of {}",
+                sessions::FAST_MODE_TIERS.join(", ")
+            ),
+            "INVALID_PARAMS",
+        )),
+    }
+}
+
 /// Parse the optional session thinking selector at the RPC boundary.  A
 /// missing/null value keeps the backwards-compatible default; present values
 /// must be strings from the host's allowlist rather than being silently
@@ -2838,6 +2857,7 @@ async fn handle_request(
         "session.create" => {
             let thinking_level = thinking_level_param(&params)?;
             let fast_mode = fast_mode_param(&params)?.unwrap_or(false);
+            let fast_mode_tier = fast_mode_tier_param(&params)?;
             let permission_parent = permission_parent_param(&params)?;
             // ADR 0329: an isolated session gets its own git worktree.
             let isolated = params
@@ -2900,6 +2920,7 @@ async fn handle_request(
                     thinking_level,
                     permission_mode,
                     fast_mode,
+                    fast_mode_tier,
                 },
                 params.get("modeSnapshot"),
             )
@@ -3073,6 +3094,7 @@ async fn handle_request(
                 .ok_or_else(|| rpc_err(1002, "mode required", "INVALID_PARAMS"))?;
             let thinking_level = thinking_level_param(&params)?;
             let fast_mode = fast_mode_param(&params)?;
+            let fast_mode_tier = fast_mode_tier_param(&params)?;
             let st = state.lock().await;
             let prepared = modes_rpc::prepare_configure(&st, id, mode, &params)?;
             let session = sessions::configure_session_with_mode_snapshot(
@@ -3084,6 +3106,7 @@ async fn handle_request(
                 thinking_level.as_deref(),
                 params.get("permissionMode").and_then(|v| v.as_str()),
                 fast_mode,
+                fast_mode_tier.as_deref(),
                 prepared.snapshot_hash(),
             )
             .map_err(|e| {
@@ -7669,6 +7692,61 @@ mod tests {
             .await
             .unwrap_err();
             assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
+    }
+
+    /// `fastModeTier` (#2507) follows the same rules as `fastMode`: optional,
+    /// preserved when absent, and limited to the known tiers.
+    #[tokio::test]
+    async fn session_fast_mode_tier_rpc_is_optional_and_validated() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let call = |method: &'static str, params: Value| {
+            handle_request(state.clone(), method, params, tx.clone())
+        };
+
+        let legacy = call("session.create", json!({ "mode": "agent" }))
+            .await
+            .unwrap();
+        assert_eq!(legacy["session"]["fastModeTier"], "fast");
+        let created = call(
+            "session.create",
+            json!({ "mode": "agent", "fastMode": true, "fastModeTier": "ultrafast" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(created["session"]["fastModeTier"], "ultrafast");
+        let id = created["session"]["id"].as_str().unwrap().to_string();
+
+        let kept = call(
+            "session.configure",
+            json!({ "id": id, "mode": "agent", "fastMode": false }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(kept["session"]["fastModeTier"], "ultrafast");
+        let fast = call(
+            "session.configure",
+            json!({ "id": id, "mode": "agent", "fastMode": true, "fastModeTier": "fast" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(fast["session"]["fastMode"], true);
+        assert_eq!(fast["session"]["fastModeTier"], "fast");
+
+        for method in ["session.create", "session.configure"] {
+            for tier in [json!("turbo"), json!(true)] {
+                let error = call(
+                    method,
+                    json!({ "id": id, "mode": "agent", "fastModeTier": tier }),
+                )
+                .await
+                .unwrap_err();
+                assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+            }
         }
     }
 

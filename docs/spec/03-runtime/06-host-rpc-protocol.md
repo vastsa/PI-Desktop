@@ -349,6 +349,9 @@ to later refresh and inference; the vendor picker does not collect them.
   session or orphan snapshot; omitting it retains legacy creation semantics.
   Optional boolean `fastMode` (ADR 0334) stores the session `/fast` switch;
   missing/null means `false` and a non-boolean returns `INVALID_PARAMS`.
+  Optional `fastModeTier` (`fast | ultrafast`, #2507) stores which tier that
+  switch asks for; missing/null means `fast` and any other value returns
+  `INVALID_PARAMS`.
   Optional `isolated: true` (ADR 0329) also requires `projectPath` and gives
   the new session its own git worktree before it returns; if the worktree
   cannot be created the session is deleted again and the call fails with a
@@ -426,6 +429,8 @@ to later refresh and inference; the vendor picker does not collect them.
   for the next pi turn; omitting/null
   `thinkingLevel` preserves the current value; optional boolean `fastMode`
   (ADR 0334) follows the same rule, and a non-boolean is `INVALID_PARAMS`;
+  optional `fastModeTier` (`fast | ultrafast`, #2507) also preserves the stored
+  value when omitted and rejects anything else with `INVALID_PARAMS`;
   invalid modes or levels return
   `INVALID_PARAMS`; mode is `plan | goal | agent` and changing any session
   configuration is allowed only while idle and without a pending/queued/running

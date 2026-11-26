@@ -119,6 +119,28 @@ fn validate_permission_mode(mode: &str) -> Result<()> {
     }
 }
 
+/// Tiers the session speed switch can ask for (ADR 0334, issue #2507).
+pub const FAST_MODE_TIERS: &[&str] = &["fast", "ultrafast"];
+
+pub(crate) fn default_fast_mode_tier() -> String {
+    "fast".into()
+}
+
+pub(crate) fn is_valid_fast_mode_tier(tier: &str) -> bool {
+    FAST_MODE_TIERS.contains(&tier)
+}
+
+fn validate_fast_mode_tier(tier: &str) -> Result<()> {
+    if is_valid_fast_mode_tier(tier) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "fastModeTier must be one of {}",
+            FAST_MODE_TIERS.join(", ")
+        ))
+    }
+}
+
 fn validate_thinking_level(level: &str) -> Result<()> {
     if is_valid_thinking_level(level) {
         Ok(())
@@ -156,6 +178,10 @@ pub struct SessionSummary {
     /// use the priority tier only when the model binding also allows it.
     #[serde(default)]
     pub fast_mode: bool,
+    /// Which tier the switch asks for: `fast` (priority) or `ultrafast`.
+    /// Requests use it only when the model binding allows that tier.
+    #[serde(default = "default_fast_mode_tier")]
+    pub fast_mode_tier: String,
     pub updated_at: String,
     pub created_at: String,
     /// True when this session is the transcript owned by a scheduled-task run.
@@ -1405,7 +1431,7 @@ const SUMMARY_SELECT: &str =
     "SELECT s.id, s.title, s.last_seq, p.path, s.model_id, s.provider_id, s.mode,
             s.thinking_level, s.permission_mode, s.updated_at, s.created_at,
             EXISTS (SELECT 1 FROM task_runs r WHERE r.session_id = s.id) AS scheduled_run,
-            s.fast_mode
+            s.fast_mode, s.fast_mode_tier
      FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
      WHERE s.deleted_at IS NULL";
 
@@ -1426,6 +1452,7 @@ pub(crate) fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Sess
         // alias keeps this mapper independent of any one query's column order.
         scheduled_run: row.get("scheduled_run")?,
         fast_mode: row.get("fast_mode")?,
+        fast_mode_tier: row.get("fast_mode_tier")?,
         worktree: None,
     })
 }
@@ -1483,6 +1510,8 @@ pub struct SessionCreateOptions {
     pub permission_mode: Option<String>,
     /// The `/fast` switch (ADR 0334); false keeps the default service tier.
     pub fast_mode: bool,
+    /// The tier the switch asks for; `None` stores `fast`.
+    pub fast_mode_tier: Option<String>,
 }
 
 pub fn create_session_with_thinking(
@@ -1505,6 +1534,7 @@ pub fn create_session_with_thinking(
             thinking_level,
             permission_mode: None,
             fast_mode: false,
+            fast_mode_tier: None,
         },
     )
 }
@@ -1537,6 +1567,7 @@ pub fn create_session_with_mode_snapshot(
         thinking_level,
         permission_mode,
         fast_mode,
+        fast_mode_tier,
     } = options;
     let now = now_ms();
     let id = Uuid::new_v4().to_string();
@@ -1555,6 +1586,8 @@ pub fn create_session_with_mode_snapshot(
     validate_thinking_level(&thinking_level)?;
     let permission_mode = permission_mode.unwrap_or_else(default_permission_mode);
     validate_permission_mode(&permission_mode)?;
+    let fast_mode_tier = fast_mode_tier.unwrap_or_else(default_fast_mode_tier);
+    validate_fast_mode_tier(&fast_mode_tier)?;
     let transaction = prepared
         .as_ref()
         .map(|_| db.conn().unchecked_transaction())
@@ -1577,8 +1610,9 @@ pub fn create_session_with_mode_snapshot(
         .prepare_cached(
             "INSERT INTO sessions (
                 id, title, project_id, provider_id, model_id, mode, thinking_level,
-                permission_mode, title_source, fast_mode, created_at, updated_at, mode_snapshot_hash
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12)",
+                permission_mode, title_source, fast_mode, created_at, updated_at, mode_snapshot_hash,
+                fast_mode_tier
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12, ?13)",
         )?
         .execute(params![
             id,
@@ -1592,7 +1626,8 @@ pub fn create_session_with_mode_snapshot(
             title_source,
             fast_mode,
             now,
-            prepared.as_ref().and_then(|value| value.snapshot_hash())
+            prepared.as_ref().and_then(|value| value.snapshot_hash()),
+            fast_mode_tier
         ])?;
     if let Some(transaction) = transaction {
         transaction.commit()?;
@@ -1608,6 +1643,7 @@ pub fn create_session_with_mode_snapshot(
         thinking_level,
         permission_mode,
         fast_mode,
+        fast_mode_tier,
         updated_at: ms_to_ts(now),
         created_at: ms_to_ts(now),
         // The run row that owns this transcript is written after creation.
@@ -1958,11 +1994,12 @@ pub fn fork_session_through(
             .prepare_cached(
                 "INSERT INTO sessions (
                     id, title, project_id, provider_id, model_id, mode, thinking_level,
-                    permission_mode, fast_mode, mode_snapshot_hash, source, pinned, last_seq,
-                    created_at, updated_at
+                    permission_mode, fast_mode, fast_mode_tier, mode_snapshot_hash, source,
+                    pinned, last_seq, created_at, updated_at
                  )
                  SELECT ?1, ?2, project_id, provider_id, model_id, mode, thinking_level,
-                        permission_mode, fast_mode, mode_snapshot_hash, NULL, 0, ?3, ?4, ?4
+                        permission_mode, fast_mode, fast_mode_tier, mode_snapshot_hash, NULL,
+                        0, ?3, ?4, ?4
                  FROM sessions WHERE id = ?5",
             )?
             .execute(params![id, title, records.len() as i64, now, source_id])?;
@@ -1993,6 +2030,7 @@ pub fn fork_session_through(
         thinking_level: source.summary.thinking_level,
         permission_mode: source.summary.permission_mode,
         fast_mode: source.summary.fast_mode,
+        fast_mode_tier: source.summary.fast_mode_tier,
         updated_at: created_at.clone(),
         created_at,
         // A fork is the user's own conversation, not the automation's transcript.
@@ -2047,6 +2085,7 @@ pub fn configure_session_with_thinking(
         thinking_level,
         permission_mode,
         None,
+        None,
     )
 }
 
@@ -2063,6 +2102,7 @@ pub fn configure_session_with_fast_mode(
     thinking_level: Option<&str>,
     permission_mode: Option<&str>,
     fast_mode: Option<bool>,
+    fast_mode_tier: Option<&str>,
 ) -> Result<Option<SessionSummary>> {
     configure_session_with_mode_snapshot(
         db,
@@ -2073,6 +2113,7 @@ pub fn configure_session_with_fast_mode(
         thinking_level,
         permission_mode,
         fast_mode,
+        fast_mode_tier,
         None,
     )
 }
@@ -2089,6 +2130,7 @@ pub fn configure_session_with_mode_snapshot(
     thinking_level: Option<&str>,
     permission_mode: Option<&str>,
     fast_mode: Option<bool>,
+    fast_mode_tier: Option<&str>,
     mode_snapshot_hash: Option<&str>,
 ) -> Result<Option<SessionSummary>> {
     if !(is_valid_mode(mode) || mode == "chat") {
@@ -2100,6 +2142,9 @@ pub fn configure_session_with_mode_snapshot(
     }
     if let Some(mode) = permission_mode {
         validate_permission_mode(mode)?;
+    }
+    if let Some(tier) = fast_mode_tier {
+        validate_fast_mode_tier(tier)?;
     }
     crate::plans::gate_session_configure(
         db,
@@ -2119,6 +2164,7 @@ pub fn configure_session_with_mode_snapshot(
                  thinking_level = COALESCE(?5, thinking_level),
                  permission_mode = COALESCE(?6, permission_mode),
                  fast_mode = COALESCE(?8, fast_mode), mode_snapshot_hash = ?9,
+                 fast_mode_tier = COALESCE(?10, fast_mode_tier),
                  updated_at = ?7
              WHERE id = ?1",
         )?
@@ -2131,7 +2177,8 @@ pub fn configure_session_with_mode_snapshot(
             permission_mode,
             now_ms(),
             fast_mode,
-            mode_snapshot_hash
+            mode_snapshot_hash,
+            fast_mode_tier
         ])?;
     if changed == 0 {
         return Ok(None);
@@ -5204,6 +5251,7 @@ mod tests {
                 None,
                 None,
                 enabled,
+                None,
             )
             .unwrap()
             .unwrap()
@@ -5254,6 +5302,73 @@ mod tests {
                 .summary
                 .fast_mode
         );
+    }
+
+    /// Issue #2507: the switch's tier is stored per session, defaults to
+    /// `fast`, survives configures that omit it, is copied by a fork and
+    /// rejects unknown tiers.
+    #[test]
+    fn session_fast_mode_tier_is_persisted_preserved_and_forked() {
+        let db = test_db();
+        let session = create_session(&db, None, None, None, None, None).unwrap();
+        assert_eq!(session.fast_mode_tier, "fast");
+
+        let set = |tier: Option<&str>| {
+            configure_session_with_fast_mode(
+                &db,
+                &session.id,
+                "agent",
+                None,
+                None,
+                None,
+                None,
+                Some(true),
+                tier,
+            )
+        };
+        assert_eq!(
+            set(Some("ultrafast")).unwrap().unwrap().fast_mode_tier,
+            "ultrafast"
+        );
+        assert_eq!(set(None).unwrap().unwrap().fast_mode_tier, "ultrafast");
+        assert!(set(Some("turbo")).is_err());
+        let stored = get_session(&db, &session.id).unwrap().unwrap().summary;
+        assert!(stored.fast_mode);
+        assert_eq!(stored.fast_mode_tier, "ultrafast");
+
+        let ForkSessionResult::Created(fork) =
+            fork_session_through(&db, &session.id, None, None).unwrap()
+        else {
+            panic!("expected fork");
+        };
+        assert_eq!(fork.summary.fast_mode_tier, "ultrafast");
+        assert_eq!(
+            get_session(&db, &fork.summary.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .fast_mode_tier,
+            "ultrafast"
+        );
+
+        let created = create_session_with_options(
+            &db,
+            SessionCreateOptions {
+                fast_mode: true,
+                fast_mode_tier: Some("ultrafast".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(created.fast_mode_tier, "ultrafast");
+        assert!(create_session_with_options(
+            &db,
+            SessionCreateOptions {
+                fast_mode_tier: Some("turbo".into()),
+                ..Default::default()
+            },
+        )
+        .is_err());
     }
 
     #[test]
@@ -5549,6 +5664,7 @@ mod tests {
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
             fast_mode: false,
+            fast_mode_tier: "fast".into(),
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
@@ -5603,6 +5719,7 @@ mod tests {
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
             fast_mode: false,
+            fast_mode_tier: "fast".into(),
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),
@@ -6875,6 +6992,7 @@ mod tests {
             // Ownership is derived from `task_runs`, so an import is never one.
             scheduled_run: false,
             fast_mode: false,
+            fast_mode_tier: "fast".into(),
             worktree: None,
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-01T00:00:00Z".into(),

@@ -114,6 +114,27 @@ describe("fast mode on a reused runtime", () => {
     expect(bodies[2].service_tier).toBeUndefined();
   });
 
+  it("switches between the fast and ultrafast tiers in place", async () => {
+    const bodies: CapturedRequest[] = [];
+    const fetch = capturingFetch(bodies);
+    const runtime = createRuntime(true);
+
+    await requestOnce(runtime, fetch);
+    expect(bodies[0].service_tier).toBe("priority");
+
+    runtime.setFastMode(true, "ultrafast");
+    await requestOnce(runtime, fetch);
+    expect(bodies[1].service_tier).toBe("ultrafast");
+
+    runtime.setFastMode(false, "ultrafast");
+    await requestOnce(runtime, fetch);
+    expect(bodies[2].service_tier).toBeUndefined();
+
+    runtime.setFastMode(true);
+    await requestOnce(runtime, fetch);
+    expect(bodies[3].service_tier).toBe("priority");
+  });
+
   it("keeps the runtime reusable across the switch so the sidecar applies it in place", () => {
     const runtime = createRuntime(false);
     const match = {

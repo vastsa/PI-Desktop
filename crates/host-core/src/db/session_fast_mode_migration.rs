@@ -31,3 +31,29 @@ pub(crate) fn migrate_v26_to_v27(conn: &Connection, path: &Path) -> Result<()> {
     })?;
     Ok(())
 }
+
+/// v35 stores which tier the session's speed switch asks for. Every existing
+/// session keeps `fast`, the only tier earlier versions could request.
+pub(crate) fn migrate_v34_to_v35(conn: &Connection, path: &Path) -> Result<()> {
+    let backup = create_migration_backup(conn, path, 34)?;
+    let tx = conn.unchecked_transaction()?;
+    let has_tier: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'fast_mode_tier')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_tier {
+        tx.execute_batch(
+            "ALTER TABLE sessions ADD COLUMN fast_mode_tier TEXT NOT NULL DEFAULT 'fast'
+             CHECK (fast_mode_tier IN ('fast', 'ultrafast'));",
+        )?;
+    }
+    tx.pragma_update(None, "user_version", 35i64)?;
+    tx.commit().with_context(|| {
+        format!(
+            "commit schema v34 to v35 migration; backup {} remains",
+            backup.display()
+        )
+    })?;
+    Ok(())
+}

@@ -417,6 +417,14 @@ that moves the runtime to one of its own models clears the switch, because that
 model has no binding to opt in; the next launch re-applies it from the
 session's stored binding.
 
+`/ultrafast` (#2507) is the same switch with a different tier: it needs the
+same `fastModeAllowed` opt-in and the same wires, and stores the session's
+`fastModeTier: "ultrafast"`. The launcher forwards `fastModeTier` next to
+`fastMode`, and the runtime then sends `service_tier: "ultrafast"` instead of
+`"priority"`. There is no separate per-model Ultrafast opt-in. pi-ai forwards
+the value verbatim but has no price multiplier for it, so usage cost estimates
+for Ultrafast turns use the standard price.
+
 `ModelBinding.availableForSubagents` (boolean, default false): opt-in flag that
 makes the model available for AI-driven subagent delegation. When enabled, the
 model appears in the delegation catalog injected into the parent agent's system

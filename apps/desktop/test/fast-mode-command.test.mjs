@@ -7,7 +7,7 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { useAppStore, materializeDraftSession } = await import("../src/stores/app-store.ts");
 const { api } = await import("../src/lib/api.ts");
 const { runPaletteCommand } = await import("../src/lib/commands.ts");
-const { sessionFastModeActive } = await import("../src/lib/fast-mode-command.ts");
+const { sessionFastModeActive, sessionFastModeTier } = await import("../src/lib/fast-mode-command.ts");
 
 // ADR 0334: `/fast` is a per-session switch, and model settings decide which
 // models may use it.
@@ -125,7 +125,7 @@ test("/fast on the new-task draft carries the switch into the created session", 
   const { configures, creates } = setup(t, {});
   await runPaletteCommand("builtin.session.fast");
   assert.equal(configures.length, 0);
-  assert.deepEqual(useAppStore.getState().draftConfiguration, { fastMode: true });
+  assert.deepEqual(useAppStore.getState().draftConfiguration, { fastMode: true, fastModeTier: "fast" });
 
   // Choosing a model on the draft keeps the switch.
   await useAppStore.getState().configureActiveSession({
@@ -152,4 +152,54 @@ test("the Composer marks Fast only when the switch is on for an allowed model", 
   assert.equal(sessionFastModeActive(codex, "gpt-mini", { fastMode: true }), false);
   assert.equal(sessionFastModeActive(completions, "chat", { fastMode: true }), false);
   assert.equal(sessionFastModeActive(undefined, undefined, { fastMode: true }), false);
+});
+
+// #2507: `/ultrafast` is the same switch and the same model opt-in as `/fast`;
+// only the requested tier differs.
+test("/ultrafast and /fast share one switch: the named tier turns on, the same tier again turns off", async (t) => {
+  const { toasts, configures } = setup(t, { sessions: [session(codex, "gpt-codex")], activeSessionId: "s1" });
+  await runPaletteCommand("builtin.session.ultrafast");
+  assert.equal(configures[0].fastMode, true);
+  assert.equal(configures[0].fastModeTier, "ultrafast");
+  assert.equal(useAppStore.getState().sessions[0].fastModeTier, "ultrafast");
+  assert.equal(toasts[0].message, en.chat.ultrafastModeOn);
+
+  // `/fast` while Ultrafast is on switches tiers instead of turning off.
+  await runPaletteCommand("builtin.session.fast");
+  assert.equal(configures[1].fastMode, true);
+  assert.equal(configures[1].fastModeTier, "fast");
+  assert.equal(toasts[1].message, en.chat.fastModeOn);
+
+  await runPaletteCommand("builtin.session.ultrafast");
+  await runPaletteCommand("builtin.session.ultrafast");
+  assert.equal(configures[3].fastMode, false);
+  assert.equal(useAppStore.getState().sessions[0].fastMode, false);
+  assert.equal(toasts[3].message, en.chat.ultrafastModeOff);
+});
+
+test("/ultrafast needs the same Fast mode opt-in as /fast", async (t) => {
+  const notAllowed = setup(t, { sessions: [session(codex, "gpt-mini")], activeSessionId: "s1" });
+  await runPaletteCommand("builtin.session.ultrafast");
+  assert.equal(notAllowed.configures.length, 0);
+  assert.deepEqual(notAllowed.toasts, [{ message: en.chat.fastModeNotAllowed, variant: "warning" }]);
+
+  const usage = setup(t, { sessions: [session(relay, "gpt-relay")], activeSessionId: "s1" });
+  await runPaletteCommand("builtin.session.ultrafast");
+  assert.equal(usage.configures[0].fastModeTier, "ultrafast");
+  assert.equal(usage.toasts[0].message, en.chat.ultrafastModeOnUsage);
+});
+
+test("/ultrafast on the new-task draft creates the session on the ultrafast tier", async (t) => {
+  const { creates } = setup(t, {});
+  await runPaletteCommand("builtin.session.ultrafast");
+  await materializeDraftSession();
+  assert.equal(creates[0].fastMode, true);
+  assert.equal(creates[0].fastModeTier, "ultrafast");
+});
+
+test("the Composer shows the tier only while the switch is active", () => {
+  assert.equal(sessionFastModeTier(codex, "gpt-codex", { fastMode: true }), "fast");
+  assert.equal(sessionFastModeTier(codex, "gpt-codex", { fastMode: true, fastModeTier: "ultrafast" }), "ultrafast");
+  assert.equal(sessionFastModeTier(codex, "gpt-codex", { fastMode: false, fastModeTier: "ultrafast" }), undefined);
+  assert.equal(sessionFastModeTier(codex, "gpt-mini", { fastMode: true, fastModeTier: "ultrafast" }), undefined);
 });

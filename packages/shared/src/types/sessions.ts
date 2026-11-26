@@ -3,6 +3,7 @@ import type { RemoteWorkspace } from "./workspace.js";
 import type { Mode } from "./common.js";
 import type { SessionThinkingLevel, ThinkingLevel } from "./models.js";
 import type { PermissionMode } from "./permissions.js";
+import type { FastModeTier } from "../fast-mode.js";
 import type { UiMessage } from "./messages.js";
 import type { PlanHistoryEntry, PlanningState } from "./plans.js";
 import type { SessionWorktreeSummary } from "./worktree.js";
@@ -63,6 +64,11 @@ export type SessionSummary = {
    * omit it, meaning off.
    */
   fastMode?: boolean;
+  /**
+   * Which tier the `/fast` switch asks for (#2507). Older hosts and remote
+   * sessions omit it, meaning `fast`.
+   */
+  fastModeTier?: FastModeTier;
   /** Effective capability for this session's exact provider/model pair. */
   supportsReasoning?: boolean;
   /** Effective image-input capability for this session's exact model. */

@@ -47,6 +47,24 @@ maintainers asked that the capability be configured in model settings.
 - The Composer model chip shows a Fast mark while the switch is on for an
   allowed model, keeping the cost visible at send time.
 
+## Amendment (2026-11-23): Ultrafast tier
+
+Issue #2507 asks for OpenAI's `ultrafast` service tier, which Codex offers next
+to Fast. It reuses this switch instead of adding a second one:
+
+- `/ultrafast` (`builtin.session.ultrafast`) toggles the same
+  `sessions.fast_mode` switch and stores `sessions.fast_mode_tier`
+  (`fast | ultrafast`, schema v35, default `fast`). The command naming the tier
+  that is already on turns the switch off; the other one changes the tier.
+- The tier needs the same `fastModeAllowed` opt-in and wires; there is no
+  separate per-model Ultrafast setting, because a model allowed to spend more
+  for speed is the same decision at either tier.
+- Launch forwards `fastModeTier` with `fastMode`, and the runtime sends
+  `service_tier: "ultrafast"` instead of `"priority"`. pi-ai has no price
+  multiplier for `ultrafast`, so local cost estimates use the standard price.
+- The Composer chip swaps the Fast bolt for an Ultrafast icon (a filled bolt
+  with an outline trail, the same idea as Codex).
+
 ## Alternatives
 
 - A per-model switch without session state: it turns a per-conversation cost
