@@ -4,7 +4,10 @@ export const esEntries: ChangelogEntry[] = [
   {
     version: "0.23.1",
     date: "2026-11-25",
-    highlights: ["Activa Office sin conexión en Extensiones de Kylin ARM64 para crear documentos de Word, extraer su texto o guardar una copia."],
+    highlights: [
+      "Activa Office sin conexión en Extensiones de Kylin ARM64 para crear documentos de Word, extraer su texto o guardar una copia.",
+      "Office sin conexión también permite leer, crear y guardar copias de libros de Excel y recalcular las fórmulas cuando lo solicites.",
+    ],
   },
   {
     version: "0.23.0",

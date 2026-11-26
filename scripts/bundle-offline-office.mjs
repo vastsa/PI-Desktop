@@ -29,8 +29,8 @@ async function verifyRuntimeLinks(runtime) {
 
 export async function verifyOfflineOfficeRuntime(runtime) {
   await verifyRuntimeLinks(runtime);
-  for (const interpreter of ["node/bin/node", "python/bin/python3.12"]) {
-    await access(join(runtime, interpreter), constants.X_OK);
+  for (const executable of ["node/bin/node", "python/bin/python3.12", "libreoffice/program/soffice", "libreoffice/program/soffice.bin"]) {
+    await access(join(runtime, executable), constants.X_OK);
   }
   const { packages } = JSON.parse(await readFile(join(runtime, "metadata/package-lock.json"), "utf8"));
   if (packages?.["node_modules/docx"]?.version !== "9.16.0") {
@@ -44,32 +44,46 @@ export async function verifyOfflineOfficeRuntime(runtime) {
     const installed = JSON.parse(await readFile(join(runtime, "node/lib", relative, "package.json"), "utf8"));
     if (installed.version !== locked.version) throw new Error(`Office Runtime version mismatch: ${relative}`);
   }
-  for (const module of ["lxml", "docx", "pptx", "PIL", "xlsxwriter"]) {
-    await access(join(runtime, "python/lib/python3.12/site-packages", module, "__init__.py"));
+  const site = join(runtime, "python/lib/python3.12/site-packages");
+  for (const module of ["lxml", "docx", "openpyxl", "pandas", "numpy", "dateutil", "pptx", "PIL", "xlsxwriter"]) {
+    await access(join(site, module, "__init__.py"));
+  }
+  await access(join(site, "six.py"));
+  for (const [name, version] of [["pandas", "3.1.1"], ["python_dateutil", "2.9.0.post0"]]) {
+    const metadata = await readFile(join(site, `${name}-${version}.dist-info`, "METADATA"), "utf8").catch((cause) => {
+      throw new Error(`Expected ${name} ${version} in the Office Runtime.`, { cause });
+    });
+    if (!metadata.split(/\r?\n/).includes(`Version: ${version}`)) {
+      throw new Error(`Expected ${name} ${version} in the Office Runtime.`);
+    }
   }
   await access(join(runtime, "metadata/runtime-source.json"));
 }
 
 export async function smokeTestOfflineOffice(resources) {
-  const pluginDir = join(resources, "plugins", "pie.offline-office");
   const workspace = await mkdtemp(join(tmpdir(), "pie-office-smoke-"));
   const text = "离线办公验证";
-  const check = (skill, label, output, createArgs, input, expected) => {
-    const launcher = join(pluginDir, skill, `${skill}.sh`);
-    const run = (args, input) => execFileSync("/bin/sh", [launcher, ...args], {
-      cwd: workspace, encoding: "utf8", input, stdio: "pipe", timeout: 30_000,
-    });
-    try {
-      run(["create", output, ...createArgs], input);
-      if (run(["extract", output]) !== expected) throw new Error(`Unexpected ${label} readback.`);
-    } catch (error) {
-      throw new Error(`Office ${label} package smoke test failed: ${error.message}`, { cause: error });
-    }
-  };
+  const output = "Word smoke.docx";
+  const run = (skill, args, input) => execFileSync("/bin/sh", [
+    join(resources, "plugins", "pie.offline-office", skill, `${skill}.sh`), ...args,
+  ], {
+    cwd: workspace, encoding: "utf8", input, stdio: "pipe", timeout: 30_000,
+  });
+  let skill = "Word";
   try {
-    check("word", "Word", "Word smoke.docx", [""], `${text}\n`, `${text}\n`);
-    check("ppt", "PowerPoint", "PPT smoke.pptx", [], JSON.stringify([{ title: text, body: "Editable" }]),
-      `Slide 1\n${text}\nEditable\n`);
+    run("word", ["create", output, ""], text + "\n");
+    if (run("word", ["extract", output]) !== text + "\n") throw new Error("Unexpected DOCX readback.");
+    skill = "Excel";
+    const excel = "Excel smoke.xlsx";
+    run("excel", ["create", excel, "Data"], JSON.stringify([{ item: text, amount: 250 }]));
+    const data = JSON.parse(run("excel", ["read", excel, "Data"]));
+    if (JSON.stringify(data.data) !== JSON.stringify([[text, 250]])) throw new Error("Unexpected XLSX readback.");
+    skill = "PowerPoint";
+    const ppt = "PPT smoke.pptx";
+    run("ppt", ["create", ppt], JSON.stringify([{ title: text, body: "Editable" }]));
+    if (run("ppt", ["extract", ppt]) !== `Slide 1\n${text}\nEditable\n`) throw new Error("Unexpected PPTX readback.");
+  } catch (error) {
+    throw new Error(`Office ${skill} package smoke test failed: ${error.message}`, { cause: error });
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

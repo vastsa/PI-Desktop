@@ -65,6 +65,7 @@ try {
     for (const file of [
       "manifest.json", "main.cjs", "office_document.py",
       "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
+      "excel/SKILL.md", "excel/excel.sh", "excel/spreadsheet.py",
       "ppt/SKILL.md", "ppt/ppt.sh", "ppt/presentation.py",
     ]) {
       if (!existsSync(path.join(officePlugin, file))) {
@@ -73,6 +74,7 @@ try {
     }
     required.add("resources/office-runtime/node/bin/node");
     required.add("resources/office-runtime/python/bin/python3.12");
+    required.add("resources/office-runtime/libreoffice/program/soffice.bin");
   }
   if (!existsSync(path.join(app, "resources/app.asar"))) throw new Error("Missing app.asar");
   const catalog = new ModelsDevCatalog({ catalogPath: path.join(app, "resources/models.dev/api.json") });
@@ -143,7 +145,7 @@ try {
   console.log(`Verified ${verified} ${arch} ELF files at glibc <= ${floor}.`);
   if (withOffice) {
     await smokeTestOfflineOffice(resources);
-    console.log("Verified bundled Word and PowerPoint creation and extraction.");
+    console.log("Verified bundled Word and PowerPoint creation/extraction and Excel creation/read.");
   }
 } finally {
   rmSync(root, { recursive: true, force: true });
