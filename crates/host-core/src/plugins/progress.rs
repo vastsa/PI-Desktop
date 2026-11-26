@@ -331,14 +331,16 @@ mod tests {
     }
 
     #[test]
-    fn cancel_active_install_flips_the_armed_token() {
+    fn cancel_active_install_matches_plugin_id() {
         disarm_active_cancel();
-        assert!(!cancel_active_install(), "nothing is running");
+        assert_eq!(cancel_active_install("plugin-a"), None);
         let token = CancelToken::default();
-        arm_active_cancel(&token);
-        assert!(cancel_active_install());
+        arm_active_cancel("plugin-a", &token);
+        assert_eq!(cancel_active_install("plugin-b"), Some(false));
+        assert!(!token.is_cancelled());
+        assert_eq!(cancel_active_install("plugin-a"), Some(true));
         assert!(token.is_cancelled());
         disarm_active_cancel();
-        assert!(!cancel_active_install());
+        assert_eq!(cancel_active_install("plugin-a"), None);
     }
 }
