@@ -83,6 +83,22 @@ test("the trusted File Manager drop yields a single reusable metadata-only file 
   assert.deepEqual((await readdir(root)).sort(), ["composer-file-references", "outside.txt", "project"]);
 });
 
+test("switching away and back while the Host reads the session invalidates the drag", async (t) => {
+  const f = await fixture(t);
+  f.setAfterSessionRead(() => {
+    f.selection.setActiveSession({ ...f.active, sessionId: "other" });
+    f.selection.setActiveSession(f.active);
+  });
+  const token = f.begin();
+  assert.ok(token);
+  assert.equal(await f.drop(token), null);
+  assert.deepEqual((await readdir(f.root)).sort(), ["outside.txt", "project"]);
+
+  f.setAfterSessionRead(() => f.selection.setActiveSession({ ...f.active }));
+  assert.equal(await f.drop(token), null);
+  assert.equal((await f.drop(f.begin())).path, f.path);
+});
+
 test("a File Manager view closed during reference creation leaves no stored reference", async (t) => {
   const f = await fixture(t);
   const directory = join(f.root, "composer-file-references");

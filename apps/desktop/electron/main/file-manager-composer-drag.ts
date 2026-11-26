@@ -38,6 +38,7 @@ export function createFileManagerComposerDrag(
     workspace: string;
     path: string;
     target: Target;
+    selectionRevision: number;
     expiresAt: number;
   } | null = null;
 
@@ -54,7 +55,11 @@ export function createFileManagerComposerDrag(
       if (!target || !target.selected.projectPath || !isAbsolute(target.selected.projectPath)) return null;
       if (!/^[A-Za-z0-9_-]+$/.test(target.selected.sessionId)) return null;
       const token = randomUUID();
-      pending = { token, senderId, workspace, path, target, expiresAt: now() + DRAG_TTL_MS };
+      pending = {
+        token, senderId, workspace, path, target,
+        selectionRevision: context.pluginSession.getSelectionRevision(),
+        expiresAt: now() + DRAG_TTL_MS,
+      };
       return token;
     },
 
@@ -68,6 +73,7 @@ export function createFileManagerComposerDrag(
       if (drag.expiresAt <= now() || input.sessionId !== sessionId || !projectPath) return null;
 
       const isCurrent = () => {
+        if (context.pluginSession.getSelectionRevision() !== drag.selectionRevision) return false;
         const current = fileManagerComposerTarget(context, drag.senderId, drag.workspace);
         return current?.loaded === target.loaded &&
           current.selected.sessionId === sessionId && current.selected.projectPath === projectPath;

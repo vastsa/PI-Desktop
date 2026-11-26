@@ -54,6 +54,7 @@ export function createPluginSessionContext({
   log,
 }: PluginSessionContextDependencies) {
   let selection: PluginActiveSessionSelection | null = null;
+  let selectionRevision = 0;
   /**
    * sessionId → the turn whose start this module saw. Only a start that was
    * observed can be dated, so an entry here is what lets the snapshot report
@@ -100,6 +101,8 @@ export function createPluginSessionContext({
   return {
     /** The current snapshot, for `pi.session.getActive` and stale checks. */
     snapshot,
+    /** Changes only when the selected session or project changes. */
+    getSelectionRevision: () => selectionRevision,
     /**
      * The renderer reported a different selection, or none. Keeping the start
      * times of turns it already reported is deliberate: switching away and back
@@ -108,7 +111,10 @@ export function createPluginSessionContext({
     setActiveSession(next: PluginActiveSessionSelection | null): void {
       const sessionId = String(next?.sessionId ?? "").trim();
       const projectPath = String(next?.projectPath ?? "").trim() || null;
-      selection = sessionId ? { sessionId, projectPath } : null;
+      const nextSelection = sessionId ? { sessionId, projectPath } : null;
+      if (selection?.sessionId !== nextSelection?.sessionId ||
+          selection?.projectPath !== nextSelection?.projectPath) selectionRevision++;
+      selection = nextSelection;
       publish();
     },
     /**

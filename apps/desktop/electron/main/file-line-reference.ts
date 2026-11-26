@@ -19,7 +19,7 @@ export function canUseFileLineView(loaded: LoadedPlugin | undefined): loaded is 
 export type FileManagerComposerContext = {
   plugins: Pick<PluginRuntime, "getLoaded">;
   pluginViews: Pick<PluginViewHost, "isVisibleViewSender">;
-  pluginSession: Pick<PluginSessionContext, "snapshot">;
+  pluginSession: Pick<PluginSessionContext, "snapshot" | "getSelectionRevision">;
   pluginActiveInProject: (pluginId: string, projectPath: string | null) => boolean;
   getHost: () => Pick<HostProcess, "call"> | null;
   getWorkspacePath: () => string | null;

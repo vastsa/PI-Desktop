@@ -168,6 +168,8 @@ once. Main rechecks the visible view, live registry version, project and
 session against Host storage, and admits only regular files contained in the
 local project of a non-isolated, non-remote session. This
 adds the standard metadata-only whole-file card to the active draft.
+The drag is bound to the session selection at drag start; leaving that
+selection invalidates it even if the user returns before a pending check ends.
 If the file or project becomes unavailable before the reference is stored,
 the drop is ignored.
 If the drop target changes while Main stores the reference, Main discards the
