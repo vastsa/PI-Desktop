@@ -2,10 +2,13 @@ import json
 import os
 import shlex
 import shutil
+import signal
+import socket
 import subprocess
 import sys
 import unittest
 import warnings
+from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
@@ -26,8 +29,9 @@ def make_fixture(directory):
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = SHEET
-    sheet.append(["项目", "金额", "合计"])
-    sheet.append(["甲", 150, "=SUM(B2:B3)"])
+    sheet.append(["项目", "金额", "合计", "工时", "整列合计"])
+    sheet.append(["甲", 150, "=SUM(B2:B3)", timedelta(hours=27, minutes=30), "=SUM(B:B)"])
+    sheet["D2"].number_format = "[h]:mm:ss"
     sheet.append(["乙", 100])
     sheet["B2"].number_format = "0.00"
     sheet["C2"].font = Font(bold=True)
@@ -39,8 +43,10 @@ def make_fixture(directory):
             for part in original.namelist():
                 data = original.read(part)
                 if part == "xl/worksheets/sheet1.xml":
-                    assert b"<f>SUM(B2:B3)</f><v></v>" in data
-                    data = data.replace(b"<f>SUM(B2:B3)</f><v></v>", b"<f>SUM(B2:B3)</f><v>250</v>")
+                    for formula in [b"SUM(B2:B3)", b"SUM(B:B)"]:
+                        empty = b"<f>" + formula + b"</f><v></v>"
+                        assert empty in data
+                        data = data.replace(empty, empty.replace(b"<v></v>", b"<v>250</v>"))
                 cached.writestr(part, data)
     (directory / "rows.json").write_text(json.dumps(ROWS, ensure_ascii=False), encoding="utf-8")
 
@@ -54,7 +60,10 @@ def verify_copy(directory, filename, amount, total):
     assert workbook[SHEET]["C2"].value == "=SUM(B2:B3)"
     assert workbook[SHEET]["C2"].font.bold
     assert workbook["另一 工作表"]["A1"].value == "保留 中文"
-    assert load_workbook(path, data_only=True)[SHEET]["C2"].value == total
+    assert workbook[SHEET]["D2"].value == timedelta(hours=27, minutes=30)
+    assert workbook[SHEET]["E2"].value == "=SUM(B:B)"
+    cached = load_workbook(path, data_only=True)[SHEET]
+    assert cached["C2"].value == cached["E2"].value == total
 
 
 class ExcelCommands(unittest.TestCase):
@@ -72,10 +81,10 @@ class ExcelCommands(unittest.TestCase):
         self.runtime = self.root / "office-runtime"
         self.install_tool("python/bin/python3.12", sys.executable)
 
-    def install_tool(self, relative, executable):
+    def install_tool(self, relative, executable, *args):
         file = self.runtime / relative
         file.parent.mkdir(parents=True, exist_ok=True)
-        file.write_text(f'#!/bin/sh\nexec {shlex.quote(executable)} "$@"\n', encoding="utf-8")
+        file.write_text(f'#!/bin/sh\nexec {shlex.join([executable, *args])} "$@"\n', encoding="utf-8")
         file.chmod(0o755)
 
     def excel(self, *args, body=None, error=None):
@@ -118,6 +127,78 @@ class ExcelCommands(unittest.TestCase):
         verify_copy(self.workspace, EDITED, 160, 250)
         verify_copy(self.workspace, RECALCULATED, 160, 260)
         self.assertEqual((self.workspace / SOURCE).read_bytes(), self.original)
+
+    def assert_recalculation_stops_descendants(self, *, cancel):
+        ready = self.root / "calc.sock"
+        fixture = self.root / "calc.py"
+        fixture.write_text("""import socket
+import subprocess
+import sys
+
+if sys.argv[1] == "worker":
+    with socket.socket(socket.AF_UNIX) as connection:
+        connection.connect(sys.argv[2])
+        connection.sendall(b"R")
+        connection.recv(1)
+else:
+    subprocess.run([sys.executable, __file__, "worker", sys.argv[1]], check=True)
+""", encoding="utf-8")
+        self.install_tool("libreoffice/program/soffice", sys.executable, str(fixture), str(ready))
+        with socket.socket(socket.AF_UNIX) as listener:
+            listener.bind(str(ready))
+            listener.listen()
+            listener.settimeout(10)
+            with subprocess.Popen(
+                ["/bin/sh", str(self.launcher), "recalc", SOURCE, RECALCULATED],
+                cwd=self.workspace, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=True,
+            ) as command:
+                try:
+                    connection, _ = listener.accept()
+                    with connection:
+                        connection.settimeout(5)
+                        self.assertEqual(connection.recv(1), b"R")
+                        if cancel:
+                            os.killpg(command.pid, signal.SIGKILL)
+                        _, stderr = command.communicate(timeout=35)
+                        self.assertNotEqual(command.returncode, 0)
+                        if not cancel:
+                            self.assertIn("timed out", stderr)
+                        try:
+                            self.assertEqual(connection.recv(1), b"")
+                        except TimeoutError:
+                            self.fail("Calc worker survived after recalculation stopped.")
+                finally:
+                    if command.poll() is None:
+                        os.killpg(command.pid, signal.SIGKILL)
+        self.assertFalse((self.workspace / RECALCULATED).exists())
+        self.assertEqual((self.workspace / SOURCE).read_bytes(), self.original)
+
+    def test_recalculate_timeout_stops_descendants(self):
+        self.assert_recalculation_stops_descendants(cancel=False)
+
+    def test_bash_cancellation_stops_recalculation_descendants(self):
+        self.assert_recalculation_stops_descendants(cancel=True)
+
+    def test_recalculate_whole_columns_and_rows(self):
+        executable = shutil.which("soffice")
+        if executable is None:
+            self.skipTest("LibreOffice is available in the Office Runtime, not this host.")
+        self.install_tool("libreoffice/program/soffice", executable)
+        workbook = Workbook()
+        workbook.active.append([150, 100])
+        workbook.active.append([110])
+        formulas = ["=SUM(A:A)", "=SUM($1:$1)", "=SUM('另一 工作表'!$A:$B)"]
+        workbook.active.append([None, *formulas])
+        workbook.create_sheet("另一 工作表").append([10, 20])
+        source = self.workspace / "汇总.xlsx"
+        workbook.save(source)
+        before = source.read_bytes()
+        self.excel("recalc", source.name, RECALCULATED)
+        saved = self.workspace / RECALCULATED
+        self.assertEqual([cell.value for cell in load_workbook(saved, data_only=True).active[3][1:]], [260, 250, 30])
+        self.assertEqual([cell.value for cell in load_workbook(saved).active[3][1:]], formulas)
+        self.assertEqual(source.read_bytes(), before)
 
     def test_recalculate_updates_text_errors_and_cross_sheet_references(self):
         executable = shutil.which("soffice")
@@ -180,6 +261,17 @@ class ExcelCommands(unittest.TestCase):
         data = json.loads(self.excel("read", source.name, workbook.active.title))["data"]
         self.assertEqual(data, [["00123", 0.12345678912345, "#DIV/0!"], ["00090", 0.0000000000004, ""]])
 
+    def test_read_returns_elapsed_durations_in_seconds(self):
+        workbook = Workbook()
+        workbook.active.append(["task", "duration"])
+        for name, duration in [("工时", timedelta(hours=27, minutes=30)), ("调整", -timedelta(seconds=0.5))]:
+            workbook.active.append([name, duration])
+            workbook.active.cell(workbook.active.max_row, 2).number_format = "[h]:mm:ss.000"
+        source = self.workspace / "工时.xlsx"
+        workbook.save(source)
+        table = json.loads(self.excel("read", source.name, workbook.active.title))
+        self.assertEqual(table, {"columns": ["task", "duration"], "data": [["工时", 99000], ["调整", -0.5]]})
+
     def test_rejects_dtd_in_a_workbook_before_reading_or_copying(self):
         source = self.workspace / "untrusted.xlsx"
         with ZipFile(self.workspace / SOURCE) as original, ZipFile(source, "w") as modified:
@@ -201,14 +293,16 @@ class ExcelCommands(unittest.TestCase):
 
     def test_recalculation_refuses_formulas_outside_the_supported_scope(self):
         self.install_tool("libreoffice/program/soffice", "/usr/bin/false")
-        workbook = Workbook()
-        workbook.active["A1"] = '=INDIRECT("B2")'
-        source = self.workspace / "unsupported.xlsx"
-        workbook.save(source)
-        before = source.read_bytes()
-        self.excel("recalc", source.name, RECALCULATED, error="unsupported or external formula")
-        self.assertFalse((self.workspace / RECALCULATED).exists())
-        self.assertEqual(source.read_bytes(), before)
+        for formula in ['=INDIRECT("B2")', "=SUM(Total)", "=SUM('[External.xlsx]Sheet'!A:A)"]:
+            with self.subTest(formula=formula):
+                workbook = Workbook()
+                workbook.active["A1"] = formula
+                source = self.workspace / "unsupported.xlsx"
+                workbook.save(source)
+                before = source.read_bytes()
+                self.excel("recalc", source.name, RECALCULATED, error="unsupported or external formula")
+                self.assertFalse((self.workspace / RECALCULATED).exists())
+                self.assertEqual(source.read_bytes(), before)
 
     def test_recalculate_refuses_incompatible_calculation_settings(self):
         self.install_tool("libreoffice/program/soffice", "/usr/bin/false")

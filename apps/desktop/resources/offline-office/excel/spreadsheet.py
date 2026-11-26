@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from copy import copy
-from datetime import date, time
+from datetime import date, time, timedelta
 from pathlib import Path, PurePosixPath
 from posixpath import normpath
 from tempfile import TemporaryDirectory
@@ -29,8 +29,14 @@ NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 REL_TYPE = REL[1:-1] + "/"
 SPACE = "{http://www.w3.org/XML/1998/namespace}space"
-CELL = r"\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}"
-REFERENCE = re.compile(rf"(?:(?:'((?:[^']|'')+)'|([^'!:\[\]|]+))!)?{CELL}(?::{CELL})?", re.I)
+COLUMN = r"\$?[A-Z]{1,3}"
+ROW = r"\$?[1-9][0-9]{0,6}"
+CELL = COLUMN + ROW
+REFERENCE = re.compile(
+    rf"(?:(?:'((?:[^']|'')+)'|([^'!:\[\]|]+))!)?"
+    rf"(?:{CELL}(?::{CELL})?|{COLUMN}:{COLUMN}|{ROW}:{ROW})",
+    re.I | re.ASCII,
+)
 LOCAL_FUNCTIONS = {"ABS", "AND", "AVERAGE", "COUNT", "COUNTA", "IF", "MAX", "MIN", "NOT", "OR", "ROUND", "SUM"}
 MAX_XML_BYTES = 64 * 1024 * 1024
 
@@ -149,6 +155,8 @@ def create(staged, sheet):
 def json_value(value):
     if pd.isna(value):
         return None
+    if isinstance(value, timedelta):
+        return value.total_seconds()
     return value.isoformat() if isinstance(value, (date, time)) else value
 
 
@@ -263,6 +271,21 @@ def calculation_input(source, archive, directory):
     return input_path, targets
 
 
+def run_calculation(command, *, cwd, env):
+    # The watchdog owns Calc's group. Its pipe also closes if Bash kills Python.
+    watchdog = "import os, signal, sys; sys.stdin.buffer.read(1); os.killpg(0, signal.SIGKILL)"
+    with subprocess.Popen([sys.executable, "-I", "-c", watchdog], stdin=subprocess.PIPE, process_group=0) as guard:
+        with subprocess.Popen(
+            command, cwd=cwd, env=env, process_group=guard.pid,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+        ) as calc:
+            try:
+                stdout, stderr = calc.communicate(timeout=30)
+            finally:
+                guard.stdin.close()
+    return subprocess.CompletedProcess(command, calc.returncode, stdout, stderr)
+
+
 def recalculate(runtime, source, archive, staged):
     runtime = runtime.resolve()
     soffice = runtime / "libreoffice/program/soffice"
@@ -273,14 +296,14 @@ def recalculate(runtime, source, archive, staged):
     converted = directory / "converted"
     converted.mkdir()
     profile = (directory / "profile").as_uri()
-    result = subprocess.run(
+    result = run_calculation(
         [str(soffice), f"-env:UserInstallation={profile}", "--headless", "--convert-to",
          "xlsx:Calc MS Excel 2007 XML", "--outdir", str(converted), str(input_path)],
         cwd=directory, env={
             "HOME": str(directory), "TMPDIR": str(directory), "PATH": "/usr/bin:/bin",
             "LANG": "C.UTF-8", "SAL_USE_VCLPLUGIN": "svp",
             "LD_LIBRARY_PATH": f"{runtime / 'lib'}:{soffice.parent}",
-        }, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+        },
     )
     output_path = converted / input_path.name
     if result.returncode or not output_path.is_file():

@@ -56,7 +56,7 @@ const excel = {
     const tables = stdout.split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line));
     assert.deepEqual(tables, [
       { columns: ["项目", "金额"], data: [["甲", 150], ["乙", 100]] },
-      { columns: ["项目", "金额", "合计"], data: [["甲", 160, 260], ["乙", 100, ""]] },
+      { columns: ["项目", "金额", "合计", "工时", "整列合计"], data: [["甲", 160, 260, 99000, 260], ["乙", 100, "", "", ""]] },
     ]);
   },
 };

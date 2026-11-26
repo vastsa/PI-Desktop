@@ -177,12 +177,15 @@ Replacement text inherits the first matched run's formatting. Existing output fi
 overwritten.
 
 Excel reads a sheet with pandas, using the first row as column names and the
-stored values for formulas. New tables use JSON records and pandas. An edit
+stored values for formulas. Elapsed durations are numeric seconds.
+New tables use JSON records and pandas. An edit
 replaces an existing plain value cell in a fresh `.xlsx` copy and leaves
 formulas, cached results, styles, and other sheets intact. An explicit
 recalculation creates another copy and updates only the formula caches. It
 gives bundled LibreOffice a separate workbook with plain values and supported
-workbook-local scalar formulas; external references, named ranges, array
-formulas, iterative calculation, precision as displayed, and unsupported
-functions fail without producing a copy. The sample keeps its `SUM` formula
-and reads back as 250 after editing and 260 after recalculation.
+workbook-local scalar formulas, including whole-row and whole-column ranges.
+External references, named ranges, array formulas, iterative calculation,
+precision as displayed, and unsupported functions fail without producing a
+copy. If LibreOffice times out or Bash is cancelled during conversion, the
+calculation processes are stopped and no copy is published. The sample keeps both `SUM` formulas;
+each reads back as 250 after editing and 260 after recalculation.

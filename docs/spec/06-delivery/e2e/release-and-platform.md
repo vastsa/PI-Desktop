@@ -52,14 +52,16 @@
 
 - **Preconditions**: The same installed candidate, clean profile, and isolated
   network as E2E-PIE-OFFICE-WORD. An XLSX fixture has Chinese filenames and
-  sheet names, formatted cells, a second sheet, and a sum cached as 250.
+  sheet names, a 27:30:00 elapsed time, a second sheet, and both a bounded
+  and a whole-column sum cached as 250.
 - **Steps**: Enable Offline Office. Load the Excel skill in a local Agent
   session. Approve Bash once to create and read an XLSX with pandas, edit the
   fixture into a new copy, then explicitly recalculate and read a second copy.
 - **Expected**: The session reads the pandas result. The source is unchanged.
   The edited copy keeps the formula, styles, other sheet, and cache of 250;
-  the recalculated copy keeps the same workbook and reads back 260. Both
-  skills disappear from new sessions after disabling and restarting.
+  both formulas read back 260 in the recalculated copy, and the elapsed
+  time reads back as 99,000 seconds. Both skills disappear from new sessions
+  after disabling and restarting.
 - **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--word-and-excel).
 - **Acceptance criterion**: A, C, E, G, Quality.
 - **Milestone**: M6+ (Pie Code 0.23.1).

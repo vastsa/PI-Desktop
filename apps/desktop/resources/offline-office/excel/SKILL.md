@@ -10,7 +10,8 @@ every write. Never install dependencies or substitute a system interpreter.
 
 - Read a sheet with pandas: `/bin/sh "SKILL_DIR/excel.sh" read "Source.xlsx" "Sheet1"`.
   The first row supplies column names; the JSON result contains `columns` and
-  `data`. Formula cells show the results already cached in the workbook.
+  `data`. Elapsed durations are numeric seconds. Formula cells show the
+  results already cached in the workbook.
 - Create a new table with pandas: `/bin/sh "SKILL_DIR/excel.sh" create "New.xlsx" "Sheet1" < "rows.json"`.
   Supply a JSON array of row objects, such as `[{"Item":"A","Amount":150}]`.
   Inspect the new workbook with `read`.
@@ -21,7 +22,8 @@ every write. Never install dependencies or substitute a system interpreter.
 - Only when asked to recalculate, run `/bin/sh "SKILL_DIR/excel.sh" recalc "Edited.xlsx" "Recalculated.xlsx"`.
   This refreshes formula caches in a new copy using bundled LibreOffice.
   It supports workbook-local arithmetic and common functions such as `SUM`,
-  `AVERAGE`, `COUNT`, `MIN`, `MAX`, and `IF`. External references, names,
+  `AVERAGE`, `COUNT`, `MIN`, `MAX`, and `IF`, including whole-row and
+  whole-column ranges. External references, names,
   array formulas, iterative calculation, precision as displayed, and unsupported
   functions fail without writing a copy.
 
