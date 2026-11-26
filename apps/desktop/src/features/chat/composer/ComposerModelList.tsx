@@ -1,28 +1,25 @@
-import { formatTokenCount, type ModelInfo, type ProviderPublic } from "@pi-desktop/shared";
+import { formatTokenCount, type ModelInfo, type ProviderPublic, type StarAiService } from "@pi-desktop/shared";
 import type { TFunction } from "i18next";
 import type { CSSProperties, RefObject } from "react";
 import { IconCheck, IconEye, IconSearch, IconSettings, IconSparkles, IconX } from "../../../components/icons";
-import { TooltipButton } from "../../../components/ui";
+import { HelpIcon, Select, TooltipButton } from "../../../components/ui";
 import {
+  chatRowSelectable,
   composerModelBadges,
   composerModelBinding,
   composerModelDisplayName,
   sameComposerModelId,
 } from "../../../lib/composer-models";
 import { providerDisplayName } from "../../../lib/provider-display";
-import type { ComposerModelSection } from "./hooks/useComposerModelMenu";
-
-export type ComposerModelGroup = {
-  provider: ProviderPublic;
-  providerDisplayName: string;
-  models: ModelInfo[];
-};
+import { StarAiServiceCards } from "../../../components/settings/StarAiServiceCards";
+import type { ComposerModelGroup, ComposerModelSection } from "./model-sections";
+import { starAiGroupRatioLabel } from "../../../lib/star-ai-group-ratio";
 
 type ModelRowProps = {
   t: TFunction;
   provider: ProviderPublic;
   model: ModelInfo;
-  index: number;
+  index?: number;
   highlighted: boolean;
   active: boolean;
   /** Rows outside a provider section name their source instead of capabilities. */
@@ -32,12 +29,15 @@ type ModelRowProps = {
 
 function ModelRow({ t, provider, model, index, highlighted, active, showProvider, selectModel }: ModelRowProps) {
   const optionTitle = model.modelId;
+  const ratio = starAiGroupRatioLabel(provider.starAiGroup?.ratio, t("starAi:autoRatio"));
   const alias = composerModelBinding(provider, model.modelId)?.alias?.trim();
   const optionDisplayName = composerModelDisplayName(provider, model.modelId);
   return (
     <button
       type="button"
       data-model-index={index}
+      disabled={index === undefined}
+      data-provider-id={provider.id}
       title={optionTitle}
       className={`composer-plus-item composer-model-option ${active ? "active" : ""} ${highlighted ? "kb-active" : ""}`}
       role="menuitemradio"
@@ -54,8 +54,8 @@ function ModelRow({ t, provider, model, index, highlighted, active, showProvider
           {alias || optionDisplayName}
         </span>
         <span className="composer-model-option-meta">
-          {showProvider ? (
-            <span className="composer-model-option-provider">{providerDisplayName(provider)}</span>
+          {index === undefined ? <span className="composer-model-view-only">{t("starAi:nonChatModel")}</span> : showProvider ? (
+            <span className="composer-model-option-provider">{[providerDisplayName(provider), ratio].filter(Boolean).join(" · ")}</span>
           ) : (
             <>
               {composerModelBadges(model, provider).map((badge) => {
@@ -101,8 +101,11 @@ export function ComposerModelList({
   t, query, setQuery, modelSearchRef, modelListRef, modelGroups,
   modelHighlight, setModelHighlight, selectedProviderId, selectedModelId, selectModel,
   recentEntries, sections, activeSection, sectionStep, selectSection, showSectionRail, searching, paneRows,
-  onOpenModelSettings,
+  onOpenModelSettings, serviceGroups, selectedGroup, selectGroup,
 }: {
+  serviceGroups: ComposerModelGroup[];
+  selectedGroup?: ComposerModelGroup;
+  selectGroup: (providerId: string) => void;
   onOpenModelSettings?: () => void;
   paneRows: number;
   recentEntries: Array<{ provider: ProviderPublic; model: ModelInfo }>;
@@ -118,7 +121,7 @@ export function ComposerModelList({
   setQuery: (query: string) => void;
   modelSearchRef: RefObject<HTMLInputElement | null>;
   modelListRef: RefObject<HTMLDivElement | null>;
-  modelGroups: ComposerModelGroup[];
+  modelGroups: Array<ComposerModelGroup & { sectionId: string; service?: StarAiService }>;
   modelHighlight: number;
   setModelHighlight: (index: number) => void;
   selectedProviderId?: string;
@@ -128,7 +131,13 @@ export function ComposerModelList({
   const isActive = (provider: ProviderPublic, model: ModelInfo) =>
     selectedProviderId === provider.id && sameComposerModelId(selectedModelId ?? "", model.modelId);
   const flatCount = recentEntries.length + modelGroups.reduce((sum, group) => sum + group.models.length, 0);
-  const railIndex = sections.findIndex((section) => section.id === activeSection);
+  const services = sections.flatMap(section => section.kind === "service" ? [{ id: section.service, count: section.count }] : []);
+  const auto = sections.find(section => section.kind === "auto");
+  const hasServices = !!(services.length || auto);
+  const activeService = sections.find(section => section.kind === "service" && section.id === activeSection);
+  const railSections = sections.filter(section => section.kind === "recent" || section.kind === "provider");
+  const rail = showSectionRail && !hasServices;
+  const selectedChannel = selectedGroup?.provider.starAiGroup;
   let flatIndex = recentEntries.length;
   return <>
     <label className="composer-model-search">
@@ -174,20 +183,43 @@ export function ComposerModelList({
         </TooltipButton>
       ) : null}
     </label>
+    {hasServices && !searching && <div className="composer-service-browser">
+      <StarAiServiceCards
+        options={services}
+        value={activeService?.kind === "service" ? activeService.service : null}
+        onChange={service => selectSection(`service:${service}`)}
+        auto={auto ? { selected: activeSection === auto.id, onChange: () => selectSection(auto.id) } : undefined}
+      />
+      {!!railSections.length && <div className="composer-service-shortcuts" role="group" aria-label={t("chat.modelSources")}>
+        {railSections.map(section => <button type="button" key={section.id} role="menuitemradio"
+          aria-checked={activeSection === section.id} onClick={() => selectSection(section.id)}>
+          {section.kind === "recent" ? t("chat.recentModels") : section.label}
+        </button>)}
+      </div>}
+      {!!serviceGroups.length && <div className="composer-service-group">
+        <label className="composer-service-group-label">
+          <span>{t("starAi:group")}</span>
+          <Select className="composer-service-group-select" value={selectedGroup?.provider.id ?? ""}
+            onChange={event => selectGroup(event.target.value)}>
+            <option value="" disabled>{t("starAi:chooseGroup")}</option>
+            {serviceGroups.map(group => {
+              const ratio = starAiGroupRatioLabel(group.provider.starAiGroup?.ratio, t("starAi:autoRatio"));
+              return <option key={group.provider.id} value={group.provider.id}>{[group.providerDisplayName, ratio].filter(Boolean).join(" · ")}</option>;
+            })}
+          </Select>
+        </label>
+        {selectedChannel?.description?.trim() && <HelpIcon label={selectedChannel.description} />}
+      </div>}
+    </div>}
     <div
       className="composer-model-body"
-      data-rail={showSectionRail ? "true" : undefined}
+      data-rail={rail ? "true" : undefined}
+      data-services={hasServices || undefined}
       style={{ "--model-pane-rows": paneRows } as CSSProperties}
     >
-      {showSectionRail ? (
+      {rail ? (
         <div className="composer-model-rail" role="group" aria-label={t("chat.modelSources")}>
-          <span
-            className="composer-model-rail-indicator"
-            aria-hidden="true"
-            data-hidden={railIndex < 0 ? "true" : undefined}
-            style={{ "--rail-index": Math.max(railIndex, 0) } as CSSProperties}
-          />
-          {sections.map((section) => {
+          {railSections.map((section) => {
             const label = section.kind === "recent" ? t("chat.recentModels") : section.label;
             const current = section.id === activeSection;
             return (
@@ -197,17 +229,16 @@ export function ComposerModelList({
                 role="menuitemradio"
                 aria-checked={current}
                 title={label}
-                data-empty={searching && (section.kind === "recent" || section.count === 0) ? "true" : undefined}
+                aria-label={label}
                 className={`composer-model-rail-item ${current ? "active" : ""}`}
                 onClick={() => selectSection(section.id)}
               >
                 <span className="composer-model-rail-label">{label}</span>
-                {section.kind === "provider" ? (
-                  <span className="composer-model-rail-count">{section.count}</span>
-                ) : null}
+                {section.kind !== "recent" && <span className="composer-model-rail-count">{section.count}</span>}
               </button>
             );
           })}
+          <span className="composer-model-rail-indicator" aria-hidden="true" />
         </div>
       ) : null}
       <div className="composer-model-list" ref={modelListRef}>
@@ -230,31 +261,46 @@ export function ComposerModelList({
               ))}
             </div>
           ) : null}
-          {modelGroups.map((group) => (
-            <div
-              key={group.provider.id}
-              className="composer-model-group"
-              role="group"
-              aria-label={group.providerDisplayName}
-            >
-              {searching ? (
-                <div className="composer-model-group-label">{group.providerDisplayName}</div>
-              ) : null}
-              {group.models.map((model) => {
-                const index = flatIndex++;
-                return (
-                  <ModelRow
-                    key={`${group.provider.id}:${model.modelId}`}
-                    t={t} provider={group.provider} model={model} index={index}
-                    highlighted={modelHighlight === index}
-                    active={isActive(group.provider, model)}
-                    showProvider={false} selectModel={selectModel}
-                  />
-                );
-              })}
-            </div>
-          ))}
-          {flatCount === 0 ? (
+          {modelGroups.map((group) => {
+            const channel = group.provider.starAiGroup;
+            const ratio = starAiGroupRatioLabel(channel?.ratio, t("starAi:autoRatio"));
+            return (
+              <div
+                key={`${group.sectionId}:${group.provider.id}`}
+                data-provider-id={group.provider.id}
+                data-model-service={group.service}
+                className="composer-model-group"
+                role="group"
+                aria-label={group.providerDisplayName}
+              >
+                {searching || group.sectionId === "auto" ? (
+                  <div className="composer-model-group-label">
+                    {searching && group.service && (
+                      <span className="composer-model-search-service">
+                        {t(`starAi:services.${group.service}`)}
+                      </span>
+                    )}
+                    <span className="composer-model-channel-name">{group.providerDisplayName}</span>
+                    {channel?.description?.trim() && <HelpIcon label={channel.description} />}
+                    {ratio && <span className="composer-model-channel-ratio">{ratio}</span>}
+                  </div>
+                ) : null}
+                {group.models.map((model) => {
+                  const index = chatRowSelectable(group.provider, model.modelId) ? flatIndex++ : undefined;
+                  return (
+                    <ModelRow
+                      key={`${group.provider.id}:${model.modelId}`}
+                      t={t} provider={group.provider} model={model} index={index}
+                      highlighted={modelHighlight === index}
+                      active={isActive(group.provider, model)}
+                      showProvider={false} selectModel={selectModel}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })}
+          {flatCount === 0 && (searching || !serviceGroups.length) ? (
             <div className="composer-model-empty">{t("chat.noModelResults")}</div>
           ) : null}
         </div>

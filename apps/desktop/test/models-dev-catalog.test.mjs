@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { createModels, InMemoryModelsStore } from "@earendil-works/pi-ai";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { buildProviderModel } from "../../../packages/agent-runtime/dist/provider-binding.js";
+import { contextBudgetLimitsFor } from "../../../packages/agent-runtime/dist/context-budget.js";
+import { effectiveModelContextWindow } from "../../../packages/agent-runtime/dist/output-cap.js";
 import {
   apiStyleForAdapter,
   bindingForCustomModelInfo,
@@ -106,6 +108,24 @@ async function loadFixtureCatalog(t, fixture = catalogFixture) {
   assert.equal(await catalog.ensureLoaded(), true);
   return catalog;
 }
+
+test("StarAI uses its relay window for the model, wire budget and compaction ceiling", async (t) => {
+  const catalog = await loadFixtureCatalog(t);
+  for (const [id, contextWindow] of [["claude-opus-4.6", 1_000_000], ["custom-client-model", 256_000]]) {
+    const provider = { id: "starai-managed-abc", name: "StarAI", vendorKey: "custom", baseUrl: "http://127.0.0.1:49152/v1",
+      authKind: "none", apiStyle: "chat_completions", modelId: id,
+      models: [{ id, contextWindow, contextWindowSource: "user", maxTokens: 8_192, thinkingLevels: [] }] };
+    catalog.configureAccount(provider);
+    const modelConfig = catalog.modelConfigFor({ providerId: provider.id, vendorKey: provider.vendorKey, modelId: id, baseUrl: provider.baseUrl });
+    assert.equal(modelConfig.contextWindow, contextWindow);
+    assert.equal(modelConfig.limit.context, contextWindow);
+    const wire = buildProviderModel({ ...provider, modelConfig });
+    assert.equal(effectiveModelContextWindow(wire), contextWindow);
+    const budget = contextBudgetLimitsFor(wire);
+    assert.equal(budget.hardLimit + budget.requestHeadroom, contextWindow);
+    assert.equal(wire.maxTokens, 8_192);
+  }
+});
 
 test("published metadata retains exact Pi transcript transport bindings through runtime launch", async (t) => {
   const pi = createModels({ modelsStore: new InMemoryModelsStore(),

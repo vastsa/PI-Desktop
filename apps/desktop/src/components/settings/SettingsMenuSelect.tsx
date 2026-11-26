@@ -20,13 +20,15 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { cx } from "../ui";
+import { cx, HelpIcon } from "../ui";
 import { IconCheck, IconChevronDown } from "../icons";
 import { AnchoredMenu } from "./AnchoredMenu";
 
 export type MenuSelectOption = {
   id: string;
   label: string;
+  /** Optional explanation displayed next to this option on hover or focus. */
+  description?: string;
   /** Listed but not selectable; the host may report an unavailable shell. */
   disabled?: boolean;
 };
@@ -41,6 +43,7 @@ export function SettingsMenuSelect({
   fullWidth = false,
   className,
   triggerClassName,
+  placeholder,
   leading,
 }: {
   value: string;
@@ -56,6 +59,7 @@ export function SettingsMenuSelect({
   className?: string;
   /** Optional surface-specific styling while retaining the shared menu behavior. */
   triggerClassName?: string;
+  placeholder?: string;
   /** Optional icon or marker shown before the selected value. */
   leading?: ReactNode;
 }) {
@@ -64,6 +68,7 @@ export function SettingsMenuSelect({
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const current = options.find((option) => option.id === value);
+  const displayLabel = current?.label ?? (value || placeholder);
   const selectable = options.filter((option) => !option.disabled);
 
   const close = () => setOpen(false);
@@ -127,9 +132,9 @@ export function SettingsMenuSelect({
             ) : null}
             <span
               className="settings-menu-select-trigger-label"
-              title={current?.label ?? value}
+              title={displayLabel}
             >
-              {current?.label ?? value}
+              {displayLabel}
             </span>
             <IconChevronDown size={14} aria-hidden />
           </button>
@@ -140,7 +145,7 @@ export function SettingsMenuSelect({
             {options.map((option) => {
               const isCurrent = option.id === value;
               return (
-                <li key={option.id}>
+                <li key={option.id} className={option.description ? "settings-menu-option-with-help" : undefined}>
                   <button
                     ref={(node) => {
                       if (node) optionRefs.current.set(option.id, node);
@@ -174,6 +179,7 @@ export function SettingsMenuSelect({
                       />
                     ) : null}
                   </button>
+                  {option.description && <HelpIcon label={option.description} />}
                 </li>
               );
             })}

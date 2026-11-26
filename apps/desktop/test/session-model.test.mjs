@@ -31,6 +31,25 @@ test("new sessions snapshot the app default provider and model", () => {
   );
 });
 
+test("a new StarAI chat uses the configured group even when a recent chat used the same model in another group", () => {
+  const standard = { providerId: "starai-managed-base", modelId: "shared" };
+  const premium = { providerId: "starai-managed-plus", modelId: "shared" };
+  const state = {
+    providers: [standard, premium].map(({ providerId, modelId }) => ({
+      id: providerId, models: [{ id: modelId }], starAiGroup: { id: providerId, chatModels: [modelId] },
+    })),
+    settings: { defaultProviderId: premium.providerId, defaultModelId: premium.modelId },
+    recentModels: [standard],
+  };
+  assert.deepEqual(inheritedSessionModelBinding(state), premium);
+  const unverified = state.providers.map(({ starAiGroup, ...legacy }) => legacy);
+  assert.deepEqual(inheritedSessionModelBinding({ ...state, providers: unverified }), {});
+  const mediaOnly = state.providers.map(provider => ({ ...provider, starAiGroup: { chatModels: [] } }));
+  assert.deepEqual(inheritedSessionModelBinding({ ...state, providers: mediaOnly }), {});
+  assert.deepEqual(inheritedSessionModelBinding({ ...state, draft: standard }), standard);
+  assert.deepEqual(inheritedSessionModelBinding({ ...state, providers: state.providers.slice(0, 1) }), standard);
+});
+
 test("an explicit composer draft wins over the app default", () => {
   assert.deepEqual(
     inheritedSessionModelBinding({

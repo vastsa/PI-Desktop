@@ -1,13 +1,10 @@
 import type { AnnouncementRecord } from "./app-overlay-model";
 
 /*
- * Renderer-local memory for the startup guide and the release announcement.
- * Both are presentation state of this window — whether a hint was already
- * seen — so they live in localStorage, like the sidebar width, and never in
- * host-owned settings. A blocked or corrupt store degrades to "not seen".
+ * Previously seen release announcements live in the renderer's localStorage.
+ * A blocked or corrupt store degrades to "not seen".
  */
 
-export const STARTUP_GUIDE_STORAGE_KEY = "pi.desktop.startupGuide";
 export const ANNOUNCEMENT_STORAGE_KEY = "pi.desktop.announcement";
 
 function storage(): Storage | null {
@@ -35,17 +32,6 @@ function write(key: string, value: unknown): void {
   } catch {
     // A full or blocked store only means the hint may show again.
   }
-}
-
-export function loadStartupGuideCompletedVersion(): number {
-  const value = read(STARTUP_GUIDE_STORAGE_KEY);
-  if (!value || typeof value !== "object") return 0;
-  const version = (value as { completedVersion?: unknown }).completedVersion;
-  return typeof version === "number" && Number.isFinite(version) ? version : 0;
-}
-
-export function saveStartupGuideCompletedVersion(version: number): void {
-  write(STARTUP_GUIDE_STORAGE_KEY, { completedVersion: version });
 }
 
 export function loadAnnouncementRecord(): AnnouncementRecord {

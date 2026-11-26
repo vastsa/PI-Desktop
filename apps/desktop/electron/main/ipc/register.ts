@@ -25,6 +25,8 @@ import { registerModesIpc } from "./modes-ipc";
 import type { ModeServices } from "../runtime/mode-services";
 import { enabledModeSkills } from "../runtime/mode-skills";
 import { registerProviderIpc } from "./provider-ipc";
+import { registerStarAiIpc } from "./star-ai-ipc";
+import type { StarAiAccount } from "../star-ai-account";
 import { registerScheduledIpc } from "./scheduled-ipc";
 import { registerSessionIpc } from "./session-ipc";
 import { registerSettingsIpc } from "./settings-ipc";
@@ -50,6 +52,7 @@ import type { createTraySessions } from "../tray-sessions";
 import type { createTaskbarUnreadBadge } from "../taskbar-unread-badge";
 
 export type RegisterIpcDependencies = {
+  starAi?: StarAiAccount;
   isQuitting: () => boolean;
   ipcMain: IpcMain;
   getMainWindow: () => BrowserWindow | null;
@@ -270,6 +273,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     handleWithEvent,
     assertMainWindowSender,
   };
+
+  if (dependencies.starAi) registerStarAiIpc(registrar, dependencies.starAi);
 
   registerAppIpc({
     registrar,

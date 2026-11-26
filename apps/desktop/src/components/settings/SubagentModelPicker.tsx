@@ -31,6 +31,7 @@ type ModelMenuRow = {
   startsGroup: boolean;
   /** True when that header needs the divider spacing above it. */
   divided: boolean;
+  disabledReason?: string;
 };
 
 export function SubagentModelPicker({
@@ -45,7 +46,10 @@ export function SubagentModelPicker({
 }: {
   /** Current pin, or the empty string for inherit-session. */
   value: string;
-  groups: readonly SubagentModelChoiceGroup[];
+  groups: readonly {
+    providerName: string;
+    choices: ReadonlyArray<Pick<SubagentModelChoiceGroup["choices"][number], "value" | "modelId"> & { disabledReason?: string }>;
+  }[];
   /** A pin that is no longer configured, kept selectable so an edit cannot drop it. */
   orphanPin: string | null;
   disabled?: boolean;
@@ -74,6 +78,7 @@ export function SubagentModelPicker({
       group.choices.forEach((choice, index) => {
         list.push({
           id: choice.value,
+          disabledReason: choice.disabledReason,
           label: choice.modelId,
           groupName: group.providerName,
           startsGroup: index === 0,
@@ -103,7 +108,7 @@ export function SubagentModelPicker({
     );
   }, [rows, query]);
 
-  const visibleIds = useMemo(() => visible.map((row) => row.id), [visible]);
+  const visibleIds = useMemo(() => visible.filter((row) => !row.disabledReason).map((row) => row.id), [visible]);
 
   useEffect(() => {
     setActiveId((current) =>
@@ -228,12 +233,13 @@ export function SubagentModelPicker({
                   role="option"
                   tabIndex={-1}
                   aria-selected={isCurrent}
+                  disabled={!!row.disabledReason}
                   className={cx(
                     "provider-service-option",
                     isCurrent && "is-current",
                     isActive && "is-active",
                   )}
-                  onMouseEnter={() => setActiveId(row.id)}
+                  onMouseEnter={() => { if (!row.disabledReason) setActiveId(row.id); }}
                   onClick={() => choose(row.id)}
                 >
                   <span className="provider-service-option-check" aria-hidden>
@@ -242,6 +248,7 @@ export function SubagentModelPicker({
                   <span className="provider-service-option-label font-mono">
                     {row.label}
                   </span>
+                  {row.disabledReason && <span className="settings-row-detail">{row.disabledReason}</span>}
                 </button>
               </li>
             );

@@ -4,6 +4,14 @@ fn capture_application(st: &AppState) -> Result<PortableEntity> {
     let mut settings = st.db.get_setting("app")?.unwrap_or_else(|| json!({}));
     if let Some(object) = settings.as_object_mut() {
         object.retain(|key, _| PORTABLE_APPLICATION_FIELDS.contains(&key.as_str()));
+        if object
+            .get("defaultProviderId")
+            .and_then(Value::as_str)
+            .is_some_and(crate::providers::star_ai::is_managed)
+        {
+            object.remove("defaultProviderId");
+            object.remove("defaultModelId");
+        }
     }
     Ok(entity(
         DOMAIN_APPLICATION,
@@ -21,7 +29,8 @@ fn capture_providers(st: &AppState) -> Result<Vec<PortableEntity>> {
     let providers = crate::providers::list_providers(&st.db, &st.secrets, true)?;
     let mut result = Vec::new();
     for provider in providers {
-        if provider.owner_plugin_id.is_some() {
+        if provider.owner_plugin_id.is_some() || crate::providers::star_ai::is_managed(&provider.id)
+        {
             continue;
         }
         let mut payload = serde_json::to_value(&provider)?;

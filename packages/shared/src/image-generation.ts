@@ -1,3 +1,5 @@
+import { isStarAiProviderId } from "./types/providers.js";
+
 /** Image bindings use complete wire ids; catalog alias matching is not identity. */
 function sameImageModelId(left: string, right: string): boolean {
   const requested = right.trim().toLowerCase();
@@ -72,6 +74,24 @@ export function modelSupportsConversation(
   return !IMAGE_ONLY_MODEL_ID.test((modelId ?? "").trim());
 }
 
+// The relay advertises generic OpenAI compatibility for these specialized
+// endpoints as well. Unknown custom names stay selectable.
+const STARAI_NON_CHAT_SERIES = [
+  /(?:^|[-_.])(?:embeddings?|embed|rerank(?:er)?|tts|transcribe|transcription|moderation)(?:$|[-_.])/i,
+  /^(?:bge-|whisper(?:$|-)|text-to-speech|speech-(?:0[12]|2)|suno(?:$|-))/i,
+  /^(?:minimax[-_]h[0-9]|gk-video|grok-imagine-(?:video|image)|veo(?:$|[-_.0-9])|sora(?:$|[-_.0-9])|kling(?:$|[-_.0-9])|seedance(?:$|[-_.0-9]))/i,
+  /^(?:gemini-.*-(?:image|native-image-generation)(?:$|-)|flux(?:$|[-_.0-9])|stable-(?:diffusion|image)|seedream(?:$|[-_.0-9]))/i,
+];
+
+export function isStarAiChatModel(
+  modelId: string | undefined,
+  model?: { modalities?: { output?: readonly string[] } | null } | null,
+): boolean {
+  if (!modelId?.trim() || !modelSupportsConversation(modelId, model)) return false;
+  const name = modelId.trim().split("/").pop() ?? "";
+  return !STARAI_NON_CHAT_SERIES.some((series) => series.test(name));
+}
+
 /**
  * Whether a model marked for image generation must stay out of chat. Only a
  * pure image-generation endpoint is excluded; a dual-capability model — one
@@ -84,6 +104,7 @@ export function isImageOnlyChatModel(
   modelId: string | undefined,
   model?: { modalities?: { output?: readonly string[] } | null } | null,
 ): boolean {
+  if (isStarAiProviderId(providerId)) return !isStarAiChatModel(modelId, model);
   return isImageGenerationModel(binding, providerId, modelId) &&
     !modelSupportsConversation(modelId, model);
 }

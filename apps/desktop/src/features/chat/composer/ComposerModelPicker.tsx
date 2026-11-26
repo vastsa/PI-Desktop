@@ -13,6 +13,7 @@ export type ComposerModelPickerProps = {
   t: TFunction;
   controller: ModelMenuController;
   modelLabel: string;
+  modelGroupLabel?: string;
   thinkingLabel: string;
   thinkingLevel: string;
   /** The selected model asks for OpenAI's priority tier (ADR 0334). */
@@ -31,6 +32,7 @@ export function ComposerModelPicker({
   t,
   controller,
   modelLabel,
+  modelGroupLabel,
   thinkingLabel,
   thinkingLevel,
   fastMode = false,
@@ -50,6 +52,9 @@ export function ComposerModelPicker({
     selectSection,
     showSectionRail,
     paneRows,
+    serviceGroups,
+    selectedGroup,
+    selectGroup,
     searching,
     query,
     setQuery,
@@ -64,6 +69,7 @@ export function ComposerModelPicker({
     commitThinkingLevel,
     onMenuKeyDown,
   } = controller;
+  const selectionLabel = modelGroupLabel ? `${modelLabel} · ${modelGroupLabel}` : modelLabel;
   const fastSuffix = fastMode ? ` · ${t("chat.fastModeBadge")}` : "";
 
   return (
@@ -83,8 +89,8 @@ export function ComposerModelPicker({
           ref={ref}
           type="button"
           className={`icon-btn composer-model-thinking-chip ${open ? "active" : ""}`}
-          tooltip={`${modelLabel} · ${t("chat.reasoningLevel")}: ${thinkingLabel}${fastSuffix}`}
-          ariaLabel={`${t("chat.model")}: ${modelLabel}. ${t("chat.reasoningLevel")}: ${thinkingLabel}${fastSuffix}`}
+          tooltip={`${selectionLabel} · ${t("chat.reasoningLevel")}: ${thinkingLabel}${fastSuffix}`}
+          ariaLabel={`${t("chat.model")}: ${selectionLabel}. ${t("chat.reasoningLevel")}: ${thinkingLabel}${fastSuffix}`}
           aria-haspopup="menu"
           aria-expanded={open}
           disabled={controlsBlocked}
@@ -101,6 +107,7 @@ export function ComposerModelPicker({
             <IconBot size={14} />
           </span>
           <span className="composer-model-thinking-model">{modelLabel}</span>
+          {modelGroupLabel && <span className="composer-model-group-chip">{modelGroupLabel}</span>}
           {thinkingLevel !== "off" ? (
             <span className="composer-model-thinking-level">{thinkingLabel}</span>
           ) : null}
@@ -121,6 +128,7 @@ export function ComposerModelPicker({
           modelGroups={modelGroups} modelHighlight={modelHighlight}
           recentEntries={recentEntries} sections={sections}
           activeSection={activeSection} sectionStep={sectionStep} selectSection={selectSection}
+          serviceGroups={serviceGroups} selectedGroup={selectedGroup} selectGroup={selectGroup}
           showSectionRail={showSectionRail} searching={searching} paneRows={paneRows}
           setModelHighlight={setModelHighlight} selectModel={selectModel}
           selectedProviderId={selectedProviderId} selectedModelId={selectedModelId}

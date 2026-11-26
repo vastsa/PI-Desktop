@@ -41,6 +41,7 @@ import {
   pluginWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import { useAppStore } from "../../stores/app-store";
+import { useStartupGuideRequest } from "../startup/startup-guide-request";
 import { useSidebarTransition } from "./useSidebarTransition";
 import { useStartupAnimation } from "./useStartupAnimation";
 import { useStartupWatchdog } from "./useStartupWatchdog";
@@ -645,6 +646,15 @@ export function useAppShellRuntime() {
       String(resolveFontScale(settings ?? {})),
     );
   }, [settings?.fontScale, settings?.fontSize]);
+
+  // Subscribe before the ready handshake so a restored account can populate
+  // the chat picker even on the first render.
+  useEffect(() => api.onStarAiSetupRequired((catalog) => {
+    if (!catalog?.selection) useStartupGuideRequest.getState().setStarAiSetup({ catalog });
+    void useAppStore.getState().refreshProviders().catch(() => {
+      showToast(t("starAi:updateError"), { variant: "error" });
+    });
+  }), [showToast, t]);
 
   useEffect(() => {
     if (bootstrapStartedRef.current) return;

@@ -2709,6 +2709,27 @@ async fn handle_request(
             }
             Ok(json!({ "ok": true }))
         }
+        "providers.starAiSelection" => {
+            let st = state.lock().await;
+            let selection = providers::star_ai::selection(&st.db).map_err(provider_rpc_err)?;
+            Ok(json!({ "selection": selection }))
+        }
+        "providers.starAiConfigure" => {
+            let input = serde_json::from_value(params)
+                .map_err(|_| rpc_err(1002, "invalid StarAI configuration", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            providers::star_ai::configure(&st.db, &st.secrets, input).map_err(provider_rpc_err)
+        }
+        "providers.starAiSuspend" => {
+            let st = state.lock().await;
+            providers::star_ai::suspend(&st.db, &st.secrets).map_err(provider_rpc_err)?;
+            Ok(json!({ "ok": true }))
+        }
+        "providers.starAiDisconnect" => {
+            let st = state.lock().await;
+            providers::star_ai::disconnect(&st.db, &st.secrets).map_err(provider_rpc_err)?;
+            Ok(json!({ "ok": true }))
+        }
         "providers.create" => {
             let input: ProviderCreateInput = serde_json::from_value(params)
                 .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;

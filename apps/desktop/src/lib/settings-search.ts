@@ -221,6 +221,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.configuration",
     group: "agent",
     keywordKeys: [
+      "starAi:title",
       "settings.providers",
       "settings.models",
       "settings.apiKey",

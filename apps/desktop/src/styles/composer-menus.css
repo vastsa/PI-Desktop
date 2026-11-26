@@ -117,7 +117,14 @@
 /* With several sources the menu becomes two panes: a text-only source rail on
    the left and the selected source's models on the right. */
 .composer-model-thinking-menu.has-rail {
-  width: min(420px, calc(100vw - 24px));
+  width: min(580px, calc(100vw - 24px));
+}
+
+/* Service cards and search results remain legible above the welcome screen. */
+.composer-model-thinking-menu:has(.composer-model-body[data-services]) {
+  background: var(--ds-bg-elevated-opaque);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* Rises from the trigger: a short lift and a near-imperceptible scale, so the
@@ -170,6 +177,7 @@
   color: var(--ds-text-muted);
 }
 .composer-model-thinking-model,
+.composer-model-group-chip,
 .composer-model-thinking-level {
   min-width: 0;
   overflow: hidden;
@@ -181,6 +189,12 @@
   max-width: 170px;
   color: var(--ds-text-primary);
   font-weight: var(--font-weight-medium);
+}
+
+.composer-model-group-chip {
+  max-width: 112px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
 }
 
 /*
@@ -347,7 +361,39 @@
 
 .composer-model-body[data-rail] {
   display: grid;
-  grid-template-columns: 116px minmax(0, 1fr);
+  grid-template-columns: clamp(128px, 39%, 226px) minmax(0, 1fr);
+}
+
+.composer-model-group[data-model-service] .composer-model-group-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--text-sm);
+}
+
+.composer-model-group-label .ui-help-icon {
+  margin-left: 0;
+  flex: 0 0 auto;
+}
+
+.composer-model-search-service {
+  color: var(--ds-text-faint);
+  font-size: var(--text-xs);
+}
+
+.composer-model-channel-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.composer-model-channel-ratio {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-normal);
 }
 
 .composer-model-body[data-rail] .composer-model-list,
@@ -362,6 +408,7 @@
 
 .composer-model-rail {
   position: relative;
+  anchor-scope: --selected-model-source;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -379,10 +426,10 @@
   display: flex;
   flex: 0 0 auto;
   min-width: 0;
-  height: 28px;
+  min-height: 28px;
   align-items: center;
   gap: 6px;
-  padding: 0 8px;
+  padding: 5px 8px;
   border-radius: var(--radius-2xs);
   color: var(--ds-text-muted);
   font-size: var(--text-sm);
@@ -401,6 +448,7 @@
 }
 
 .composer-model-rail-item.active {
+  anchor-name: --selected-model-source;
   color: var(--ds-text-primary);
   font-weight: var(--font-weight-medium);
 }
@@ -411,33 +459,33 @@
   opacity: 0.38;
 }
 
-/* One hairline marker travels between sources instead of each item switching
-   its own state: the eye follows the move. Rows are 28px + a 2px gap. */
+/* Follow the active row, including when a long source name wraps. */
 .composer-model-rail-indicator {
   position: absolute;
-  top: 8px;
+  position-anchor: --selected-model-source;
+  top: anchor(center);
   left: 0;
   width: 2px;
   height: 12px;
   border-radius: var(--radius-full);
   background: var(--ds-text-primary);
-  transform: translateY(calc(var(--rail-index, 0) * 30px));
+  transform: translateY(-50%);
   transition:
-    transform var(--motion-duration-normal) var(--motion-ease-out),
+    top var(--motion-duration-normal) var(--motion-ease-out),
     opacity var(--motion-duration-fast) var(--motion-ease-out);
   pointer-events: none;
 }
 
-.composer-model-rail-indicator[data-hidden] {
+.composer-model-rail:not(:has(.composer-model-rail-item.active)) .composer-model-rail-indicator {
   opacity: 0;
 }
 
 .composer-model-rail-label {
   min-width: 0;
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: var(--leading-compact-plus);
 }
 
 .composer-model-rail-count {
@@ -464,12 +512,8 @@
   }
 }
 
-/* Narrow windows keep both panes and narrow the rail; counts give way first. */
+/* On compact windows the group name takes precedence over its count. */
 @media (max-width: 480px) {
-  .composer-model-body[data-rail] {
-    grid-template-columns: 92px minmax(0, 1fr);
-  }
-
   .composer-model-rail-count {
     display: none;
   }
@@ -1001,4 +1045,67 @@
 .plan-approval-menu-item svg {
   flex: 0 0 auto;
   margin-left: auto;
+}
+
+.composer-service-browser {
+  display: grid;
+  gap: 8px;
+  padding: 6px 6px 10px;
+}
+
+.composer-service-group,
+.composer-service-group-label {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+}
+
+.composer-service-group-label,
+.composer-service-group-select { flex: 1; }
+
+.composer-service-group-label > span { flex: 0 0 auto; }
+
+.composer-service-group-select {
+  width: 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-service-shortcuts {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+}
+
+.composer-service-shortcuts button {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+}
+
+.composer-service-shortcuts button[aria-checked="true"],
+.composer-service-shortcuts button:hover {
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-hover);
+}
+
+.composer-model-body[data-services] .composer-model-list {
+  max-height: min(210px, 32vh);
+}
+
+.composer-model-body[data-services] .composer-model-group:not(:empty) {
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.composer-model-option:disabled {
+  cursor: default;
+  color: var(--ds-text-muted);
+}
+
+.composer-model-view-only {
+  font-size: var(--text-xs);
+  color: var(--ds-text-muted);
 }

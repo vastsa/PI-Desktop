@@ -7,11 +7,12 @@ import {
   imageGenerationBindings,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
-  isImageOnlyChatModel,
 } from "@pi-desktop/shared";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  chatRowSelectable,
   composerModelBinding,
+  composerModelChatEligible,
   composerModelMatchesQuery,
   composerModelsForProvider,
   sameComposerModelId,
@@ -29,19 +30,12 @@ import {
   thinkingProviderForModel,
 } from "../model";
 import { createLatestCommitQueue } from "../thinking-commit-queue";
+import { composerModelSections, type ComposerModelSection } from "../model-sections";
 
 /** Rail section that lists the most recently used models. */
 export const RECENT_MODEL_SECTION = "recent";
 /** Recent rows get their own rail section, so a few more than one screen fits. */
 const RECENT_MODEL_LIMIT = 6;
-
-export function providerModelSection(providerId: string): string {
-  return `provider:${providerId}`;
-}
-
-export type ComposerModelSection =
-  | { id: string; kind: "recent"; count: number }
-  | { id: string; kind: "provider"; provider: ProviderPublic; label: string; count: number };
 
 type UseComposerModelMenuOptions = {
   mode: Mode;
@@ -82,6 +76,7 @@ export function useComposerModelMenu({
   const [section, setSection] = useState<string | null>(null);
   // Direction of the last rail move, so the pane slides in from that side.
   const [sectionStep, setSectionStep] = useState(0);
+  const [groupChoice, setGroupChoice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [modelHighlight, setModelHighlight] = useState(-1);
   const modelSearchRef = useRef<HTMLInputElement>(null);
@@ -145,6 +140,7 @@ export function useComposerModelMenu({
             candidate,
             providerModels[candidate.id],
             imageGenerationCandidates,
+            true,
           );
           return {
             provider: candidate,
@@ -157,7 +153,7 @@ export function useComposerModelMenu({
     [providers, providerModels, imageGenerationCandidates],
   );
   const recentEntries = useMemo(() => {
-    const entries = modelGroups.flatMap(group => group.models.map(model => ({ provider: group.provider, model })));
+    const entries = modelGroups.flatMap(group => group.models.filter(model => chatRowSelectable(group.provider, model.modelId)).map(model => ({ provider: group.provider, model })));
     return (recentModels ?? []).flatMap(recent => {
       const entry = entries.find(entry => sameRecentModel(recent, {
         providerId: entry.provider.id, modelId: entry.model.modelId,
@@ -165,75 +161,46 @@ export function useComposerModelMenu({
       return entry ? [entry] : [];
     }).slice(0, RECENT_MODEL_LIMIT);
   }, [modelGroups, recentModels]);
+  const sources = useMemo(() => composerModelSections(modelGroups), [modelGroups]);
   const queryNeedle = query.trim().toLowerCase();
-  const filteredModelGroups = useMemo(
-    () =>
-      queryNeedle
-        ? modelGroups
-            .map((group) => ({
-              ...group,
-              models: group.models.filter((model) =>
-                composerModelMatchesQuery(
-                  model,
-                  group.providerSearchText,
-                  queryNeedle,
-                  composerModelBinding(group.provider, model.modelId)?.alias,
-                ),
-              ),
-            }))
-            .filter((group) => group.models.length > 0)
-        : modelGroups,
-    [modelGroups, queryNeedle],
-  );
   const searching = queryNeedle.length > 0;
-  // While searching, provider counts become match counts so the rail shows
-  // where the results live; the recent section has no separate result set.
   const sections = useMemo<ComposerModelSection[]>(() => [
-    ...(recentEntries.length > 0
-      ? [{ id: RECENT_MODEL_SECTION, kind: "recent" as const, count: recentEntries.length }]
-      : []),
-    ...modelGroups.map((group) => ({
-      id: providerModelSection(group.provider.id),
-      kind: "provider" as const,
-      provider: group.provider,
-      label: group.providerDisplayName,
-      count: searching
-        ? (filteredModelGroups.find((candidate) => candidate.provider.id === group.provider.id)?.models.length ?? 0)
-        : group.models.length,
-    })),
-  ], [filteredModelGroups, modelGroups, recentEntries.length, searching]);
-  // One pane height for every source: the tallest source (or the rail itself)
-  // decides it, so switching sources or typing never resizes the menu.
-  const paneRows = Math.max(
-    sections.length,
-    recentEntries.length,
-    ...modelGroups.map((group) => group.models.length),
-  );
-  const selectedProviderSection =
-    provider && modelGroups.some((group) => group.provider.id === provider.id)
-      ? providerModelSection(provider.id)
-      : null;
-  const defaultSection =
-    recentEntries.length > 0 ? RECENT_MODEL_SECTION : (selectedProviderSection ?? sections[0]?.id ?? null);
-  const activeSection =
-    section && sections.some((candidate) => candidate.id === section) ? section : defaultSection;
+    ...(recentEntries.length ? [{ id: RECENT_MODEL_SECTION, kind: "recent" as const, count: recentEntries.length }] : []),
+    ...sources,
+  ], [sources, recentEntries.length]);
+  const selectedSource = sources.find((source) => source.groups.some((group) =>
+    group.provider.id === provider?.id && group.models.some((model) => sameComposerModelId(model.modelId, modelId ?? "")),
+  ));
+  const defaultSection = selectedSource?.kind === "service" || selectedSource?.kind === "auto" ? selectedSource.id
+    : recentEntries.length ? RECENT_MODEL_SECTION : (selectedSource?.id ?? sections[0]?.id ?? null);
+  const activeSection = section && sections.some((candidate) => candidate.id === section) ? section : defaultSection;
+  const activeSource = sources.find((source) => source.id === activeSection);
+  const serviceGroups = activeSource?.kind === "service" ? activeSource.groups : [];
+  const selectedGroup = serviceGroups.find((group) => group.provider.id === (groupChoice ?? provider?.id));
   const visibleRecents = useMemo(
     () => (!searching && activeSection === RECENT_MODEL_SECTION ? recentEntries : []),
     [activeSection, recentEntries, searching],
   );
-  const visibleGroups = useMemo(
-    () => searching
-      ? filteredModelGroups
-      : modelGroups.filter((group) => providerModelSection(group.provider.id) === activeSection),
-    [activeSection, filteredModelGroups, modelGroups, searching],
-  );
-  const flatModels = useMemo(
-    () =>
-      [...visibleRecents, ...visibleGroups.flatMap((group) =>
-        group.models.map((model) => ({ provider: group.provider, model })),
-      )],
-    [visibleGroups, visibleRecents],
-  );
+  const visibleGroups = useMemo(() => sources.flatMap((source) => {
+    if (!searching && source.id !== activeSection) return [];
+    return source.groups.flatMap((group) => {
+      if (!searching && source.kind === "service" && group.provider.id !== selectedGroup?.provider.id) return [];
+      const models = !searching ? group.models : group.models.filter((model) => composerModelMatchesQuery(
+        model,
+        `${group.providerSearchText} ${source.label} ${group.provider.starAiGroup?.modelVendors?.[model.modelId] ?? ""}`,
+        queryNeedle,
+        composerModelBinding(group.provider, model.modelId)?.alias,
+      ));
+      return models.length ? [{ ...group, models, sectionId: source.id, service: source.kind === "service" ? source.service : undefined }] : [];
+    });
+  }), [sources, searching, activeSection, selectedGroup, queryNeedle]);
+  const paneRows = Math.max(sections.length, recentEntries.length, ...modelGroups.map((group) => group.models.length));
+  const flatModels = useMemo(() => [
+    ...visibleRecents,
+    ...visibleGroups.flatMap((group) => group.models
+      .filter((model) => chatRowSelectable(group.provider, model.modelId))
+      .map((model) => ({ provider: group.provider, model }))),
+  ], [visibleGroups, visibleRecents]);
   const flatModelsKey = useMemo(
     () => flatModels.map((entry) => `${entry.provider.id}:${entry.model.modelId}`).join("|"),
     [flatModels],
@@ -265,6 +232,7 @@ export function useComposerModelMenu({
   useEffect(() => {
     if (open) return;
     setSection(null);
+    setGroupChoice(null);
     setSectionStep(0);
     setQuery("");
     setModelHighlight(-1);
@@ -293,9 +261,9 @@ export function useComposerModelMenu({
     // dual-capability model marked for image generation stays selectable
     // (#2253). The discovered row's modalities are the same answer session
     // launch reads, so the menu cannot offer what launch would reject.
-    if (isImageOnlyChatModel(
+    if (!composerModelChatEligible(
       imageGenerationCandidates,
-      candidate.id,
+      candidate,
       nextModelId,
       providerModels[candidate.id]?.find((entry) =>
         sameComposerModelId(entry.modelId, nextModelId)),
@@ -349,6 +317,7 @@ export function useComposerModelMenu({
     // The pane is keyed by section, so an unchanged section never replays.
     setSectionStep(to < from ? -1 : 1);
     setSection(id);
+    if (section !== id) setGroupChoice(null);
     setQuery("");
     setModelHighlight(-1);
     modelListRef.current?.scrollTo({ top: 0 });
@@ -406,7 +375,10 @@ export function useComposerModelMenu({
     activeSection: searching ? null : activeSection,
     sectionStep,
     selectSection,
-    showSectionRail: sections.length > 1,
+    showSectionRail: sections.length > 1 || sources.some((source) => source.kind !== "provider"),
+    serviceGroups,
+    selectedGroup,
+    selectGroup: setGroupChoice,
     paneRows,
     searching,
     query,

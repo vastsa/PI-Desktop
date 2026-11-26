@@ -10,11 +10,11 @@
 import type { ProviderPublic } from "@pi-desktop/shared";
 
 /** The fields a provider list needs to name a row. */
-export type ProviderDisplayFields = Pick<ProviderPublic, "name" | "oauthAccountLabel">;
+export type ProviderDisplayFields = Pick<ProviderPublic, "name" | "oauthAccountLabel" | "starAiGroup">;
 
 /** The provider heading shown to the user: account label first, vendor name otherwise. */
 export function providerDisplayName(provider: ProviderDisplayFields): string {
-  return provider.oauthAccountLabel?.trim() || provider.name.trim();
+  return provider.starAiGroup?.id || provider.oauthAccountLabel?.trim() || provider.name.trim();
 }
 
 /** Keep both the account label and the vendor name searchable. */

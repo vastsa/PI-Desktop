@@ -1,10 +1,11 @@
 /** Resolve the provider/model a session should keep after first selection. */
 import {
-  isImageOnlyChatModel,
+  type ProviderPublic,
+  isStarAiProviderId,
   type ImageGenerationBinding,
   type ModelInfo,
 } from "@pi-desktop/shared";
-import { composerModelMetadata } from "./composer-models.ts";
+import { composerModelChatEligible, composerModelMetadata } from "./composer-models.ts";
 import type { RecentModel } from "./recent-models";
 
 export type SessionModelRef = {
@@ -19,6 +20,7 @@ export type SessionModelProvider = {
   enabled?: boolean;
   hasSecret?: boolean;
   authKind?: string;
+  starAiGroup?: ProviderPublic["starAiGroup"];
 };
 
 export type SessionModelSettings = {
@@ -50,9 +52,9 @@ export function availableRecentModels(
     return provider && provider.enabled !== false &&
       (provider.authKind === undefined || provider.authKind === "none" || provider.hasSecret) &&
       ids.some(id => id?.toLowerCase() === entry.modelId.toLowerCase()) &&
-      !isImageOnlyChatModel(
+      composerModelChatEligible(
         bindings,
-        provider.id,
+        provider,
         entry.modelId,
         composerModelMetadata(discovered, entry.modelId),
       );
@@ -84,10 +86,15 @@ export function inheritedSessionModelBinding({
       .filter((modelId): modelId is string => !!modelId)
       .map(modelId => ({ providerId: provider.id, modelId })),
   );
-  const legacy = settings?.defaultProviderId && settings.defaultModelId
+  const defaults = settings?.defaultProviderId && settings.defaultModelId
     ? [{ providerId: settings.defaultProviderId, modelId: settings.defaultModelId }]
     : [];
-  const inherited = [...recentModels, ...legacy, ...fallbackCandidates].find(entry =>
+  // The account picker sets an explicit default for new chats. A recent
+  // conversation may have used the same model through a different billing group.
+  const preferred = isStarAiProviderId(settings?.defaultProviderId)
+    ? [...defaults, ...recentModels]
+    : [...recentModels, ...defaults];
+  const inherited = [...preferred, ...fallbackCandidates].find(entry =>
     availableRecentModels([entry], providers, settings, discovered).length > 0,
   );
   const providerId = draft?.providerId ?? inherited?.providerId;

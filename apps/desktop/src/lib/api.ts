@@ -99,6 +99,7 @@ import type {
   ProviderPublic,
   ProviderReorderInput,
   ProviderUpdateInput,
+  StarAiCatalog,
   Result,
   SessionDetail,
   SessionSearchPage,
@@ -980,6 +981,15 @@ export const api = {
     invoke<{ ok: boolean }>(IPC.invoke.providersReorder, input),
   listProviders: () =>
     invoke<{ providers: ProviderPublic[] }>(IPC.invoke.providersList),
+  starAiLogin: () => invoke<StarAiCatalog>(IPC.invoke.starAiLogin),
+  starAiCatalog: () => invoke<StarAiCatalog>(IPC.invoke.starAiCatalog),
+  starAiActivate: (input: { group: string; model: string }) =>
+    invoke<{ providerId: string; model: string; catalog: StarAiCatalog }>(IPC.invoke.starAiActivate, input),
+  starAiLogout: () => invoke<{ ok: boolean }>(IPC.invoke.starAiLogout),
+  onStarAiSetupRequired: (listener: (catalog: StarAiCatalog | null) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.starAiSetupRequired, (payload) => listener(payload as StarAiCatalog | null));
+  },
   createProvider: (input: ProviderCreateInput) =>
     invoke<{ provider: ProviderPublic }>(IPC.invoke.providersCreate, input),
   updateProvider: (input: ProviderUpdateInput) =>

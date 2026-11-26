@@ -54,10 +54,12 @@ import {
 } from "./work-panel-window";
 import { InflightCheckpointer } from "@pi-desktop/host-runtime";
 import { withGitBranch } from "./workspace-git";
-import { hasSingleInstanceLock, isDevelopmentBuild } from "./installation";
+import { hasSingleInstanceLock, isDevelopmentBuild, isStarAiPreview } from "./installation";
 import { getStorageBootstrap } from "./storage/bootstrap";
 import { createPlanUiProbe } from "./plan-ui-probe";
 import { registerIpcHandlers } from "./ipc/register";
+import { createStarAiAccount, type StarAiAccount } from "./star-ai-account";
+import { watchStarAiStartup } from "./star-ai-startup";
 import { createVoiceService } from "./voice-service";
 import { MicrophoneLeaseRegistry } from "./live-voice/microphone-lease";
 import { createLiveCallService } from "./live-voice/runtime";
@@ -253,7 +255,7 @@ const updater = new AppUpdaterController({
   logger,
   send: sendToRenderer,
   currentVersion: APP_VERSION,
-  isPackaged: !isDevelopmentBuild,
+  isPackaged: !isDevelopmentBuild && !isStarAiPreview,
   getLocale: () => mainState.updaterLocale,
   readUpdateSettings: async () => {
     const host = getHost();
@@ -973,8 +975,13 @@ const localApps: LocalAppCatalog = {
   diagnostics: () => localAppsCatalog?.diagnostics() ?? [],
 };
 
+let starAi: StarAiAccount | undefined;
 function registerIpc() {
+  const account = createStarAiAccount(getHost, getMainWindow);
+  starAi = account;
+  const startupChecks = new WeakMap<BrowserWindow, () => void>();
   return registerIpcHandlers({
+    starAi,
     modeServices,
     restartForStorage: () => {
       shutdownState.quitConfirmed = true;
@@ -1054,7 +1061,20 @@ function registerIpc() {
     applyCloseBehavior,
     getCloseBehavior: () => mainState.closeBehavior,
     isMacosWindowTranslucent: () => mainState.macosWindowTranslucency,
-    markMenuRendererReady,
+    markMenuRendererReady: (window: BrowserWindow) => {
+      if (!markMenuRendererReady(window)) return false;
+      let check = startupChecks.get(window);
+      if (!check) {
+        check = watchStarAiStartup(window, account,
+          () => !mainState.quitting && getMainWindow() === window && mainState.menuRendererReadyGate?.ready === true,
+          (catalog) => sendToRenderer(IPC.event.starAiSetupRequired, catalog),
+          () => logger.app("provider", "warn", "StarAI startup setup unavailable"),
+        );
+        startupChecks.set(window, check);
+      }
+      check();
+      return true;
+    },
     markLifecycleDialogRendererReady,
     respondLifecycleDialog,
     executeNativeMenuAction,
@@ -1142,6 +1162,7 @@ void app.whenReady().then(() => {
 
 // The widget is chrome for a call this window owns; it must never outlive the app.
 app.once("will-quit", () => liveVoiceWidget.close());
+app.once("will-quit", () => { void starAi?.close(); });
 
 registerApplicationStartup({
   hasSingleInstanceLock,
@@ -1161,7 +1182,10 @@ registerApplicationStartup({
   dispatchNativeMenuAction,
   prewarmPluginLauncher,
   registerIpc,
-  bootBackends,
+  bootBackends: async () => {
+    await bootBackends();
+    await starAi?.restore().catch(() => logger.app("provider", "warn", "StarAI selection restore failed"));
+  },
   planUiProbe,
   applyApplicationMenuSettings,
   applyDeveloperMode,

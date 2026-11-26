@@ -9,6 +9,7 @@
  */
 import {
   isImageOnlyChatModel,
+  isStarAiProviderId,
   type ImageGenerationBindings,
   modelWireIdsEqual as sameComposerModelId,
   type ModelInfo,
@@ -27,6 +28,9 @@ export function defaultModelOptions(
   discovered?: Record<string, readonly ModelInfo[] | undefined>,
 ): DefaultModelOption[] {
   return providers.flatMap((provider) => {
+    if (isStarAiProviderId(provider.id)) {
+      return (provider.starAiGroup?.chatModels ?? []).map((modelId) => ({ provider, modelId }));
+    }
     const modelIds = (provider.models ?? [])
       .map((binding) => binding.id.trim())
       .filter(Boolean);
@@ -49,6 +53,7 @@ export function defaultModelOptions(
 
 /** The provider's own default: the first non-empty binding, then legacy fallback. */
 export function defaultModelIdOf(provider: ProviderPublic): string | undefined {
+  if (isStarAiProviderId(provider.id)) return provider.starAiGroup?.chatModels?.[0];
   return (
     provider.models?.find((binding) => binding.id.trim())?.id.trim() ||
     provider.defaultModelId?.trim() ||
@@ -62,6 +67,7 @@ export function providerOffersModel(
   modelId?: string,
 ): boolean {
   if (!modelId) return false;
+  if (isStarAiProviderId(provider.id)) return provider.starAiGroup?.chatModels?.includes(modelId) ?? false;
   const bindings = provider.models ?? [];
   if (bindings.some((binding) => sameComposerModelId(binding.id, modelId))) return true;
   // A legacy/OAuth row may carry only `defaultModelId` with no bindings yet.

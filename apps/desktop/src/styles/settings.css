@@ -2113,6 +2113,19 @@
   list-style: none;
 }
 
+.settings-menu-option-with-help {
+  display: flex;
+  align-items: center;
+  padding-right: 12px;
+}
+
+.settings-menu-option-with-help > .settings-menu-select-option {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  margin-right: 4px;
+}
+
 .settings-language-option,
 .settings-theme-option,
 .settings-menu-select-option {
@@ -4335,4 +4348,8 @@
   .settings-dialog .settings-content {
     padding: 24px 20px 32px;
   }
+}
+
+.starai-account-services {
+  padding: 12px 0;
 }
