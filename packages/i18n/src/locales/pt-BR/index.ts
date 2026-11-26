@@ -1774,7 +1774,7 @@ export const ptBR = {
     autoCollapseThinking: "Recolher raciocínio concluído",
     autoCollapseThinkingDesc: "Apenas o raciocínio em geração fica aberto. Desative para manter todas as linhas de raciocínio abertas.",
     autoCollapseSettledGroups: "Recolher grupos concluídos",
-    autoCollapseSettledGroupsDesc: "Ao terminar o turno, os grupos de atividade ficam recolhidos e o cabeçalho indica o que o grupo fez. Desative para manter cada grupo concluído aberto.",
+    autoCollapseSettledGroupsDesc: "Os grupos de atividade concluídos são recolhidos quando o turno avança, sem esperar que ele termine. Desative para mantê-los abertos.",
     transcriptDisplayMode: "Exibição do processo",
     transcriptDisplayModeDesc: "Escolha como o processo do assistente é agrupado na transcrição.",
     radialMenu: "Menu de contexto radial",

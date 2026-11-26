@@ -410,6 +410,9 @@ export type AppState = {
   activeWorkPanelTabId: string | null;
   /** Runtime-only work panel state owned by each conversation. */
   workPanelContexts: Record<string, WorkPanelContext>;
+  /** Runtime-only opt-in, and the last project whose entry each session received. */
+  fileManagerProjects: ReadonlySet<string>;
+  fileManagerTabReceipts: Record<string, string>;
   /** The user's preferred panel width; persisted, never below the regular minimum. */
   workPanelWidth: number;
   /**

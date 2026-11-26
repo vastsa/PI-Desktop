@@ -440,11 +440,11 @@ so no row repeats it.
   **Transcript display**, and appears only for **Commands first** and **Fully
   folded**; **Flat** renders no activity groups, so the row is hidden there and
   has no effect. It persists the optional `autoCollapseSettledGroups` boolean,
-  absent and `true` both meaning fold: a group whose turn has settled starts
-  closed whatever its size, while a running turn, or a group that still owns a
-  running tool or delegation, stays open. Turning it off leaves every settled
-  group open - there is no size tier. Hiding the sub-row by switching to **Flat**
-  never writes a value, so the stored choice survives and returns with the mode.
+  absent and `true` both meaning fold: a group closes as soon as it is no
+  longer current and has no live work. The current group and groups still
+  running a tool, search, or delegation stay open by default. Turning it off
+  leaves every group open by default - there is no size tier. Hiding the sub-row
+  by switching to **Flat** never writes a value, so the choice survives.
   Settings search indexes both the row and its description.
 
 ### Agent behavior (`behavior` tab)

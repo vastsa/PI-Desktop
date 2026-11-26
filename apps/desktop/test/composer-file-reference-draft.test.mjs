@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
-import { fileLineLabel, isRenderableAttachment } from "@pi-desktop/shared";
+import { composerMentionText, fileLineLabel, isRenderableAttachment } from "@pi-desktop/shared";
 import { snapshotComposerDraft } from "../src/lib/composer-draft-cache.ts";
 
 function loadFunction(path, name, globals = {}) {
@@ -58,7 +58,7 @@ test("file card shows size, remains removable, and does not expand or preview co
       append(...items) { this.children.push(...items); },
     };
   }
-  const globals = { document: { createElement: element }, chipIconKey: () => "file", chipSvg: () => "", isPluginMark: () => false, fileLineLabel };
+  const globals = { document: { createElement: element }, chipIconKey: () => "file", chipSvg: () => "", isPluginMark: () => false, fileLineLabel, composerMentionText };
   globals.isEditableTextReference = loadFunction("../src/features/chat/composer/editor.ts", "isEditableTextReference", globals);
   const build = loadFunction("../src/features/chat/composer/editor.ts", "buildChipElement", globals);
   let removed;

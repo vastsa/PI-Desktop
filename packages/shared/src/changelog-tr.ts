@@ -5,6 +5,9 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Dosya Yöneticisi bir kez açıldığında aynı projedeki diğer oturumlara da sekmesi eklenir. Sekmeyi kapatmak veya yan paneli açmak yalnızca geçerli oturumu etkiler.",
+      "İleti alanında satır sonları artık fazladan boş satır veya görünmez karakter eklemiyor. Geri al, silinen son boş satırı geri getiriyor.",
+      "/ menüsünden seçilen beceriler ileti alanında ayrı etiketler olarak görünür.",
       "Modlar ayarlarında yerleşik rolleri ve becerileri düzenleyin, özel ajan rollerini düzenleyin ve devredilen işleri rolün ihtiyaç duyduğu araç ve dosyalarla sınırlayın.",
       "Etkin alt ajanları isteğe bağlı olarak Composer'ın üzerinde izleyin; koordinatör ajanı durdurmadan birini veya tümünü durdurun.",
       "Uzun süren Bash komutları ilk beklemeden sonra kontrolü geri verir ve arka planda çalışmayı sürdürür; isteğe bağlı olarak sonucu bildirip boşta olan bir sohbeti devam ettirebilir.",

@@ -1,7 +1,7 @@
 /**
  * Pure rules of the grouped mode settings page (issue #2544).
  *
- * The page shows one mode at a time in three tabs — Mode, Subagents, Skills —
+ * The page shows one mode at a time in Definition, Prompt, Subagents and Skills.
  * inside the existing settings container. Nothing here reads files or talks to
  * IPC: the renderer only decides which tab is offered for the mode that is
  * open, what the tab's rows are, and how an edit maps onto the bundle the host
@@ -26,8 +26,8 @@ import type {
 } from "@pi-desktop/shared";
 import { parseRoleDocument } from "./mode-role-document";
 
-/** The three tabs the issue asks for, in the order it asks for them. */
-export const MODE_SETTINGS_TABS = ["mode", "subagents", "skills"] as const;
+/** Sections of a bundle editor, in navigation order. */
+export const MODE_SETTINGS_TABS = ["mode", "prompt", "subagents", "skills"] as const;
 export type ModeSettingsTab = (typeof MODE_SETTINGS_TABS)[number];
 
 /** Tabs offered for a document. A legacy mode has only its own document. */

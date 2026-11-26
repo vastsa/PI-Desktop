@@ -40,6 +40,7 @@ import {
 } from "./TranscriptMenu";
 import { getExtraMessageAttachments } from "./extra-attachments";
 import { directionAttr } from "../../../lib/text-direction";
+import { CollapsibleUserText } from "./CollapsibleUserText";
 
 /**
  * The typed form of a Skill or `@agent` invocation (ADR 0346): each validated
@@ -371,10 +372,7 @@ export const MessageRow = memo(function MessageRow({
                   </div>
                 ) : null}
                 {directories.text || message.command ? (
-                  <div
-                    className="message-user-text selectable"
-                    dir={userTextDirection}
-                  >
+                  <CollapsibleUserText messageId={message.id} dir={userTextDirection}>
                     {editableUserMessage && message.command ? (
                       <>
                         {message.skillMentions?.length || message.agentMentions?.length ? (
@@ -398,7 +396,7 @@ export const MessageRow = memo(function MessageRow({
                       userParagraphs
                     )}
                     {attachmentChips}
-                  </div>
+                  </CollapsibleUserText>
                 ) : attachmentChips}
               </>
             ) : (

@@ -483,8 +483,13 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   `04-ux/09-interaction-patterns.md` §1.2
 - **Acceptance**: C (composer send)
 - **Milestone**: M2
-- **Status**: Source-level regression (`composer-ime.test.mjs`); full UI
-  keyboard journey remains Draft. Protocol smoke does not dispatch key events.
+- **Automation**: `pnpm test:e2e:composer-tail-line` mounts the production editor in
+  Electron. Type three lines, click the end of line one, insert one break, click
+  each painted line, then type and backspace at the end. Check the exact draft,
+  line geometry, selection and caret, including an empty last line, consecutive
+  breaks, native undo/redo of both insertion and Backspace, and IME preedit/commit. On a disposable desktop with
+  its own empty clipboard, add `--isolated-clipboard` to check native copy as well.
+  The full Settings-to-send journey remains Draft; this lane needs no provider.
 
 ## E2E-008e: Host speech transcribe and speak
 
@@ -1508,7 +1513,9 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   changes occur. The keyboard hint includes Shift+Enter and a submit hint, while the
   command/file hint includes `/` and `@`. The slash menu still contains `/new`,
   `/compact`, `/agent-mode`, `/plan-mode`, and `/goal-mode`, followed by a
-  Skills group at the bottom. Selecting a Skill inserts `/skill:<id>`; sending
+  Skills group at the bottom. Select a Skill mid-sentence and type its arguments;
+  verify the editor has one atomic Skill node, deletion removes the whole node,
+  and native undo restores it. The node serializes to `/skill:<id>` without an attachment; sending
   it keeps the typed command chip visible and the model calls `Skill` with the
   original ID before answering. Verify builtin, plugin, and user Skill prefixes,
   multiple inline references, and a prompt template sharing the unprefixed
@@ -4566,11 +4573,15 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   answer; the `Show thinking` preference on and off; the `Transcript display`
   preference at Flat, Commands first, and Fully folded; a restart with saved
   settings; legacy message-level transcript search targets.
-- **Steps:** Confirm a live active group starts open, let that same turn finish
-  without interacting, and confirm the process closes so only the final answer
-  (and any error or pending-action surface) remains. Reopen it and confirm a
-  every settled group folded and every finished reasoning row folded, and that
-  each group header names the actions it contains plus the call count
+- **Steps:** In Commands first and Fully folded, start with an expanded current
+  group. Advance past a progress paragraph into another group while the turn is
+  still active. Verify that the previous group folds and the current group
+  remains open. Repeat with a running tool left behind in the previous group; it
+  stays open until that tool settles. Let the turn finish without interacting
+  and confirm the process closes so only the final answer (and any error or
+  pending-action surface) remains. Reopen it and confirm every settled group
+  and finished reasoning row starts folded, and that each header names the actions
+  it contains plus the call count
   (`搜索并读取文件 · 12 次操作`). Confirm tool and search payloads stay closed.
   Turn `Auto-fold finished groups` off and confirm every settled group opens
   whatever its size, then turn it back on; turn `Auto-fold finished thinking`
@@ -4622,10 +4633,10 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   stay inside their groups and only ordinary assistant progress text splits a
   group, so the middle progress paragraph ends the preceding group and the
   following activity starts a new one. A group appears only with at least two
-  visible items; a singleton has no group. Every group stays open while its turn
-  runs; after completion both nested levels fold, so every settled group and
-  every reasoning row that is no longer streaming starts closed, whatever the
-  group's size. Only the reasoning a live turn is still streaming starts
+  visible items; a singleton has no group. An untouched group folds when it is
+  no longer current and has no running tool, search, or delegation, even before
+  the turn ends. Finished reasoning also starts closed. Only the reasoning a
+  live turn is still streaming starts
   expanded when `Show thinking` is on, and a group does not inherit open state
   from the reasoning inside it, so folding a group hides expanded reasoning.
   Turning off `Auto-fold finished groups` opens every settled group; turning off
@@ -4666,8 +4677,9 @@ command, a delegate, and an explicit Stop. Accepted input is delivered once.
   group presentation only; precise item-level transcript search targeting is out
   of scope and keeps the existing message-level search behavior.
 - **Automation:** `pnpm test:e2e:transcript` covers the command-first and
-  fully-folded layouts, active-to-completed process disclosure behavior, the
-  automatic folding and reading-hold transitions, and the activity issue
+  fully-folded layouts, group-to-group handoff while the turn continues,
+  active-to-completed process disclosure, automatic folding and reading holds,
+  and the activity issue
   counter's inline layout at 320/800px and 100%/150% zoom in English and
   Simplified Chinese; `pnpm test:e2e:transcript-disclosure` verifies manual-open
   retention and viewport anchoring; `apps/desktop/test/turn-process.test.mjs`
@@ -5073,3 +5085,17 @@ Build two actual runtimes with identical configuration and different scratch dir
 - With a side-question plugin, verify the quote preview can be removed
   atomically and the first explicitly sent prompt contains only the excerpt
   and the new question. The main conversation and its input remain intact.
+
+## E2E-CHAT-long-user-message-preview
+
+- **Steps**: Send a six-line message and a seven-line message. Expand the
+  longer message, then collapse it. Narrow the conversation until an
+  otherwise short message wraps beyond six lines. Search for content after
+  line six. Copy or edit the message, then restart the app.
+- **Expected**: Six lines or fewer have no button. Longer text starts folded
+  with a six-line preview, a bottom fade, and a centered text-and-chevron
+  button. Search reveals the matching message. Copy and edit use the full
+  text, and restart restores the default.
+- **Specs linked**: `04-ux/08-component-spec.md`
+- **Status**: Renderer interactions and resize covered by
+  `apps/desktop/test/subagent-conversation-user-path.test.mjs`.

@@ -17,6 +17,7 @@ function fixture(t) {
     sessionMeta: {}, pendingPlans: {}, planCheckpoints: {}, planningStates: {},
     runningSessions: {}, agentStatuses: {}, latestTurnResults: {}, sessionOutcomes: {},
     sessionCompactions: {}, sessionHistory: {}, retainedSessionIds: [], retainedTranscripts: {},
+    fileManagerProjects: new Set(), fileManagerTabReceipts: {},
     workPanelContexts: {}, workPanelTabs: [], activeWorkPanelTabId: null,
     workPanelOpen: false, workPanelFileRequest: null, navStack: [], navIndex: -1,
     settings: {}, providers: [], providerModels: {}, recentModels: [], draftConfiguration: null,

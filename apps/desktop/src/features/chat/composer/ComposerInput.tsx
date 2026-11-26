@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { installComposerDeletionGuard } from "./native-deletion";
 import type {
   ClipboardEvent,
@@ -86,9 +86,16 @@ export function ComposerInput({
   onFocus,
   onBlur,
 }: ComposerInputProps) {
+  // The guard installs native listeners once; the break callback stays current
+  // through a ref so a re-render does not reset its redo bookkeeping.
+  const insertNewlineRef = useRef(onInsertNewline);
+  insertNewlineRef.current = onInsertNewline;
   useLayoutEffect(() => {
     const editor = inputRef.current;
-    return editor ? installComposerDeletionGuard(editor) : undefined;
+    if (!editor) return;
+    // Enter is owned here, not by React: the native beforeinput handler replaces
+    // Chromium's break-plus-placeholder insertion with one newline.
+    return installComposerDeletionGuard(editor, () => insertNewlineRef.current());
   }, [inputRef]);
   const navigation = suggestion?.navigation;
   return (
@@ -126,16 +133,6 @@ export function ComposerInput({
           autoCapitalize="off"
           translate="no"
           onPaste={onPaste}
-          onBeforeInput={(event) => {
-            const native = event.nativeEvent as InputEvent;
-            if (
-              native.inputType === "insertParagraph" ||
-              native.inputType === "insertLineBreak"
-            ) {
-              event.preventDefault();
-              onInsertNewline();
-            }
-          }}
           onInput={(event) => {
             const element = event.currentTarget;
             const source = readEditorValue(element);

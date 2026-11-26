@@ -270,12 +270,12 @@ export async function turnProcessProbe() {
         i18n.t("chat.processTools", { count: 5 }),
       "the process header counts every tool once",
     );
-    const activeGroupHeader = row("read")?.closest<HTMLElement>(
+    const previousGroupHeader = row("read")?.closest<HTMLElement>(
       ".process-activity-group.grouped",
     )?.querySelector<HTMLElement>(".tool-activity-header");
     check(
-      activeGroupHeader?.getAttribute("aria-expanded") === "true",
-      "the active small activity group starts open",
+      previousGroupHeader?.getAttribute("aria-expanded") === "false",
+      "the previous activity group folds once later steps take over",
     );
     render(mixed, false, null, "settling-activity-group");
     const completedGroupHeader = row("read")?.closest<HTMLElement>(

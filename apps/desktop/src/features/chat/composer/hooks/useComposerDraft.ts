@@ -42,7 +42,8 @@ import {
   paintEditorValue,
   readEditorValue,
   setEditorCaret,
-  syncTailMarker,
+  syncTailPlaceholder,
+  tailBreakFragment,
   type ComposerFileReference,
 } from "../editor";
 import type { ComposerPrefill } from "../model";
@@ -295,7 +296,7 @@ export function useComposerDraft({
       nextValue,
       referenceByTokenRef.current,
       (reference) =>
-        t(isPluginMark(reference) ? "chat.removePluginMark" : "chat.removeFileReference", {
+        t(isPluginMark(reference) || reference.kind === "skill" ? "chat.removePluginMark" : "chat.removeFileReference", {
           name: reference.name,
         }),
       (token) => removeChipByTokenRef.current(token),
@@ -306,12 +307,12 @@ export function useComposerDraft({
     editorValueRef.current = nextValue;
   };
 
-  // An empty last line has no caret box of its own, so Chromium resolves a caret
-  // left on it to the neighbouring line; give the line a zero-width marker after
-  // every commit.
+  // An empty last line needs a break of its own: Chromium drops the draft's last
+  // break, so the line would collapse onto the line above. The placeholder holds
+  // no text, and every read and caret path counts it as zero characters.
   useLayoutEffect(() => {
     const element = ref.current;
-    if (element) syncTailMarker(element);
+    if (element) syncTailPlaceholder(element);
   }, [value]);
 
   useLayoutEffect(() => {
@@ -407,7 +408,11 @@ export function useComposerDraft({
     updateCursor(start);
   };
 
-  /** Enter inserts a bare newline text node so the draft round-trips. */
+  /**
+   * End-of-draft break. One native edit adds the real break together with the
+   * layout placeholder, so undo and redo take the new line and its caret at once;
+   * Chromium's own break would add a second, layout-only newline here.
+   */
   const insertNewlineInEditor = () => {
     const element = ref.current;
     if (!element) return;
@@ -416,9 +421,15 @@ export function useComposerDraft({
     const range = selection.getRangeAt(0);
     if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return;
     const { start } = editorSelectionRange(element);
+    if (document.execCommand("insertHTML", false, tailBreakFragment())) {
+      commitEditorDom();
+      // The edit leaves the caret after the placeholder; the draft end is before
+      // it, on the empty line the placeholder lays out.
+      setEditorCaret(element, readEditorValue(element).length);
+      return;
+    }
     range.deleteContents();
-    const node = document.createTextNode("\n");
-    range.insertNode(node);
+    range.insertNode(document.createTextNode("\n"));
     setEditorCaret(element, start + 1);
     commitEditorDom();
   };
@@ -505,13 +516,12 @@ export function useComposerDraft({
     compositionRef.current = null;
     previousWorkspacePathRef.current = workspacePath;
     const current = fileReferencesRef.current;
-    // Plugin marks carry their text, not a workspace path, a session
-    // reference names a conversation and an agent chip names a subagent
-    // rather than a file in this project.
+    // Only workspace-relative file references belong to the previous project.
     const survives = (fileReference: ComposerFileReference) =>
       Boolean(fileReference.plugin) ||
       fileReference.kind === "session" ||
       fileReference.kind === "agent" ||
+      fileReference.kind === "skill" ||
       isPersistedScratchReference(fileReference.path);
     const kept = current.filter(survives);
     if (kept.length === current.length) return;
