@@ -69,6 +69,7 @@ try {
       "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
       "excel/SKILL.md", "excel/excel.sh", "excel/spreadsheet.py",
       "ppt/SKILL.md", "ppt/ppt.sh", "ppt/presentation.py",
+      "pdf/SKILL.md", "pdf/pdf.sh", "pdf/pdf_document.py",
       "wx/SKILL.md", "wx/wx.sh",
     ]) {
       if (!existsSync(path.join(officePlugin, file))) {
@@ -148,7 +149,7 @@ try {
   console.log(`Verified ${verified} ${arch} ELF files at glibc <= ${floor}.`);
   if (withOffice) {
     await smokeTestOfflineOffice(resources);
-    console.log("Verified bundled Word and PowerPoint creation/extraction, Excel creation/read, and WX review.");
+    console.log("Verified bundled Word, Excel, and PowerPoint readback, PDF text extraction, and WX review.");
   }
 } finally {
   rmSync(root, { recursive: true, force: true });

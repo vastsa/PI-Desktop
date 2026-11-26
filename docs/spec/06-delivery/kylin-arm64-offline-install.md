@@ -119,9 +119,9 @@ On the Pie Code maintenance line, the ARM64 Debian package includes one
 shared Office Runtime and the built-in Offline Office extension. In a
 fresh profile the extension is off. Enable it in Extensions to expose
 `pie.offline-office/word`, `pie.offline-office/excel`, `pie.offline-office/ppt`,
-and `pie.offline-office/wx` in local Agent sessions. The skills use ordinary Bash
-approval and packaged executables without installing dependencies or falling
-back to system Node, Python, or LibreOffice.
+`pie.offline-office/pdf`, and `pie.offline-office/wx` in local Agent sessions.
+The skills use ordinary Bash approval and packaged executables without
+installing dependencies or falling back to system Node, Python, or LibreOffice.
 
 Before building, stage the approved ARM64 Office Runtime 1.0.2
 `python-runtime`, `python-dependencies`, `node-runtime`, and
@@ -133,7 +133,7 @@ pre-staged pandas 3.1.1 CPython 3.12 manylinux AArch64 wheel and
 python-dateutil 2.9.0.post0 universal wheel, including their `.dist-info`
 directories. These two wheels have no `.data` directory and can be unpacked
 with the bundled `python3.12 -I -m zipfile -e WHEEL SITE_PACKAGES` on ARM64
-Linux. Reuse the bundled NumPy, six, openpyxl, and python-pptx 1.0.2
+Linux. Reuse the bundled NumPy, six, openpyxl, python-pptx 1.0.2, and pypdf
 with its dependencies. Neither installation nor first use downloads
 dependencies. Keep the LibreOffice entry point at
 `libreoffice/program/soffice`. Retain the source manifest as
@@ -158,7 +158,9 @@ node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
 
 The package check inspects the extracted payload and uses its own Node and
 Python to read back a newly created Word document, a pandas Excel table,
-a PowerPoint presentation, and a WX review of the Word document.
+a PowerPoint presentation, text extraction from a PDF, and a WX review of
+the Word document. LibreOffice export uses the Kylin system libraries and
+is tested on Kylin.
 Keep the exact Office Debian package, the candidate commit, the package
 inspection output, and the Kylin run output together. Link those results in the PR or release record;
 generic CI artifacts and results from a different package do not qualify.
@@ -167,11 +169,12 @@ With no public route, install that package in a clean application test
 environment and run the Office scenario against the installed binary. Build
 the shared JS package beforehand and use Node 22+ to run the scenario
 (the bundled Node can run it). The scenario enables the extension through
-the UI, loads the skills through a loopback model, and checks that Bash
-is held for approval. It reads back results independently with python-docx,
-openpyxl, and python-pptx and checks that the sources are unchanged. It
-disables the extension and verifies the skills are absent from new sessions
-after restarting.
+the UI, loads all five skills through a loopback model, and checks that Bash
+is held for approval. It reads back Office results with python-docx, openpyxl,
+and python-pptx. The PDF scenario uses ReportLab from the existing Python
+dependency layer for fixtures and Kylin's `pdftotext` for independent readback.
+The scenario checks that the sources are unchanged, disables the extension,
+and verifies that the skills are absent from new sessions after restarting.
 
 ```sh
 PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
@@ -219,6 +222,24 @@ the first slide of a separate deck.
 The filenames contain Chinese characters and spaces. The test verifies that
 hidden text is omitted and ambiguous edits involving a slide number are refused.
 It compares the original bytes and every package part outside the edited slide.
+
+## Offline Office — PDF
+
+In an authorized local Agent session, `pie.offline-office/pdf` extracts
+text by page and merges ordinary, unencrypted PDFs in the order requested.
+It also exports existing DOCX, PPTX, and XLSX files using bundled LibreOffice.
+LibreOffice opens the sources read-only with a separate profile that disables
+macros and blocks untrusted linked images. The skill publishes to a new PDF only;
+it refuses to overwrite any file or link. Cancelling an in-progress export
+stops LibreOffice and removes the intermediate files. Scanned PDF OCR and legacy Office
+formats are outside scope.
+
+The installed Office scenario loads this skill and approves its Bash
+commands without public network access. Check that the merged PDF contains
+three pages in the requested order, all three Office exports contain the
+expected Chinese text on independent readback, and the five inputs remain
+byte identical. The exports use the Office fixtures prepared before the
+session; they do not depend on any document the Agent created or edited.
 
 ## Offline Office — WX formatting and review
 

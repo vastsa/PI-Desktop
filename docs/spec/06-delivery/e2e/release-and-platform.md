@@ -87,6 +87,24 @@
 - **Milestone:** M6+ (Pie Code 0.23.1).
 - **Status:** Automated. Record the result against the exact candidate Debian package.
 
+## E2E-PIE-OFFICE-PDF: Offline PDF on Kylin ARM64
+
+- **Preconditions:** Install the inspected Office Debian candidate on Kylin
+  V10 SP1 ARM64. Use a clean application profile, a loopback model, and no
+  public network route. Prepare text PDFs and existing DOCX, PPTX, and XLSX
+  samples with Chinese content and filenames containing spaces.
+- **Steps:** Enable Offline Office. Load the PDF Skill in a local Agent
+  session and approve Bash to extract PDF text, merge the PDFs in a given
+  order, and export each Office sample. Try to save over one input PDF.
+- **Expected:** The Agent receives the original and merged PDF text.
+  Independent readback confirms three pages in the requested order and
+  Chinese text in each Office export. The overwrite is refused and all
+  inputs remain byte identical.
+- **Specs linked:** [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--pdf).
+- **Acceptance criterion:** A, C, E, G, Quality.
+- **Milestone:** M6+ (Pie Code 0.23.1).
+- **Status:** Automated. Record the result against the tested Debian package.
+
 ## E2E-PIE-OFFICE-WX: Offline WX on Kylin ARM64
 
 - **Preconditions:** Install the inspected Office Debian candidate on Kylin

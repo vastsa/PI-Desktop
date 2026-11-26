@@ -91,6 +91,33 @@ const ppt = {
     assert.match(stderr, /Text occurs more than once on this slide/);
   },
 };
+const pdfInputs = ["甲 两页.pdf", "乙 一页.pdf"];
+const officeExports = [
+  [original, "Word 中文.pdf", untouched],
+  [ppt.input, "PPT 中文.pdf", pptUntouched],
+  [excel.input, "Excel 中文.pdf", "金额"],
+];
+const pdf = {
+  skill: "pdf", output: "合并 副本.pdf",
+  get commands() {
+    return [
+      `extract -- ${quote(pdfInputs[0])}`,
+      `merge -- ${[this.output, ...pdfInputs.toReversed()].map(quote).join(" ")}`,
+      `extract -- ${quote(this.output)}`,
+      ...officeExports.map(([source, output]) => `export -- ${quote(source)} ${quote(output)}`),
+    ];
+  },
+  get rejectedCommand() {
+    return `merge -- ${[pdfInputs[0], pdfInputs[1]].map(quote).join(" ")}`;
+  },
+  verify(stdout, stderr) {
+    assert.ok(stdout.includes("Page 1\nPDF-A1\n\nPage 2\nPDF-A2"), "Original text must reach the Agent.");
+    assert.ok(stdout.includes("Page 1\nPDF-B1\n\nPage 2\nPDF-A1\n\nPage 3\nPDF-A2"),
+      "Merged text must reach the Agent in the requested page order.");
+    assert.match(stderr, /Output already exists/);
+  },
+};
+
 const wx = {
   skill: "wx", output: "WX 排版 Markdown", input: "WX 原稿.md", docx: "WX 原稿.docx",
   docxOutput: "WX 排版 Word", reviewOutput: "WX 独立审查",
@@ -109,7 +136,7 @@ const wx = {
     assert.match(stderr, /File exists/);
   },
 };
-const scenarios = [word, excel, ppt, wx];
+const scenarios = [pdf, word, excel, ppt, wx];
 const skillId = (scenario) => `pie.offline-office/${scenario.skill}`;
 const toolText = (content) => Array.isArray(content)
   ? content.map((part) => part.text ?? "").join("\n")
@@ -298,6 +325,19 @@ async function runTurn({ invoke }, providerId, current, enabled) {
   }
 }
 
+function verifyPdf() {
+  // Poppler reads the files independently of the bundled Python PDF parser.
+  const pages = (name) => {
+    const output = execFileSync("pdftotext", ["-enc", "UTF-8", name, "-"], { cwd: workspace, encoding: "utf8" });
+    assert.ok(output.endsWith("\f"), `No readable pages in ${name}`);
+    return output.split("\f").slice(0, -1).map((page) => page.trim());
+  };
+  assert.deepEqual(pages(pdf.output), ["PDF-B1", "PDF-A1", "PDF-A2"]);
+  for (const [, output, expected] of officeExports) {
+    assert.ok(pages(output).join("").replace(/\s/g, "").includes(expected), `Missing Chinese text in ${output}`);
+  }
+}
+
 try {
   await assert.rejects(access(wxRuntime, constants.W_OK), (error) => ["EACCES", "EROFS"].includes(error.code),
     "Run against a read-only WX installation as a normal user.");
@@ -377,6 +417,16 @@ slide.shapes.title.text = ${JSON.stringify(pptUntouched)}
 slide.placeholders[1].text = ${JSON.stringify(before)}
 deck.save(sys.argv[1])`, ppt.input);
   const originalPpt = await readFile(join(workspace, ppt.input));
+  py(`import sys
+from reportlab.pdfgen import canvas
+for path, pages in [(sys.argv[1], ("PDF-A1", "PDF-A2")), (sys.argv[2], ("PDF-B1",))]:
+    pdf = canvas.Canvas(path)
+    for label in pages:
+        pdf.drawString(72, 700, label)
+        pdf.showPage()
+    pdf.save()
+`, ...pdfInputs);
+  const originalPdfs = await Promise.all(pdfInputs.map((name) => readFile(join(workspace, name))));
 
   provider.listen(0, "127.0.0.1");
   await once(provider, "listening");
@@ -395,6 +445,14 @@ deck.save(sys.argv[1])`, ppt.input);
     await waitFor(async () => (await app.invoke(IPC.invoke.composerCommands)).commands.some((command) => command.skillId === skillId(current)),
       15_000, `Office ${current.skill} skill registration`, 150);
     await runTurn(app, configured.id, current, true);
+    if (current === pdf) {
+      verifyPdf();
+      const originals = [[original, originalBytes], [excel.input, originalExcel], [ppt.input, originalPpt],
+        ...pdfInputs.map((name, index) => [name, originalPdfs[index]])];
+      for (const [name, bytes] of originals) {
+        assert.deepEqual(await readFile(join(workspace, name)), bytes, `Source changed: ${name}`);
+      }
+    }
   }
   assert.equal(await readFile(join(workspace, wx.input), "utf8"), originalMarkdown);
   assert.deepEqual(await readFile(join(workspace, wx.docx)), originalWxDocx);
@@ -474,7 +532,7 @@ with ZipFile(original) as a, ZipFile(edited) as b:
   const restarted = await boot();
   assert.equal((await row(restarted))?.enabled, false);
   for (const current of scenarios) await runTurn(restarted, configured.id, current, false);
-  console.log("PASS: offline Office enablement, Bash approval, Word readback, Excel pandas read/write and formula cache 250 → 260, PowerPoint readback, WX first-use cache and conversion audits for Markdown and DOCX, independent WX review, source preservation, and disablement after restart");
+  console.log("PASS: offline Office enablement, Bash approval, Word readback, Excel pandas read/write and formula cache 250 → 260, PowerPoint readback, PDF extraction and ordered merge, DOCX/PPTX/XLSX PDF export with Chinese readback, WX first-use cache and conversion audits for Markdown and DOCX, independent WX review, source preservation, and disablement after restart");
 } catch (error) {
   console.error(log.slice(-6000));
   const pluginLog = await readFile(join(root, "data/logs/app/plugin.log"), "utf8").catch(() => "");
