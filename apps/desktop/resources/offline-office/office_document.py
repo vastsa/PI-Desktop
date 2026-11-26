@@ -1,5 +1,7 @@
 import os
 import shutil
+import subprocess
+import sys
 from copy import copy
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -55,3 +57,18 @@ def save_package_copy(source, output, member, content):
                         shutil.copyfileobj(reader, writer)
 
     save_new(output, write)
+
+
+def run_office_process(command, *, cwd, env):
+    # A watchdog owns the conversion group. Its pipe closes even if Bash kills Python.
+    watchdog = "import os, signal, sys; sys.stdin.buffer.read(1); os.killpg(0, signal.SIGKILL)"
+    with subprocess.Popen([sys.executable, "-I", "-c", watchdog], stdin=subprocess.PIPE, process_group=0) as guard:
+        with subprocess.Popen(
+            command, cwd=cwd, env=env, process_group=guard.pid,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+        ) as office:
+            try:
+                stdout, stderr = office.communicate(timeout=30)
+            finally:
+                guard.stdin.close()
+    return subprocess.CompletedProcess(command, office.returncode, stdout, stderr)

@@ -78,6 +78,7 @@ class ExcelCommands(unittest.TestCase):
         self.launcher = self.root / "plugins/pie.offline-office/excel/excel.sh"
         source = Path(__file__).resolve().parents[1] / "resources/offline-office/excel"
         shutil.copytree(source, self.launcher.parent)
+        shutil.copyfile(source.parent / "office_document.py", self.launcher.parents[1] / "office_document.py")
         self.runtime = self.root / "office-runtime"
         self.install_tool("python/bin/python3.12", sys.executable)
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, mkdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,27 @@ import test from "node:test";
 import { verifyOfflineOfficeRuntime } from "../../../scripts/bundle-offline-office.mjs";
 
 const plugin = new URL("../resources/offline-office/", import.meta.url);
+
+test("Offline Office exposes the PDF skill and requires the packaged runtime", {
+  skip: process.platform === "win32",
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), "pie-pdf-test-"));
+  try {
+    const installed = join(root, "plugins", "pie.offline-office");
+    await cp(plugin, installed, { recursive: true });
+    const { contributes } = JSON.parse(await readFile(join(installed, "manifest.json"), "utf8"));
+    const skill = contributes.skills.find(({ id }) => id === "pdf");
+    assert.ok(skill, "PDF skill must be contributed by Offline Office");
+    const launcher = join(installed, dirname(skill.path), "pdf.sh");
+    const result = spawnSync("/bin/sh", [launcher, "extract", "样例 文件.pdf"], {
+      cwd: root, env: { PATH: "" }, encoding: "utf8",
+    });
+    assert.equal(result.status, 1, result.error?.message ?? result.stderr);
+    assert.match(result.stderr, /bundled Office Runtime is missing/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("Word commands fail clearly without the bundled interpreters", { skip: process.platform === "win32" }, async () => {
   const root = await mkdtemp(join(tmpdir(), "pie-office-test-"));
@@ -47,7 +68,9 @@ async function withOfficeFixture(run) {
     await put("metadata/package-lock.json", JSON.stringify({ packages: { "node_modules/docx": docx } }));
     await put("node/lib/node_modules/docx/package.json", JSON.stringify(docx));
     const site = "python/lib/python3.12/site-packages";
-    for (const module of ["lxml", "docx", "pandas", "dateutil", "numpy", "openpyxl", "pptx", "PIL", "xlsxwriter"]) {
+    for (const module of [
+      "lxml", "docx", "pandas", "dateutil", "numpy", "openpyxl", "pptx", "PIL", "xlsxwriter", "pypdf", "reportlab",
+    ]) {
       await put(`${site}/${module}/__init__.py`, "");
     }
     await put(`${site}/six.py`, "");

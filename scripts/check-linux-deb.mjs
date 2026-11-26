@@ -67,6 +67,7 @@ try {
       "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
       "excel/SKILL.md", "excel/excel.sh", "excel/spreadsheet.py",
       "ppt/SKILL.md", "ppt/ppt.sh", "ppt/presentation.py",
+      "pdf/SKILL.md", "pdf/pdf.sh", "pdf/pdf_document.py",
     ]) {
       if (!existsSync(path.join(officePlugin, file))) {
         throw new Error(`Missing bundled Offline Office plugin file: ${file}`);

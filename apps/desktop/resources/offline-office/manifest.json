@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "id": "pie.offline-office",
   "name": "Offline Office",
-  "version": "0.2.0",
-  "description": "Work with Word documents, Excel workbooks, and PowerPoint presentations using the bundled offline runtime.",
+  "version": "0.3.0",
+  "description": "Work with Word, Excel, PowerPoint, and PDF files using the bundled offline runtime.",
   "i18n": {
     "en": {
       "name": "Offline Office",
-      "description": "Work with Word documents, Excel workbooks, and PowerPoint presentations using the bundled offline runtime."
+      "description": "Work with Word, Excel, PowerPoint, and PDF files using the bundled offline runtime."
     },
     "zh-CN": {
       "name": "离线办公",
-      "description": "使用随包运行时离线处理 Word 文档、Excel 工作簿和 PowerPoint 演示文稿。"
+      "description": "使用随包运行时离线处理 Word、Excel、PowerPoint 和 PDF 文件。"
     }
   },
   "main": "main.cjs",
@@ -21,7 +21,8 @@
     "skills": [
       { "id": "word", "path": "word/SKILL.md" },
       { "id": "excel", "path": "excel/SKILL.md" },
-      { "id": "ppt", "path": "ppt/SKILL.md" }
+      { "id": "ppt", "path": "ppt/SKILL.md" },
+      { "id": "pdf", "path": "pdf/SKILL.md" }
     ]
   }
 }

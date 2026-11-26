@@ -13,6 +13,10 @@ from posixpath import normpath
 from tempfile import TemporaryDirectory
 from zipfile import BadZipFile, ZipFile
 
+# Isolated Python does not add the bundled skill directory to sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from office_document import run_office_process
+
 try:
     import pandas as pd
     from lxml import etree
@@ -271,21 +275,6 @@ def calculation_input(source, archive, directory):
     return input_path, targets
 
 
-def run_calculation(command, *, cwd, env):
-    # The watchdog owns Calc's group. Its pipe also closes if Bash kills Python.
-    watchdog = "import os, signal, sys; sys.stdin.buffer.read(1); os.killpg(0, signal.SIGKILL)"
-    with subprocess.Popen([sys.executable, "-I", "-c", watchdog], stdin=subprocess.PIPE, process_group=0) as guard:
-        with subprocess.Popen(
-            command, cwd=cwd, env=env, process_group=guard.pid,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-        ) as calc:
-            try:
-                stdout, stderr = calc.communicate(timeout=30)
-            finally:
-                guard.stdin.close()
-    return subprocess.CompletedProcess(command, calc.returncode, stdout, stderr)
-
-
 def recalculate(runtime, source, archive, staged):
     runtime = runtime.resolve()
     soffice = runtime / "libreoffice/program/soffice"
@@ -296,7 +285,7 @@ def recalculate(runtime, source, archive, staged):
     converted = directory / "converted"
     converted.mkdir()
     profile = (directory / "profile").as_uri()
-    result = run_calculation(
+    result = run_office_process(
         [str(soffice), f"-env:UserInstallation={profile}", "--headless", "--convert-to",
          "xlsx:Calc MS Excel 2007 XML", "--outdir", str(converted), str(input_path)],
         cwd=directory, env={
