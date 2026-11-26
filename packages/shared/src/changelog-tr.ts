@@ -6,6 +6,7 @@ export const trEntries: ChangelogEntry[] = [
     date: "2026-11-25",
     highlights: [
       "Kylin ARM64 üzerinde kendi Word becerinizi Ajan → Skills bölümüne yükleyin ve Uzantılar bölümünde Office çalışma ortamını açın. Word belgelerini çevrimdışı okuyabilir, oluşturabilir ve kopyalarını düzenleyebilirsiniz.",
+      "Kylin ARM64 üzerinde Office çalışma ortamıyla kendi PowerPoint beceriniz çevrimdışı metin çıkarabilir, küçük resim oluşturabilir, düzenlenebilir sunumlar hazırlayabilir ve değişiklikleri bir kopyaya kaydedebilir.",
     ],
   },
   {

@@ -6,6 +6,7 @@ export const zhTWEntries: ChangelogEntry[] = [
     date: "2026-11-25",
     highlights: [
       "在麒麟 ARM64 上，從「Agent → Skills」安裝自己的 Word Skill，並在「擴充功能」中啟用辦公執行環境，即可離線讀取、新建或另存 Word 文件。",
+      "在麒麟 ARM64 上啟用辦公執行環境後，自裝 PowerPoint Skill 可離線擷取文字、產生縮圖、新建可編輯簡報並另存修改副本。",
     ],
   },
   {

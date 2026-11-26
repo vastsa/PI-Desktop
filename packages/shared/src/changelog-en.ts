@@ -6,6 +6,7 @@ export const enEntries: ChangelogEntry[] = [
     date: "2026-11-25",
     highlights: [
       "On Kylin ARM64, install your Word Skill in Agent → Skills and enable Office Runtime in Extensions to create, read, and edit copies of Word documents offline.",
+      "On Kylin ARM64, your own PowerPoint Skill can now extract text, render thumbnails, create editable presentations, and save edits to a copy offline with Office Runtime.",
     ],
   },
   {

@@ -6,6 +6,7 @@ export const ptBREntries: ChangelogEntry[] = [
     date: "2026-11-25",
     highlights: [
       "No Kylin ARM64, instale sua própria habilidade do Word em Agente → Skills e ative o ambiente Office em Extensões para ler, criar e editar cópias de documentos offline.",
+      "No Kylin ARM64, com o ambiente Office, sua própria habilidade do PowerPoint pode extrair texto, gerar miniaturas, criar apresentações editáveis e salvar alterações em uma cópia offline.",
     ],
   },
   {

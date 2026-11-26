@@ -232,9 +232,10 @@ pub(crate) async fn spawn_background_task_detached(
     command: &str,
     command_shell_id: &str,
     config: &tools::ToolRunnerStartConfig,
+    render_profiles: Option<tools::office_runtime::RenderProfiles>,
 ) -> Result<String, (String, String)> {
     let on_changed: Arc<dyn Fn() + Send + Sync> = Arc::new(bump_change_counter);
-    let runner = tools::spawn_tool_runner(config).await?;
+    let runner = tools::spawn_tool_runner(config, render_profiles).await?;
     let mut st = state.lock().await;
     // A task started for a session that no longer exists would belong to no
     // visible container and outlive the thing it was started from, so refuse it
@@ -559,7 +560,7 @@ mod tests {
         scratch: Option<&std::path::Path>,
     ) -> Result<String, (String, String)> {
         let config = resolve_runner_config(command_shell_id, command, workspace, scratch)?;
-        super::spawn_background_task_detached(state, session_id, command, command_shell_id, &config)
+        super::spawn_background_task_detached(state, session_id, command, command_shell_id, &config, None)
             .await
     }
 
@@ -581,7 +582,7 @@ mod tests {
             "printf final-stdout; printf final-stderr >&2"
         };
         let config = resolve_runner_config(shell, command, dir.path(), None).unwrap();
-        let runner = tools::spawn_tool_runner(&config).await.unwrap();
+        let runner = tools::spawn_tool_runner(&config, None).await.unwrap();
         tokio::time::timeout(Duration::from_secs(10), async {
             while !runner.wait_task.is_finished() {
                 tokio::task::yield_now().await;
@@ -624,7 +625,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let shell = crate::tools::shell::default_shell_id();
         let config = resolve_runner_config(shell, "sleep 30", dir.path(), None).unwrap();
-        let runner = tools::spawn_tool_runner(&config).await.unwrap();
+        let runner = tools::spawn_tool_runner(&config, None).await.unwrap();
         let mut registry = BackgroundTaskRegistry::default();
         let changed = Arc::new(tokio::sync::Notify::new());
         let notify = changed.clone();

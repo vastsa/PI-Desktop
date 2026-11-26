@@ -2807,6 +2807,7 @@ pub(crate) struct SpawnedToolRunner {
 
 pub(crate) async fn spawn_tool_runner(
     config: &ToolRunnerStartConfig,
+    render_profiles: Option<office_runtime::RenderProfiles>,
 ) -> Result<SpawnedToolRunner, (String, String)> {
     #[cfg(not(test))]
     let config_frame =
@@ -2908,7 +2909,12 @@ pub(crate) async fn spawn_tool_runner(
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    let wait_task = tokio::spawn(async move { child.wait().await });
+    // The host owns the render profiles so a killed runner cannot skip cleanup.
+    let wait_task = tokio::spawn(async move {
+        let status = child.wait().await;
+        drop(render_profiles);
+        status
+    });
     Ok(SpawnedToolRunner {
         pid,
         ownership,
@@ -3052,9 +3058,11 @@ async fn tool_bash(
             options.extra_env.clone()
         },
     };
-    if let Some(runtime) = options.office_runtime.as_deref() {
-        office_runtime::configure(&mut config, runtime)?;
-    }
+    let render_profiles = options
+        .office_runtime
+        .as_deref()
+        .map(|runtime| office_runtime::configure(&mut config, runtime))
+        .transpose()?;
 
     // Background path: register the process with the detached registry and
     // return immediately. No timeout budget, no cancellation wiring — the
@@ -3073,6 +3081,7 @@ async fn tool_bash(
             command,
             &options.command_shell_id,
             &config,
+            render_profiles,
         )
         .await?;
         return Ok(serde_json::json!({
@@ -3090,7 +3099,7 @@ async fn tool_bash(
         stdout,
         stderr,
         mut wait_task,
-    } = spawn_tool_runner(&config).await?;
+    } = spawn_tool_runner(&config, render_profiles).await?;
 
     // Drain both pipes in small chunks while the child is running. Waiting for
     // the process first can deadlock once a command exceeds the OS pipe size.

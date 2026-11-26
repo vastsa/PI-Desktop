@@ -129,20 +129,25 @@ local projects. Everywhere includes sessions with no project. Each new
 local Bash command resolves the current scope from its session. Linux treats
 `project` and `Project` as separate choices. Remote workspaces and system
 terminals keep their existing environment. Approved
-foreground and background Bash commands search the packaged Python and
-Node first, and CommonJS can resolve `docx` through `NODE_PATH`. The same
+foreground and background Bash commands search the packaged interpreters
+and rendering tools first. CommonJS can resolve `docx` and `pptxgenjs`
+through `NODE_PATH`. Packaged Python does not write bytecode caches next to
+the user's Skill scripts. The same
 Bash permission applies whether a Skill or an ordinary prompt calls it.
-An incomplete runtime reports the missing path and how to recover.
+An incomplete runtime reports the missing path and how to recover, including
+when the launcher exists but its renderer executable is missing. The host
+removes temporary rendering profiles after a Bash command exits, times out,
+or is stopped.
 
 Stage the approved ARM64 Office Runtime 1.0.2 Python, Python dependencies,
 and Node layers on a case-sensitive Linux filesystem, preserving relative
 links. Overlay the locked docx 9.16.0 production package tree under
-`node/lib/node_modules`; place the lock and original runtime provenance at
-`metadata/package-lock.json` and `metadata/runtime-source.json`.
-Packaging selects the interpreters, Python standard library, defusedxml
-and lxml (including their distribution metadata), and docx-js with its
-locked runtime dependencies and licenses. It does not ship the old launchers, templates,
-WX archives, LibreOffice, or unrelated language packages. This Word
+`node/lib/node_modules`; see the PowerPoint staging inputs below for the
+combined Node lock. Place the original runtime provenance at
+`metadata/runtime-source.json`. Packaging selects the interpreters, Python
+standard library, and the Word and PowerPoint runtime packages and licenses.
+It does not ship Skill launchers, templates, WX archives, or unrelated
+language packages. This Word
 scenario uses the Skill's XML extraction route; optional pandoc-based
 conversion, legacy formats, PDF rendering, and tracked-change acceptance
 are outside this Word qualification.
@@ -205,3 +210,42 @@ external host.
 Keep the candidate revision, DEB digest, package inspection, and target
 result together. Earlier candidates with built-in Skills are not evidence
 for this package.
+
+## Self-installed PowerPoint Skill
+
+Stage these inputs in the same runtime tree before running `dist:kylin`:
+
+| Workflow | Staged input |
+| --- | --- |
+| Create an editable presentation | PptxGenJS 4.0.1 and its CommonJS runtime dependencies alongside docx-js. Keep the combined `metadata/package-lock.json` and package licenses. |
+| Extract text from PPTX | MarkItDown 0.1.9 with the `pptx` extra (python-pptx 1.0.2) and its runtime dependencies, including Magika's model. Keep the Python distributions, their licenses, and `metadata/python-dependencies.json`. |
+| Edit and save a copy | The same defusedxml and lxml used by Word, with the unpack, clean, and pack scripts supplied by the user's original Skill. |
+| Render a thumbnail | Pillow 12.3.0, AlmaLinux 8.10 LibreOffice Impress 7.1.8.1 and Poppler 20.11.0 with vendor security updates. Stage the headless payload under `libreoffice/` and `poppler/`; the package supplies the launchers. Keep component versions, source references, and license notices in `metadata/native-office/`. |
+
+Stage the headless Impress payload and its libraries, plus only the
+`pdftoppm` executable and its libraries from Poppler. Each native RPM represented
+in the payload needs its version, exact source RPM reference, and readable
+license notices. The package check requires entries for `libreoffice-core`,
+`libreoffice-impress`, `poppler`, and `poppler-utils`.
+
+Use an ARM64 renderer build that fits the target's glibc 2.31 and is approved
+for redistribution. The earlier LibreOffice 6.4 runtime does not qualify.
+Before public distribution, inspect the exact DEB's payload and hand off the
+corresponding source RPMs referenced in its `metadata/native-office/sources.json`,
+including applicable patches. Check the source files against the recorded
+digests and keep the sources and notices with the same release candidate.
+Inspect all packaged ELF files with `check-linux-deb.mjs` before testing the
+installed DEB. In the same Kylin loopback-only environment used for Word, run:
+
+```sh
+PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
+PI_CODE_E2E_PPTX_SKILL=/absolute/path/to/original/pptx \
+  node scripts/e2e-offline-office.mjs --pptx
+```
+
+The scenario exercises the original Skill through the local Agent tools and
+the existing permission prompt. The Chinese, space-containing source deck
+is read without changes; both generated files are read back as editable text
+shapes, and the second slide remains in order after editing the first. The
+thumbnail must be generated by the packaged tools. Keep the packaged
+dependency manifests and the results with the exact tested DEB.

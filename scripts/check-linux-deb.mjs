@@ -152,7 +152,7 @@ try {
   console.log(`Verified ${verified} ${arch} ELF files at glibc <= ${floor}.`);
   if (withOffice) {
     await smokeTestOfflineOffice(resources);
-    console.log("Verified packaged docx-js, Python XML modules, and archive exclusions.");
+    console.log("Verified packaged Office interpreters, renderers, notices, and archive exclusions.");
   }
 } finally {
   rmSync(root, { recursive: true, force: true });
