@@ -22,6 +22,12 @@ export interface LanSession {
   readOnly: boolean;
   status: LanSessionStatus;
   updatedAt: string;
+  /**
+   * Display name of the owning project, so cross-project lists can say where a
+   * conversation lives. `null` for temporary conversations. Optional: absent
+   * from responses of builds that predate it.
+   */
+  projectLabel?: string | null;
 }
 export interface LanPage<T> {
   items: T[];

@@ -158,7 +158,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return index.get(normalizeProjectKey(path))?.id;
   }
 
-  function sessionView(session: HostSession, projectId: string | null, meta: LanMeta): LanSession {
+  function sessionView(session: HostSession, projectId: string | null, meta: LanMeta, projectLabel: string | null = null): LanSession {
     const own = meta.sessionMeta[session.id] ?? {};
     const title = session.title?.trim() || "";
     const pinned = own.pinned === true;
@@ -174,6 +174,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
       readOnly: (session.mode ?? "agent") !== "agent" || (session.source !== undefined && session.source !== "desktop"),
       status: running ? "running" : "idle",
       updatedAt: session.updatedAt ?? "",
+      projectLabel,
     };
   }
 
@@ -196,7 +197,12 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     const projectId = projectOf(session, rootIndex(list));
     if (projectId === undefined) throw new LanError(404, "NOT_FOUND");
     const meta = deps.organization.read();
-    return { session, projectId, meta, view: sessionView(session, projectId, meta) };
+    const label = projectId === null ? null : projectLabels(list, meta).get(projectId) ?? null;
+    return { session, projectId, meta, view: sessionView(session, projectId, meta, label) };
+  }
+
+  function projectLabels(list: ProjectGroupRecord[], meta: LanMeta): Map<string, string> {
+    return new Map(distinctViews(list, meta).map(({ group, view }) => [group.id, view.label]));
   }
 
   async function requireLocalProject(projectId: string) {
@@ -225,20 +231,36 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     return page(list, query.get("cursor"));
   }
 
+  /**
+   * Sessions of one project, of the Temporary scope, or — without a
+   * `projectId` — of every visible scope, most recent first with running work
+   * lifted to the top. The all-scope list leaves out sessions of archived
+   * projects unless archived items are requested.
+   */
   async function listSessions(query: URLSearchParams): Promise<LanPage<LanSession>> {
+    const everywhere = !query.has("projectId");
     const requested = query.get("projectId") ?? "";
     const wantTemporary = requested === LAN_TEMPORARY_PROJECT;
     const [list, sessions] = await Promise.all([groups(), hostSessions()]);
-    if (!wantTemporary && !list.some((group) => group.id === requested)) throw new LanError(404, "NOT_FOUND");
+    if (!everywhere && !wantTemporary && !list.some((group) => group.id === requested)) throw new LanError(404, "NOT_FOUND");
     const index = rootIndex(list);
     const meta = deps.organization.read();
+    const labels = projectLabels(list, meta);
     const archivedOnly = query.get("archived") === "1";
+    const archivedProjects = new Set(list.filter((group) => projectView(group, meta).archived).map((group) => group.id));
     const q = (query.get("q") ?? "").trim();
-    const items = sessions
-      .filter((session) => projectOf(session, index) === (wantTemporary ? null : requested))
-      .map((session) => sessionView(session, wantTemporary ? null : requested, meta))
-      .filter((view) => view.archived === archivedOnly && matches(view.title, q))
-      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
+    const items: LanSession[] = [];
+    for (const session of sessions) {
+      const projectId = projectOf(session, index);
+      if (projectId === undefined) continue;
+      if (!everywhere && projectId !== (wantTemporary ? null : requested)) continue;
+      if (everywhere && !archivedOnly && projectId !== null && archivedProjects.has(projectId)) continue;
+      const view = sessionView(session, projectId, meta, projectId === null ? null : labels.get(projectId) ?? null);
+      if (view.archived === archivedOnly && matches(view.title, q)) items.push(view);
+    }
+    items.sort(everywhere
+      ? (a, b) => Number(b.status === "running") - Number(a.status === "running") || b.updatedAt.localeCompare(a.updatedAt)
+      : (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
     return page(items, query.get("cursor"));
   }
 

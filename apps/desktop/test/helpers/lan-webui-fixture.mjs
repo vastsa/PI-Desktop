@@ -7,6 +7,34 @@ register(pathToFileURL(join(here, "ts-import-hooks.mjs")));
 const { createLanWorkspace } = await import("../../electron/main/lan-webui/workspace.ts");
 export const { createLanServer } = await import("../../electron/main/lan-webui/server.ts");
 
+/** Markdown, consecutive tool steps and unsafe content the page must defuse. */
+const richTranscript = [
+  { id: "r1", role: "user", content: "How do I run the tests?" },
+  { id: "r2", role: "assistant", content: "Checking the scripts." },
+  { id: "r3", role: "tool", content: "/secret/path package.json", toolName: "Read" },
+  { id: "r4", role: "tool", content: "/secret/path ok", toolName: "Bash" },
+  {
+    id: "r5",
+    role: "assistant",
+    content: [
+      "Run **all** tests:",
+      "",
+      "```sh",
+      "pnpm test",
+      "```",
+      "",
+      "- unit",
+      "- e2e",
+      "",
+      "See [docs](https://example.com/docs) or [local](file:///etc/passwd).",
+      "",
+      "![diagram](https://example.com/x.png)",
+      "",
+      "<script>window.__pwned = true</script>",
+    ].join("\n"),
+  },
+];
+
 /** A fake Desktop: host-core catalog, Agent Host bridge and internal IPC. */
 export function desktop() {
   const groups = [
@@ -39,7 +67,7 @@ export function desktop() {
             ...session,
             messageStart: 0,
             hasMoreBefore: false,
-            messages: [
+            messages: params.id === "s-tmp" ? richTranscript : params.id.startsWith("s-new-") ? [] : [
               { id: "m1", role: "user", content: "hello" },
               { id: "m2", role: "assistant", content: "hi there" },
               { id: "m3", role: "tool", content: "/secret/path output", toolName: "Bash" },

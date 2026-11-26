@@ -2,7 +2,10 @@
 "use strict";
 
 (() => {
+  const { el, icon, copyText } = window.LanKit;
   const TEMP = "__temporary__";
+  const RECENT_LIMIT = 5;
+  const PENDING_TTL = 30_000;
   const locales = window.LAN_LOCALES || {};
   const lang = (navigator.languages || [navigator.language || "en"]).find((code) => code && code.toLowerCase().startsWith("zh"))
     ? "zh-CN"
@@ -11,6 +14,7 @@
   document.documentElement.lang = lang;
   const t = (key, values) => String(copy[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? ""));
   const errorText = (code) => copy.errors[code] || copy.errors.FAILED;
+  const enc = encodeURIComponent;
 
   const app = document.getElementById("app");
   const toast = document.getElementById("toast");
@@ -20,9 +24,15 @@
 
   const state = {
     me: null,
-    route: { view: "projects" },
+    route: { view: "home", archived: false },
+    online: true,
     drafts: new Map(),
+    /** Optimistic user turns per session, shown until the Host records them. */
+    pending: new Map(),
     projects: new Map(),
+    /** The last unfiltered list of active projects, for the New conversation picker. */
+    catalog: null,
+    query: { home: "", sessions: "", project: null },
     events: null,
     refreshTimer: null,
     renderToken: 0,
@@ -35,58 +45,6 @@
   if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
   // ---------- helpers ----------
-  function el(tag, props = {}, children = []) {
-    const node = document.createElement(tag);
-    for (const [key, value] of Object.entries(props)) {
-      if (value === undefined || value === null || value === false) continue;
-      if (key === "text") node.textContent = value;
-      else if (key === "class") node.className = value;
-      else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
-      else if (value === true) node.setAttribute(key, "");
-      else node.setAttribute(key, String(value));
-    }
-    for (const child of [].concat(children)) if (child) node.append(child);
-    return node;
-  }
-
-  // Lucide outlines (ISC) on a 24px grid — the icon set Desktop ships.
-  const SVG_NS = "http://www.w3.org/2000/svg";
-  const ICONS = {
-    back: [["path", { d: "m15 18-6-6 6-6" }]],
-    more: [["circle", { cx: 12, cy: 12, r: 1 }], ["circle", { cx: 19, cy: 12, r: 1 }], ["circle", { cx: 5, cy: 12, r: 1 }]],
-    close: [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]],
-    search: [["circle", { cx: 11, cy: 11, r: 8 }], ["path", { d: "m21 21-4.3-4.3" }]],
-    check: [["path", { d: "M20 6 9 17l-5-5" }]],
-    send: [["path", { d: "m5 12 7-7 7 7" }], ["path", { d: "M12 19V5" }]],
-    stop: [["rect", { x: 6, y: 6, width: 12, height: 12, rx: 2 }]],
-    folder: [["path", { d: "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" }]],
-    temporary: [["circle", { cx: 12, cy: 12, r: 10 }], ["path", { d: "M12 6v6l4 2" }]],
-    chat: [["path", { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" }]],
-    newChat: [["path", { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" }], ["path", { d: "M12 7v6" }], ["path", { d: "M9 10h6" }]],
-    pin: [["path", { d: "M12 17v5" }], ["path", { d: "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" }]],
-    unpin: [["path", { d: "M12 17v5" }], ["path", { d: "M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" }], ["path", { d: "m2 2 20 20" }], ["path", { d: "M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" }]],
-    pencil: [["path", { d: "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" }], ["path", { d: "m15 5 4 4" }]],
-    archive: [["rect", { width: 20, height: 5, x: 2, y: 3, rx: 1 }], ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" }], ["path", { d: "M10 12h4" }]],
-    restore: [["rect", { width: 20, height: 5, x: 2, y: 3, rx: 1 }], ["path", { d: "M4 8v11a2 2 0 0 0 2 2h2" }], ["path", { d: "M20 8v11a2 2 0 0 1-2 2h-2" }], ["path", { d: "m9 15 3-3 3 3" }], ["path", { d: "M12 12v9" }]],
-    laptop: [["path", { d: "M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16" }]],
-    tool: [["path", { d: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" }]],
-    logout: [["path", { d: "m16 17 5-5-5-5" }], ["path", { d: "M21 12H9" }], ["path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" }]],
-    pair: [["path", { d: "M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8" }], ["path", { d: "M10 19v-3.96 3.15" }], ["path", { d: "M7 19h5" }], ["rect", { width: 6, height: 10, x: 16, y: 12, rx: 2 }]],
-  };
-  function icon(name, size = "") {
-    const svg = document.createElementNS(SVG_NS, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("class", size ? `icon ${size}` : "icon");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("focusable", "false");
-    for (const [tag, attrs] of ICONS[name]) {
-      const node = document.createElementNS(SVG_NS, tag);
-      for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
-      svg.append(node);
-    }
-    return svg;
-  }
-
   // DOM replaceChildren() turns null into the text "null"; drop empty slots first.
   // Re-rendering the same view keeps the focused field, its caret and its draft.
   function show(view, ...nodes) {
@@ -110,20 +68,37 @@
     return !same;
   }
   let toastTimer = null;
-  function notify(message) {
+  function notify(message, duration = 4000) {
     toast.textContent = message;
     toast.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast.hidden = true), 4000);
+    toastTimer = setTimeout(() => (toast.hidden = true), duration);
   }
   const announce = (message) => {
     if (message) announcer.textContent = message;
   };
   function setOffline(lost) {
+    state.online = !lost;
     if (lost) offline.replaceChildren(el("span", { class: "dot offline" }), el("span", { text: t("offline") }));
     offline.hidden = !lost;
+    // Mutations wait for the connection; drafts stay where they are.
+    for (const button of app.querySelectorAll("[data-mutation]")) button.disabled = lost;
+    state.syncComposer?.();
   }
   const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "");
+
+  async function copyWithFeedback(text, button) {
+    if (await copyText(text)) {
+      notify(t("copied"), 1500);
+      if (button?.isConnected) {
+        button.replaceChildren(icon("check", "sm"));
+        setTimeout(() => button.isConnected && button.replaceChildren(icon("copy", "sm")), 1500);
+      }
+    } else {
+      notify(t("copyFailed"));
+    }
+  }
+  const markdownOptions = { labels: { copyCode: t("copyCode"), image: t("imagePlaceholder") }, onCopy: copyWithFeedback };
 
   const clock = {
     time: new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" }),
@@ -187,16 +162,30 @@
     notify(errorText(error instanceof ApiError ? error.code : "FAILED"));
   }
 
+  async function loadAll(path) {
+    const items = [];
+    let cursor = null;
+    for (let page = 0; page < 20; page += 1) {
+      const result = await api("GET", cursor ? `${path}&cursor=${enc(cursor)}` : path);
+      items.push(...result.items);
+      cursor = result.nextCursor;
+      if (!cursor) break;
+    }
+    return items;
+  }
+
   // ---------- routing ----------
   function parseRoute() {
     const hash = location.hash.replace(/^#\/?/, "");
-    const [kind, raw] = hash.split("/");
+    const [kind, raw, tail] = hash.split("/");
     const id = raw ? decodeURIComponent(raw) : "";
-    if (kind === "p" && id) return { view: "sessions", projectId: id };
+    if (kind === "archived") return { view: "home", archived: true };
+    if (kind === "p" && id) return { view: "sessions", projectId: id, archived: tail === "archived" };
     if (kind === "s" && id) return { view: "chat", sessionId: id };
-    return { view: "projects" };
+    return { view: "home", archived: false };
   }
   const routeKey = (hash) => (hash && hash !== "#" ? hash : "#/projects");
+  const projectHash = (projectId) => `#/p/${enc(projectId ?? TEMP)}`;
   const go = (hash) => {
     if (location.hash === hash) render();
     else {
@@ -204,6 +193,7 @@
       location.hash = hash;
     }
   };
+  const back = (fallback) => (history.length > 1 ? history.back() : go(fallback));
   window.addEventListener("hashchange", (event) => {
     const prefill = takePairingCode();
     if (prefill && !state.me) {
@@ -277,7 +267,7 @@
         type: "button",
         class: action.danger ? "danger" : "",
         onclick: () => { closeSheet(false); action.run(); },
-      }, [icon(action.icon), el("span", { text: action.label })])),
+      }, [icon(action.icon), el("span", { class: "sheet-label", text: action.label })])),
       el("button", { type: "button", class: "cancel", text: t("cancel"), onclick: () => closeSheet() }),
     ], opener || document.activeElement);
     document.querySelector("#sheet-actions button")?.focus();
@@ -292,7 +282,8 @@
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !sheet.hidden) closeSheet(); });
 
   function organize(kind, item, patch) {
-    const path = `/v1/${kind}/${encodeURIComponent(item.id)}/organize`;
+    if (!state.online) return notify(errorText("NETWORK"));
+    const path = `/v1/${kind}/${enc(item.id)}/organize`;
     return api("POST", path, { revision: item.revision, ...patch }, newKey())
       .then(() => render({ refresh: true }), (error) => { fail(error); render({ refresh: true }); });
   }
@@ -326,10 +317,35 @@
     ];
   }
 
-  // ---------- views ----------
+  async function createSession(projectId, button) {
+    if (!state.online) return notify(errorText("NETWORK"));
+    if (button) button.disabled = true;
+    try {
+      const created = await api("POST", "/v1/sessions", { projectId: projectId === TEMP ? null : projectId }, newKey());
+      go(`#/s/${enc(created.id)}`);
+    } catch (error) {
+      fail(error);
+      if (button?.isConnected) button.disabled = false;
+    }
+  }
+
+  /** From Home, one tap asks only where the conversation should live. */
+  async function pickNewConversation(opener) {
+    try {
+      const projects = state.catalog ?? await loadAll("/v1/projects?q=");
+      openSheet(t("newIn"), [
+        { icon: "temporary", label: t("temporary"), run: () => void createSession(TEMP) },
+        ...projects.map((project) => ({ icon: "folder", label: project.label, run: () => void createSession(project.id) })),
+      ], opener);
+    } catch (error) {
+      fail(error);
+    }
+  }
+
+  // ---------- shared view parts ----------
   /** One status/flag entry: a dot or a small icon, always with its text. */
   function metaItem(entry) {
-    return el("span", { class: "meta-item" }, [
+    return el("span", { class: entry.class ? `meta-item ${entry.class}` : "meta-item" }, [
       entry.dot ? el("span", { class: `dot ${entry.dot}` }) : entry.icon ? icon(entry.icon, "xs") : null,
       el("span", { class: "meta-text", text: entry.text }),
     ]);
@@ -345,12 +361,15 @@
     if (status === "waiting") return { dot: "waiting", text: t("waiting") };
     return null;
   }
+  function scopeMeta(session) {
+    if (session.projectId === null) return { icon: "temporary", text: t("temporary"), class: "scope" };
+    const label = session.projectLabel || state.projects.get(session.projectId);
+    return label ? { icon: "folder", text: label, class: "scope" } : null;
+  }
 
-  function header({ title, back, subtitle = [], actions = [], root = false }) {
+  function header({ title, backTo, subtitle = [], actions = [], root = false }) {
     return el("header", { class: root ? "header root" : "header" }, [
-      back
-        ? el("button", { type: "button", class: "icon-btn", "aria-label": t("back"), onclick: () => (history.length > 1 ? history.back() : go(back)) }, icon("back"))
-        : null,
+      backTo ? el("button", { type: "button", class: "icon-btn", "aria-label": t("back"), onclick: () => back(backTo) }, icon("back")) : null,
       el("div", { class: "header-title" }, [
         el("h1", { id: "view-title", tabindex: "-1", text: title }),
         subtitle.length ? el("p", { class: "header-sub" }, subtitle.map(metaItem)) : null,
@@ -366,26 +385,19 @@
     onclick: (event) => openSheet(name, actions, event.currentTarget),
   }, icon("more"));
 
-  function toolbar(filters, onChange) {
+  function searchField(key) {
     const search = el("input", {
       id: "list-search", type: "search", placeholder: t("search"), "aria-label": t("search"),
-      value: filters.q, enterkeyhint: "search", autocomplete: "off",
+      value: state.query[key], enterkeyhint: "search", autocomplete: "off",
     });
     let timer = null;
     search.addEventListener("input", () => {
-      // Keep the latest text in the filter so a re-render never drops keystrokes.
-      filters.q = search.value;
+      // Keep the latest text in the query so a re-render never drops keystrokes.
+      state.query[key] = search.value;
       clearTimeout(timer);
-      timer = setTimeout(onChange, 250);
+      timer = setTimeout(() => render(), 250);
     });
-    const archived = el("button", {
-      id: "filter-archived",
-      type: "button",
-      class: "chip",
-      "aria-pressed": filters.archived ? "true" : "false",
-      onclick: () => { filters.archived = !filters.archived; onChange(); },
-    }, [icon(filters.archived ? "check" : "archive", "sm"), el("span", { text: t("showArchived") })]);
-    return el("div", { class: "toolbar" }, [el("div", { class: "search" }, [icon("search", "sm"), search]), archived]);
+    return el("div", { class: "toolbar" }, el("div", { class: "search" }, [icon("search", "sm"), search]));
   }
 
   function row({ icon: iconName, title, meta = [], time = "", onOpen, actions = [], moreLabel }) {
@@ -403,99 +415,171 @@
         : null,
     ]);
   }
+  function sessionRow(item, showScope) {
+    const title = item.title || t("untitled");
+    return row({
+      title,
+      meta: [sessionStatus(item.status), showScope ? scopeMeta(item) : null, ...flags(item), item.readOnly ? { icon: "laptop", text: t("readOnly") } : null].filter(Boolean),
+      time: when(item.updatedAt),
+      onOpen: () => go(`#/s/${enc(item.id)}`),
+      actions: organizeActions("sessions", item),
+      moreLabel: t("more", { name: title }),
+    });
+  }
+  function projectRow(item) {
+    return row({
+      icon: "folder",
+      title: item.label,
+      meta: flags(item),
+      onOpen: () => go(projectHash(item.id)),
+      actions: organizeActions("projects", item),
+      moreLabel: t("more", { name: item.label }),
+    });
+  }
+  const section = (id, label, children) => el("section", { id, class: "section", "aria-label": label }, [el("h2", { class: "section-label", text: label }), ...children]);
   const emptyState = (text, iconName) => el("div", { class: "empty" }, [icon(iconName, "lg"), el("p", { text })]);
-
-  const listFilters = { projects: { q: "", archived: false }, sessions: { q: "", archived: false } };
-
-  async function loadAll(path) {
-    const items = [];
-    let cursor = null;
-    for (let page = 0; page < 20; page += 1) {
-      const result = await api("GET", cursor ? `${path}&cursor=${encodeURIComponent(cursor)}` : path);
-      items.push(...result.items);
-      cursor = result.nextCursor;
-      if (!cursor) break;
-    }
-    return items;
-  }
-
-  async function renderProjects(token) {
-    const filters = listFilters.projects;
-    const query = `?q=${encodeURIComponent(filters.q)}${filters.archived ? "&archived=1" : ""}`;
-    const items = await loadAll(`/v1/projects${query}`);
-    if (token !== state.renderToken) return undefined;
-    for (const item of items) state.projects.set(item.id, item.label);
-    const temporary = !filters.archived && !filters.q
-      ? el("ul", { class: "list group" }, row({ icon: "temporary", title: t("temporary"), onOpen: () => go(`#/p/${TEMP}`) }))
-      : null;
-    const list = items.length
-      ? el("ul", { class: "list" }, items.map((item) => row({
-          icon: "folder",
-          title: item.label,
-          meta: flags(item),
-          onOpen: () => go(`#/p/${encodeURIComponent(item.id)}`),
-          actions: organizeActions("projects", item),
-          moreLabel: t("more", { name: item.label }),
-        })))
-      : emptyState(filters.q ? t("noMatches") : t("noProjects"), filters.q ? "search" : "folder");
-    return show(
-      "projects",
-      header({ title: t("projects"), root: true }),
-      toolbar(filters, () => render()),
-      temporary,
-      list,
-      el("button", { type: "button", class: "link signout", onclick: signOut }, [icon("logout", "sm"), el("span", { text: t("signOut") })]),
-    );
-  }
-
-  async function renderSessions(token, projectId) {
-    const filters = listFilters.sessions;
-    const query = `?projectId=${encodeURIComponent(projectId)}&q=${encodeURIComponent(filters.q)}${filters.archived ? "&archived=1" : ""}`;
-    const items = await loadAll(`/v1/sessions${query}`);
-    if (token !== state.renderToken) return undefined;
-    const title = projectId === TEMP ? t("temporary") : state.projects.get(projectId) || t("projects");
-    const list = items.length
-      ? el("ul", { class: "list" }, items.map((item) => row({
-          title: item.title || t("untitled"),
-          meta: [sessionStatus(item.status), ...flags(item), item.readOnly ? { icon: "laptop", text: t("readOnly") } : null].filter(Boolean),
-          time: when(item.updatedAt),
-          onOpen: () => go(`#/s/${encodeURIComponent(item.id)}`),
-          actions: organizeActions("sessions", item),
-          moreLabel: t("more", { name: item.title || t("untitled") }),
-        })))
-      : emptyState(filters.q ? t("noMatches") : t("noSessions"), filters.q ? "search" : "chat");
-    const create = el("button", {
+  const archivedLink = (hash) => el("button", { type: "button", class: "footer-link", onclick: () => go(hash) }, [
+    icon("archive", "sm"), el("span", { text: t("archivedView") }), icon("chevron", "sm"),
+  ]);
+  function newConversationButton(onClick) {
+    return el("button", {
       type: "button",
       class: "primary fab",
-      onclick: async (event) => {
-        const button = event.currentTarget;
-        button.disabled = true;
-        try {
-          const created = await api("POST", "/v1/sessions", { projectId: projectId === TEMP ? null : projectId }, newKey());
-          go(`#/s/${encodeURIComponent(created.id)}`);
-        } catch (error) {
-          fail(error);
-          button.disabled = false;
-        }
-      },
+      "data-mutation": "",
+      disabled: !state.online,
+      onclick: (event) => onClick(event.currentTarget),
     }, [icon("newChat"), el("span", { text: t("newSession") })]);
+  }
+
+  async function ensureProjectLabel(projectId) {
+    if (projectId === TEMP || state.projects.has(projectId)) return;
+    const [active, archived] = await Promise.all([loadAll("/v1/projects?q="), loadAll("/v1/projects?q=&archived=1")]);
+    for (const item of [...active, ...archived]) state.projects.set(item.id, item.label);
+  }
+
+  // ---------- home ----------
+  async function renderHome(token, archived) {
+    const q = state.query.home.trim();
+    const flag = archived ? "&archived=1" : "";
+    const browsing = !archived && !q;
+    const [projects, sessions] = await Promise.all([
+      loadAll(`/v1/projects?q=${enc(q)}${flag}`),
+      browsing ? api("GET", "/v1/sessions?q=").then((page) => page.items) : loadAll(`/v1/sessions?q=${enc(q)}${flag}`),
+    ]);
+    if (token !== state.renderToken) return undefined;
+    for (const item of projects) state.projects.set(item.id, item.label);
+    if (browsing) state.catalog = projects;
+
+    // Running work always stays visible; otherwise show a short recent list.
+    const running = sessions.filter((item) => item.status === "running").length;
+    const recent = browsing ? sessions.slice(0, Math.max(RECENT_LIMIT, running)) : sessions;
+    const projectRows = projects.map(projectRow);
+    if (browsing) projectRows.unshift(row({ icon: "temporary", title: t("temporary"), onOpen: () => go(projectHash(TEMP)) }));
+
+    const parts = [];
+    if (recent.length) parts.push(section("section-recent", browsing ? t("recent") : t("conversations"), [el("ul", { class: "list" }, recent.map((item) => sessionRow(item, true)))]));
+    if (projectRows.length) {
+      parts.push(section("section-projects", t("projects"), [
+        el("ul", { class: "list" }, projectRows),
+        browsing && !projects.length ? el("p", { class: "hint", text: t("noProjects") }) : null,
+      ]));
+    }
+    if (!parts.length) parts.push(emptyState(archived ? t("noArchived") : t("noMatches"), archived ? "archive" : "search"));
+
     return show(
-      `sessions:${projectId}`,
-      header({ title, back: "#/projects" }),
-      toolbar(filters, () => render()),
-      create,
-      list,
-      el("div", { class: "fab-spacer", "aria-hidden": "true" }),
+      archived ? "home:archived" : "home",
+      archived ? header({ title: t("archivedView"), backTo: "#/projects" }) : header({ title: t("appTitle"), root: true }),
+      searchField("home"),
+      ...parts,
+      browsing ? el("div", { class: "footer" }, [
+        archivedLink("#/archived"),
+        el("button", {
+          type: "button",
+          class: "link signout",
+          onclick: (event) => openSheet(t("signOutConfirm"), [{ icon: "logout", label: t("signOut"), danger: true, run: signOut }], event.currentTarget),
+        }, [icon("logout", "sm"), el("span", { text: t("signOut") })]),
+      ]) : null,
+      browsing ? newConversationButton((button) => void pickNewConversation(button)) : null,
+      browsing ? el("div", { class: "fab-spacer", "aria-hidden": "true" }) : null,
     );
   }
 
+  // ---------- project sessions ----------
+  async function renderSessions(token, projectId, archived) {
+    // A search belongs to the project it was typed in.
+    if (state.query.project !== projectId) Object.assign(state.query, { sessions: "", project: projectId });
+    const q = state.query.sessions.trim();
+    const [items] = await Promise.all([
+      loadAll(`/v1/sessions?projectId=${enc(projectId)}&q=${enc(q)}${archived ? "&archived=1" : ""}`),
+      ensureProjectLabel(projectId),
+    ]);
+    if (token !== state.renderToken) return undefined;
+    const name = projectId === TEMP ? t("temporary") : state.projects.get(projectId) || t("projects");
+    const list = items.length
+      ? el("ul", { class: "list" }, items.map((item) => sessionRow(item, false)))
+      : emptyState(q ? t("noMatches") : archived ? t("noArchived") : t("noSessions"), q ? "search" : archived ? "archive" : "chat");
+    return show(
+      `sessions:${projectId}${archived ? ":archived" : ""}`,
+      archived
+        ? header({ title: t("archivedView"), backTo: projectHash(projectId), subtitle: [{ icon: projectId === TEMP ? "temporary" : "folder", text: name }] })
+        : header({ title: name, backTo: "#/projects" }),
+      searchField("sessions"),
+      archived ? null : newConversationButton((button) => void createSession(projectId, button)),
+      list,
+      archived || q ? null : el("div", { class: "footer" }, archivedLink(`${projectHash(projectId)}/archived`)),
+      archived ? null : el("div", { class: "fab-spacer", "aria-hidden": "true" }),
+    );
+  }
+
+  // ---------- conversation ----------
   const roleLabel = { user: "you", assistant: "assistant", tool: "tool" };
   function message(item, extraClass = "") {
     const role = roleLabel[item.role] ? item.role : "assistant";
-    const body = [el("span", { class: "sr-only", text: `${t(roleLabel[role])}: ` })];
-    if (role === "tool") body.push(icon("tool", "sm"), el("span", { text: item.text }));
-    else body.push(document.createTextNode(item.text));
-    return el("div", { class: extraClass ? `msg ${role} ${extraClass}` : `msg ${role}` }, body);
+    const classes = ["msg", role, extraClass].filter(Boolean).join(" ");
+    const label = el("span", { class: "sr-only", text: `${t(roleLabel[role])}: ` });
+    if (role === "assistant") return el("div", { class: `${classes} md` }, [label, window.LanMarkdown.render(item.text, markdownOptions)]);
+    if (role === "tool") return el("div", { class: classes }, [label, icon("tool", "sm"), el("span", { text: item.text })]);
+    return el("div", { class: classes }, [label, document.createTextNode(item.text)]);
+  }
+  /** Consecutive tool calls fold into one quiet step summary. */
+  function steps(run, open) {
+    if (run.length === 1) return message(run[0]);
+    const names = [...new Set(run.map((item) => item.text).filter(Boolean))];
+    const details = el("details", { class: "steps", open: open.has(run[0].id) }, [
+      el("summary", {}, [
+        icon("tool", "sm"),
+        el("span", { class: "steps-count", text: t("steps", { count: run.length }) }),
+        el("span", { class: "steps-names", text: names.join(", ") }),
+        icon("chevron", "sm"),
+      ]),
+      el("div", { class: "steps-list" }, run.map((item) => message(item))),
+    ]);
+    details.addEventListener("toggle", () => (details.open ? open.add(run[0].id) : open.delete(run[0].id)));
+    return details;
+  }
+  const copyButton = (text) => el("div", { class: "msg-actions" }, el("button", {
+    type: "button",
+    class: "icon-btn",
+    "aria-label": t("copy"),
+    onclick: (event) => void copyWithFeedback(text, event.currentTarget),
+  }, icon("copy", "sm")));
+
+  function transcript(items, open, running) {
+    const nodes = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (item.role === "tool") {
+        const run = [item];
+        while (items[i + 1]?.role === "tool") run.push(items[++i]);
+        nodes.push(steps(run, open));
+        continue;
+      }
+      nodes.push(message(item));
+      // Copy sits under the last answer of each exchange.
+      const next = items.slice(i + 1).find((candidate) => candidate.role !== "tool");
+      if (item.role === "assistant" && item.text && (next ? next.role === "user" : !running)) nodes.push(copyButton(item.text));
+    }
+    return nodes;
   }
 
   function notice({ dot, icon: iconName, text, action }) {
@@ -506,17 +590,55 @@
     ]);
   }
 
-  const chatState = { sessionId: null, older: [], olderCursor: undefined, phase: null };
+  const userCount = (items, text) => items.filter((item) => item.role === "user" && item.text.trim() === text).length;
+  /**
+   * Drop optimistic turns the Host has recorded (or queued), or that went stale.
+   * `items` is the same merged transcript the send-time baseline was counted in.
+   */
+  function reconcilePending(sessionId, items, queue) {
+    const list = state.pending.get(sessionId);
+    if (!list) return [];
+    const count = (text) => userCount(items, text);
+    const queued = new Set(queue.map((entry) => entry.text.trim()));
+    const now = Date.now();
+    const left = list.filter((entry) => !(count(entry.text) > entry.seen || queued.has(entry.text) || (entry.acked && now - entry.acked > PENDING_TTL)));
+    if (left.length) state.pending.set(sessionId, left);
+    else state.pending.delete(sessionId);
+    return left;
+  }
+
+  const chatState = { sessionId: null, older: [], olderCursor: undefined, phase: null, open: new Set(), items: [] };
   const phaseText = { running: "running", "waiting-approval": "waitingApproval", "waiting-input": "waitingInput", idle: "replyDone" };
+  const nearBottom = () => {
+    const scroller = document.scrollingElement;
+    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
+  };
+  function syncJump() {
+    const jump = document.getElementById("jump-latest");
+    if (jump) jump.hidden = nearBottom();
+  }
+  window.addEventListener("scroll", syncJump, { passive: true });
 
   async function renderChat(token, sessionId, refresh) {
-    if (chatState.sessionId !== sessionId) Object.assign(chatState, { sessionId, older: [], olderCursor: undefined, phase: null });
-    const conversation = await api("GET", `/v1/sessions/${encodeURIComponent(sessionId)}`);
+    if (chatState.sessionId !== sessionId) Object.assign(chatState, { sessionId, older: [], olderCursor: undefined, phase: null, open: new Set(), items: [] });
+    const conversation = await api("GET", `/v1/sessions/${enc(sessionId)}`);
     if (token !== state.renderToken) return undefined;
     const { session } = conversation;
+    if (session.projectId && session.projectLabel) state.projects.set(session.projectId, session.projectLabel);
     const nextCursor = chatState.olderCursor === undefined ? conversation.messages.nextCursor : chatState.olderCursor;
     const scroller = document.scrollingElement;
-    const atBottom = !refresh || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+    const atBottom = !refresh || nearBottom();
+
+    const seen = new Set();
+    const items = [];
+    for (const item of [...chatState.older, ...conversation.messages.items]) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      items.push(item);
+    }
+    chatState.items = items;
+    const pending = reconcilePending(sessionId, items, conversation.queue);
+    const running = Boolean(conversation.activeTurnId);
 
     const messages = el("div", { class: "messages" });
     if (nextCursor) {
@@ -527,7 +649,7 @@
         onclick: async () => {
           try {
             const before = scroller.scrollHeight;
-            const page = await api("GET", `/v1/sessions/${encodeURIComponent(sessionId)}/history?cursor=${encodeURIComponent(nextCursor)}`);
+            const page = await api("GET", `/v1/sessions/${enc(sessionId)}/history?cursor=${enc(nextCursor)}`);
             chatState.older = [...page.items, ...chatState.older];
             chatState.olderCursor = page.nextCursor;
             await render({ refresh: true });
@@ -538,16 +660,22 @@
         },
       }));
     }
-    const seen = new Set();
-    for (const item of [...chatState.older, ...conversation.messages.items]) {
-      if (seen.has(item.id)) continue;
-      seen.add(item.id);
-      messages.append(message(item));
-    }
+    messages.append(...transcript(items, chatState.open, running));
+    for (const entry of pending) messages.append(message({ role: "user", text: entry.text }, "pending"));
     if (conversation.liveText) messages.append(message({ role: "assistant", text: conversation.liveText }, "live"));
+    else if (running && !conversation.waiting) {
+      messages.append(el("div", { class: "working" }, [el("span", { class: "working-dots", "aria-hidden": "true" }, [el("i"), el("i"), el("i")]), el("span", { text: t("working") })]));
+    }
+    if (!items.length && !pending.length && !conversation.liveText && !running) {
+      messages.append(el("div", { class: "chat-empty" }, [
+        icon(session.projectId ? "folder" : "temporary", "lg"),
+        el("p", { class: "chat-empty-title", text: session.projectId ? session.projectLabel || state.projects.get(session.projectId) || "" : t("temporary") }),
+        conversation.modelLabel ? el("p", { class: "chat-empty-sub", text: conversation.modelLabel }) : null,
+      ]));
+    }
 
     // Announce actionable state changes, not every streamed token.
-    const phase = conversation.waiting ? `waiting-${conversation.waiting}` : conversation.activeTurnId ? "running" : "idle";
+    const phase = conversation.waiting ? `waiting-${conversation.waiting}` : running ? "running" : "idle";
     if (chatState.phase && chatState.phase !== phase) announce(t(phaseText[phase]));
     chatState.phase = phase;
 
@@ -566,7 +694,7 @@
             type: "button",
             class: "icon-btn",
             "aria-label": t("cancelQueued"),
-            onclick: () => api("POST", `/v1/turns/${encodeURIComponent(entry.id)}:cancel`, { sessionId }, newKey()).then(() => render({ refresh: true }), fail),
+            onclick: () => api("POST", `/v1/turns/${enc(entry.id)}:cancel`, { sessionId }, newKey()).then(() => render({ refresh: true }), fail),
           }, icon("close", "sm")),
         ])))
       : null;
@@ -574,73 +702,98 @@
     const canChat = !session.readOnly && !session.archived;
     const composer = canChat ? buildComposer(sessionId, conversation) : null;
     const title = session.title || t("untitled");
-    const subtitle = [
-      conversation.modelLabel ? { text: conversation.modelLabel } : null,
-      sessionStatus(conversation.waiting ? "waiting" : conversation.activeTurnId ? "running" : session.status),
-    ].filter(Boolean);
     const head = header({
       title,
-      back: session.projectId ? `#/p/${encodeURIComponent(session.projectId)}` : `#/p/${TEMP}`,
-      subtitle,
+      backTo: projectHash(session.projectId),
+      subtitle: [
+        scopeMeta(session),
+        conversation.modelLabel ? { text: conversation.modelLabel, class: "model" } : null,
+        sessionStatus(conversation.waiting ? "waiting" : running ? "running" : session.status),
+      ].filter(Boolean),
       actions: [moreButton(title, organizeActions("sessions", session))],
     });
-    const dockItems = [...notices, queue, composer].filter(Boolean);
-    const changed = show(`chat:${sessionId}`, head, messages, dockItems.length ? el("div", { class: "chat-dock" }, dockItems) : null);
+    const jump = el("button", {
+      id: "jump-latest",
+      type: "button",
+      class: "icon-btn jump",
+      hidden: true,
+      "aria-label": t("jumpLatest"),
+      onclick: () => window.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" }),
+    }, icon("down", "sm"));
+    const dock = el("div", { class: "chat-dock" }, [jump, ...notices, queue, composer]);
+    const changed = show(`chat:${sessionId}`, head, messages, dock);
     if (atBottom) scroller.scrollTop = scroller.scrollHeight;
+    syncJump();
     return changed;
   }
 
   function buildComposer(sessionId, conversation) {
     const running = Boolean(conversation.activeTurnId);
-    const input = el("textarea", { id: "composer-input", rows: "1", "aria-label": t("composer"), placeholder: t("composer"), enterkeyhint: "send" });
+    const input = el("textarea", {
+      id: "composer-input", rows: "1", "aria-label": t("composer"),
+      placeholder: running ? t("composerFollowUp") : t("composer"), enterkeyhint: "send",
+    });
     input.value = state.drafts.get(sessionId) || "";
     const send = el("button", {
       type: "button",
-      class: running ? "primary send is-queue" : "primary send",
-      "aria-label": running ? null : t("send"),
-      onclick: () => void submit(running),
-    }, running ? el("span", { text: t("queue") }) : icon("send"));
-    const sync = () => { send.disabled = state.sending || !input.value.trim(); };
+      class: "primary send",
+      "aria-label": running ? t("queueMessage") : t("send"),
+      onclick: () => void submit(),
+    }, icon("send"));
+    const stop = running
+      ? el("button", {
+          type: "button",
+          class: "stop",
+          "aria-label": t("stop"),
+          onclick: () => api("POST", `/v1/turns/${enc(conversation.activeTurnId)}:interrupt`, { sessionId }, newKey()).then(() => render({ refresh: true }), fail),
+        }, icon("stop"))
+      : null;
+    // One obvious action: Stop while a reply runs, Send (or queue) once there is text.
+    const sync = () => {
+      const hasText = Boolean(input.value.trim());
+      send.hidden = running && !hasText;
+      send.disabled = state.sending || !hasText || !state.online;
+    };
     state.syncComposer = sync;
     const fit = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
     input.addEventListener("input", () => { state.drafts.set(sessionId, input.value); fit(); sync(); });
-    const submit = async (queue) => {
+    const submit = async () => {
       const text = input.value.trim();
-      if (!text || state.sending) return;
+      if (!text || state.sending || !state.online) return;
       state.sending = true;
+      // Show the message at once; the Host record replaces it when it lands.
+      const entry = { text, seen: userCount(chatState.items, text), acked: 0 };
+      state.pending.set(sessionId, [...(state.pending.get(sessionId) ?? []), entry]);
+      state.drafts.delete(sessionId);
+      input.value = "";
+      fit();
       sync();
+      document.querySelector(".chat-empty")?.remove();
+      document.querySelector(".messages")?.append(message({ role: "user", text }, "pending"));
+      document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
       try {
-        await api("POST", `/v1/sessions/${encodeURIComponent(sessionId)}/turns`, { text, queue }, newKey());
-        state.drafts.delete(sessionId);
-        input.value = "";
-        await render({ refresh: true });
+        await api("POST", `/v1/sessions/${enc(sessionId)}/turns`, { text, queue: running }, newKey());
+        entry.acked = Date.now();
       } catch (error) {
+        state.pending.set(sessionId, (state.pending.get(sessionId) ?? []).filter((candidate) => candidate !== entry));
+        // Never lose what was typed: put it back for another try.
+        const current = state.drafts.get(sessionId) ?? "";
+        state.drafts.set(sessionId, current ? `${text}\n${current}` : text);
         fail(error);
       } finally {
         state.sending = false;
-        state.syncComposer?.();
       }
+      await render({ refresh: true });
     };
     input.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
       if (!window.matchMedia("(pointer: fine)").matches && !(event.metaKey || event.ctrlKey)) return;
       event.preventDefault();
-      void submit(running);
+      void submit();
     });
     setTimeout(fit, 0);
     sync();
-    const actions = el("div", { class: "actions" }, [
-      running
-        ? el("button", {
-            type: "button",
-            class: "stop",
-            "aria-label": t("stop"),
-            onclick: () => api("POST", `/v1/turns/${encodeURIComponent(conversation.activeTurnId)}:interrupt`, { sessionId }, newKey()).then(() => render({ refresh: true }), fail),
-          }, icon("stop"))
-        : null,
-      send,
-    ]);
-    return el("div", { class: "composer" }, [input, actions]);
+    return el("div", { class: "composer" }, [input, el("div", { class: "actions" }, [stop, send])]);
   }
 
   async function render(options = {}) {
@@ -649,8 +802,8 @@
     const route = state.route;
     try {
       let changed;
-      if (route.view === "projects") changed = await renderProjects(token);
-      else if (route.view === "sessions") changed = await renderSessions(token, route.projectId);
+      if (route.view === "home") changed = await renderHome(token, route.archived);
+      else if (route.view === "sessions") changed = await renderSessions(token, route.projectId, route.archived);
       else changed = await renderChat(token, route.sessionId, options.refresh === true);
       if (changed === undefined) return;
       if (route.view !== "chat" && !options.refresh) {
@@ -661,7 +814,7 @@
       if (changed) document.getElementById("view-title")?.focus({ preventScroll: true });
     } catch (error) {
       if (token !== state.renderToken) return;
-      if (error instanceof ApiError && error.code === "NOT_FOUND" && route.view !== "projects") {
+      if (error instanceof ApiError && error.code === "NOT_FOUND" && route.view !== "home") {
         notify(errorText("NOT_FOUND"));
         go("#/projects");
         return;
@@ -734,6 +887,8 @@
       // Signed out either way.
     }
     state.me = null;
+    state.pending.clear();
+    state.catalog = null;
     showPair();
   }
 

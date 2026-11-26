@@ -224,3 +224,34 @@ test("direct pairing respects the device limit without disconnecting other devic
   assert.equal((await phone.request("GET", "/v1/projects")).status, 200);
   assert.equal(server.devices().length, 16);
 });
+
+test("the recent list spans every visible scope, lifts running work and names each project", async (t) => {
+  const { phone, activeTurns, meta } = await setup(t);
+  activeTurns.set("s-plan", "turn-plan");
+
+  const recent = await phone.request("GET", "/v1/sessions?q=");
+  assert.equal(recent.status, 200);
+  // Running first, then most recent; SSH and unregistered sessions stay hidden.
+  assert.deepEqual(recent.body.items.map((s) => s.id), ["s-plan", "s-tmp", "s-b1", "s-a1"]);
+  assert.deepEqual(
+    Object.fromEntries(recent.body.items.map((s) => [s.id, s.projectLabel])),
+    { "s-plan": "Alpha", "s-tmp": null, "s-b1": "Beta", "s-a1": "Alpha" },
+  );
+  assert.equal(recent.body.items[0].status, "running");
+
+  // Title search works across projects.
+  assert.deepEqual((await phone.request("GET", "/v1/sessions?q=login")).body.items.map((s) => s.id), ["s-a1"]);
+
+  // The conversation names its project, so a deep link still shows where it lives.
+  assert.equal((await phone.request("GET", "/v1/sessions/s-b1")).body.session.projectLabel, "Beta");
+
+  // Sessions of an archived project drop out of the recent list, not out of their project.
+  const beta = (await phone.request("GET", "/v1/projects")).body.items.find((p) => p.id === "g-b");
+  assert.equal((await phone.request("POST", "/v1/projects/g-b/organize", { revision: beta.revision, archived: true })).status, 200);
+  assert.ok(meta.projectMeta["/work/b"].archived);
+  assert.deepEqual((await phone.request("GET", "/v1/sessions")).body.items.map((s) => s.id), ["s-plan", "s-tmp", "s-a1"]);
+  assert.deepEqual((await phone.request("GET", "/v1/sessions?projectId=g-b")).body.items.map((s) => s.id), ["s-b1"]);
+
+  // An unknown explicit project is still not found.
+  assert.equal((await phone.request("GET", "/v1/sessions?projectId=nope")).status, 404);
+});

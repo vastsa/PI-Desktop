@@ -783,7 +783,7 @@ user's running instance.
 - **Steps:** Search for B and tap its row. Open a session's action menu, close it,
   then tap that session to read its history. Pin and rename B and rename, pin,
   archive and restore an idle session. Archive and restore B through the
-  archived filter. Make a competing Desktop rename and submit the stale edit.
+  Archived view. Make a competing Desktop rename and submit the stale edit.
 - **Expected:** One row per group, stable IDs, correct filtered/recent/pinned
   lists; both clients show committed changes without reloading. Archive is not
   deletion and does not cascade; restoring B preserves the separately archived
@@ -801,8 +801,9 @@ user's running instance.
 - **Steps:** Double-tap New session in B, send text, stream a reply, then continue
   the same session on Desktop. Queue a second message while busy and cancel it;
   interrupt the named active turn. Reopen the older B chat and load older pages.
-  Create a temporary conversation from its own entry. Repeat with no configured
-  model and with a pre-existing eligible empty conversation in B.
+  Create a temporary conversation from its own entry, and one in B from Home's
+  New conversation picker. Reopen B's chat from Home's Recent list. Repeat with
+  no configured model and with a pre-existing eligible empty conversation in B.
   From idle, send two different prompts simultaneously from Desktop and the
   phone, first without queuing and then with explicit queue admission.
 - **Expected:** The initial double-tap/send yields one session and one user
@@ -813,6 +814,9 @@ user's running instance.
   items keeps position, without wrong-project empty reuse or duplicate creates.
   A temporary session has no project and never inherits A or B.
   Missing model blocks send, preserves text and points to Desktop setup.
+  A sent message shows immediately and is replaced, not duplicated, by the
+  Host record; a failed send returns its text to the draft. Recent rows name
+  their project, and running sessions stay listed.
 - **Acceptance:** B, C, D; W03, W04, W05.
 
 ### E2E-272: Answer ordinary input but leave privileged decisions on Desktop

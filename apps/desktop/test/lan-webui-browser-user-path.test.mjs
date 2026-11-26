@@ -18,6 +18,8 @@ async function assets() {
     ["/index.html", { type: "text/html; charset=utf-8", body: await read("index.html") }],
     ["/app.js", { type: "text/javascript; charset=utf-8", body: await read("app.js") }],
     ["/locale.js", { type: "text/javascript; charset=utf-8", body: await read("locale.js") }],
+    ["/kit.js", { type: "text/javascript; charset=utf-8", body: await read("kit.js") }],
+    ["/markdown.js", { type: "text/javascript; charset=utf-8", body: await read("markdown.js") }],
     ["/styles.css", { type: "text/css; charset=utf-8", body: await read("styles.css") }],
   ]);
 }
@@ -33,6 +35,8 @@ const journey = String.raw`(async () => {
     throw new Error("timed out waiting for " + label);
   };
   const rowByTitle = (title) => [...document.querySelectorAll(".row")].find((row) => row.querySelector(".row-title")?.textContent === title);
+  const titles = (selector) => [...document.querySelectorAll(selector + " .row-title")].map((n) => n.textContent);
+  const view = () => document.getElementById("app").dataset.view;
   // A direct control.click() bypasses hit testing and misses full-page interceptors.
   const tap = (control) => {
     control.scrollIntoView({ block: "center" });
@@ -55,8 +59,11 @@ const journey = String.raw`(async () => {
   form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
   // Redeeming the code connects immediately, without a second Desktop action.
+  // Home answers "what was I doing" first: recent conversations across projects.
   await wait(() => rowByTitle("Alpha"), "projects");
-  result.projects = [...document.querySelectorAll(".row-title")].map((n) => n.textContent);
+  result.projects = titles("#section-projects");
+  result.recent = titles("#section-recent");
+  result.recentScope = rowByTitle("Scratch").querySelector(".row-meta").textContent;
 
   // Searching re-renders the list but keeps the field focused with its text.
   const search = document.getElementById("list-search");
@@ -65,21 +72,58 @@ const journey = String.raw`(async () => {
   search.dispatchEvent(new Event("input"));
   await wait(() => rowByTitle("Alpha") && !rowByTitle("Beta"), "filtered projects");
   result.searchKept = document.activeElement?.id === "list-search" && document.activeElement.value === "Al";
+  // One search covers conversations in every project too.
+  document.activeElement.value = "login";
+  document.activeElement.dispatchEvent(new Event("input"));
+  await wait(() => rowByTitle("Fix login") && !rowByTitle("Alpha"), "conversation search");
+  result.searchSessions = titles("#section-recent");
   document.activeElement.value = "";
   document.activeElement.dispatchEvent(new Event("input"));
   await wait(() => rowByTitle("Beta"), "cleared search");
+
+  // A recent conversation opens straight from Home and renders safe Markdown.
+  tap(rowByTitle("Scratch").querySelector(".row-main"));
+  await wait(() => view() === "chat:s-tmp" && document.querySelector(".msg.md strong"), "rich transcript");
+  const answer = [...document.querySelectorAll(".msg.md")].pop();
+  result.markdown = {
+    strong: answer.querySelector("strong")?.textContent,
+    codeLang: answer.querySelector(".code-block .code-lang")?.textContent,
+    code: answer.querySelector(".code-block pre code")?.textContent,
+    items: answer.querySelectorAll("ul > li").length,
+    links: [...answer.querySelectorAll("a")].map((a) => [a.getAttribute("href"), a.target, a.rel]),
+    localLinkText: answer.textContent.includes("local"),
+    image: answer.querySelector(".md-image")?.textContent,
+    images: document.querySelectorAll("img").length,
+    scripts: document.querySelectorAll("#app script").length,
+    pwned: window.__pwned === true,
+    rawHtmlShown: answer.textContent.includes("<script>"),
+  };
+  const steps = document.querySelector("details.steps");
+  result.steps = { count: steps?.querySelector(".steps-count")?.textContent, names: steps?.querySelector(".steps-names")?.textContent, open: steps?.open };
+  result.copyActions = document.querySelectorAll(".msg-actions button").length;
+  result.leakedInSteps = document.body.textContent.includes("/secret/path");
+  history.back();
+  await wait(() => view() === "home" && rowByTitle("Alpha"), "back to home");
+
   const temporary = await wait(() => rowByTitle("Temporary conversations") ?? rowByTitle("临时会话"), "temporary entry");
   tap(temporary.querySelector(".row-main"));
-  await wait(() => rowByTitle("Scratch") && document.querySelector("main > button.primary"), "temporary conversations");
+  await wait(() => view() === "sessions:__temporary__" && rowByTitle("Scratch") && document.querySelector("main > button.primary"), "temporary conversations");
   history.back();
-  await wait(() => rowByTitle("Alpha"), "back to projects");
+  await wait(() => view() === "home" && rowByTitle("Alpha"), "back to projects");
 
   // Open a project and see its sessions.
   tap(rowByTitle("Alpha").querySelector(".row-main"));
-  await wait(() => rowByTitle("Fix login"), "sessions");
+  await wait(() => view() === "sessions:g-a" && rowByTitle("Fix login"), "sessions");
   result.sessions = [...document.querySelectorAll(".row-title")].map((n) => n.textContent);
   result.projectHash = location.hash;
   result.strayText = [document.getElementById("app").innerText];
+
+  // Archived items live behind one quiet entry, not a sticky filter.
+  tap(document.querySelector(".footer-link"));
+  await wait(() => view() === "sessions:g-a:archived" && document.querySelector(".empty"), "archived view");
+  result.archivedHash = location.hash;
+  history.back();
+  await wait(() => view() === "sessions:g-a" && rowByTitle("Fix login"), "back from archived");
 
   // Organize from the row menu: pin.
   tap(rowByTitle("Fix login").querySelector(".row-more"));
@@ -109,13 +153,28 @@ const journey = String.raw`(async () => {
   tap(document.querySelector("main > button.primary"));
   const input = await wait(() => document.getElementById("composer-input"), "composer");
   result.chatHash = location.hash;
+  result.emptyChat = document.querySelector(".chat-empty-title")?.textContent;
   input.value = "hello from phone";
   input.dispatchEvent(new Event("input"));
   tap(document.querySelector(".composer button.primary"));
-  await wait(() => document.querySelectorAll(".msg").length >= 2 && input.isConnected === false || document.getElementById("composer-input")?.value === "", "sent");
+  // The message shows at once, before the Host confirms it.
+  result.optimistic = document.querySelector(".msg.user.pending")?.textContent.includes("hello from phone") === true;
+  await wait(() => document.querySelector(".composer .stop") && document.querySelector(".working"), "sent");
   result.messages = [...document.querySelectorAll(".msg")].map((n) => n.className.split(" ")[1]);
   result.leaked = document.body.textContent.includes("/secret/path");
   result.strayText.push(document.getElementById("app").innerText);
+  // While a reply runs: a working cue, and Stop is the only action until there is text.
+  result.working = Boolean(document.querySelector(".working"));
+  result.composerRunning = {
+    sendHidden: document.querySelector(".composer .send").hidden,
+    stop: Boolean(document.querySelector(".composer .stop")?.offsetParent),
+  };
+  const follow = document.getElementById("composer-input");
+  follow.value = "and then?";
+  follow.dispatchEvent(new Event("input"));
+  result.composerQueue = !document.querySelector(".composer .send").hidden;
+  follow.value = "";
+  follow.dispatchEvent(new Event("input"));
 
   // Phone layout: no horizontal scroll and touch-sized controls.
   result.horizontalScroll = document.documentElement.scrollWidth > window.innerWidth;
@@ -123,11 +182,26 @@ const journey = String.raw`(async () => {
 
   // Back returns to the project's session list.
   history.back();
-  await wait(() => rowByTitle("Fix login flow"), "back to sessions");
+  await wait(() => view() === "sessions:g-a" && rowByTitle("Fix login flow"), "back to sessions");
   result.backHash = location.hash;
   history.back();
-  await wait(() => rowByTitle("Alpha"), "back to projects before sign-out");
-  tap(document.querySelector("main > button.link"));
+  await wait(() => view() === "home" && rowByTitle("Alpha"), "back to projects");
+
+  // From Home, New conversation only asks where it should live.
+  tap(document.querySelector("main > button.primary"));
+  await wait(() => !document.getElementById("sheet").hidden, "project picker");
+  result.picker = [...document.querySelectorAll("#sheet-actions button:not(.cancel)")].map((b) => b.textContent);
+  tap([...document.querySelectorAll("#sheet-actions button")].find((b) => b.textContent === "Beta"));
+  await wait(() => view()?.startsWith("chat:s-new-2") && document.getElementById("composer-input"), "picked conversation");
+  result.pickedHash = location.hash;
+  history.back();
+  await wait(() => view() === "home" && rowByTitle("Alpha"), "back home before sign-out");
+
+  // Disconnecting asks first, because pairing again needs a new code.
+  tap(document.querySelector(".signout"));
+  await wait(() => !document.getElementById("sheet").hidden, "sign-out confirmation");
+  result.stillSignedIn = !document.getElementById("pair-code");
+  tap(document.querySelector("#sheet-actions button.danger"));
   await wait(() => document.getElementById("pair-code"), "sign-out returns to pairing");
   result.polledApproval = performance.getEntriesByType("resource").some((entry) => new URL(entry.name).pathname === "/pair/status");
   result.pairRequests = performance.getEntriesByType("resource").filter((entry) => new URL(entry.name).pathname === "/pair").length;
@@ -192,6 +266,28 @@ test("a phone pairs with a formatted paste, uses projects and conversations, and
 
   assert.match(result.projects[0], /^(Temporary conversations|临时会话)$/);
   assert.deepEqual(result.projects.slice(1), ["Alpha", "Beta"]);
+  assert.deepEqual(result.recent, ["Scratch", "Second root chat", "Fix login", "A plan"], "recent conversations span every project");
+  assert.match(result.recentScope, /Temporary conversations|临时会话/, "a recent row names where it lives");
+  assert.deepEqual(result.searchSessions, ["Fix login"]);
+  assert.deepEqual(result.markdown, {
+    strong: "all",
+    codeLang: "sh",
+    code: "pnpm test",
+    items: 2,
+    links: [["https://example.com/docs", "_blank", "noopener noreferrer"]],
+    localLinkText: true,
+    image: "diagram",
+    images: 0,
+    scripts: 0,
+    pwned: false,
+    rawHtmlShown: true,
+  });
+  assert.match(result.steps.count, /2/);
+  assert.equal(result.steps.names, "Read, Bash");
+  assert.equal(result.steps.open, false, "tool steps start folded");
+  assert.equal(result.copyActions, 1, "copy sits under the last answer of the exchange");
+  assert.equal(result.leakedInSteps, false);
+  assert.equal(result.archivedHash, "#/p/g-a/archived");
   assert.deepEqual(result.sessions, ["Fix login", "A plan"]);
   assert.equal(result.projectHash, "#/p/g-a");
   assert.ok(result.pinnedMeta.length > 0, "the pinned label is shown");
@@ -201,10 +297,20 @@ test("a phone pairs with a formatted paste, uses projects and conversations, and
   assert.equal(result.sheetClosed, true);
   assert.equal(fake.sessions.find((session) => session.id === "s-a1").title, "Fix login flow");
   assert.match(result.chatHash, /^#\/s\/s-new-1$/);
+  assert.equal(result.emptyChat, "Alpha", "a new conversation shows where it will run");
+  assert.equal(result.optimistic, true, "a sent message appears before the Host confirms it");
+  assert.equal(result.working, true);
+  assert.deepEqual(result.composerRunning, { sendHidden: true, stop: true });
+  assert.equal(result.composerQueue, true, "typing while a reply runs offers to queue");
+  assert.deepEqual(result.picker.slice(1), ["Alpha", "Beta"]);
+  assert.match(result.picker[0], /Temporary conversations|临时会话/);
+  assert.equal(result.pickedHash, "#/s/s-new-2");
+  assert.deepEqual(fake.calls.filter(([channel]) => channel === "create").map(([, args]) => args[0]), [{ projectPath: "/work/a" }, { projectPath: "/work/b" }]);
+  assert.equal(result.stillSignedIn, true, "sign-out waits for confirmation");
   assert.equal(fake.turns.length, 1);
   assert.equal(fake.turns[0].params.input.text, "hello from phone");
   assert.equal(fake.turns[0].params.sessionId, "s-new-1");
-  assert.ok(result.messages.includes("user") && result.messages.includes("assistant"));
+  assert.deepEqual(result.messages, ["user"], "the Host has not recorded the turn yet, so the optimistic bubble stays");
   assert.equal(result.leaked, false);
   for (const text of result.strayText) assert.doesNotMatch(text, /\bnull\b|undefined/, "no placeholder text leaks into the page");
   assert.equal(result.horizontalScroll, false);
@@ -280,4 +386,42 @@ test("a legacy pending response tells the user to restart the desktop", { timeou
     throw new Error("Missing restart guidance for the old pairing response");
   })()`;
   assert.equal((await runPhone(t, script)).result, true);
+});
+
+test("the shipped Markdown renderer keeps GFM structure and defuses unsafe input", { timeout: 60_000 }, async (t) => {
+  const script = String.raw`(async () => {
+    while (!window.LanMarkdown) await new Promise(requestAnimationFrame);
+    const options = { labels: { copyCode: "Copy code", image: "Image" }, onCopy() {} };
+    const html = (source) => {
+      const box = document.createElement("div");
+      box.append(window.LanMarkdown.render(source, options));
+      return box.innerHTML;
+    };
+    return JSON.stringify({
+      nested: html("- a\n  - b\n- c"),
+      ordered: html("3. x\n4. y"),
+      table: html("| a | b |\n|:-|-:|\n| 1 \\| 2 | ${"`"}x|y${"`"} |"),
+      inlineFence: html("${"```"}code${"```"} stays inline"),
+      unterminated: html("${"```"}js\nlet a = 1;"),
+      quote: html("> **hi**\n> there"),
+      unsafeLink: html("[x](javascript:alert(1)) [y](https://ok.test/a)"),
+      arithmetic: html("2 * 3 * 4"),
+      bareUrl: html("see https://ok.test/path."),
+      heading: html("## Title ##"),
+      softBreak: html("one\ntwo  \nthree"),
+    });
+  })()`;
+  const { result } = await runPhone(t, script);
+  assert.equal(result.nested, "<ul><li><p>a</p><ul><li><p>b</p></li></ul></li><li><p>c</p></li></ul>");
+  assert.equal(result.ordered, '<ol start="3"><li><p>x</p></li><li><p>y</p></li></ol>');
+  assert.match(result.table, /^<div class="table-wrap"><table><thead><tr><th>a<\/th><th class="align-right">b<\/th><\/tr><\/thead>/);
+  assert.match(result.table, /<tbody><tr><td>1 \| 2<\/td><td class="align-right"><code>x\|y<\/code><\/td><\/tr><\/tbody>/);
+  assert.equal(result.inlineFence, "<p><code>code</code> stays inline</p>");
+  assert.match(result.unterminated, /<span class="code-lang">js<\/span>.*<pre><code>let a = 1;<\/code><\/pre>/);
+  assert.equal(result.quote, "<blockquote><p><strong>hi</strong>\nthere</p></blockquote>");
+  assert.equal(result.unsafeLink, '<p><span>x</span> <a href="https://ok.test/a" target="_blank" rel="noopener noreferrer">y</a></p>');
+  assert.equal(result.arithmetic, "<p>2 * 3 * 4</p>");
+  assert.equal(result.bareUrl, '<p>see <a href="https://ok.test/path" target="_blank" rel="noopener noreferrer">https://ok.test/path</a>.</p>');
+  assert.equal(result.heading, "<h2>Title</h2>");
+  assert.equal(result.softBreak, "<p>one\ntwo<br>three</p>");
 });

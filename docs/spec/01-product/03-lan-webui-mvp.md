@@ -140,7 +140,11 @@ The browser API is a small WebUI-specific HTTP/JSON surface with same-origin SSE
 change notices (`/v1/projects`, `/v1/sessions`, `/v1/sessions/:id[/history]`,
 `/v1/sessions/:id/turns`, `/v1/turns/:id:interrupt|:cancel`, `…/organize`). It
 maps onto existing Desktop handlers and Agent Host turn admission rather than
-implementing the full RACP browser profile. Catalog changes reach other clients
+implementing the full RACP browser profile. `/v1/sessions` without a
+`projectId` lists every visible scope (running first, then most recent; sessions
+of archived projects only with `archived=1`), and each session carries its
+display `projectLabel` (`null` for Temporary) so cross-project rows say where
+they live. Catalog changes reach other clients
 even when they are not subscribed to that conversation; clients invalidate and
 refetch a scoped view rather than streaming every transcript. A deep link
 restores only the browser's navigation, after fresh authorization.
@@ -250,6 +254,22 @@ and devices (16); never silently truncate input.
   capsule pinned within thumb reach, a floating composer pill, and rename in
   the action sheet instead of a native prompt. A live refresh keeps the
   focused field, caret and draft; Back restores the list scroll position.
+- Home leads with Recent conversations across projects (running work always
+  listed), then Projects with Temporary first. One search covers project names
+  and conversation titles. Archived items sit behind one Archived entry per
+  list (`#/archived`, `#/p/:id/archived`) instead of a sticky filter. Home's New
+  conversation asks only for the destination. Disconnecting this device asks
+  for confirmation.
+- A conversation names its project, model and run state in the header; an
+  empty one shows where it will run. Answers render the safe Markdown subset
+  (no HTML, no remote images, only `http(s)` links opening in a new tab);
+  consecutive tool calls fold into one step summary; code blocks and the last
+  answer of each exchange offer Copy (with a non-secure-context fallback). A
+  sent message appears immediately and yields to the Host record, the queue
+  entry, or a 30 s timeout; a failed send restores the text to the draft.
+  While a reply runs without streamed text a working cue shows; the composer
+  offers Stop alone until text is typed, then Queue. Jump to latest appears
+  once the reader scrolls away. Send and New conversation wait while offline.
 - Qualification: physical iPhone/Safari and Android/Chrome on the same LAN,
   plus desktop Chromium; record browser/OS/build versions. Qualify listener
   start, shutdown and restart on every Desktop OS advertised as supported.
