@@ -72,7 +72,10 @@
   selected text. 4) Copy selected transcript and code text. 5) Right-click the
   composer and a settings/search input; use Copy, Cut, Undo, Redo, Paste, and
   Select All. Paste an image from the menu. 6) Open an existing transcript or
-  sidebar context menu and right-click a read-only control.
+  sidebar context menu and right-click a read-only control. 7) On macOS,
+  activate another application while leaving the transcript visible, then
+  immediately drag on plain transcript text. Repeat after reactivating
+  another application, this time clicking the work panel toggle.
 - **Expected**: Chrome does not leave an accidental text selection; message
   prose, code, tool input/output, and editable controls remain selectable and
   copyable; native editing shortcuts, focus-visible rings, and window drag
@@ -80,6 +83,9 @@
   actions enabled according to the current editor state; commands preserve
   selection and undo history, and Paste reaches the existing composer paste
   handler. Read-only controls and existing custom menus keep their behavior.
+  On macOS, the first drag activates the window and selects transcript text.
+  The first click on the work panel toggle activates the window and opens the
+  panel when it was closed.
 - **Specs linked**: `04-ux/07-ui-design-system.md`,
   `04-ux/09-interaction-patterns.md`
 - **Acceptance**: Quality (key operations feel polished)

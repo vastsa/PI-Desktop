@@ -5,6 +5,19 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const globalStyles = await loadStyles();
 
+test("the macOS main window delivers the first mouse press for text selection", async () => {
+  const windowSource = await readFile(
+    new URL("../electron/main/bootstrap/window.ts", import.meta.url),
+    "utf8",
+  );
+  const constructor = windowSource.match(/windowState\.mainWindow = new BrowserWindow\(\{([\s\S]*?)\n  \}\);/)?.[1];
+  assert.ok(constructor, "main window constructor is present");
+  const macOptions = constructor.match(/process\.platform === "darwin"\s*\?\s*\{([\s\S]*?)\n        \}/)?.[1];
+  assert.ok(macOptions, "macOS options are present");
+  assert.match(macOptions, /\bacceptFirstMouse:\s*true\b/);
+  assert.doesNotMatch(constructor.replace(macOptions, ""), /\bacceptFirstMouse:/);
+});
+
 test("shell chrome is not text-selectable by default", () => {
   assert.match(
     globalStyles,
