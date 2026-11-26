@@ -118,9 +118,10 @@ loopback proxy alone can miss direct connections from child processes.
 On the Pie Code maintenance line, the ARM64 Debian package includes one
 shared Office Runtime and the built-in Offline Office extension. In a
 fresh profile the extension is off. Enable it in Extensions to expose
-`pie.offline-office/word` and `pie.offline-office/excel` in local Agent
-sessions. Both skills use ordinary Bash approval and the packaged executables;
-neither installs dependencies nor uses a system Node, Python, or LibreOffice.
+`pie.offline-office/word`, `pie.offline-office/excel`, and
+`pie.offline-office/ppt` in local Agent sessions. The skills use ordinary Bash
+approval and packaged executables without installing dependencies or falling
+back to system Node, Python, or LibreOffice.
 
 Before building, stage the approved ARM64 Office Runtime 1.0.2
 `python-runtime`, `python-dependencies`, `node-runtime`, and
@@ -132,8 +133,9 @@ pre-staged pandas 3.1.1 CPython 3.12 manylinux AArch64 wheel and
 python-dateutil 2.9.0.post0 universal wheel, including their `.dist-info`
 directories. These two wheels have no `.data` directory and can be unpacked
 with the bundled `python3.12 -I -m zipfile -e WHEEL SITE_PACKAGES` on ARM64
-Linux. Reuse the bundled NumPy, six, and openpyxl. Neither installation nor
-first use downloads dependencies. Keep the LibreOffice entry point at
+Linux. Reuse the bundled NumPy, six, openpyxl, and python-pptx 1.0.2
+with its dependencies. Neither installation nor first use downloads
+dependencies. Keep the LibreOffice entry point at
 `libreoffice/program/soffice`. Retain the source manifest as
 `metadata/runtime-source.json`, the Node dependency lock as
 `metadata/package-lock.json`, and the components' licenses. Set
@@ -150,7 +152,8 @@ node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
 ```
 
 The package check inspects the extracted payload and uses its own Node and
-Python to read back a newly created Word document and pandas Excel table.
+Python to read back a newly created Word document, a pandas Excel table,
+and a PowerPoint presentation.
 Keep the exact Office Debian package, the candidate commit, the package
 inspection output, and the Kylin run output together. Link those results in the PR or release record;
 generic CI artifacts and results from a different package do not qualify.
@@ -159,11 +162,11 @@ With no public route, install that package in a clean application test
 environment and run the Office scenario against the installed binary. Build
 the shared JS package beforehand and use Node 22+ to run the scenario
 (the bundled Node can run it). The scenario enables the extension through
-the UI, loads both skills through a loopback model, and checks that Bash is
-held for approval. It reads back the Word and Excel results independently
-with python-docx and openpyxl and checks that both sources are unchanged.
-It disables the extension and verifies both skills are absent from new
-sessions after restarting.
+the UI, loads all three skills through a loopback model, and checks that Bash
+is held for approval. It reads back results independently with python-docx,
+openpyxl, and python-pptx and checks that the sources are unchanged. It
+disables the extension and verifies the skills are absent from new sessions
+after restarting.
 
 ```sh
 PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
@@ -189,3 +192,25 @@ precision as displayed, and unsupported functions fail without producing a
 copy. If LibreOffice times out or Bash is cancelled during conversion, the
 calculation processes are stopped and no copy is published. The sample keeps both `SUM` formulas;
 each reads back as 250 after editing and 260 after recalculation.
+
+## Offline Office — PowerPoint
+
+The same Offline Office extension exposes `pie.offline-office/ppt`. In a
+local Agent session, the skill uses the normal Bash approval flow and the
+packaged Python. It creates `.pptx` files with editable title and body text,
+and extracts text in slide order from visible shapes, groups and tables. Image text,
+chart content, embedded objects and speaker notes are outside scope. The
+reader accepts presentations up to 256 MiB after ZIP expansion.
+
+The skill can replace a unique literal within one paragraph on a selected
+slide and save it to a new file. Visible fields such as slide numbers count
+toward uniqueness but remain read-only. The replacement uses the first matched
+run's formatting. The input and all other package parts stay unchanged;
+existing destination files are rejected.
+
+The same installed Office scenario verifies that the session creates and
+extracts an editable two-slide deck, then saves and reads back an edit to
+the first slide of a separate deck.
+The filenames contain Chinese characters and spaces. The test verifies that
+hidden text is omitted and ambiguous edits involving a slide number are refused.
+It compares the original bytes and every package part outside the edited slide.

@@ -47,7 +47,7 @@ async function withOfficeFixture(run) {
     await put("metadata/package-lock.json", JSON.stringify({ packages: { "node_modules/docx": docx } }));
     await put("node/lib/node_modules/docx/package.json", JSON.stringify(docx));
     const site = "python/lib/python3.12/site-packages";
-    for (const module of ["lxml", "docx", "pandas", "dateutil", "numpy", "openpyxl"]) {
+    for (const module of ["lxml", "docx", "pandas", "dateutil", "numpy", "openpyxl", "pptx", "PIL", "xlsxwriter"]) {
       await put(`${site}/${module}/__init__.py`, "");
     }
     await put(`${site}/six.py`, "");

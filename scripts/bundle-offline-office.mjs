@@ -45,7 +45,7 @@ export async function verifyOfflineOfficeRuntime(runtime) {
     if (installed.version !== locked.version) throw new Error(`Office Runtime version mismatch: ${relative}`);
   }
   const site = join(runtime, "python/lib/python3.12/site-packages");
-  for (const module of ["lxml", "docx", "openpyxl", "pandas", "numpy", "dateutil"]) {
+  for (const module of ["lxml", "docx", "openpyxl", "pandas", "numpy", "dateutil", "pptx", "PIL", "xlsxwriter"]) {
     await access(join(site, module, "__init__.py"));
   }
   await access(join(site, "six.py"));
@@ -78,6 +78,10 @@ export async function smokeTestOfflineOffice(resources) {
     run("excel", ["create", excel, "Data"], JSON.stringify([{ item: text, amount: 250 }]));
     const data = JSON.parse(run("excel", ["read", excel, "Data"]));
     if (JSON.stringify(data.data) !== JSON.stringify([[text, 250]])) throw new Error("Unexpected XLSX readback.");
+    skill = "PowerPoint";
+    const ppt = "PPT smoke.pptx";
+    run("ppt", ["create", ppt], JSON.stringify([{ title: text, body: "Editable" }]));
+    if (run("ppt", ["extract", ppt]) !== `Slide 1\n${text}\nEditable\n`) throw new Error("Unexpected PPTX readback.");
   } catch (error) {
     throw new Error(`Office ${skill} package smoke test failed: ${error.message}`, { cause: error });
   } finally {

@@ -5,7 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.23.1",
     date: "2026-11-25",
     highlights: [
-      "On Kylin ARM64, enable Offline Office in Extensions to create, extract, or save a copy of a Word document offline.",
+      "On Kylin ARM64, enable Offline Office in Extensions to create, extract text from, or save a copy of Word documents and PowerPoint presentations offline.",
       "Offline Office also reads, creates, and saves copies of Excel workbooks, with formula recalculation on request.",
     ],
   },

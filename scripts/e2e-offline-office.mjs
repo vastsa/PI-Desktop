@@ -60,6 +60,36 @@ const excel = {
     ]);
   },
 };
+const pptBody = "新建正文含中文";
+const pptUntouched = "不修改的第二页";
+const hiddenPptText = "隐藏形状中的文字";
+const ambiguousPptCopy = "有歧义的 副本.pptx";
+const ppt = {
+  skill: "ppt", output: "新建 样例.pptx", input: "原始 样例.pptx", edited: "另存 样例.pptx",
+  get commands() {
+    return [
+      `create -- ${quote(this.output)} < slides.json`,
+      `extract -- ${quote(this.output)}`,
+      `extract -- ${quote(this.input)}`,
+      `replace -- ${[this.input, this.edited, "1", before, after].map(quote).join(" ")}`,
+      `extract -- ${quote(this.edited)}`,
+    ];
+  },
+  get rejectedCommand() {
+    return `replace -- ${[this.input, ambiguousPptCopy, "1", "1", after].map(quote).join(" ")}`;
+  },
+  verify(stdout, stderr) {
+    assert.ok(stdout.includes(`Slide 1\n中文标题\n${pptBody}\n\nSlide 2\n新建第二页\n可编辑正文`),
+      "The Agent must see text from both slides of the created deck.");
+    assert.ok(stdout.includes(`Slide 1\n原件首页\n${before}，保留后缀\n1\n页码 1\n\nSlide 2\n${pptUntouched}\n${before}`),
+      "The Agent must see text from the original deck.");
+    assert.ok(stdout.includes(`Slide 1\n原件首页\n${after}，保留后缀\n1\n页码 1\n\nSlide 2\n${pptUntouched}\n${before}`),
+      "The Agent must see the edited first slide and untouched second slide in the saved copy.");
+    assert.ok(!stdout.includes(hiddenPptText), "Hidden shape text must not reach the Agent.");
+    assert.match(stderr, /Text occurs more than once on this slide/);
+  },
+};
+const scenarios = [word, excel, ppt];
 const skillId = (scenario) => `pie.offline-office/${scenario.skill}`;
 const toolText = (content) => Array.isArray(content)
   ? content.map((part) => part.text ?? "").join("\n")
@@ -96,7 +126,9 @@ const provider = createServer(async (req, res) => {
       const location = /Location: ([^\n]+\/SKILL\.md)/.exec(toolText(skill.content))?.[1];
       assert.equal(location, join(resources, "plugins/pie.offline-office", scenario.skill, "SKILL.md"));
       const launcher = "/bin/sh " + quote(join(dirname(location), `${scenario.skill}.sh`));
-      const command = scenario.commands.map((args) => `${launcher} ${args}`).join(" && ");
+      const commands = scenario.commands.map((args) => `${launcher} ${args}`);
+      if (scenario.rejectedCommand) commands.push(`! ${launcher} ${scenario.rejectedCommand}`);
+      const command = commands.join(" && ");
       assert.ok(tools.includes("Bash"));
       tool = { name: "Bash", arguments: JSON.stringify({ command }) };
     }
@@ -242,7 +274,7 @@ async function runTurn({ invoke }, providerId, current, enabled) {
     assert.ok(reply, `Missing Bash result for ${current.skill}`);
     const { exitCode, stdout, stderr } = JSON.parse(toolText(reply.content));
     assert.equal(exitCode, 0, stderr);
-    current.verify(stdout);
+    current.verify(stdout, stderr);
   }
 }
 
@@ -276,6 +308,36 @@ p.add_run()._r.append(tab)
 p.add_run("乙")
 doc.save(sys.argv[1])`, original);
   const originalBytes = await readFile(join(workspace, original));
+  await writeFile(join(workspace, "slides.json"), JSON.stringify([
+    { title: "中文标题", body: pptBody }, { title: "新建第二页", body: "可编辑正文" },
+  ]));
+  py(`from pptx import Presentation
+from pptx.oxml import parse_xml
+from pptx.oxml.ns import qn
+from pptx.util import Inches
+import sys
+deck = Presentation()
+slide = deck.slides.add_slide(deck.slide_layouts[1])
+slide.shapes.title.text = "原件首页"
+para = slide.placeholders[1].text_frame.paragraphs[0]
+para.add_run().text = "跨格式"
+para.runs[0].font.bold = True
+para.add_run().text = "文字，保留后缀"
+def box(text):
+    shape = slide.shapes.add_textbox(0, 0, Inches(2), Inches(1))
+    shape.text = text
+    return shape
+box(${JSON.stringify(hiddenPptText)})._element.find(".//" + qn("p:cNvPr")).set("hidden", "1")
+box("1")
+footer = box("页码 ")
+footer.text_frame.paragraphs[0]._p.append(parse_xml(
+    '<a:fld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+    'id="{9AE197BA-8C2B-4FC0-AFA6-C3138E0160A1}" type="slidenum"><a:t>1</a:t></a:fld>'))
+slide = deck.slides.add_slide(deck.slide_layouts[1])
+slide.shapes.title.text = ${JSON.stringify(pptUntouched)}
+slide.placeholders[1].text = ${JSON.stringify(before)}
+deck.save(sys.argv[1])`, ppt.input);
+  const originalPpt = await readFile(join(workspace, ppt.input));
 
   provider.listen(0, "127.0.0.1");
   await once(provider, "listening");
@@ -290,13 +352,31 @@ doc.save(sys.argv[1])`, original);
     authKind: "none", apiStyle: "chat_completions", defaultModelId: model, models: [bindingForCustomModel(model)],
   });
   await selectOffice(app, true);
-  for (const current of [word, excel]) {
+  for (const current of scenarios) {
     await waitFor(async () => (await app.invoke(IPC.invoke.composerCommands)).commands.some((command) => command.skillId === skillId(current)),
       15_000, `Office ${current.skill} skill registration`, 150);
     await runTurn(app, configured.id, current, true);
   }
   assert.deepEqual(await readFile(join(workspace, excel.input)), originalExcel);
   runExcelFixture("verify");
+  assert.deepEqual(await readFile(join(workspace, ppt.input)), originalPpt);
+  await assert.rejects(stat(join(workspace, ambiguousPptCopy)), { code: "ENOENT" });
+  py(`from pptx import Presentation
+from zipfile import ZipFile
+import sys
+created, original, edited = sys.argv[1:]
+new, copy = Presentation(created), Presentation(edited)
+assert [(s.shapes.title.text, s.placeholders[1].text) for s in new.slides] == [
+    ("中文标题", ${JSON.stringify(pptBody)}), ("新建第二页", "可编辑正文")]
+assert len(copy.slides) == 2 and copy.slides[0].shapes.title.text == "原件首页"
+assert copy.slides[0].placeholders[1].text == "${after}，保留后缀"
+assert copy.slides[0].placeholders[1].text_frame.paragraphs[0].runs[0].font.bold
+assert copy.slides[1].shapes.title.text == ${JSON.stringify(pptUntouched)}
+assert copy.slides[1].placeholders[1].text == ${JSON.stringify(before)}
+with ZipFile(original) as a, ZipFile(edited) as b:
+    assert a.namelist() == b.namelist()
+    assert [part for part in a.namelist() if a.read(part) != b.read(part)] == ["ppt/slides/slide1.xml"]
+`, ppt.output, ppt.input, ppt.edited);
   assert.deepEqual(await readFile(join(workspace, original)), originalBytes);
   py(`from docx import Document
 from zipfile import ZipFile
@@ -332,8 +412,8 @@ with ZipFile(original) as a, ZipFile(edited) as b:
   await stop();
   const restarted = await boot();
   assert.equal((await row(restarted))?.enabled, false);
-  for (const current of [word, excel]) await runTurn(restarted, configured.id, current, false);
-  console.log("PASS: offline Office enablement, Bash approval, Word readback, Excel pandas read/write, copy preservation, formula cache 250 → 260, and disablement after restart");
+  for (const current of scenarios) await runTurn(restarted, configured.id, current, false);
+  console.log("PASS: offline Office enablement, Bash approval, Word readback, Excel pandas read/write and formula cache 250 → 260, PowerPoint readback and ambiguity checks, copy preservation, and disablement after restart");
 } catch (error) {
   console.error(log.slice(-6000));
   const pluginLog = await readFile(join(root, "data/logs/app/plugin.log"), "utf8").catch(() => "");
