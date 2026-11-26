@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Abra o gerenciador de arquivos uma vez para adicionar sua aba às outras sessões do projeto. Fechar a aba ou abrir o painel lateral afeta apenas a sessão atual.",
       "As quebras de linha não acrescentam mais linhas vazias nem caracteres invisíveis extras. Desfazer restaura a última linha vazia excluída.",
       "As habilidades selecionadas no menu / aparecem como etiquetas individuais no campo de mensagem.",
       "Edite funções e habilidades incluídas nas configurações de Modos, organize funções privadas de agentes e limite tarefas delegadas às ferramentas e arquivos necessários.",
