@@ -654,6 +654,9 @@ window; opening a normal panel afterward must still work.
   6. Wait for the failed delegate to settle, open its tab, and verify the
      ended tab persists until manually closed.
   7. Switch to another session and back. Verify the tabs are restored per
+  8. Drag the panel narrower and wider, then maximize it. Verify prompts and
+     replies reflow without a fixed pixel-width cap or horizontal clipping;
+     a wrapped Task prompt shows the fold button only when it exceeds six lines.
      session and closed tabs stay closed.
 - **Expected**: No auto-open on delegate start; N subagents = N coexisting
   closable tabs with deduplicated `name#n` labels; the tab body is the
