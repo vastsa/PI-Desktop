@@ -26,6 +26,8 @@ mod session_mode_migration_tests;
 
 #[cfg(test)]
 mod market_browse_rpc_tests;
+#[cfg(all(test, unix))]
+mod office_runtime_tests;
 #[cfg(test)]
 mod plugin_reviews_rpc_tests;
 #[cfg(test)]
@@ -4770,7 +4772,7 @@ async fn handle_request(
                 }
                 let mut bash_options = None;
                 if p.tool_name == "Bash" && remote_workspace.is_none() {
-                    let (shell_id, cancellation) = {
+                    let (shell_id, cancellation, office_runtime) = {
                         let st = state.lock().await;
                         let catalog = command_shell_catalog(&st)?;
                         let Some(effective) = catalog.effective.as_ref() else {
@@ -4810,7 +4812,13 @@ async fn handle_request(
                             return serde_json::to_value(result)
                                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"));
                         }
-                        (effective.id.clone(), cancellation_receiver.clone())
+                        let office_runtime = tools::office_runtime::for_session(&st, &p.session_id)
+                            .map_err(|error| rpc_err(1000, error.to_string(), "INTERNAL"))?;
+                        (
+                            effective.id.clone(),
+                            cancellation_receiver.clone(),
+                            office_runtime,
+                        )
                     };
                     bash_options = Some(tools::BashExecutionOptions {
                         session_id: p.session_id.clone(),
@@ -4820,6 +4828,7 @@ async fn handle_request(
                         cancellation,
                         output_tx: Some(tx.clone()),
                         extra_env: worktree_env.clone(),
+                        office_runtime,
                         run_in_background: p.run_in_background,
                         app_state: Some(state.clone()),
                     });

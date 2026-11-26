@@ -231,12 +231,10 @@ pub(crate) async fn spawn_background_task_detached(
     session_id: &str,
     command: &str,
     command_shell_id: &str,
-    workspace: &std::path::Path,
-    scratch: Option<&std::path::Path>,
+    config: &tools::ToolRunnerStartConfig,
 ) -> Result<String, (String, String)> {
     let on_changed: Arc<dyn Fn() + Send + Sync> = Arc::new(bump_change_counter);
-    let config = resolve_runner_config(command_shell_id, command, workspace, scratch)?;
-    let runner = tools::spawn_tool_runner(&config).await?;
+    let runner = tools::spawn_tool_runner(config).await?;
     let mut st = state.lock().await;
     // A task started for a session that no longer exists would belong to no
     // visible container and outlive the thing it was started from, so refuse it
@@ -286,36 +284,6 @@ pub(crate) async fn spawn_background_task_detached(
     // empty for exactly as long as the process was alive.
     bump_change_counter();
     Ok(task.id)
-}
-
-fn resolve_runner_config(
-    command_shell_id: &str,
-    command: &str,
-    workspace: &std::path::Path,
-    scratch: Option<&std::path::Path>,
-) -> Result<tools::ToolRunnerStartConfig, (String, String)> {
-    let resolved = tools::shell::resolve_shell(command_shell_id)
-        .map_err(|message| ("SHELL_NOT_FOUND".to_string(), message))?;
-    let invocation = tools::shell::build_invocation_for_platform(
-        tools::shell::current_platform(),
-        command_shell_id,
-        resolved.program,
-        command,
-    )
-    .map_err(|message| ("INVALID_ARGUMENT".to_string(), message))?;
-    Ok(tools::ToolRunnerStartConfig {
-        program: invocation.program,
-        args: invocation.args,
-        workspace: workspace.to_path_buf(),
-        scratch_dir: scratch.map(|path| {
-            tools::shell::format_scratch_dir_for_shell(
-                tools::shell::dialect_for_id(command_shell_id),
-                path,
-            )
-        }),
-        env_path: tools::shell::user_login_path().map(str::to_string),
-        extra_env: Vec::new(),
-    })
 }
 
 fn register_spawned_task(
@@ -552,6 +520,49 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    fn resolve_runner_config(
+        command_shell_id: &str,
+        command: &str,
+        workspace: &std::path::Path,
+        scratch: Option<&std::path::Path>,
+    ) -> Result<tools::ToolRunnerStartConfig, (String, String)> {
+        let resolved = tools::shell::resolve_shell(command_shell_id)
+            .map_err(|message| ("SHELL_NOT_FOUND".to_string(), message))?;
+        let invocation = tools::shell::build_invocation_for_platform(
+            tools::shell::current_platform(),
+            command_shell_id,
+            resolved.program,
+            command,
+        )
+        .map_err(|message| ("INVALID_ARGUMENT".to_string(), message))?;
+        Ok(tools::ToolRunnerStartConfig {
+            program: invocation.program,
+            args: invocation.args,
+            workspace: workspace.to_path_buf(),
+            scratch_dir: scratch.map(|path| {
+                tools::shell::format_scratch_dir_for_shell(
+                    tools::shell::dialect_for_id(command_shell_id),
+                    path,
+                )
+            }),
+            env_path: tools::shell::user_login_path().map(str::to_string),
+            extra_env: Vec::new(),
+        })
+    }
+
+    pub(super) async fn spawn_test_background_task(
+        state: &tokio::sync::Mutex<crate::state::AppState>,
+        session_id: &str,
+        command: &str,
+        command_shell_id: &str,
+        workspace: &std::path::Path,
+        scratch: Option<&std::path::Path>,
+    ) -> Result<String, (String, String)> {
+        let config = resolve_runner_config(command_shell_id, command, workspace, scratch)?;
+        super::spawn_background_task_detached(state, session_id, command, command_shell_id, &config)
+            .await
+    }
+
     /// A real session row, because a background spawn now refuses to start for
     /// a session that no longer exists.
     pub(super) fn new_session(st: &crate::state::AppState) -> String {
@@ -657,7 +668,7 @@ mod tests {
         };
 
         let before_start = change_counter();
-        let id = spawn_background_task_detached(
+        let id = spawn_test_background_task(
             &state,
             &session_id,
             "sleep 30",
@@ -734,7 +745,7 @@ mod tests {
             let st = state.lock().await;
             new_session(&st)
         };
-        spawn_background_task_detached(
+        spawn_test_background_task(
             &state,
             &session_id,
             "sleep 30",
@@ -779,33 +790,20 @@ mod tests {
         };
 
         for _ in 0..MAX_RUNNING_TASKS_PER_SESSION {
-            spawn_background_task_detached(
-                &state,
-                &session_a,
-                "sleep 30",
-                &shell,
-                dir.path(),
-                None,
-            )
-            .await
-            .unwrap();
+            spawn_test_background_task(&state, &session_a, "sleep 30", &shell, dir.path(), None)
+                .await
+                .unwrap();
         }
 
         // The other session is untouched by A being full.
-        spawn_background_task_detached(&state, &session_b, "sleep 30", &shell, dir.path(), None)
+        spawn_test_background_task(&state, &session_b, "sleep 30", &shell, dir.path(), None)
             .await
             .expect("a full session must not block a different session");
 
-        let refused = spawn_background_task_detached(
-            &state,
-            &session_a,
-            "sleep 30",
-            &shell,
-            dir.path(),
-            None,
-        )
-        .await
-        .expect_err("the session limit must refuse one more");
+        let refused =
+            spawn_test_background_task(&state, &session_a, "sleep 30", &shell, dir.path(), None)
+                .await
+                .expect_err("the session limit must refuse one more");
         assert_eq!(refused.0, "TOOL_FAILED");
         assert!(
             refused.1.contains("this session already runs"),
@@ -842,10 +840,10 @@ mod tests {
             (new_session(&st), new_session(&st))
         };
 
-        spawn_background_task_detached(&state, &session_a, "sleep 30", &shell, dir.path(), None)
+        spawn_test_background_task(&state, &session_a, "sleep 30", &shell, dir.path(), None)
             .await
             .unwrap();
-        spawn_background_task_detached(&state, &session_b, "sleep 30", &shell, dir.path(), None)
+        spawn_test_background_task(&state, &session_b, "sleep 30", &shell, dir.path(), None)
             .await
             .unwrap();
 
@@ -898,16 +896,10 @@ mod tests {
             id
         };
 
-        let refused = spawn_background_task_detached(
-            &state,
-            &session_id,
-            "sleep 30",
-            &shell,
-            dir.path(),
-            None,
-        )
-        .await
-        .expect_err("a deleted session must not accept a background task");
+        let refused =
+            spawn_test_background_task(&state, &session_id, "sleep 30", &shell, dir.path(), None)
+                .await
+                .expect_err("a deleted session must not accept a background task");
         assert_eq!(refused.0, "TOOL_FAILED");
         assert!(
             refused.1.contains("no longer exists"),

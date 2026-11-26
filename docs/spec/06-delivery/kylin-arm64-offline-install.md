@@ -113,181 +113,67 @@ address `192.0.2.1` in the same isolated namespace; the trace checker must
 reject it. Record the two results with the actual candidate package. A
 loopback proxy alone can miss direct connections from child processes.
 
-## Offline Office — Word and Excel
+## Office Runtime and a self-installed Word Skill
 
-On the Pie Code maintenance line, the ARM64 Debian package includes one
-shared Office Runtime and the built-in Offline Office extension. In a
-fresh profile the extension is off. Enable it in Extensions to expose
-`pie.offline-office/word`, `pie.offline-office/excel`, `pie.offline-office/ppt`,
-`pie.offline-office/pdf`, and `pie.offline-office/wx` in local Agent sessions.
-The skills use ordinary Bash approval and packaged executables without
-installing dependencies or falling back to system Node, Python, or LibreOffice.
+On the Pie Code 0.23.1 maintenance line, the Kylin ARM64 Debian package
+ships an Office Runtime extension without any office Skills. Users install
+the complete `docx` Skill through Agent → Skills, or place it under
+`~/.agents/skills` or the project Skill directory. Pie uses the existing
+discovery and does not rewrite the Skill or its links.
 
-Before building, stage the approved ARM64 Office Runtime 1.0.2
-`python-runtime`, `python-dependencies`, `node-runtime`, and
-`libreoffice-runtime` layers into one directory on a case-sensitive Linux
-filesystem, preserving permissions and relative links that resolve inside it.
-Overlay the complete `node_modules` from the locked docx 9.16.0 build into
-`node/lib/node_modules`. In `python/lib/python3.12/site-packages`, unpack the
-pre-staged pandas 3.1.1 CPython 3.12 manylinux AArch64 wheel and
-python-dateutil 2.9.0.post0 universal wheel, including their `.dist-info`
-directories. These two wheels have no `.data` directory and can be unpacked
-with the bundled `python3.12 -I -m zipfile -e WHEEL SITE_PACKAGES` on ARM64
-Linux. Reuse the bundled NumPy, six, openpyxl, python-pptx 1.0.2, and pypdf
-with its dependencies. Neither installation nor first use downloads
-dependencies. Keep the LibreOffice entry point at
-`libreoffice/program/soffice`. Retain the source manifest as
-`metadata/runtime-source.json`, the Node dependency lock as
-`metadata/package-lock.json`, and the components' licenses. Set
-`PI_CODE_OFFICE_RUNTIME_DIR` to the absolute path of this staging directory.
-Unpack the published [WX 0.21.3 Linux ARM64 offline package](https://github.com/mh567/wx-doc-format-skill/releases/tag/v0.21.3)
-into a separate staging directory and set `PI_CODE_WX_RUNTIME_DIR` to its
-absolute path. Preserve the package and dependency notices and verify the
-release asset digest before staging. The candidate build requires both
-inputs; the installed app needs neither original archive nor Cheese. On an
-ARM64 Linux runner with Docker, run the dedicated build and require Office
-in the package check:
+In Extensions, Office Runtime starts disabled, even after upgrading an
+enabled legacy Offline Office candidate. Enable it everywhere or choose
+local projects. Everywhere includes sessions with no project. Each new
+local Bash command resolves the current scope from its session; remote
+workspaces and system terminals keep their existing environment. Approved
+foreground and background Bash commands search the packaged Python and
+Node first, and CommonJS can resolve `docx` through `NODE_PATH`. The same
+Bash permission applies whether a Skill or an ordinary prompt calls it.
+An incomplete runtime reports the missing path and how to recover.
+
+Stage the approved ARM64 Office Runtime 1.0.2 Python, Python dependencies,
+and Node layers on a case-sensitive Linux filesystem, preserving relative
+links. Overlay the locked docx 9.16.0 production package tree under
+`node/lib/node_modules`; place the lock and original runtime provenance at
+`metadata/package-lock.json` and `metadata/runtime-source.json`.
+Packaging selects the interpreters, Python standard library, defusedxml
+and lxml (including their distribution metadata), and docx-js with its
+locked runtime dependencies and licenses. It does not ship the old launchers, templates,
+WX archives, LibreOffice, or unrelated language packages. This Word
+scenario uses the Skill's XML extraction route; optional pandoc-based
+conversion, legacy formats, PDF rendering, and tracked-change acceptance
+are outside this Word qualification.
 
 ```sh
 export PI_CODE_OFFICE_RUNTIME_DIR=/absolute/path/to/staged/office-runtime
-export PI_CODE_WX_RUNTIME_DIR=/absolute/path/to/unpacked/wx-doc-format-0.21.3
 pnpm --filter @pi-desktop/desktop run dist:kylin
 deb=apps/desktop/release/kylin-offline-office/pie-code_0.23.1_arm64.deb
 node scripts/check-linux-deb.mjs arm64 "$deb" --with-offline-office
 ```
 
-The package check inspects the extracted payload and uses its own Node and
-Python to read back a newly created Word document, a pandas Excel table,
-a PowerPoint presentation, text extraction from a PDF, and a WX review of
-the Word document. LibreOffice export uses the Kylin system libraries and
-is tested on Kylin.
-Keep the exact Office Debian package, the candidate commit, the package
-inspection output, and the Kylin run output together. Link those results in the PR or release record;
-generic CI artifacts and results from a different package do not qualify.
-
-With no public route, install that package in a clean application test
-environment and run the Office scenario against the installed binary. Build
-the shared JS package beforehand and use Node 22+ to run the scenario
-(the bundled Node can run it). The scenario enables the extension through
-the UI, loads all five skills through a loopback model, and checks that Bash
-is held for approval. It reads back Office results with python-docx, openpyxl,
-and python-pptx. The PDF scenario uses ReportLab from the existing Python
-dependency layer for fixtures and Kylin's `pdftotext` for independent readback.
-The scenario checks that the sources are unchanged, disables the extension,
-and verifies that the skills are absent from new sessions after restarting.
+Install that exact DEB with no public route or extra system dependency
+installation. Supply the original, complete user Skill separately, then
+run the scenario with a built shared package, Node 22+, and a display in
+the loopback-only namespace:
 
 ```sh
 PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
+PI_CODE_E2E_DOCX_SKILL=/absolute/path/to/original/docx \
   node scripts/e2e-offline-office.mjs
 ```
 
-Word edits replace a unique literal within one main-document paragraph
-and save a new file. The skill reads the main part of transitional and
-Strict DOCX files. Tabs and other layout markers interrupt literal matches.
-Replacement text inherits the first matched run's formatting. Existing output files, including the source, are never
-overwritten.
-
-Excel reads a sheet with pandas, using the first row as column names and the
-stored values for formulas. Elapsed durations are numeric seconds.
-New tables use JSON records and pandas. An edit
-replaces an existing plain value cell in a fresh `.xlsx` copy and leaves
-formulas, cached results, styles, and other sheets intact. An explicit
-recalculation creates another copy and updates only the formula caches. It
-gives bundled LibreOffice a separate workbook with plain values and supported
-workbook-local scalar formulas, including whole-row and whole-column ranges.
-External references, named ranges, array formulas, iterative calculation,
-precision as displayed, and unsupported functions fail without producing a
-copy. If LibreOffice times out or Bash is cancelled during conversion, the
-calculation processes are stopped and no copy is published. The sample keeps both `SUM` formulas;
-each reads back as 250 after editing and 260 after recalculation.
-
-## Offline Office — PowerPoint
-
-The same Offline Office extension exposes `pie.offline-office/ppt`. In a
-local Agent session, the skill uses the normal Bash approval flow and the
-packaged Python. It creates `.pptx` files with editable title and body text,
-and extracts text in slide order from visible shapes, groups and tables. Image text,
-chart content, embedded objects and speaker notes are outside scope. The
-reader accepts presentations up to 256 MiB after ZIP expansion.
-
-The skill can replace a unique literal within one paragraph on a selected
-slide and save it to a new file. Visible fields such as slide numbers count
-toward uniqueness but remain read-only. The replacement uses the first matched
-run's formatting. The input and all other package parts stay unchanged;
-existing destination files are rejected.
-
-The same installed Office scenario verifies that the session creates and
-extracts an editable two-slide deck, then saves and reads back an edit to
-the first slide of a separate deck.
-The filenames contain Chinese characters and spaces. The test verifies that
-hidden text is omitted and ambiguous edits involving a slide number are refused.
-It compares the original bytes and every package part outside the edited slide.
-
-## Offline Office — PDF
-
-In an authorized local Agent session, `pie.offline-office/pdf` extracts
-text by page and merges ordinary, unencrypted PDFs in the order requested.
-It also exports existing DOCX, PPTX, and XLSX files using bundled LibreOffice.
-LibreOffice opens the sources read-only with a separate profile that disables
-macros and blocks untrusted linked images. The skill publishes to a new PDF only;
-it refuses to overwrite any file or link. Cancelling an in-progress export
-stops LibreOffice and removes the intermediate files. Scanned PDF OCR and legacy Office
-formats are outside scope.
-
-The installed Office scenario loads this skill and approves its Bash
-commands without public network access. Check that the merged PDF contains
-three pages in the requested order, all three Office exports contain the
-expected Chinese text on independent readback, and the five inputs remain
-byte identical. The exports use the Office fixtures prepared before the
-session; they do not depend on any document the Agent created or edited.
-
-## Offline Office — WX formatting and review
-
-In a local Agent session, enable `pie.offline-office/wx` to format Markdown
-or DOCX with the bundled WX template. Use a new output directory under an
-authorized path. Formatting writes `formatted.docx` and `audit.json`.
-The audit must allow delivery before the Agent returns the finished DOCX.
-Allowed warnings are shown with their diagnostic codes. An invalid or failed
-audit or a manual review requirement stops delivery and leaves the report
-available for review.
-Standalone review accepts DOCX and writes `review.md` with its score and
-recommended fixes. Neither operation edits the source. AI enhancement is
-outside this release.
-
-WX uses the bundled Python 3.12 with the original WX offline wheelhouse.
-On first use it extracts those wheels to `offline-office/wx-<version>/deps`
-under the managed Pie Code data directory, using the bundled WX package's
-version. It needs no package manager or network. Keep the installed
-application read-only during the disconnected
-Kylin acceptance run, and confirm both audit reports, the independent review,
-and the unchanged source bytes using the installed Office scenario above.
-Confirm redistribution permission for WX and its dependencies before release.
-
-### WX candidate evidence (2026-11-26)
-
-PR #27 head `0fae387f4` plus the WX review fixes, on maintenance baseline
-`b8667f4d3`. The same `pie-code_0.23.1_arm64.deb` was inspected and installed.
-SHA-256: `0677d3c321f04210e82b9855bfeed0c56aa30a0a9b672ffe6cd4782a763c897c`.
-
-- [ARM64 package inspection output](#wx-arm64-package-inspection).
-- [Installed Kylin scenario output](#wx-installed-kylin-scenario).
-
-These results apply to this exact package. Rerun acceptance for a different
-release package.
-
-#### WX ARM64 package inspection
-
-```text
-Verified 511 arm64 ELF files at glibc <= 2.31.
-Verified bundled Word and PowerPoint creation/extraction, Excel creation/read, and WX review.
-```
-
-#### WX installed Kylin scenario
-
-UTM Galaxy Kylin V10 SP1, ARM64, glibc 2.31, system Python 3.8.10. The
-install was read-only during the user session and the network namespace had
-only loopback. The package digest matched on the guest.
-
-```text
-PASS: offline Office enablement, Bash approval, Word readback, Excel pandas read/write and formula cache 250 → 260, PowerPoint readback, WX first-use cache and conversion audits for Markdown and DOCX, independent WX review, source preservation, and disablement after restart
-```
+The scenario loads the installed Skill from the real Agent tool, approves
+Bash and Edit through the existing permission broker, and reads back the
+new and edited DOCX files. It uses the Skill's unpack, validate and pack
+scripts and its CommonJS docx-js authoring path. It compares the original
+documents and Skill files byte for byte, tests denied Bash and global
+Bash in an unbound session, switches between selected and unselected
+projects, then disables the extension and restarts. For an upgrade test,
+run the same command against an installed legacy candidate with
+`--seed-legacy` and `PI_CODE_E2E_UPGRADE_STATE` pointing to a new disposable
+directory. Upgrade the installation, keep the same environment variable,
+and run without `--seed-legacy` to verify the old session and user Skill
+survive and the old activation state does not enable the new runtime.
+Keep the candidate revision, DEB digest, package inspection, and target
+result together. Earlier candidates with built-in Skills are not evidence
+for this package.

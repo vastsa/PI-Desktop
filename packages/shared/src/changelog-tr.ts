@@ -5,10 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.23.1",
     date: "2026-11-25",
     highlights: [
-      "Word belgeleri oluşturmak, metni ayıklamak veya bir kopya kaydetmek için Kylin ARM64 sürümünde Uzantılar bölümünden Çevrimdışı Ofis’i etkinleştirin.",
-      "Çevrimdışı Ofis, Excel çalışma kitaplarını okuyabilir, oluşturabilir ve kopyalarını kaydedebilir; istek üzerine formülleri yeniden hesaplar.",
-      "Çevrimdışı Office, PDF metnini çıkarır, PDF dosyalarını birleştirir ve Word, PowerPoint ve Excel dosyalarını PDF olarak dışa aktarır.",
-      "Çevrimdışı Ofis, Markdown veya Word belgelerini WX şablonuyla biçimlendirip sonucu denetler. Ayrıca mevcut bir Word belgesinin biçimini puanlayıp asıl belgeyi değiştirmeden düzeltmeler önerir.",
+      "Kylin ARM64 üzerinde kendi Word becerinizi Ajan → Skills bölümüne yükleyin ve Uzantılar bölümünde Office çalışma ortamını açın. Word belgelerini çevrimdışı okuyabilir, oluşturabilir ve kopyalarını düzenleyebilirsiniz.",
     ],
   },
   {

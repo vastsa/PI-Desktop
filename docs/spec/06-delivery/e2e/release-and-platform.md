@@ -29,104 +29,28 @@
 
 ## E2E-PIE-OFFICE-WORD: Offline Word on Kylin ARM64
 
-- **Preconditions**: Qualify the dedicated Office Debian candidate on Kylin
-  V10 SP1 ARM64 with a clean profile, no public network, and a loopback model.
-- **Steps**: Inspect and install the recorded Debian artifact. Open Extensions
-  in English, enable Offline Office, and use the Word skill from an Agent
-  session. Confirm Bash waits for approval, then create, extract, and save a
-  copy. Try writing to the original and to an existing copy. Disable the
-  extension, restart, and open a new session.
-- **Expected**: The extension starts disabled and shows its English name.
-  Word uses the bundled interpreters. Independent DOCX readback confirms
-  Chinese text, formatting, and untouched paragraphs. Failed writes leave
-  both original and existing files unchanged. New sessions no longer see
-  the skill after disabling and restarting.
-- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--word-and-excel),
-  [Plugin manifest schema](../../07-plugins/02-plugin-manifest-schema.md#31-localized-labels-i18n).
+- **Preconditions**: Install the inspected ARM64 DEB on Kylin V10 SP1 with
+  no public route, no CheeseAgent, a clean app profile, and a loopback model.
+  Install an unmodified user docx Skill in its ordinary user Skill directory.
+- **Steps**: Discover the Skill through Agent → Skills. Verify Office Runtime
+  starts off, then enable it in Extensions. Check ordinary Bash in an
+  unbound session and compare the system terminal. Deny one Bash write.
+  Load the docx Skill, then approve the Bash and Edit calls to extract text,
+  generate an editable document, and save an edited copy. Use Chinese file
+  names with spaces. Disable the extension, restart, and open a new session.
+- **Expected**: The normal permissions hold before any write. The selected
+  Bash uses packaged tools; disabled Bash and the system terminal keep their
+  original environment. Both output files read back and the source and user
+  Skill remain byte identical. The disabled extension leaves the user Skill
+  available. Repeat after seeding an enabled project scope in the previous
+  installed candidate and upgrading it. Package inspection and Host tests
+  cover the dependency and local dispatch boundaries.
+- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#office-runtime-and-a-self-installed-word-skill).
 - **Acceptance criterion**: A, C, E, G, Quality.
 - **Milestone**: M6+ (Pie Code 0.23.1).
-- **Status**: Automated. Record the result against the exact candidate
-  Debian package for each release.
-
-## E2E-PIE-OFFICE-EXCEL: Offline Excel on Kylin ARM64
-
-- **Preconditions**: The same installed candidate, clean profile, and isolated
-  network as E2E-PIE-OFFICE-WORD. An XLSX fixture has Chinese filenames and
-  sheet names, a 27:30:00 elapsed time, a second sheet, and both a bounded
-  and a whole-column sum cached as 250.
-- **Steps**: Enable Offline Office. Load the Excel skill in a local Agent
-  session. Approve Bash once to create and read an XLSX with pandas, edit the
-  fixture into a new copy, then explicitly recalculate and read a second copy.
-- **Expected**: The session reads the pandas result. The source is unchanged.
-  The edited copy keeps the formula, styles, other sheet, and cache of 250;
-  both formulas read back 260 in the recalculated copy, and the elapsed
-  time reads back as 99,000 seconds. The Office skills disappear from new sessions
-  after disabling and restarting.
-- **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--word-and-excel).
-- **Acceptance criterion**: A, C, E, G, Quality.
-- **Milestone**: M6+ (Pie Code 0.23.1).
-- **Status**: Automated by the installed Office scenario. Record the result
-  against the exact Debian candidate for each release.
-
-## E2E-PIE-OFFICE-PPT: Offline PowerPoint on Kylin ARM64
-
-- **Preconditions:** Install the inspected Office Debian candidate on Kylin
-  V10 SP1 ARM64. Use a clean application profile and an isolated network
-  namespace with a loopback model.
-- **Steps:** Enable Offline Office in Extensions and load its PowerPoint
-  Skill from an Agent session. Approve Bash to create and extract one deck,
-  then save and extract a copy of a separate deck after editing its first slide.
-  Use filenames containing Chinese characters and spaces.
-- **Expected:** Extraction reaches the session. The new file opens with
-  editable slide text. The edited copy contains the first-slide change;
-  the second slide, the other package parts and the input file are unchanged.
-  Hidden text is omitted. A second edit matching ordinary text and a
-  slide-number field is refused without creating a file.
-- **Specs linked:** [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--powerpoint).
-- **Acceptance criterion:** A, C, E, G, Quality.
-- **Milestone:** M6+ (Pie Code 0.23.1).
-- **Status:** Automated. Record the result against the exact candidate Debian package.
-
-## E2E-PIE-OFFICE-PDF: Offline PDF on Kylin ARM64
-
-- **Preconditions:** Install the inspected Office Debian candidate on Kylin
-  V10 SP1 ARM64. Use a clean application profile, a loopback model, and no
-  public network route. Prepare text PDFs and existing DOCX, PPTX, and XLSX
-  samples with Chinese content and filenames containing spaces.
-- **Steps:** Enable Offline Office. Load the PDF Skill in a local Agent
-  session and approve Bash to extract PDF text, merge the PDFs in a given
-  order, and export each Office sample. Try to save over one input PDF.
-- **Expected:** The Agent receives the original and merged PDF text.
-  Independent readback confirms three pages in the requested order and
-  Chinese text in each Office export. The overwrite is refused and all
-  inputs remain byte identical.
-- **Specs linked:** [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--pdf).
-- **Acceptance criterion:** A, C, E, G, Quality.
-- **Milestone:** M6+ (Pie Code 0.23.1).
-- **Status:** Automated. Record the result against the tested Debian package.
-
-## E2E-PIE-OFFICE-WX: Offline WX on Kylin ARM64
-
-- **Preconditions:** Install the inspected Office Debian candidate on Kylin
-  V10 SP1 ARM64. Make the install directory read-only, use a clean application
-  profile and an isolated network namespace with a loopback model.
-- **Steps:** In Extensions, enable Offline Office and load the WX Skill in
-  an Agent session. Approve Bash to format a Markdown and a DOCX fixture and
-  run a separate review of the original DOCX. Use filenames containing Chinese
-  characters and spaces. Try to write to an existing output directory.
-- **Expected:** The first call uses only bundled wheels and creates its cache
-  in the managed app data directory. Both converted DOCXs are readable and
-  their audits allow delivery without manual review. Separately, the launcher
-  regression tests verify that an audit requiring manual review blocks delivery
-  even when conversion succeeds. The standalone review returns a score and a
-  remediation report.
-  Neither source changes, and a reused output directory is refused. The
-  Skill is absent in a new session after disabling the extension and restarting.
-- **Specs linked:** [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--wx-formatting-and-review).
-- **Acceptance criterion:** A, C, E, G, Quality.
-- **Milestone:** M6+ (Pie Code 0.23.1).
-- **Status:** Automated by `node scripts/e2e-offline-office.mjs`; record the
-  result against the exact Debian candidate.
+- **Status**: Automated by `node scripts/e2e-offline-office.mjs`. Record
+  results against the exact Debian artifact. The superseded built-in Office
+  scenarios do not qualify self-installed Excel, PPT, PDF, or WX Skills.
 
 ## Windows background process snapshot clock
 

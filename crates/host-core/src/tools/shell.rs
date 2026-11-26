@@ -580,7 +580,7 @@ fn search_path(name: &str, accept: impl Fn(&Path) -> bool) -> Option<PathBuf> {
 }
 
 #[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
+pub(super) fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
 
     path.is_file()
@@ -590,7 +590,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 #[cfg(windows)]
-fn is_executable(path: &Path) -> bool {
+pub(super) fn is_executable(path: &Path) -> bool {
     if !path
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case(OsStr::new("exe")))

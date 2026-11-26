@@ -5,10 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     version: "0.23.1",
     date: "2026-11-25",
     highlights: [
-      "Ative o Office offline em Extensões no Kylin ARM64 para criar documentos do Word, extrair texto ou salvar uma cópia.",
-      "O Office offline também lê, cria e salva cópias de pastas de trabalho do Excel e recalcula fórmulas sob demanda.",
-      "O Office offline extrai texto de PDFs, combina PDFs e exporta arquivos do Word, PowerPoint e Excel para PDF.",
-      "O Office offline formata documentos Markdown ou Word com o modelo WX e verifica o resultado. Também avalia a formatação de documentos Word e sugere correções sem alterar o original.",
+      "No Kylin ARM64, instale sua própria habilidade do Word em Agente → Skills e ative o ambiente Office em Extensões para ler, criar e editar cópias de documentos offline.",
     ],
   },
   {

@@ -5,10 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.23.1",
     date: "2026-11-25",
     highlights: [
-      "On Kylin ARM64, enable Offline Office in Extensions to create, extract text from, or save a copy of Word documents and PowerPoint presentations offline.",
-      "Offline Office also reads, creates, and saves copies of Excel workbooks, with formula recalculation on request.",
-      "Offline Office extracts and merges PDFs and exports Word, PowerPoint, and Excel files to PDF.",
-      "Use Offline Office to format and audit Markdown or Word documents with the WX template, or score an existing Word document and get formatting fixes without changing the original.",
+      "On Kylin ARM64, install your Word Skill in Agent → Skills and enable Office Runtime in Extensions to create, read, and edit copies of Word documents offline.",
     ],
   },
   {

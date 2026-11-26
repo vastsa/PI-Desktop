@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// Where an extension is allowed to run.
 ///
@@ -100,6 +101,11 @@ pub fn project_path_matches(entry: &str, target: &str) -> bool {
     if scoped.is_empty() || target.is_empty() {
         return false;
     }
+    // Distinct Linux directories can differ only in case. A selected project
+    // must not enable the runtime in its case-variant sibling.
+    if cfg!(target_os = "linux") {
+        return Path::new(&target).starts_with(Path::new(&scoped));
+    }
     if same_path(&scoped, &target) {
         return true;
     }
@@ -108,7 +114,10 @@ pub fn project_path_matches(entry: &str, target: &str) -> bool {
     } else {
         format!("{scoped}/")
     };
-    target.len() > prefix.len() && same_path(&target[..prefix.len()], &prefix)
+    target.len() > prefix.len()
+        && target
+            .get(..prefix.len())
+            .is_some_and(|start| same_path(start, &prefix))
 }
 
 #[cfg(test)]
@@ -120,6 +129,11 @@ mod tests {
             mode: ActivationMode::Projects,
             projects: paths.iter().map(|p| p.to_string()).collect(),
         }
+    }
+
+    #[test]
+    fn unrelated_unicode_project_does_not_match() {
+        assert!(!project_path_matches("/a", "/你你好"));
     }
 
     #[test]
@@ -139,9 +153,13 @@ mod tests {
     }
 
     #[test]
-    fn project_scope_ignores_case_and_trailing_separators() {
+    fn project_scope_respects_linux_case_and_ignores_trailing_separators() {
         let scope = projects(&["/Users/me/App/"]);
-        assert!(scope.matches(Some("/users/me/app")));
+        assert!(scope.matches(Some("/Users/me/App")));
+        assert_eq!(
+            scope.matches(Some("/users/me/app")),
+            !cfg!(target_os = "linux")
+        );
     }
 
     #[test]

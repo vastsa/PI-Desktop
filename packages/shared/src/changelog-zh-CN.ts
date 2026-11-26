@@ -5,10 +5,7 @@ export const zhCNEntries: ChangelogEntry[] = [
     version: "0.23.1",
     date: "2026-11-25",
     highlights: [
-      "在麒麟 ARM64 版的「扩展」中启用离线办公，即可离线新建 Word 文档和 PowerPoint 演示文稿、提取文字或另存副本。",
-      "离线办公也能读取、新建和另存 Excel 工作簿，并可按需重算副本的公式。",
-      "离线办公可提取 PDF 文字、按顺序合并 PDF，并将 Word、PowerPoint 和 Excel 文件导出为 PDF。",
-      "离线办公可按 WX 模板排版 Markdown 或 Word 文档并生成审计报告，也可单独审查 Word 文档，给出评分和整改建议，保留原件。",
+      "在麒麟 ARM64 上，从「Agent → Skills」安装自己的 Word Skill，并在「扩展」中启用办公运行时，即可离线读取、新建或另存 Word 文档。",
     ],
   },
   {

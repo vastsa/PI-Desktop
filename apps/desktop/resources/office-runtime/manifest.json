@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "pie.office-runtime",
+  "name": "Office Runtime",
+  "version": "1.0.0",
+  "description": "Make offline office tools available to Bash in selected local sessions. Install your own skills in Agent → Skills.",
+  "i18n": {
+    "en": {
+      "name": "Office Runtime",
+      "description": "Make offline office tools available to Bash in selected local sessions. Install your own skills in Agent → Skills."
+    },
+    "zh-CN": {
+      "name": "办公运行时",
+      "description": "让所选本地会话的 Bash 使用离线办公工具。请在「Agent → Skills」中自行安装 Skill。"
+    }
+  },
+  "main": "main.cjs",
+  "enabledByDefault": false
+}

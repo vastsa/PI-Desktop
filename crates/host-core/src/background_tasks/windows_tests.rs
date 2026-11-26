@@ -1,7 +1,7 @@
 //! Windows-only regression coverage for issue #1805: stopping a background task
 //! must terminate the command the runner launched, not only the runner itself.
 
-use super::tests::new_session;
+use super::tests::{new_session, spawn_test_background_task};
 use super::*;
 use std::time::Duration;
 
@@ -52,7 +52,7 @@ async fn stop_terminates_the_command_the_runner_launched() {
         "powershell -NoProfile -ExecutionPolicy Bypass -File '{}'",
         command_script.display()
     );
-    let id = spawn_background_task_detached(
+    let id = spawn_test_background_task(
         &state,
         &session_id,
         &command,

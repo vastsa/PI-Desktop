@@ -139,6 +139,7 @@ async fn isolated_session_user_path_from_create_to_delete() {
             cancellation: None,
             output_tx: None,
             extra_env: env,
+            office_runtime: None,
             run_in_background: false,
             app_state: None,
         })),
