@@ -757,6 +757,15 @@ export function mcpControlRendererEvent(
   return null;
 }
 
+const ACTIVATE_MAIN_WINDOW_OPERATION: McpControlOperation = {
+  id: "window/activate",
+  channel: "internal:activate-main-window",
+  description: "Show the PI-Desktop main window and request keyboard focus.",
+  risk: "write",
+  argumentShape: [],
+  pluginOnly: true,
+};
+
 /**
  * Shared invocation gateway for MCP and first-party plugins.
  *
@@ -767,6 +776,7 @@ export function createMcpControlController(options: {
   channels: Readonly<Record<string, string>>;
   invoke: IpcInvoke;
   invokeSessionCollaboration?: (input: McpControlInvokeInput) => Promise<unknown>;
+  activateMainWindow?: () => Promise<{ focused: boolean }>;
   onOperationComplete?: (
     operation: McpControlOperation,
     result: unknown,
@@ -774,8 +784,11 @@ export function createMcpControlController(options: {
     source?: McpControlInvocationSource,
   ) => void | Promise<void>;
 }): McpControlController {
-  const operations = [...createMcpControlOperations(options.channels),
-    ...(options.invokeSessionCollaboration ? SESSION_COLLABORATION_OPERATIONS : [])];
+  const operations = [
+    ...createMcpControlOperations(options.channels),
+    ...(options.invokeSessionCollaboration ? SESSION_COLLABORATION_OPERATIONS : []),
+    ...(options.activateMainWindow ? [ACTIVATE_MAIN_WINDOW_OPERATION] : []),
+  ];
   const operationById = new Map(operations.map((operation) => [operation.id, operation]));
   return {
     operations,
@@ -800,6 +813,19 @@ export function createMcpControlController(options: {
         throw Object.assign(new Error(`confirm=true is required for ${operation.id}`), {
           code: "CONFIRMATION_REQUIRED",
         });
+      }
+      if (operation === ACTIVATE_MAIN_WINDOW_OPERATION) {
+        if (input.source !== "plugin" || !input.pluginContext?.pluginId) {
+          throw Object.assign(new Error("window/activate requires a plugin caller"), {
+            code: "PERMISSION_DENIED",
+          });
+        }
+        if (args.length !== 0) {
+          throw Object.assign(new Error("window/activate does not accept arguments"), {
+            code: "INVALID_PARAMS",
+          });
+        }
+        return options.activateMainWindow!();
       }
       const sanitized = args.map((value) => stripSecretMaterial(value)) as unknown[];
       if (operation.id === "agent/prompt") markAutomationRequest(sanitized[0]);

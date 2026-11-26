@@ -24,7 +24,7 @@ import { planMaximizeToggle, windowedRestoreBounds } from "../window-maximize";
 import { createTraySessions } from "../tray-sessions";
 import { createTaskbarUnreadBadge } from "../taskbar-unread-badge";
 import { createWindow, type WindowLifecycleState } from "./window";
-import { windowToggleAction } from "./window-visibility";
+import { activateMainWindowTarget, windowToggleAction } from "./window-visibility";
 import type { BrowserHost } from "../browser-host";
 import type { Logger } from "../logger";
 import type { PluginRuntime } from "../plugin-runtime";
@@ -161,6 +161,11 @@ export function createApplicationLifecycle({
     return BrowserWindow.getAllWindows().some(
       (window) => !window.isDestroyed() && window.isVisible(),
     );
+  }
+
+  async function activateMainWindow(): Promise<{ focused: boolean }> {
+    await ensureWindow();
+    return activateMainWindowTarget(state.mainWindow, process.platform);
   }
 
   function restoreMainWindow() {
@@ -806,6 +811,7 @@ export function createApplicationLifecycle({
     applyDevelopmentBranding,
     hasVisibleWindow,
     restoreMainWindow,
+    activateMainWindow,
     toggleMainWindow,
     updateTrayMenu,
     createTray,

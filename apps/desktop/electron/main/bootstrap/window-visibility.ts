@@ -16,6 +16,36 @@ export type WindowVisibilitySnapshot = {
 };
 
 /** `hide` for a window the user is looking at, `show` for anything else. */
+export type MainWindowActivationTarget = {
+  isDestroyed(): boolean;
+  isMinimized(): boolean;
+  isAlwaysOnTop(): boolean;
+  isFocused(): boolean;
+  restore(): void;
+  show(): void;
+  focus(): void;
+  setAlwaysOnTop(value: boolean): void;
+};
+
+/** An explicit activation request; the OS can still decline keyboard focus. */
+export function activateMainWindowTarget(
+  window: MainWindowActivationTarget | null,
+  platform: NodeJS.Platform,
+): { focused: boolean } {
+  if (!window || window.isDestroyed()) return { focused: false };
+  if (window.isMinimized()) window.restore();
+  if (window.isDestroyed()) return { focused: false };
+  const temporarilyTopmost = platform === "win32" && !window.isAlwaysOnTop();
+  try {
+    if (temporarilyTopmost) window.setAlwaysOnTop(true);
+    window.show();
+    if (!window.isDestroyed()) window.focus();
+  } finally {
+    if (temporarilyTopmost && !window.isDestroyed()) window.setAlwaysOnTop(false);
+  }
+  return { focused: !window.isDestroyed() && window.isFocused() };
+}
+
 export function windowToggleAction(
   window: WindowVisibilitySnapshot,
 ): "hide" | "show" {

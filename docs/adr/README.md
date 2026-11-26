@@ -26,6 +26,7 @@ git history.
 
 | ID | Title | Status |
 |---|---|---|
+| plugin-main-window-activation | [Explicit plugin activation of the desktop main window](plugin-main-window-activation.md) | Implemented candidate |
 | codemode-sandbox-boundary | [Codemode sandbox execution boundary](codemode-sandbox-boundary.md) | Accepted |
 | mode-definitions | [User-definable modes as staged workflows](mode-definitions.md) | Proposed |
 | sidebar-layout-recovery | [Recover sidebar layout independently of Chromium storage](sidebar-layout-recovery.md) | Accepted |

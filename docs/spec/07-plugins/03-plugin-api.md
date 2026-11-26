@@ -1346,7 +1346,18 @@ pi.desktop.invoke(input: {
 The reviewed catalog includes `session/open(sessionId)` for a plugin UI to
 open an existing durable session. Plugin-originated `session/create` and
 `agent/prompt` calls refresh session state without changing the active
-renderer session; `session/open` is explicit navigation.
+renderer session; `session/open` is explicit navigation and does not request
+window focus when called by a plugin.
+
+A plugin can explicitly call `pi.desktop.invoke({ operation: "window/activate" })`
+to show the main window and request keyboard focus. The `write` operation uses
+`desktop.control`, accepts no arguments, and targets only the application's
+main window. On Windows the host temporarily raises a non-topmost window while
+requesting focus and then restores its prior topmost state. It returns
+`{ focused: boolean }` as reported by Electron after the attempt; OS focus
+policies can still prevent or revoke foreground focus. Use this operation in
+response to an explicit user action, not as part of routine background work.
+Older hosts may not list the operation; check `pi.desktop.listOperations()`.
 
 The catalog also includes the read `agent/pendingInteractive({ sessionId })`
 (`sessionId` is required), which returns `{ asks, permissions }`: the session's
@@ -1358,15 +1369,14 @@ local MCP control plane.
 
 This is the first-party plugin gateway to the reviewed operation catalog shared
 with the opt-in local MCP control plane (ADR 0203 / D370). The two catalogs
-differ only for operations marked plugin-only: the six
+differ only for operations marked plugin-only: `window/activate` and the six
 `session/collaboration/*` operations are callable through this gateway but are
 deliberately absent from the MCP-visible catalog (`tools/list`,
 `pi_control_describe`, and the `pi_desktop_invoke` enum), because they require
 an authenticated plugin invocation context and no renderer mutation channel
 exists for them. The returned catalog omits Electron channel names and the
-plugin never receives the MCP bearer token. Invocation reuses the controller,
-IPC handler, lifecycle checks, completion event, and audit boundary; a plugin
-cannot reach arbitrary Electron IPC.
+plugin never receives the MCP bearer token. The controller dispatches reviewed
+operations to their host handlers; a plugin cannot reach arbitrary Electron IPC.
 
 A `dangerous` operation (session delete, permission-mode change, tool
 approval) needs two answers. `confirm: true` is the plugin's acknowledgement
