@@ -2014,7 +2014,7 @@ async fn handle_request(
                     crate::plugins::progress::cancel_active_install(id).unwrap_or(false);
                 return Ok(json!({ "cancelled": cancelled, "id": id }));
             }
-            Err(tokio::sync::TryLockError::WouldBlock) => {
+            Err(_) => {
                 if let Some(cancelled) = crate::plugins::progress::cancel_active_install(id) {
                     return Ok(json!({ "cancelled": cancelled, "id": id }));
                 }
