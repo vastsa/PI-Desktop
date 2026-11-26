@@ -1174,6 +1174,7 @@ registerApplicationStartup({
   bootHostStatus,
   flushPendingApplicationMenuCommands,
   invokeSessionCollaboration: sessionCollaboration.invoke,
+  activateMainWindow: applicationLifecycle.activateMainWindow,
   onSessionQueueChange: () => {
     void sessionCollaboration.drain().catch((error: unknown) => {
       logger.app("runtime", "warn", "session callback drain failed", { data: String(error) });

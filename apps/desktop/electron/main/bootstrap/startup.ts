@@ -125,6 +125,7 @@ export type StartupDependencies = {
   flushPendingApplicationMenuCommands: () => void;
   getSidecar?: () => unknown;
   invokeSessionCollaboration?: (input: McpControlInvokeInput) => Promise<unknown>;
+  activateMainWindow: () => Promise<{ focused: boolean }>;
   onSessionQueueChange?: () => void;
 };
 
@@ -294,6 +295,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       invoke: invokeIpc,
       channels: IPC.invoke,
       invokeSessionCollaboration: deps.invokeSessionCollaboration,
+      activateMainWindow: deps.activateMainWindow,
       onOperationComplete: async (operation, result, args, source) => {
         const event = mcpControlRendererEvent(operation, result, args, source);
         if (event) sendToRenderer(IPC.event.sessionsChanged, event);

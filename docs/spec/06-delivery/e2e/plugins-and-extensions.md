@@ -4037,3 +4037,17 @@ Electron and real-host lifecycle verification remain manual/CI coverage.
 ## E2E-ISSUE-2184
 
 Load the actual bundled plugin in an isolated workspace. Create a file and Unicode directory, rename and move the file; verify disk entries and response metadata. Invalid create/rename names fail before writing, and duplicate destinations are refused. Coverage: apps/desktop/test/file-manager-mutations.test.mjs. Existing Electron directory-location path also passes.
+
+## E2E-PLUGIN-WINDOW-ACTIVATE: Explicit activation after background session navigation
+
+- **Given** a Windows desktop with another application in the foreground and a
+  loaded plugin granted `desktop.control`.
+- **When** the plugin calls `session/open`, verify that the target session changes
+  without activating the window. On an explicit user action call `window/activate`.
+- **Then** the main window is restored if minimized; its original topmost state
+  remains unchanged. Verify the OS foreground window, separately from Electron's
+  `focused` result. If Windows declines focus, do not report activation as an
+  OS-level success.
+- **Negative cases**: a plugin without the grant is denied, argument injection is
+  rejected, and the operation cannot be discovered or invoked through local MCP.
+- **Specs linked**: `07-plugins/03-plugin-api.md` (desktop control).

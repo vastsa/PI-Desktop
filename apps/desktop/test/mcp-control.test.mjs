@@ -95,6 +95,29 @@ async function post(url, token, body, headers = {}) {
   };
 }
 
+test("explicit main-window activation needs a verified plugin caller and accepts no arguments", async () => {
+  let activations = 0;
+  const options = { channels: {}, invoke: async () => assert.fail("unexpected IPC") };
+  const operation = "window/activate";
+  const plugin = { source: "plugin", pluginContext: { pluginId: "local.hardware" } };
+  await assert.rejects(
+    () => createMcpControlController(options).invoke({ operation, ...plugin }),
+    { code: "NOT_FOUND" },
+  );
+  const controller = createMcpControlController({
+    ...options,
+    activateMainWindow: async () => ({ focused: ++activations === 2 }),
+  });
+  assert.equal(controller.operations[0]?.pluginOnly, true);
+  assert.equal(controller.operations[0]?.risk, "write");
+  await assert.rejects(() => controller.invoke({ operation, source: "mcp" }), { code: "PERMISSION_DENIED" });
+  await assert.rejects(() => controller.invoke({ operation, source: "plugin" }), { code: "PERMISSION_DENIED" });
+  await assert.rejects(() => controller.invoke({ operation, args: [123], ...plugin }), { code: "INVALID_PARAMS" });
+  assert.equal(activations, 0);
+  assert.deepEqual(await controller.invoke({ operation, ...plugin }), { focused: false });
+  assert.deepEqual(await controller.invoke({ operation, args: [], ...plugin }), { focused: true });
+});
+
 const fixtureChannels = {
   appGetVersion: "pi-desktop/app/getVersion",
   projectSet: "pi-desktop/project/set",
@@ -823,7 +846,7 @@ test("the reviewed catalog never includes picker or secret-write channels", () =
   assert.deepEqual(ids, ["app/getVersion", "project/set", "session/configure"].sort());
 });
 
-test("plugin-only session collaboration operations stay off the external MCP surface", async (t) => {
+test("plugin-only desktop operations stay off the external MCP surface", async (t) => {
   const dataDir = mkdtempSync(join(tmpdir(), "pi-mcp-plugin-only-"));
   const calls = [];
   const pluginCalls = [];
@@ -833,6 +856,7 @@ test("plugin-only session collaboration operations stay off the external MCP sur
       calls.push({ channel, args });
       return { ok: true, channel };
     },
+    activateMainWindow: async () => assert.fail("MCP attempted activation"),
     invokeSessionCollaboration: async (input) => {
       pluginCalls.push(input);
       return { sessions: [] };
@@ -864,7 +888,8 @@ test("plugin-only session collaboration operations stay off the external MCP sur
 
   const catalogCount = createMcpControlOperations(fixtureChannels).length;
   const hiddenCount = controller.operations.length - catalogCount;
-  assert.equal(hiddenCount, collaborationIds.length);
+  const pluginOnlyIds = [...collaborationIds, "window/activate"];
+  assert.equal(hiddenCount, pluginOnlyIds.length);
 
   const server = new McpControlServer({
     dataDir,
@@ -893,12 +918,12 @@ test("plugin-only session collaboration operations stay off the external MCP sur
     { "Mcp-Session-Id": sessionId },
   );
   const toolNames = listed.body.result.tools.map((tool) => tool.name);
-  for (const id of collaborationIds) {
+  for (const id of pluginOnlyIds) {
     assert.equal(toolNames.includes(id), false);
   }
   const invokeTool = listed.body.result.tools.find((tool) => tool.name === "pi_desktop_invoke");
   const exposedIds = invokeTool.inputSchema.properties.operation.enum;
-  for (const id of collaborationIds) {
+  for (const id of pluginOnlyIds) {
     assert.equal(exposedIds.includes(id), false);
   }
   assert.equal(exposedIds.length, catalogCount);
@@ -910,28 +935,27 @@ test("plugin-only session collaboration operations stay off the external MCP sur
     { "Mcp-Session-Id": sessionId },
   );
   const describedIds = described.body.result.structuredContent.map((entry) => entry.id);
-  for (const id of collaborationIds) {
+  for (const id of pluginOnlyIds) {
     assert.equal(describedIds.includes(id), false);
   }
   assert.equal(describedIds.length, catalogCount);
 
-  const hidden = await post(
-    info.url,
-    info.token,
-    {
-      jsonrpc: "2.0",
-      id: 4,
-      method: "tools/call",
-      params: { name: "pi_desktop_invoke", arguments: { operation: "session/collaboration/list", args: [] } },
-    },
-    { "Mcp-Session-Id": sessionId },
-  );
-  assert.equal(hidden.body.result.isError, true);
-  assert.equal(hidden.body.result.structuredContent.error.code, "NOT_FOUND");
-  assert.equal(
-    hidden.body.result.structuredContent.error.message,
-    "operation is not exposed: session/collaboration/list",
-  );
+  for (const operation of ["session/collaboration/list", "window/activate"]) {
+    const hidden = await post(
+      info.url,
+      info.token,
+      {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: { name: "pi_desktop_invoke", arguments: { operation, args: [] } },
+      },
+      { "Mcp-Session-Id": sessionId },
+    );
+    assert.equal(hidden.body.result.isError, true);
+    assert.equal(hidden.body.result.structuredContent.error.code, "NOT_FOUND");
+    assert.equal(hidden.body.result.structuredContent.error.message, `operation is not exposed: ${operation}`);
+  }
   assert.equal(pluginCalls.length, 1);
 
   const known = await post(
