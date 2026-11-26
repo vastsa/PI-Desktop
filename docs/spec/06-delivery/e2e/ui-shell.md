@@ -3,6 +3,16 @@
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Visual shell scenarios (US-UI), sidebar, settings, task dock, and work panel.
 > Scenario template, gates, and traceability live in the plan.
 
+## E2E-PROJECT-FILE-MANAGER-TAB — A shared entry without a shared dock (#2607)
+
+- Leave Review selected and the dock collapsed in B. Open File Manager from the
+  launcher in same-project A. Return to B: the dock stays collapsed; expanding it
+  shows both tabs with Review still selected. No second launcher pick is needed.
+- Close the entry locally and switch twice: it stays closed there, not elsewhere.
+  Close the final entry in A. A fresh same-project C still gets the tab with a
+  collapsed dock; a session in another project does not.
+- Automated path: `node scripts/e2e-project-file-manager-tab.mjs`.
+
 ## E2E-SIDEBAR-upgrade-layout-recovery
 
 - In an isolated profile, retain two synthetic Projects and organize metadata.
