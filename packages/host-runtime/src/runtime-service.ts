@@ -76,6 +76,10 @@ export type RuntimeServiceOptions = {
 
 type FinishTurnOptions = { turnId: string; recoverInflight?: boolean };
 
+// Only the latest row ID is needed for turn admission. Checkpoints and
+// session configuration are outside the host's message content cap.
+const SESSION_METADATA_WINDOW = { messageLimit: 1, contentLimit: 1 } as const;
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Keep the renderer-chosen id when it is a UUID the session does not hold (D288). */
@@ -303,7 +307,7 @@ export class RuntimeService implements RuntimePort {
     const settings = await host.call<Record<string, unknown>>("settings.get");
     const detail = await host.call<{ session?: Record<string, unknown> | null }>("session.get", {
       id: sessionId,
-      messageLimit: 1,
+      ...SESSION_METADATA_WINDOW,
     });
     const session = detail.session;
     if (!session) throw typedError("Session not found", ErrorCodes.NOT_FOUND);
@@ -390,7 +394,7 @@ export class RuntimeService implements RuntimePort {
       await sidecar.call("agent.steeringContext", { sessionId, expectedTurnId: request.turnId });
       const detail = await host.call<{ session?: { messages?: UiMessage[] } }>("session.get", {
         id: sessionId,
-        messageLimit: 1,
+        ...SESSION_METADATA_WINDOW,
       });
       const message: UiMessage = {
         id: durableUserMessageId(request.sessionMessageId, detail.session?.messages ?? []),
@@ -461,7 +465,7 @@ export class RuntimeService implements RuntimePort {
     const host = this.requireHost();
     const sidecar = this.requireSidecar();
     const settings = await host.call<Record<string, unknown>>("settings.get");
-    const detail = await host.call<{ session?: Record<string, unknown> | null }>("session.get", { id: sessionId });
+    const detail = await host.call<{ session?: Record<string, unknown> | null }>("session.get", { id: sessionId, ...SESSION_METADATA_WINDOW });
     if (!detail.session) throw typedError("Session not found", ErrorCodes.NOT_FOUND);
     const launch = await this.options.launch.resolve(sessionId, detail.session, settings ?? {});
     sidecar.setProjectInstructionRoot(sessionId, launch.projectPath);
@@ -476,6 +480,7 @@ export class RuntimeService implements RuntimePort {
       if (!isRpcTimeoutError(error)) throw error;
       const settled = await host.call<{ session?: Record<string, unknown> | null }>("session.get", {
         id: sessionId,
+        ...SESSION_METADATA_WINDOW,
       });
       const landed = compactionRecordId(settled.session);
       if (landed === startedWith) throw error;

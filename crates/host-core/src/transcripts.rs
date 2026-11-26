@@ -38,7 +38,9 @@ mod binary_migration;
 pub(crate) mod binary_storage;
 #[cfg(test)]
 mod binary_storage_tests;
+pub(crate) mod context_restore;
 pub mod layout;
+pub(crate) mod restore;
 #[cfg(test)]
 mod review_state_tests;
 mod suffix;

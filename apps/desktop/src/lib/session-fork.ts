@@ -3,8 +3,8 @@ import type { SessionSummary, UiMessage } from "@pi-desktop/shared";
 /**
  * A forked session's transcript window.
  *
- * A fork response carries the child's complete transcript, so the window is
- * whole: there is nothing older to page toward.
+ * Legacy fork responses carry the whole transcript. Bounded responses carry
+ * their own physical window, preserving normal history paging after a fork.
  */
 export const FORKED_SESSION_WINDOW = {
   messageStart: 0,
@@ -64,9 +64,8 @@ export function commitForkedSessionState<TSession extends { id: string }>(
 }
 
 /**
- * Messages a forked session starts with. A fork response always carries the
- * whole child transcript; a missing array means an empty conversation, never
- * "load it later".
+ * Messages a forked session starts with. A bounded fork response includes only
+ * its visible page; the rest remains available through the supplied window.
  */
 export function forkedSessionMessages(
   session: SessionSummary & { messages?: UiMessage[] },

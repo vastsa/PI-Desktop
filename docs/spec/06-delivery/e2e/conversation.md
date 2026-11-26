@@ -5083,3 +5083,30 @@ Build two actual runtimes with identical configuration and different scratch dir
 - **Specs linked**: `04-ux/08-component-spec.md`
 - **Status**: Renderer interactions and resize covered by
   `apps/desktop/test/subagent-conversation-user-path.test.mjs`.
+
+## E2E-CHAT-large-session-isolation
+
+- Run `node scripts/e2e-large-session.mjs --large` against the task-candidate
+  Host binary and built Agent runtime. The fixture owns isolated data and uses
+  a loopback model; it never reads a user's conversation or paid provider.
+- Construct over 600 MiB of canonical retained history, a valid checkpoint,
+  and recent messages. Open a bounded tail, request the previous physical
+  page, restart the sidecar, and continue the conversation. Verify the summary,
+  recent turn, Unicode, and exactly one new prompt in the provider request.
+  Assert that the restore reads fewer than 2 MiB and retains fewer than eight
+  rows for this fixture; 620 MiB is a sample size, never an application limit.
+  A Rust test multiplies the compacted prefix by ten and asserts the same
+  bounded body-read cost. First-time layout indexing is a separate cost.
+- Restore a separate multi-page history without a checkpoint and verify its
+  first and last messages survive. Existing tool-pair and checkpoint restore
+  suites cover context-boundary semantics. Restore-budget tests cover explicit
+  fallback persistence before provider admission, disabled recovery and a failed
+  checkpoint write. Fork tests retain the older-page cursor; logical history
+  tests traverse nonadjacent duplicate IDs without repetition or loss.
+- In the same Host connection, request an uncapped over-budget response while
+  another session appends a message. Only the over-budget ID fails with
+  `LIMIT_EXCEEDED`; the other append and a subsequent read succeed without a
+  restart. Unit/stream tests also cover split UTF-8, CRLF, EOF, and a legal
+  reply immediately following an oversized frame in the same chunk.
+- Specs: `03-runtime/01-ipc-protocol.md`. Automation:
+  `test:e2e:large-session`, `ndjson-stream.test.mjs`, and targeted runtime tests.

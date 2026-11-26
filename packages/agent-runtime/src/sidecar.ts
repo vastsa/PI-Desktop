@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { ModelAuth } from "@earendil-works/pi-ai";
 import { ParentHostProxy } from "./parent-host-proxy.js";
 import { visionFromModelConfig } from "./model-capabilities.js";
-import { hydrateAttachmentHistory } from "./attachment-history.js";
+import { restoreSessionHistory } from "./session-history-restore.js";
 import { classifyAgentError } from "./agent-errors.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
 import {
@@ -45,7 +45,6 @@ import type {
   AgentEventEnvelope,
   AskToolResolution,
   SubagentDefinition,
-  ContextCompactionRecord,
   ContextCompactionSettings,
   CommandShellOption,
   ModeTurnContext,
@@ -290,44 +289,18 @@ async function runtimeFor(
     return reusable;
   }
 
-  const detail = await hostProxy.call<{
-    session?: {
-      messages?: UiMessage[];
-      compaction?: ContextCompactionRecord;
-    } | null;
-  }>("session.get", { id: sessionId });
-  if (!detail?.session) {
-    throw Object.assign(new Error("session not found while restoring history"), {
-      errorCode: "SESSION_NOT_FOUND",
-    });
-  }
-  let restoredMessages = detail.session.messages ?? [];
-  if (params.backgroundCompletion) restoredMessages = restoredMessages.filter(message => message.id !== params.backgroundCompletion!.id);
-  // The current prompt is sent separately below. Exclude its persisted row
-  // before attachment hydration so it cannot consume the history byte budget.
-  if (currentPrompt !== undefined && params.userMessageId) {
-    restoredMessages = restoredMessages.filter((message) =>
-      message.role !== "user" || message.id !== params.userMessageId,
-    );
-  }
-  const supportsVision = visionFromModelConfig(params.provider.modelConfig);
-  let history = await hydrateAttachmentHistory(restoredMessages, {
-    scratchDir: params.scratchDir,
-    projectPath: params.remoteWorkspace ? undefined : params.projectPath,
-    attachmentsDir: params.attachmentsDir,
-    supportsVision,
+  const { history, compaction, recovery } = await restoreSessionHistory(hostProxy, sessionId, {
+    currentPrompt,
+    userMessageId: params.userMessageId,
+    backgroundCompletionId: params.backgroundCompletion?.id,
+    hostStartedTurn: Boolean(params.backgroundCompletion) || (modeTurn !== undefined && modeTurn.origin !== "user"),
+    attachmentContext: {
+      scratchDir: params.scratchDir,
+      projectPath: params.remoteWorkspace ? undefined : params.projectPath,
+      attachmentsDir: params.attachmentsDir,
+      supportsVision: visionFromModelConfig(params.provider.modelConfig),
+    },
   });
-  const compaction = detail.session.compaction;
-  // Older callers without a stable message id retain the previous content match.
-  // A Host-started mode turn has no user row at all (its content is a fixed
-  // continuation notice), so nothing in the history is its prompt.
-  const hostStartedTurn = Boolean(params.backgroundCompletion) || (modeTurn !== undefined && modeTurn.origin !== "user");
-  if (currentPrompt !== undefined && !params.userMessageId && !hostStartedTurn) {
-    const last = history.at(-1);
-    if (last?.role === "user" && last.content === currentPrompt) {
-      history = history.slice(0, -1);
-    }
-  }
   const runtime = new DesktopAgentRuntime({
     host: hostProxy,
     ...(params.pluginModelContextEnabled === true ? {
@@ -350,6 +323,8 @@ async function runtimeFor(
     codemodeEnabled: config.codemodeEnabled,
     history,
     compaction,
+    historyRecovery: recovery,
+    archivedHistory: true,
     compactionSettings: params.compactionSettings,
     pluginTools,
     pluginSkills,

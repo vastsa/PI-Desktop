@@ -28,11 +28,11 @@ test("history restore failures cannot accept a clean prompt for stable or legacy
         send({ id: value.id, result: { version: 1, supported: false } });
         return;
       }
-      assert.equal(value.params.method, "session.get");
+      assert.equal(value.params.method, "session.restoreContext");
       if (restoreFailure === "host") send({ id: value.id, error: { code: -32000, message: "corrupted persisted history", data: { errorCode: "HISTORY_CORRUPT" } } });
-      else if (restoreFailure === "empty") send({ id: value.id, result: { session: { messages: [] } } });
+      else if (restoreFailure === "empty") send({ id: value.id, result: { session: { messages: [], overflow: false, omittedMessages: 0, readBytes: 0 } } });
       else if (restoreFailure === "missing") send({ id: value.id, result: { session: null } });
-      else send({ id: value.id, result: { session: { messages: [{ id: "bad-history", role: "user", content: "retained", attachments: "invalid" }] } } });
+      else send({ id: value.id, result: { session: { messages: [{ id: "bad-history", role: "user", content: "retained", attachments: "invalid" }], overflow: false, omittedMessages: 0, readBytes: 128 } } });
     } else if (value.id) {
       const resolve = responses.get(value.id); responses.delete(value.id); resolve?.(value);
     } else if (value.method === "agent.event") events.push(value.params);

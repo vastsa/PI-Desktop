@@ -138,12 +138,15 @@ test("a prompt that queues behind compaction setup is refused by the compacting 
   let releaseCompact;
   let turnHostCalls = 0;
   const h = buildHarness({
-    hostCall: async (method) => {
+    hostCall: async (method, input) => {
       if (method === "settings.get") {
         await new Promise((resolve) => { releaseSettings = resolve; });
         return {};
       }
-      if (method === "session.get") return { session: { id: "s1", compactionRecordId: "c0" } };
+      if (method === "session.get") {
+        assert.deepEqual(input, { id: "s1", messageLimit: 1, contentLimit: 1 });
+        return { session: { id: "s1", compactionRecordId: "c0" } };
+      }
       turnHostCalls += 1;
       return {};
     },

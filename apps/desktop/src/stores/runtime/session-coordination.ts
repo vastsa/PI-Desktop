@@ -172,7 +172,13 @@ export function createSessionCoordination({
   ): void {
     const { messages: _forkedMessages, ...summary } = session;
     const messages = forkedSessionMessages(session);
-    const historyWindow = { ...FORKED_SESSION_WINDOW };
+    const historyWindow = Number.isSafeInteger(session.messageStart)
+      ? {
+          messageStart: session.messageStart!,
+          hasMoreBefore: session.hasMoreBefore === true,
+          contentLimited: true,
+        }
+      : { ...FORKED_SESSION_WINDOW };
     runtime.cacheSessionTranscript(summary.id, messages, historyWindow);
     set((current) => {
       const commit = commitForkedSessionState(current, summary, {

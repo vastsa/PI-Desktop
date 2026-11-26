@@ -1158,6 +1158,41 @@ Minimal interface:
   forwards to `search.context`. This read-only text window is separate from
   `session/get` and must never enter the renderer's live transcript cache.
   Both channels are explicitly included in the preload IPC allowlist.
+Large-session transport and restoration:
+
+- Host responses use a 64 MiB serialized NDJSON frame budget. An over-budget
+  result returns `LIMIT_EXCEEDED` for the original request ID with the
+  `host-response` scope. It does not restart the Host or retry mutations.
+- Readers bound incomplete frames, release over-budget buffers, and resume at
+  the following LF boundary. One failed frame cannot poison later replies on
+  the same connection. Diagnostics never include the discarded payload.
+- `session.restoreContext` is an internal model read. It fixes a transcript
+  generation, reads the latest valid checkpoint and its boundary carrier plus
+  subsequent messages, and bounds decoded bodies to 8 MiB / 2,048 active rows.
+  The complete archived prefix stays on disk. Replies include `readBytes`,
+  `overflow` and `omittedMessages`; file bytes are not token estimates.
+  Display `contentLimit` never applies to this model context. The current
+  prompt and background completion are excluded by their durable IDs.
+- On restore overflow, automatic recovery retains a provider-valid recent
+  tail under the model context budget, carries the previous summary, and
+  first persists an explicit `restore_budget` fallback checkpoint. Its notice
+  states which older range was not summarized; it does not claim to summarize
+  unread messages. Persistence failure or cancellation prevents model admission.
+  Disabled automatic recovery and manual compaction report a scoped error.
+- Checkpoint installation releases archived model entries. TaskList / Task
+  resume load old task rows only when requested, with a bounded retained byte
+  budget; restored chains never overwrite running chains or current grants.
+- There is no fixed total session-file size limit. Explicit full-history RPC
+  reads above the 32 MiB file read budget fail before body decoding; callers
+  use bounded windows. First-time index construction and explicit whole-history
+  operations can still take time proportional to the retained history.
+- RACP `session.historyPage` cursors use each ID's first logical position with
+  its last payload, including retried physical appends. Large fork replies
+  contain a display window and cursors while the child stays complete on disk.
+- Oversized read-only pages may be retried with a smaller message window.
+  A single record that exceeds the response budget reports a request error;
+  history is never silently truncated or rewritten to satisfy transport limits.
+
 - `session/delete`
 - `session/rename({ id, title }) -> { ok: boolean }` trims the title and
   accepts 1–80 Unicode code points. Blank or overlong titles are rejected as

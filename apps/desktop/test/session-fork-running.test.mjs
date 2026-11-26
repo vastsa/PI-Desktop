@@ -219,3 +219,27 @@ test("a historical user message is not used as a reply fork anchor", async (t) =
   assert.equal(h.get().messages[0].status, "streaming");
   assert.equal(h.get().error, undefined);
 });
+
+
+test("forked bounded pages retain their physical cursor for older history", async (t) => {
+  const h = harness(t);
+  const action = h.slice.forkAssistantMessage("old");
+  await new Promise(resolve => setImmediate(resolve));
+  h.complete();
+  await action;
+  const coordination = createSessionCoordination({
+    get: h.get, set: h.set, runtime: h.runtime,
+    decorateSessions: sessions => sessions,
+    withoutRecordKey: (record, key) => Object.fromEntries(Object.entries(record).filter(([id]) => id !== key)),
+    untitledTaskTitle: () => "Untitled",
+  });
+  coordination.commitForkedSession({
+    id: "bounded-child", title: "Large branch", mode: "agent",
+    messages: [{ id: "tail", role: "assistant", content: "visible" }],
+    messageStart: 1200, hasMoreBefore: true,
+  }, { activate: true });
+  assert.deepEqual(h.get().sessionHistory["bounded-child"], {
+    messageStart: 1200, hasMoreBefore: true, contentLimited: true,
+  });
+  assert.deepEqual(h.get().messages.map(row => row.id), ["tail"]);
+});

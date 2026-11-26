@@ -38,6 +38,14 @@ export class DelegationChainRegistry {
     this.evictOverflow();
   }
 
+  /** Merge restored archives without discarding live runs or their read budgets. */
+  hydrateMissing(chains: DelegationChain[]): void {
+    for (const chain of chains) {
+      if (!this.chains.has(chain.delegateSessionId)) this.install(chain);
+    }
+    this.evictOverflow();
+  }
+
   lookup(delegationId: string): DelegationChain | undefined {
     const sessionId = this.byDelegationId.get(delegationId);
     if (!sessionId) return undefined;

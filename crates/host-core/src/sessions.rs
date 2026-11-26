@@ -13,6 +13,7 @@ use crate::transcripts::{self, CompactionRecord, MessageRecord, RevisionRecord};
 #[cfg(test)]
 mod active_revision_tests;
 mod fork_files;
+pub(crate) mod fork_response;
 mod history_mutations;
 pub use history_mutations::{
     activate_message_revision_canonical, delete_message, retract_pending_prompt, running_turn,

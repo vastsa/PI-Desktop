@@ -448,3 +448,14 @@ describe("resume error messages", () => {
     expect(message).not.toContain("Reusable: explorer / del-b");
   });
 });
+
+
+it("archive hydration preserves a running chain and its accumulated read budget", () => {
+  const registry = new DelegationChainRegistry();
+  const active = start(registry, { delegateSessionId: "live", delegationId: "live-run" });
+  registry.noteReads("live", ["current.ts"], 45000);
+  registry.hydrateMissing([chain({ delegateSessionId: "live", delegationIds: ["old-run"], latestStatus: "completed", readLineCount: 0 }), chain({ delegateSessionId: "archived" })]);
+  expect(registry.lookup("live-run")).toMatchObject({ ...active, readLineCount: 45000, readFiles: ["current.ts"], latestStatus: "running" });
+  expect(registry.lookup("old-run")).toBeUndefined();
+  expect(registry.lookup("del-3")?.delegateSessionId).toBe("archived");
+});

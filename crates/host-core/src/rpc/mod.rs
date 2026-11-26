@@ -8,11 +8,13 @@ mod market_browse_rpc;
 mod modes_rpc;
 mod plugin_reviews_rpc;
 mod remote_tools;
+mod response_limits;
 mod review_actions_rpc;
 mod scheduled_rpc;
 mod scheduled_settings;
 mod scheduled_tools;
 mod session_display;
+mod session_restore;
 mod todos;
 mod window_corner_rpc;
 mod window_owner;
@@ -430,9 +432,7 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
                                 "LIMIT_EXCEEDED",
                             )),
                         };
-                        if let Ok(raw) = serde_json::to_string(&response) {
-                            let _ = tx.send(format!("{raw}\n"));
-                        }
+                        response_limits::send_response(&tx, response);
                         continue 'serve;
                     }
                     StdinEvent::Error(error) => {
@@ -459,7 +459,7 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
                                 data: None,
                             }),
                         };
-                        let _ = tx.send(format!("{}\n", serde_json::to_string(&resp)?));
+                        response_limits::send_response(&tx, resp);
                         continue 'serve;
                     }
                 };
@@ -486,9 +486,7 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
                                 "HOST_OVERLOADED",
                             )),
                         };
-                        if let Ok(raw) = serde_json::to_string(&response) {
-                            let _ = tx.send(format!("{raw}\n"));
-                        }
+                        response_limits::send_response(&tx, response);
                         continue 'serve;
                     }
                 };
@@ -507,10 +505,7 @@ pub async fn serve(state: Arc<Mutex<AppState>>) -> Result<()> {
                         ),
                     )
                     .await;
-                    let out = response_for(id, handled, committed);
-                    if let Ok(raw) = serde_json::to_string(&out) {
-                        let _ = tx.send(format!("{raw}\n"));
-                    }
+                    response_limits::send_response(&tx, response_for(id, handled, committed));
                 });
             }
             result = &mut writer_done_rx => {
@@ -2943,7 +2938,7 @@ async fn handle_request(
                 };
             let session = remote_tools::decorate_session(
                 &st.db,
-                serde_json::to_value(session)
+                serde_json::to_value(sessions::fork_response::for_rpc(*session))
                     .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
             )?;
             Ok(json!({ "session": session }))
@@ -2998,60 +2993,17 @@ async fn handle_request(
             )?;
             Ok(json!({ "session": session }))
         }
-        "session.get" => {
-            let id = params
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
-            let message_before = params.get("messageBefore").and_then(|v| v.as_i64());
-            let message_around = params
-                .get("messageAround")
-                .and_then(|v| v.as_str())
-                .map(str::to_owned);
-            let message_limit = params.get("messageLimit").and_then(|v| v.as_i64());
-            if message_before.is_some_and(|value| value < 0)
-                || message_limit.is_some_and(|value| value <= 0)
-                || (message_around.is_some()
-                    && (message_before.is_some() || message_limit.is_none()))
-            {
-                return Err(rpc_err(
-                    1002,
-                    "session read window must use non-negative messageBefore and positive messageLimit",
-                    "INVALID_PARAMS",
-                ));
-            }
-            let content_limit = params
-                .get("contentLimit")
-                .and_then(|v| v.as_u64())
-                .map(|limit| limit.min(256 * 1024) as usize);
-            if params
-                .get("contentLimit")
-                .and_then(|value| value.as_u64())
-                .is_some_and(|value| value == 0)
-            {
-                return Err(rpc_err(
-                    1002,
-                    "session contentLimit must be positive",
-                    "INVALID_PARAMS",
-                ));
-            }
+        "session.restoreContext" => {
             let st = state.lock().await;
-            let session = sessions::get_session_with_options(
-                &st.db,
-                id,
-                sessions::SessionReadOptions {
-                    message_around,
-                    message_before,
-                    message_limit,
-                    content_limit,
-                },
-            )
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            let session = remote_tools::decorate_session(
-                &st.db,
-                session_display::serialize(&st.db, session)?,
-            )?;
-            Ok(json!({ "session": session }))
+            session_restore::restore_context(&st.db, &params)
+        }
+        "session.get" => {
+            let st = state.lock().await;
+            session_restore::get_session(&st.db, &params)
+        }
+        "session.historyPage" => {
+            let st = state.lock().await;
+            session_restore::history_page(&st.db, &params)
         }
         "todos.get" => {
             let session_id = params
