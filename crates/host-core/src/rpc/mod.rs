@@ -28,6 +28,8 @@ mod session_mode_migration_tests;
 #[cfg(test)]
 mod market_browse_rpc_tests;
 #[cfg(test)]
+mod market_install_rpc_tests;
+#[cfg(test)]
 mod plugin_reviews_rpc_tests;
 #[cfg(test)]
 mod review_rpc_tests;
@@ -1997,6 +1999,31 @@ async fn handle_request(
     params: Value,
     tx: mpsc::UnboundedSender<String>,
 ) -> Result<Value, JsonRpcError> {
+    if method == "market.cancelInstall" {
+        let id = params
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
+        match state.try_lock() {
+            Ok(st) => {
+                if !st.handshook {
+                    return Err(rpc_err(1001, "handshake required", "UNAUTHORIZED"));
+                }
+                if st.shutting_down {
+                    return Err(rpc_err(1001, "host is shutting down", "HOST_SHUTTING_DOWN"));
+                }
+                let cancelled =
+                    crate::plugins::progress::cancel_active_install(id).unwrap_or(false);
+                return Ok(json!({ "cancelled": cancelled, "id": id }));
+            }
+            Err(tokio::sync::TryLockError::WouldBlock) => {
+                if let Some(cancelled) = crate::plugins::progress::cancel_active_install(id) {
+                    return Ok(json!({ "cancelled": cancelled, "id": id }));
+                }
+            }
+        }
+    }
+
     if method != "app.handshake" {
         let st = state.lock().await;
         if !st.handshook {
@@ -5997,7 +6024,6 @@ async fn handle_request(
             let cancel = crate::plugins::CancelToken::default();
             // Armed outside AppState: cancelInstall must flip this flag while
             // install still holds the state lock for the download.
-            crate::plugins::progress::arm_active_cancel(&cancel);
             let mut observer = RpcInstallObserver {
                 tx: tx.clone(),
                 cancel: cancel.clone(),
@@ -6005,6 +6031,9 @@ async fn handle_request(
                 last_phase: None,
             };
             let mut st = state.lock().await;
+            // Arm only after acquiring AppState so concurrent installs cannot
+            // replace each other's active cancellation target.
+            crate::plugins::progress::arm_active_cancel(id, &cancel);
             st.plugins.set_install_cancel(Some(cancel));
             let outcome = st.plugins.install_from_market_observed(
                 id,
@@ -6018,6 +6047,7 @@ async fn handle_request(
             // in place would answer the next cancel for an install that is
             // already over.
             st.plugins.set_install_cancel(None);
+            crate::plugins::progress::disarm_active_cancel();
             let result = outcome.map_err(plugin_err)?;
             Ok(json!({ "result": result }))
         }
@@ -6026,9 +6056,9 @@ async fn handle_request(
                 .get("id")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
-            // Do not take AppState: the install holds that lock while bytes
-            // arrive, and waiting on it would make cancel a no-op.
-            let cancelled = crate::plugins::progress::cancel_active_install();
+            // The common handshake check above already had a chance to
+            // short-circuit a request while AppState was held by an install.
+            let cancelled = crate::plugins::progress::cancel_active_install(id).unwrap_or(false);
             Ok(json!({ "cancelled": cancelled, "id": id }))
         }
         "market.checkUpdates" => {
