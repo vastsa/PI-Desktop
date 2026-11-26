@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from copy import copy
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -59,7 +60,24 @@ def save_package_copy(source, output, member, content):
     save_new(output, write)
 
 
-def run_office_process(command, *, cwd, env):
+def communicate_office(office, command, check_active):
+    timeout = 30
+    if check_active is None:
+        return office.communicate(timeout=timeout)
+    deadline = time.monotonic() + timeout
+    while True:
+        check_active()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(command, timeout)
+        try:
+            return office.communicate(timeout=min(0.1, remaining))
+        except subprocess.TimeoutExpired:
+            # Check for cancellation while stdout and stderr are still drained.
+            continue
+
+
+def run_office_process(command, *, cwd, env, check_active=None):
     # A watchdog owns the conversion group. Its pipe closes even if Bash kills Python.
     watchdog = "import os, signal, sys; sys.stdin.buffer.read(1); os.killpg(0, signal.SIGKILL)"
     with subprocess.Popen([sys.executable, "-I", "-c", watchdog], stdin=subprocess.PIPE, process_group=0) as guard:
@@ -68,7 +86,7 @@ def run_office_process(command, *, cwd, env):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
         ) as office:
             try:
-                stdout, stderr = office.communicate(timeout=30)
+                stdout, stderr = communicate_office(office, command, check_active)
             finally:
                 guard.stdin.close()
     return subprocess.CompletedProcess(command, office.returncode, stdout, stderr)

@@ -225,7 +225,8 @@ text by page and merges ordinary, unencrypted PDFs in the order requested.
 It also exports existing DOCX, PPTX, and XLSX files using bundled LibreOffice.
 LibreOffice opens the sources read-only with a separate profile that disables
 macros and blocks untrusted linked images. The skill publishes to a new PDF only;
-it refuses to overwrite any file or link. Scanned PDF OCR and legacy Office
+it refuses to overwrite any file or link. Cancelling an in-progress export
+stops LibreOffice and removes the intermediate files. Scanned PDF OCR and legacy Office
 formats are outside scope.
 
 The installed Office scenario loads this skill and approves its Bash

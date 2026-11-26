@@ -31,6 +31,21 @@ test("Offline Office exposes the PDF skill and requires the packaged runtime", {
   }
 });
 
+test("Stopping a PDF export removes partial files and preserves the source", {
+  skip: process.platform === "win32",
+}, (t) => {
+  const python = process.env.PI_CODE_OFFICE_TEST_PYTHON ?? "python3";
+  const check = spawnSync(python, ["-I", "-c", "import sys, pypdf; assert sys.version_info >= (3, 12)"]);
+  if (!process.env.PI_CODE_OFFICE_TEST_PYTHON && check.status !== 0) {
+    t.skip("Python 3.12 and pypdf are available in the Office Runtime, not this host.");
+    return;
+  }
+  assert.equal(check.status, 0, check.error?.message ?? check.stderr?.toString());
+  const script = fileURLToPath(new URL("./offline-office-pdf.test.py", import.meta.url));
+  const result = spawnSync(python, ["-I", "-B", script], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+});
+
 test("Word commands fail clearly without the bundled interpreters", { skip: process.platform === "win32" }, async () => {
   const root = await mkdtemp(join(tmpdir(), "pie-office-test-"));
   try {

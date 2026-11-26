@@ -1,5 +1,6 @@
 import argparse
 import os
+import select
 import subprocess
 import sys
 from pathlib import Path
@@ -61,6 +62,12 @@ def merge(sources, staged):
         writer.write(output)
 
 
+def check_export_active():
+    # Only the Bash-group parent holds the write end of this pipe.
+    if select.select([sys.stdin], [], [], 0)[0]:
+        raise InterruptedError("PDF export cancelled.")
+
+
 def export(source, staged, runtime):
     soffice = runtime / "libreoffice/program/soffice"
     if not os.access(soffice, os.X_OK):
@@ -86,6 +93,7 @@ def export(source, staged, runtime):
          f"--infilter={import_filter}", "--convert-to", f"pdf:{pdf_filter}",
          "--outdir", str(converted), str(source.absolute())],
         cwd=directory,
+        check_active=check_export_active,
         env={
             # LibreOffice places a Unix socket under TMPDIR, which has a short path limit.
             "HOME": str(directory), "TMPDIR": "/tmp", "PATH": "/usr/bin:/bin",
@@ -98,7 +106,16 @@ def export(source, staged, runtime):
         detail = (result.stderr or result.stdout).strip()
         raise ValueError(f"Bundled LibreOffice did not export the PDF: {detail or 'no PDF produced'}")
     read_pdf(pdf)
+    check_export_active()
     pdf.rename(staged)
+
+
+def run_export_worker(runtime, source, output):
+    # Bash kills its process group; the worker must survive long enough to clean up.
+    command = [sys.executable, "-I", "-B", "-X", "utf8", __file__, runtime,
+               "--export-worker", "--", str(source), str(output)]
+    with subprocess.Popen(command, stdin=subprocess.PIPE, start_new_session=True) as worker:
+        return worker.wait()
 
 
 def main():
@@ -111,7 +128,9 @@ def main():
     convert = commands.add_parser("export")
     convert.add_argument("source", type=office_path)
     convert.add_argument("output", type=pdf_path)
-    args = parser.parse_args(sys.argv[2:])
+    arguments = sys.argv[2:]
+    worker = arguments[:1] == ["--export-worker"]
+    args = parser.parse_args(["export", *arguments[1:]] if worker else arguments)
     if args.operation == "extract":
         extract(args.source)
         return
@@ -119,12 +138,15 @@ def main():
         raise FileExistsError(f"Output already exists: {args.output}")
     if args.operation == "merge":
         save_new(args.output, lambda staged: merge(args.sources, staged))
-    else:
+    elif worker:
+        check_export_active()
         save_new(args.output, lambda staged: export(args.source, staged, Path(sys.argv[1]).resolve()))
+    else:
+        return run_export_worker(sys.argv[1], args.source, args.output)
     print(f"Saved {args.output}")
 
 
 try:
-    main()
+    sys.exit(main())
 except (OSError, ValueError, PyPdfError, subprocess.TimeoutExpired) as error:
     sys.exit(str(error))
