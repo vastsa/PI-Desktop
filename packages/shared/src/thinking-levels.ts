@@ -88,16 +88,18 @@ export function nearestSupportedThinkingLevel(
   return "off";
 }
 
+export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "high";
+
 function initialThinkingLevelForBindingInternal(
   binding: ThinkingLevelBindingSource | null | undefined,
   fallbackLevels?: readonly ThinkingLevel[],
-  defaultToOff = false,
 ): SessionThinkingLevel {
   const enabled = binding?.thinkingLevels ?? fallbackLevels;
   const stored = binding?.defaultThinkingLevel;
   if (stored === "omit") return enablesReasoning(enabled) ? "omit" : "off";
   if (stored != null) return nearestSupportedThinkingLevel(stored, enabled);
-  return defaultToOff ? "off" : highestSupportedThinkingLevel(enabled);
+  if (!enablesReasoning(enabled)) return "off";
+  return nearestSupportedThinkingLevel(DEFAULT_THINKING_LEVEL, enabled);
 }
 
 /**
@@ -105,9 +107,9 @@ function initialThinkingLevelForBindingInternal(
  *
  * Prefer the stored default when it is still enabled, including `omit` on a
  * reasoning binding. Otherwise clamp that default onto the enabled ladder.
- * With no stored default, fall back to the strongest enabled level so a
- * reasoning model never starts at `off` merely because Settings has not
- * picked a default yet.
+ * With no stored default, default to `high` (or the nearest supported reasoning
+ * level when `high` is unavailable) so reasoning models start consistently at
+ * `high`.
  */
 export function initialThinkingLevelForBinding(
   binding: ThinkingLevelBindingSource | null | undefined,
@@ -119,9 +121,9 @@ export function initialThinkingLevelForBinding(
 /**
  * Thinking level for a model absent from the catalog.
  *
- * An explicit binding default still wins, but an unknown model must not
- * enable reasoning implicitly. Its available levels remain selectable in the
- * Composer while a new draft/session starts at `off`.
+ * An explicit binding default still wins; otherwise default to `high` (clamped
+ * to the enabled ladder) so all reasoning-capable models share the same `high`
+ * default.
  */
 export function initialThinkingLevelForUnmatchedModel(
   binding: ThinkingLevelBindingSource | null | undefined,
@@ -134,7 +136,7 @@ export function initialThinkingLevelForUnmatchedModel(
     thinkingLevels: binding?.thinkingLevels?.length
       ? binding.thinkingLevels
       : THINKING_LEVELS,
-  }, fallbackLevels, true);
+  }, fallbackLevels);
 }
 
 /** Published record a thinking-level candidate list can be derived from. */

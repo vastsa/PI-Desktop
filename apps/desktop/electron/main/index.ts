@@ -978,7 +978,13 @@ const localApps: LocalAppCatalog = {
 
 let starAi: StarAiAccount | undefined;
 function registerIpc() {
-  const account = createStarAiAccount(getHost, getMainWindow);
+  const account = createStarAiAccount(getHost, getMainWindow, {
+    ensureCatalogLoaded: () => modelsDevCatalog.ensureLoaded(),
+    resolveModelReleaseDate: (modelId) => {
+      const model = modelsDevCatalog.findModel({ vendorKey: "custom", modelId });
+      return model?.releaseDate ?? model?.lastUpdated;
+    },
+  });
   starAi = account;
   const startupChecks = new WeakMap<BrowserWindow, () => void>();
   return registerIpcHandlers({

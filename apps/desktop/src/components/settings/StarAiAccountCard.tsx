@@ -1,6 +1,6 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { sortStarAiGroupsByRatio, STARAI_CHAT_SERVICES, starAiGroupService, type StarAiCatalog } from "@pi-desktop/shared";
+import { sortStarAiGroupsByRatio, sortStarAiModels, STARAI_CHAT_SERVICES, starAiGroupService, type StarAiCatalog } from "@pi-desktop/shared";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
 import { StarAiSetupCatalog } from "../../features/startup/star-ai-setup-context";
 import { api } from "../../lib/api";
@@ -72,7 +72,7 @@ export function StarAiAccountCard() {
   const chatModels = group?.chatModels;
   const modelChoices = useMemo(() => group ? [{
     providerName: group.id,
-    choices: (chatModels ?? []).map((modelId) => ({
+    choices: sortStarAiModels(chatModels ?? []).map((modelId) => ({
       value: modelId, modelId,
     })),
   }] : [], [group, chatModels]);

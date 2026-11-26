@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { STARAI_PROVIDER_ID, type StarAiCatalog, type StarAiGroup, type StarAiSelection } from "@pi-desktop/shared";
+import { sortStarAiModels, STARAI_PROVIDER_ID, type StarAiCatalog, type StarAiGroup, type StarAiSelection } from "@pi-desktop/shared";
 import type { BrowserWindow } from "electron";
 import type { HostProcess } from "./host-process";
 import { hasStarAiCookie, openStarAiLogin, starAiPartition } from "./star-ai-login";
@@ -29,7 +29,14 @@ function normalizeSaved(value: Directory | Legacy | null): Directory | null {
   };
 }
 
-export function createStarAiAccount(getHost: () => HostProcess | null, getWindow: () => BrowserWindow | null) {
+export function createStarAiAccount(
+  getHost: () => HostProcess | null,
+  getWindow: () => BrowserWindow | null,
+  options?: {
+    ensureCatalogLoaded?: () => Promise<unknown>;
+    resolveModelReleaseDate?: (modelId: string) => string | undefined;
+  },
+) {
   const partition = starAiPartition();
   const account = new StarAiSession((url, init) => partition.fetch(url, init), () => hasStarAiCookie(partition));
   const makeTransport = () => createStarAiTransport((route, body, signal) => account.submitChat(route, body, signal));
@@ -87,7 +94,16 @@ export function createStarAiAccount(getHost: () => HostProcess | null, getWindow
     let previous = await saved();
     if (previous && previous.accountId !== accountId) { await disconnect(); previous = null; }
     if (!session) return signedOut;
-    const groups = await account.groups(session).catch(async (error) => { await suspend(); throw error; });
+    const rawGroups = await account.groups(session).catch(async (error) => { await suspend(); throw error; });
+    await options?.ensureCatalogLoaded?.().catch(() => {});
+    const sortOptions = options?.resolveModelReleaseDate
+      ? { getReleaseDate: options.resolveModelReleaseDate }
+      : undefined;
+    const groups = rawGroups.map((group) => ({
+      ...group,
+      models: sortStarAiModels(group.models, sortOptions),
+      ...(group.chatModels ? { chatModels: sortStarAiModels(group.chatModels, sortOptions) } : {}),
+    }));
     const routes = groups.filter((group) => group.models.length).map((group): Route => ({
       ...group, providerId: previous?.groups.find((old) => old.id === group.id)?.providerId ??
         `${STARAI_PROVIDER_ID}-${createHash("sha256").update(accountId + "\0" + group.id).digest("hex")}`,

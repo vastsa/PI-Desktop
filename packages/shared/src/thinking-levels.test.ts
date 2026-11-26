@@ -55,14 +55,15 @@ describe("initialThinkingLevelForBinding", () => {
     ).toBe("high");
   });
 
-  it("falls back to the strongest enabled level when no default is stored", () => {
+  it("defaults to high (or nearest supported level) when no default is stored", () => {
     expect(
       initialThinkingLevelForBinding({
         thinkingLevels: ["low", "high", "max"],
         defaultThinkingLevel: null,
       }),
-    ).toBe("max");
+    ).toBe("high");
     expect(initialThinkingLevelForBinding(undefined, ["low", "high"])).toBe("high");
+    expect(initialThinkingLevelForBinding(undefined, ["low", "medium"])).toBe("medium");
   });
 
   it("honors an explicit off default and empty bindings", () => {
@@ -82,14 +83,14 @@ describe("initialThinkingLevelForBinding", () => {
 });
 
 describe("initialThinkingLevelForUnmatchedModel", () => {
-  it("starts unmatched models at off without overriding an explicit default", () => {
+  it("defaults unmatched models to high without overriding an explicit default", () => {
     expect(
       initialThinkingLevelForUnmatchedModel({
         thinkingLevels: ["low", "high", "max"],
         defaultThinkingLevel: null,
       }),
-    ).toBe("off");
-    expect(initialThinkingLevelForUnmatchedModel(undefined, ["low", "high"])).toBe("off");
+    ).toBe("high");
+    expect(initialThinkingLevelForUnmatchedModel(undefined, ["low", "high"])).toBe("high");
     expect(
       initialThinkingLevelForUnmatchedModel({
         thinkingLevels: ["low", "high"],
@@ -99,7 +100,7 @@ describe("initialThinkingLevelForUnmatchedModel", () => {
     for (const defaultThinkingLevel of [null, "off", "high", "omit"] as const) {
       expect(initialThinkingLevelForUnmatchedModel({
         thinkingLevels: [], defaultThinkingLevel,
-      }, ["off"])).toBe(defaultThinkingLevel ?? "off");
+      }, ["off"])).toBe(defaultThinkingLevel ?? "high");
     }
     expect(initialThinkingLevelForUnmatchedModel({
       thinkingLevels: ["off"], defaultThinkingLevel: "high",

@@ -6,6 +6,7 @@ import {
   type ImageGenerationBindings,
   modelMatchesFilter,
   modelWireIdsEqual,
+  sortStarAiModels,
   type ModelBinding,
   type ModelInfo,
   type ProviderPublic,
@@ -72,8 +73,8 @@ export function composerModelsForProvider(
   const managed = isStarAiProviderId(provider.id);
   const chatModels = provider.starAiGroup?.chatModels;
   if (managed && !chatModels) return [];
-  const ids = managed ? provider.models.map((model) => model.id) : configuredModelIds(provider);
-  return ids.filter((modelId) => {
+  const rawIds = managed ? provider.models.map((model) => model.id) : configuredModelIds(provider);
+  const filteredIds = rawIds.filter((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),
     );
@@ -86,7 +87,18 @@ export function composerModelsForProvider(
     return !isImageOnlyChatModel(imageGeneration, provider.id, modelId, metadata)
       && !(discovered ?? []).some((model) =>
         sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted");
-  }).map((modelId) => {
+  });
+  const orderedIds = managed
+    ? sortStarAiModels(filteredIds, {
+        getReleaseDate: (modelId) => {
+          const metadata = (discovered ?? []).find((model) =>
+            sameComposerModelId(model.modelId, modelId),
+          );
+          return metadata?.releaseDate ?? metadata?.lastUpdated;
+        },
+      })
+    : filteredIds;
+  return orderedIds.map((modelId) => {
     const metadata = (discovered ?? []).find((model) =>
       sameComposerModelId(model.modelId, modelId),
     );

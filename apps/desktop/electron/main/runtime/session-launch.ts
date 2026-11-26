@@ -518,7 +518,8 @@ export function createSessionLaunchRuntime({
       normalizeThinkingLevel(
         overrides.thinkingLevel ??
           (provider.id === requestedProviderId ? session.thinkingLevel : undefined) ??
-          storedModel?.defaultThinkingLevel,
+          storedModel?.defaultThinkingLevel ??
+          (thinkingCapabilities.supportsReasoning ? "high" : "off"),
       ),
     );
     const projectPath =
