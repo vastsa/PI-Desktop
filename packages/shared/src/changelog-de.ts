@@ -5,10 +5,7 @@ export const deEntries: ChangelogEntry[] = [
     version: "0.23.1",
     date: "2026-11-25",
     highlights: [
-      "Aktiviere Offline Office unter Erweiterungen auf Kylin ARM64, um Word-Dokumente offline zu erstellen, auszulesen oder als Kopie zu speichern.",
-      "Offline Office kann auch Excel-Arbeitsmappen lesen, erstellen und als Kopie speichern sowie Formeln auf Wunsch neu berechnen.",
-      "Offline Office extrahiert Text aus PDFs, fügt PDFs zusammen und exportiert Word-, PowerPoint- und Excel-Dateien als PDF.",
-      "Offline Office formatiert und prüft Markdown- oder Word-Dokumente mit der WX-Vorlage. Es kann auch ein vorhandenes Word-Dokument bewerten und Korrekturen vorschlagen, ohne das Original zu ändern.",
+      "Installiere unter Kylin ARM64 deinen eigenen Word-Skill unter Agent → Skills und aktiviere die Office-Laufzeit in den Erweiterungen. So kannst du Word-Dokumente offline lesen, erstellen und Kopien bearbeiten.",
     ],
   },
   {

@@ -5,10 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.23.1",
     date: "2026-11-25",
     highlights: [
-      "Activa Office sin conexión en Extensiones de Kylin ARM64 para crear documentos de Word, extraer su texto o guardar una copia.",
-      "Office sin conexión también permite leer, crear y guardar copias de libros de Excel y recalcular las fórmulas cuando lo solicites.",
-      "Office sin conexión extrae texto de PDF, combina archivos PDF y exporta documentos de Word, PowerPoint y Excel a PDF.",
-      "Office sin conexión aplica la plantilla WX a documentos Markdown o Word y comprueba el resultado. También puede puntuar el formato de un documento Word y sugerir correcciones sin modificar el original.",
+      "En Kylin ARM64, instala tu propia habilidad de Word en Agente → Skills y activa el entorno de Office en Extensiones para leer, crear y editar copias de documentos sin conexión.",
     ],
   },
   {

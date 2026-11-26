@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, readdirSync, readSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { MIN_LINUX_GLIBC, formatGlibcVersion, hostGlibcWithinFloor, maxNeededGlibc } from "../apps/desktop/electron/main/linux-glibc.ts";
 import { ModelsDevCatalog } from "../apps/desktop/electron/main/models-dev-catalog.ts";
-import { smokeTestOfflineOffice, verifyOfflineOfficeRuntime, verifyOfflineWxRuntime } from "./bundle-offline-office.mjs";
+import { smokeTestOfflineOffice, verifyOfflineOfficeRuntime } from "./bundle-offline-office.mjs";
 
 const [arch, deb, officeFlag, ...extra] = process.argv.slice(2);
 const targets = { arm64: { deb: "arm64", elf: 183 }, x64: { deb: "amd64", elf: 62 } };
@@ -55,32 +56,34 @@ try {
   const required = new Set([executableName, "resources/bin/pi-desktop-host-core"]);
   const resources = path.join(app, "resources");
   const runtime = path.join(resources, "office-runtime");
-  const officePlugin = path.join(resources, "plugins/pie.offline-office");
-  const wx = path.join(resources, "wx-runtime");
-  const withOffice = officeFlag || existsSync(runtime) || existsSync(officePlugin) || existsSync(wx);
+  const officePlugin = path.join(resources, "plugins/pie.office-runtime");
+  const oldOffice = /(?:^|[\\/])(?:pie\.offline-office|wx-runtime|offline-office)(?:[\\/]|$)/i;
+  for (const name of readdirSync(resources, { recursive: true })) {
+    if (oldOffice.test(name)) throw new Error(`Legacy Office resource is packaged: ${name}`);
+  }
+  const appArchive = path.join(resources, "app.asar");
+  if (!existsSync(appArchive)) throw new Error("Missing app.asar");
+  const desktopRequire = createRequire(new URL("../apps/desktop/package.json", import.meta.url));
+  const builderRequire = createRequire(desktopRequire.resolve("electron-builder"));
+  const { listPackage } = createRequire(builderRequire.resolve("app-builder-lib"))("@electron/asar");
+  for (const name of listPackage(appArchive)) {
+    if (oldOffice.test(name)) throw new Error(`Legacy Office file in app.asar: ${name}`);
+  }
+  const withOffice = officeFlag || existsSync(runtime) || existsSync(officePlugin);
   if (withOffice) {
     if (arch !== "arm64" || genericLabel) {
-      throw new Error("Offline Office requires a dedicated ARM64 Debian package.");
+      throw new Error("Office Runtime requires a dedicated ARM64 Debian package.");
     }
     await verifyOfflineOfficeRuntime(runtime);
-    await verifyOfflineWxRuntime(wx);
-    for (const file of [
-      "manifest.json", "main.cjs", "office_document.py",
-      "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
-      "excel/SKILL.md", "excel/excel.sh", "excel/spreadsheet.py",
-      "ppt/SKILL.md", "ppt/ppt.sh", "ppt/presentation.py",
-      "pdf/SKILL.md", "pdf/pdf.sh", "pdf/pdf_document.py",
-      "wx/SKILL.md", "wx/wx.sh",
-    ]) {
-      if (!existsSync(path.join(officePlugin, file))) {
-        throw new Error(`Missing bundled Offline Office plugin file: ${file}`);
-      }
+    const officeFiles = readdirSync(officePlugin).sort();
+    const manifest = JSON.parse(readFileSync(path.join(officePlugin, "manifest.json"), "utf8"));
+    if (officeFiles.join(",") !== "main.cjs,manifest.json" || manifest.id !== "pie.office-runtime" ||
+      manifest.enabledByDefault !== false || manifest.contributes !== undefined || manifest.permissions?.length) {
+      throw new Error("Expected a disabled Office Runtime extension without managed skills or permissions.");
     }
     required.add("resources/office-runtime/node/bin/node");
     required.add("resources/office-runtime/python/bin/python3.12");
-    required.add("resources/office-runtime/libreoffice/program/soffice.bin");
   }
-  if (!existsSync(path.join(app, "resources/app.asar"))) throw new Error("Missing app.asar");
   const catalog = new ModelsDevCatalog({ catalogPath: path.join(app, "resources/models.dev/api.json") });
   await catalog.loadLocal();
   const { fetchedAt, modelCount, lastError } = catalog.getStatus();
@@ -149,7 +152,7 @@ try {
   console.log(`Verified ${verified} ${arch} ELF files at glibc <= ${floor}.`);
   if (withOffice) {
     await smokeTestOfflineOffice(resources);
-    console.log("Verified bundled Word, Excel, and PowerPoint readback, PDF text extraction, and WX review.");
+    console.log("Verified packaged docx-js, Python XML modules, and archive exclusions.");
   }
 } finally {
   rmSync(root, { recursive: true, force: true });

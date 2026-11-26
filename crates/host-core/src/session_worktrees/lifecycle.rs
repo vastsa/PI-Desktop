@@ -437,6 +437,7 @@ pub(super) async fn run_setup(
                 cancellation: None,
                 output_tx: None,
                 extra_env: env_for(&row, Some(&project_path)),
+                office_runtime: None,
                 run_in_background: false,
                 app_state: None,
             }),

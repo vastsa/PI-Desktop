@@ -25,6 +25,11 @@ const { createBackendRouter } = await import("../apps/desktop/electron/main/remo
 assert.ok(process.env.PI_HOST_CORE_BINARY, "PI_HOST_CORE_BINARY must name the current candidate Rust binary");
 const root = await mkdtemp(join(process.env.PI_SCRATCH_DIR ?? tmpdir(), "local-agent-remote-tools-"));
 const remoteRoot = join(root, "remote-workspace");
+const officeResources = process.env.PI_CODE_E2E_OFFICE_RESOURCES;
+const marker = officeResources ? `REMOTE_BASH_FIXTURE\n${process.env.NODE_PATH ?? ""}\n` : "REMOTE_BASH_FIXTURE\n";
+const remoteCommand = officeResources
+  ? 'printf "%s\\n" "REMOTE_BASH_FIXTURE" "$NODE_PATH" > marker.txt'
+  : "printf 'REMOTE_BASH_FIXTURE\\n' > marker.txt";
 await mkdir(remoteRoot); await mkdir(join(root, "desktop"));
 await writeFile(join(remoteRoot, "README.md"), "REMOTE_READ_FIXTURE\n");
 await writeFile(join(remoteRoot, "AGENTS.md"), "REMOTE_REPOSITORY_INSTRUCTIONS_FIXTURE\n");
@@ -57,7 +62,7 @@ const model = createServer(async (req, res) => {
     if (modelCalls <= 2) {
       if (modelCalls === 2) assert.ok(JSON.stringify(input.messages).includes("REMOTE_READ_FIXTURE"), "actual remote Read enters local model context");
       const name = modelCalls === 1 ? "Read" : "Bash";
-      const args = name === "Read" ? { path: "README.md" } : { command: "printf 'REMOTE_BASH_FIXTURE\\n' > marker.txt" };
+      const args = name === "Read" ? { path: "README.md" } : { command: remoteCommand };
       frame({ role: "assistant", tool_calls: [{ index: 0, id: `local-tool-${modelCalls}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] });
       frame({}, "tool_calls");
     } else {
@@ -92,8 +97,16 @@ try {
   const shell = await boot.workspaceCommandShell("fixture");
   const projectInstructions = await loadRemoteWorkspaceInstructions(boot.workspaceFiles,
     { hostKey: "fixture", path: remoteRoot }, { entries: [{ source: "local-global", content: "LOCAL_GLOBAL_INSTRUCTIONS_FIXTURE" }] });
-  localHost = new HostProcess({ binaryPath: resolve(process.env.PI_HOST_CORE_BINARY), dataDir: join(root, "local-host"), onStderr: () => {} });
+  localHost = new HostProcess({
+    binaryPath: resolve(process.env.PI_HOST_CORE_BINARY), dataDir: join(root, "local-host"), onStderr: () => {},
+    ...(officeResources ? { env: { PI_DESKTOP_BUILTIN_PLUGINS_DIR: join(officeResources, "plugins") } } : {}),
+  });
   await localHost.handshake();
+  if (officeResources) {
+    const { plugin } = await localHost.call("plugins.enable", { id: "pie.office-runtime" });
+    assert.equal(plugin?.bundled, true);
+    assert.equal(plugin?.enabled, true);
+  }
   const created = await localHost.call("project.group.createRemote", { name: "Locally named remote project", remote: { hostKey: "fixture", path: remoteRoot } });
   const localSession = await localHost.call("session.create", { projectPath: created.group.primaryPath, mode: "agent" });
   relay = createRemoteWorkspaceToolRelay(localHost, { getBoot: () => boot, isCurrent: () => true, isTurnDispatchable: (sessionId, turnId) => sessionId === localSession.session.id && turnId === "local-turn", log: () => {} });
@@ -119,7 +132,7 @@ try {
   assert.equal(modelError, undefined);
   assert.equal(modelCalls, 3);
   assert.equal(localPermissions, 1, "Bash is approved by local permissions before remote dispatch");
-  assert.equal(await readFile(join(remoteRoot, "marker.txt"), "utf8"), "REMOTE_BASH_FIXTURE\n");
+  assert.equal(await readFile(join(remoteRoot, "marker.txt"), "utf8"), marker);
   assert.deepEqual(wireCalls.map(call => call.toolName), ["Read", "Bash"]);
   assert.ok(!JSON.stringify(wireCalls).includes(KEY), "local provider key never crosses the workspace boundary");
   assert.ok(wireCalls.every(call => !Object.keys(call).some(key => /provider|model|secret|auth/i.test(key))));

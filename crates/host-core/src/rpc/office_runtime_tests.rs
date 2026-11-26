@@ -1,0 +1,169 @@
+use super::*;
+use crate::activation::{ActivationMode, ActivationScope};
+use crate::tools::shell::BASH_ID;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+
+#[tokio::test]
+async fn office_runtime_is_opt_in_and_follows_the_session_scope() {
+    let root = tempfile::tempdir().unwrap();
+    let resources = root.path().join("Pie Code/resources");
+    let plugins = resources.join("plugins");
+    let office = resources.join("office-runtime");
+    for (name, content) in [
+        ("node/bin/node", "#!/bin/sh\nprintf pie-office"),
+        ("python/bin/python", ""),
+        ("python/bin/python3", ""),
+        ("python/lib/python3.12/site-packages/lxml/__init__.py", ""),
+        (
+            "python/lib/python3.12/site-packages/defusedxml/__init__.py",
+            "",
+        ),
+        ("node/lib/node_modules/docx/package.json", "{}"),
+    ] {
+        let path = office.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, content).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let legacy = plugins.join("pie.offline-office");
+    fs::create_dir_all(&legacy).unwrap();
+    fs::write(legacy.join("manifest.json"), r#"{"schemaVersion":1,"id":"pie.offline-office","name":"Old Office","version":"1.0.0","main":"main.cjs"}"#).unwrap();
+    fs::write(legacy.join("main.cjs"), "").unwrap();
+    let app_data = root.path().join("data");
+    let mut app = AppState::open(&app_data).unwrap();
+    app.handshook = true;
+    app.plugins.sync_builtin(Some(&plugins)).unwrap();
+    let project = root.path().join("project");
+    fs::create_dir(&project).unwrap();
+    app.plugins
+        .set_scope(
+            "pie.offline-office",
+            ActivationScope {
+                mode: ActivationMode::Projects,
+                projects: vec![project.to_string_lossy().into_owned()],
+            },
+        )
+        .unwrap();
+    let old = plugins.join("pie.office-runtime");
+    fs::rename(&legacy, &old).unwrap();
+    fs::write(
+        old.join("manifest.json"),
+        include_str!("../../../../apps/desktop/resources/office-runtime/manifest.json"),
+    )
+    .unwrap();
+    app.plugins.sync_builtin(Some(&plugins)).unwrap();
+    assert!(app.plugins.get("pie.offline-office").is_none());
+
+    let make_session = |project_path| {
+        let session = sessions::create_session(
+            &app.db,
+            None,
+            Some("agent".into()),
+            None,
+            None,
+            project_path,
+        )
+        .unwrap();
+        sessions::configure_session_with_thinking(
+            &app.db,
+            &session.id,
+            "agent",
+            None,
+            None,
+            None,
+            Some("auto"),
+        )
+        .unwrap();
+        session.id
+    };
+    let temp = make_session(None);
+    let bound = make_session(Some(project.to_string_lossy().into_owned()));
+    let state = Arc::new(Mutex::new(app));
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let execute = |session: String, command: String, run_in_background: bool| {
+        let state = state.clone();
+        let tx = tx.clone();
+        async move {
+            handle_request(
+                state,
+                "tools.execute",
+                json!({
+                    "sessionId": session,
+                    "toolCallId": uuid::Uuid::new_v4().to_string(),
+                    "toolName": "Bash",
+                    "args": { "command": command },
+                    "runInBackground": run_in_background,
+                    "expectedCommandShellId": BASH_ID,
+                    "expectedCommandShellDialect": "posix",
+                    "mode": "agent"
+                }),
+                tx,
+            )
+            .await
+            .unwrap()
+        }
+    };
+    let probe = |session| {
+        execute(
+            session,
+            "if [[ ${NODE_PATH-} == *office-runtime/node/lib/node_modules* ]]; then node; else printf original; fi".into(),
+            false,
+        )
+    };
+    assert_eq!(probe(temp.clone()).await["content"]["stdout"], "original");
+    state
+        .lock()
+        .await
+        .plugins
+        .set_enabled("pie.office-runtime", true)
+        .unwrap();
+    assert_eq!(probe(temp.clone()).await["content"]["stdout"], "pie-office");
+    state
+        .lock()
+        .await
+        .plugins
+        .set_scope(
+            "pie.office-runtime",
+            ActivationScope {
+                mode: ActivationMode::Projects,
+                projects: vec![project.to_string_lossy().into_owned()],
+            },
+        )
+        .unwrap();
+    assert_eq!(probe(temp.clone()).await["content"]["stdout"], "original");
+    assert_eq!(
+        probe(bound.clone()).await["content"]["stdout"],
+        "pie-office"
+    );
+    let background = execute(bound.clone(), "node > background.txt".into(), true).await;
+    assert_eq!(background["ok"], true, "{background}");
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if fs::read_to_string(project.join("background.txt"))
+                .as_deref()
+                .ok()
+                == Some("pie-office")
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    fs::remove_file(office.join("node/bin/node")).unwrap();
+    let missing = probe(bound.clone()).await;
+    assert_eq!(missing["errorCode"], "TOOL_FAILED");
+    assert!(missing["content"]["error"]
+        .as_str()
+        .unwrap()
+        .contains("node/bin/node"));
+    state
+        .lock()
+        .await
+        .plugins
+        .set_enabled("pie.office-runtime", false)
+        .unwrap();
+    assert_eq!(probe(bound).await["content"]["stdout"], "original");
+}

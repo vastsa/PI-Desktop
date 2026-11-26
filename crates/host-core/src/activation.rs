@@ -84,11 +84,13 @@ pub fn normalize_project_path(path: &str) -> String {
     crate::db::normalize_project_path(path).unwrap_or_default()
 }
 
-/// Case-insensitive path comparison: macOS and Windows both hand us
-/// case-varying spellings of one directory, and a scope that silently stops
-/// matching because of capitalization reads as a bug.
+/// Linux case variants are distinct; keep the existing macOS and Windows comparison.
 fn same_path(a: &str, b: &str) -> bool {
-    a.to_lowercase() == b.to_lowercase()
+    if cfg!(target_os = "linux") {
+        a == b
+    } else {
+        a.to_lowercase() == b.to_lowercase()
+    }
 }
 
 /// True when `target` is the scoped directory or sits underneath it, so scoping
@@ -108,7 +110,10 @@ pub fn project_path_matches(entry: &str, target: &str) -> bool {
     } else {
         format!("{scoped}/")
     };
-    target.len() > prefix.len() && same_path(&target[..prefix.len()], &prefix)
+    target.len() > prefix.len()
+        && target
+            .get(..prefix.len())
+            .is_some_and(|start| same_path(start, &prefix))
 }
 
 #[cfg(test)]
@@ -120,6 +125,11 @@ mod tests {
             mode: ActivationMode::Projects,
             projects: paths.iter().map(|p| p.to_string()).collect(),
         }
+    }
+
+    #[test]
+    fn unrelated_unicode_project_does_not_match() {
+        assert!(!project_path_matches("/a", "/你你好"));
     }
 
     #[test]
@@ -139,9 +149,13 @@ mod tests {
     }
 
     #[test]
-    fn project_scope_ignores_case_and_trailing_separators() {
+    fn project_scope_respects_linux_case_and_ignores_trailing_separators() {
         let scope = projects(&["/Users/me/App/"]);
-        assert!(scope.matches(Some("/users/me/app")));
+        assert!(scope.matches(Some("/Users/me/App")));
+        assert_eq!(
+            scope.matches(Some("/users/me/app")),
+            !cfg!(target_os = "linux")
+        );
     }
 
     #[test]
@@ -151,11 +165,14 @@ mod tests {
 
     #[test]
     fn normalized_drops_blanks_and_duplicates() {
-        let scope = projects(&["/repo/", "/REPO", "  ", "/other"]).normalized();
-        assert_eq!(
-            scope.projects,
-            vec!["/repo".to_string(), "/other".to_string()]
-        );
+        let scope = projects(&["/repo/", "/REPO", "  ", "/other", "/repo"]).normalized();
+        let expected = if cfg!(target_os = "linux") {
+            vec!["/repo", "/REPO", "/other"]
+        } else {
+            vec!["/repo", "/other"]
+        };
+        assert_eq!(scope.projects, expected);
+        assert!(scope.matches(Some("/REPO/child")));
     }
 
     #[test]

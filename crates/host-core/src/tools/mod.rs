@@ -29,6 +29,7 @@ mod grep_rg;
 pub mod hashline;
 pub mod ignore_rules;
 mod image_dimensions;
+pub(crate) mod office_runtime;
 #[cfg(any(unix, test))]
 mod process_group;
 pub mod shell;
@@ -318,7 +319,7 @@ pub(crate) struct ToolRunnerStartConfig {
     #[serde(default)]
     pub(crate) env_path: Option<String>,
     /// Session-scoped variables such as `PI_PORT` for an isolated worktree
-    /// (ADR 0329). Empty for every other call.
+    /// (ADR 0329) and the opt-in bundled Office Runtime.
     #[serde(default)]
     pub(crate) extra_env: Vec<(String, String)>,
 }
@@ -893,6 +894,7 @@ pub struct BashExecutionOptions {
     pub output_tx: Option<mpsc::UnboundedSender<String>>,
     /// Extra environment for the command, e.g. `PI_PORT` (ADR 0329).
     pub extra_env: Vec<(String, String)>,
+    pub office_runtime: Option<PathBuf>,
     /// Start as a background task detached from the turn: no timeout, no
     /// abort wiring. The caller owns the registry; see `background_tasks`.
     pub run_in_background: bool,
@@ -911,6 +913,7 @@ impl BashExecutionOptions {
             cancellation: None,
             output_tx: None,
             extra_env: Vec::new(),
+            office_runtime: None,
             run_in_background: false,
             app_state: None,
         }
@@ -3010,36 +3013,10 @@ async fn tool_bash(
         .and_then(|v| v.as_str())
         .ok_or_else(|| ("INVALID_ARGUMENT".into(), "command required".into()))?;
 
-    // Background path: register the process with the detached registry and
-    // return immediately. No timeout budget, no cancellation wiring — the
-    // task outlives the turn by design and is reported via
-    // `backgroundTasks.changed` / `backgroundTasks.*` RPC.
-    if options.run_in_background {
-        let Some(app_state) = options.app_state.as_ref() else {
-            return Err((
-                "INVALID_ARGUMENT".into(),
-                "background execution requires host state (not available for local calls)".into(),
-            ));
-        };
-        let started = crate::background_tasks::spawn_background_task_detached(
-            app_state,
-            &options.session_id,
-            command,
-            &options.command_shell_id,
-            root,
-            scratch,
-        )
-        .await?;
-        return Ok(serde_json::json!({
-            "backgroundTaskId": started,
-            "job": { "kind": "bash", "id": started },
-            "command": command,
-            "commandShellId": options.command_shell_id,
-        }));
-    }
-
     let timeout_ms = options.timeout_ms.unwrap_or(DEFAULT_BASH_TIMEOUT_MS);
-    validate_bash_timeout_ms(timeout_ms)?;
+    if !options.run_in_background {
+        validate_bash_timeout_ms(timeout_ms)?;
+    }
 
     let resolved = shell::resolve_shell(&options.command_shell_id)
         .map_err(|message| ("SHELL_NOT_FOUND".to_string(), message))?;
@@ -3058,7 +3035,7 @@ async fn tool_bash(
         (code.into(), message)
     })?;
 
-    let config = ToolRunnerStartConfig {
+    let mut config = ToolRunnerStartConfig {
         program: invocation.program,
         args: invocation.args,
         workspace: root.to_path_buf(),
@@ -3069,8 +3046,43 @@ async fn tool_bash(
             )
         }),
         env_path: shell::user_login_path().map(str::to_string),
-        extra_env: options.extra_env.clone(),
+        extra_env: if options.run_in_background {
+            Vec::new()
+        } else {
+            options.extra_env.clone()
+        },
     };
+    if let Some(runtime) = options.office_runtime.as_deref() {
+        office_runtime::configure(&mut config, runtime)?;
+    }
+
+    // Background path: register the process with the detached registry and
+    // return immediately. No timeout budget, no cancellation wiring — the
+    // task outlives the turn by design and is reported via
+    // `backgroundTasks.changed` / `backgroundTasks.*` RPC.
+    if options.run_in_background {
+        let Some(app_state) = options.app_state.as_ref() else {
+            return Err((
+                "INVALID_ARGUMENT".into(),
+                "background execution requires host state (not available for local calls)".into(),
+            ));
+        };
+        let started = crate::background_tasks::spawn_background_task_detached(
+            app_state,
+            &options.session_id,
+            command,
+            &options.command_shell_id,
+            &config,
+        )
+        .await?;
+        return Ok(serde_json::json!({
+            "backgroundTaskId": started,
+            "job": { "kind": "bash", "id": started },
+            "command": command,
+            "commandShellId": options.command_shell_id,
+        }));
+    }
+
     let SpawnedToolRunner {
         pid,
         mut ownership,
@@ -5135,6 +5147,7 @@ mod tests {
                 cancellation: None,
                 output_tx: None,
                 extra_env: Vec::new(),
+                office_runtime: None,
                 run_in_background: false,
                 app_state: None,
             }),
@@ -5179,6 +5192,7 @@ mod tests {
                 cancellation: None,
                 output_tx: None,
                 extra_env: Vec::new(),
+                office_runtime: None,
                 run_in_background: false,
                 app_state: None,
             }),
@@ -5218,6 +5232,7 @@ mod tests {
                 cancellation: None,
                 output_tx: None,
                 extra_env: Vec::new(),
+                office_runtime: None,
                 run_in_background: false,
                 app_state: None,
             }),
@@ -5290,6 +5305,7 @@ mod tests {
             cancellation: None,
             output_tx: Some(tx),
             extra_env: Vec::new(),
+            office_runtime: None,
             run_in_background: false,
             app_state: None,
         };
@@ -5318,6 +5334,7 @@ mod tests {
             cancellation: None,
             output_tx: None,
             extra_env: Vec::new(),
+            office_runtime: None,
             run_in_background: false,
             app_state: None,
         };
@@ -5408,6 +5425,7 @@ mod tests {
             cancellation: None,
             output_tx: None,
             extra_env: Vec::new(),
+            office_runtime: None,
             run_in_background: false,
             app_state: None,
         };

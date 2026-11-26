@@ -50,17 +50,14 @@ export function normalizeProjectPath(path: string | null | undefined): string {
   return normalized;
 }
 
-/**
- * Compare two project paths case-insensitively.
- *
- * macOS and Windows both hand us case-varying spellings of the same directory,
- * and a scope that silently stops matching because the user typed `Project`
- * instead of `project` reads as a bug. On a case-sensitive filesystem this can
- * only over-match sibling directories that differ by case alone, which does not
- * happen in practice.
- */
-function samePath(a: string, b: string): boolean {
-  return a.toLocaleLowerCase() === b.toLocaleLowerCase();
+const scopePlatform = typeof process !== "undefined"
+  ? process.platform
+  : typeof navigator !== "undefined" && /^Linux\b/.test(navigator.platform) ? "linux" : undefined;
+
+/** Project identity for scope selection, storage and dispatch. Linux case variants are distinct. */
+export function scopeProjectKey(path: string | null | undefined, platform: string | undefined = scopePlatform): string {
+  const normalized = normalizeProjectPath(path);
+  return platform === "linux" ? normalized : normalized.toLowerCase();
 }
 
 /**
@@ -69,17 +66,19 @@ function samePath(a: string, b: string): boolean {
  * Scoping a plugin to a monorepo root should cover sessions opened on a package
  * inside it — the alternative is asking the user to list every subdirectory.
  */
-export function projectPathMatches(entry: string, projectPath: string): boolean {
-  const scoped = normalizeProjectPath(entry);
-  const target = normalizeProjectPath(projectPath);
+export function projectPathMatches(entry: string, projectPath: string, platform?: string): boolean {
+  const scoped = scopeProjectKey(entry, platform);
+  const target = scopeProjectKey(projectPath, platform);
   if (!scoped || !target) return false;
-  if (samePath(scoped, target)) return true;
   const prefix = scoped.endsWith("/") ? scoped : `${scoped}/`;
-  return target.length > prefix.length && samePath(target.slice(0, prefix.length), prefix);
+  return target === scoped || target.startsWith(prefix);
 }
 
 /** Normalize a possibly-missing scope from storage into a usable one. */
-export function resolveScope(scope: ActivationScope | undefined | null): ActivationScope {
+export function resolveScope(
+  scope: ActivationScope | undefined | null,
+  platform?: string,
+): ActivationScope {
   if (!scope || (scope.mode !== "global" && scope.mode !== "projects")) return GLOBAL_SCOPE;
   const projects = Array.isArray(scope.projects) ? scope.projects : [];
   const seen = new Set<string>();
@@ -87,7 +86,7 @@ export function resolveScope(scope: ActivationScope | undefined | null): Activat
   for (const raw of projects) {
     const path = normalizeProjectPath(typeof raw === "string" ? raw : "");
     if (!path) continue;
-    const key = path.toLocaleLowerCase();
+    const key = scopeProjectKey(path, platform);
     if (seen.has(key)) continue;
     seen.add(key);
     cleaned.push(path);
@@ -105,19 +104,19 @@ export function resolveScope(scope: ActivationScope | undefined | null): Activat
 export function isActiveInProject(
   item: Activatable,
   projectPath: string | null | undefined,
+  platform?: string,
 ): boolean {
   if (!item.enabled) return false;
-  const scope = resolveScope(item.scope);
+  const scope = resolveScope(item.scope, platform);
   if (scope.mode === "global") return true;
-  const target = normalizeProjectPath(projectPath);
-  if (!target) return false;
-  return scope.projects.some((entry) => projectPathMatches(entry, target));
+  return projectPath != null &&
+    scope.projects.some((entry) => projectPathMatches(entry, projectPath, platform));
 }
 
 /** Collapse `enabled` + scope into the value the three-state control renders. */
 export function activationState(item: Activatable): ActivationState {
   if (!item.enabled) return "off";
-  return resolveScope(item.scope).mode === "projects" ? "projects" : "global";
+  return item.scope?.mode === "projects" ? "projects" : "global";
 }
 
 /**
@@ -129,11 +128,13 @@ export function activationState(item: Activatable): ActivationState {
 export function withProject(
   scope: ActivationScope | undefined,
   projectPath: string,
+  platform?: string,
 ): ActivationScope {
-  const current = resolveScope(scope);
+  const current = resolveScope(scope, platform);
   const path = normalizeProjectPath(projectPath);
   if (!path) return { mode: "projects", projects: current.projects };
-  const exists = current.projects.some((entry) => samePath(entry, path));
+  const key = scopeProjectKey(path, platform);
+  const exists = current.projects.some((entry) => scopeProjectKey(entry, platform) === key);
   return {
     mode: "projects",
     projects: exists ? current.projects : [...current.projects, path],
@@ -144,11 +145,12 @@ export function withProject(
 export function withoutProject(
   scope: ActivationScope | undefined,
   projectPath: string,
+  platform?: string,
 ): ActivationScope {
-  const current = resolveScope(scope);
-  const path = normalizeProjectPath(projectPath);
+  const current = resolveScope(scope, platform);
+  const key = scopeProjectKey(projectPath, platform);
   return {
     mode: current.mode,
-    projects: current.projects.filter((entry) => !samePath(entry, path)),
+    projects: current.projects.filter((entry) => scopeProjectKey(entry, platform) !== key),
   };
 }

@@ -565,7 +565,11 @@ test("the plugin list asks for the running renderer plugins active in the open p
   ];
   const ids = (projectPath) => rendererLoadSpecs(plugins, projectPath).map((entry) => entry.pluginId);
   assert.deepEqual(ids("/work/app"), ["demo.global", "demo.scoped"]);
-  assert.deepEqual(ids("/Work/App/packages/ui"), ["demo.global", "demo.scoped"]);
+  assert.deepEqual(ids("/work/app/packages/ui"), ["demo.global", "demo.scoped"]);
+  assert.deepEqual(
+    ids("/Work/App/packages/ui"),
+    process.platform === "linux" ? ["demo.global"] : ["demo.global", "demo.scoped"],
+  );
   assert.deepEqual(ids("/work/other"), ["demo.global"]);
   assert.deepEqual(ids(null), ["demo.global"]);
   assert.deepEqual(rendererLoadSpecs(plugins, "/work/app")[1], {
