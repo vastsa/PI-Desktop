@@ -521,7 +521,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 
 | ID | Topic | Decision | Rationale |
 |---|---|---|---|
-| D192 | Activation scope shared by every extension kind | **Plugins, MCP servers, and skills each carry `enabled` plus a global or project scope, matched case-insensitively and enforced at catalog assembly and dispatch.** | One boolean made every extension global. See ADR 0056. |
+| D192 | Activation scope shared by every extension kind | **Plugins, MCP servers, and skills each carry `enabled` plus a global or project scope, matched case-sensitively on Linux and case-insensitively on macOS and Windows, with the same identity at selection, storage, catalog assembly, and dispatch.** | One boolean made every extension global. See ADR 0056. |
 | D193 | User-owned MCP servers need no plugin | **MCP servers live as one JSON file per id under `.agents` roots, with enablement and project overrides kept in app-local state.** | Servers are configuration, not plugin packages. See ADR 0112. |
 | D194 | User-owned skills are Markdown documents in `.agents` roots | **host-core scans `.agents/skills` roots for Markdown documents or `<skill>/SKILL.md`, exposing them through level-aware list calls with enablement kept outside the file.** | Skills stay portable documents; activation stays app-local. See ADR 0112. |
 | D257 | Capability pages are one workbench that can author | **Refine D193 / D194 and supersede D202's shape: Skills, MCP, and Subagents render one toolbar over one panel and can create, edit, and delete.** | Pages listed capabilities without managing them. See ADR 0126. |

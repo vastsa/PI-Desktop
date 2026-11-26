@@ -4,6 +4,7 @@ import {
   activationState,
   normalizeProjectPath,
   resolveScope,
+  scopeProjectKey,
   withProject,
   withoutProject,
   type ActivationScope,
@@ -93,7 +94,8 @@ export function ScopeControl({
   const [compactOpen, setCompactOpen] = useState(false);
   const compactWrapRef = useRef<HTMLDivElement | null>(null);
   const state = activationState(target);
-  const scope = resolveScope(target.scope);
+  const platform = window.piDesktop?.platform;
+  const scope = resolveScope(target.scope, platform);
 
   const select = (next: ActivationState) => {
     if (disabled) return;
@@ -115,7 +117,7 @@ export function ScopeControl({
     // "This project" with nothing selected yet seeds itself from the window, so
     // the common case — scope this to what I have open — needs no second step.
     if (scope.projects.length === 0 && currentProjectPath) {
-      void onSetScope(withProject(scope, currentProjectPath));
+      void onSetScope(withProject(scope, currentProjectPath, platform));
       if (!target.enabled) void onSetEnabled(true);
       setPickerOpen(true);
       return;
@@ -198,6 +200,7 @@ export function ScopeControl({
               compact
               anchorRef={compactWrapRef}
               scope={scope}
+              platform={platform}
               projects={projects}
               currentProjectPath={currentProjectPath}
               open={pickerOpen}
@@ -234,6 +237,7 @@ export function ScopeControl({
           {state === "projects" ? (
             <ScopeProjectsSummary
               scope={scope}
+              platform={platform}
               projects={projects}
               currentProjectPath={currentProjectPath}
               open={pickerOpen}
@@ -257,6 +261,7 @@ function ScopeProjectsSummary({
   compact = false,
   anchorRef,
   scope,
+  platform,
   projects,
   currentProjectPath,
   open,
@@ -267,6 +272,7 @@ function ScopeProjectsSummary({
   compact?: boolean;
   anchorRef?: RefObject<HTMLElement | null>;
   scope: ActivationScope;
+  platform?: string;
   projects: readonly ProjectRecord[];
   currentProjectPath?: string | null;
   open: boolean;
@@ -291,13 +297,13 @@ function ScopeProjectsSummary({
     const seen = new Set<string>();
     const out: Array<{ path: string; name: string; current: boolean }> = [];
     const push = (path: string, name: string) => {
-      const key = normalizeProjectPath(path).toLocaleLowerCase();
+      const key = scopeProjectKey(path, platform);
       if (!key || seen.has(key)) return;
       seen.add(key);
       out.push({
         path: normalizeProjectPath(path),
         name: name || projectLabel(path),
-        current: key === normalizeProjectPath(currentProjectPath ?? "").toLocaleLowerCase(),
+        current: key === scopeProjectKey(currentProjectPath, platform),
       });
     };
     if (currentProjectPath) push(currentProjectPath, projectLabel(currentProjectPath));
@@ -310,13 +316,15 @@ function ScopeProjectsSummary({
         row.name.toLocaleLowerCase().includes(needle) ||
         row.path.toLocaleLowerCase().includes(needle),
     );
-  }, [scope.projects, projects, currentProjectPath, query]);
+  }, [scope.projects, projects, currentProjectPath, platform, query]);
 
-  const selected = new Set(scope.projects.map((path) => path.toLocaleLowerCase()));
-  const isSelected = (path: string) => selected.has(normalizeProjectPath(path).toLocaleLowerCase());
+  const selected = new Set(scope.projects.map((path) => scopeProjectKey(path, platform)));
+  const isSelected = (path: string) => selected.has(scopeProjectKey(path, platform));
 
   const toggle = (path: string) => {
-    const next = isSelected(path) ? withoutProject(scope, path) : withProject(scope, path);
+    const next = isSelected(path)
+      ? withoutProject(scope, path, platform)
+      : withProject(scope, path, platform);
     void onSetScope(next);
   };
 

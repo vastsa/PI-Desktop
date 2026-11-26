@@ -28,7 +28,7 @@ describe("normalizeProjectPath", () => {
 
 describe("projectPathMatches", () => {
   it("matches the same directory regardless of case or trailing slash", () => {
-    expect(projectPathMatches("/Users/me/App/", "/users/me/app")).toBe(true);
+    expect(projectPathMatches("/Users/me/App/", "/users/me/app", "darwin")).toBe(true);
   });
 
   it("matches a subdirectory of the scoped root", () => {
@@ -56,7 +56,7 @@ describe("resolveScope", () => {
       resolveScope({
         mode: "projects",
         projects: ["/repo/", "/REPO", "", "/other"],
-      }),
+      }, "win32"),
     ).toEqual({ mode: "projects", projects: ["/repo", "/other"] });
   });
 });
@@ -90,6 +90,15 @@ describe("isActiveInProject", () => {
   });
 });
 
+it("selects and removes Linux case variants independently", () => {
+  const first = withProject(GLOBAL_SCOPE, "/work/project", "linux");
+  expect(isActiveInProject({ enabled: true, scope: first }, "/work/Project", "linux")).toBe(false);
+  const both = withProject(first, "/work/Project", "linux");
+  expect(both.projects).toEqual(["/work/project", "/work/Project"]);
+  expect(isActiveInProject({ enabled: true, scope: both }, "/work/Project/child", "linux")).toBe(true);
+  expect(withoutProject(both, "/work/project", "linux").projects).toEqual(["/work/Project"]);
+});
+
 describe("activationState", () => {
   it("collapses the record into the control's three states", () => {
     expect(activationState({ enabled: false })).toBe("off");
@@ -104,12 +113,12 @@ describe("withProject / withoutProject", () => {
   it("switches to project mode and keeps entries unique", () => {
     const once = withProject(GLOBAL_SCOPE, "/repo");
     expect(once).toEqual({ mode: "projects", projects: ["/repo"] });
-    expect(withProject(once, "/REPO/")).toEqual(once);
+    expect(withProject(once, "/REPO/", "darwin")).toEqual(once);
   });
 
   it("removes an entry without changing the mode", () => {
     const scope = { mode: "projects" as const, projects: ["/a", "/b"] };
-    expect(withoutProject(scope, "/A")).toEqual({ mode: "projects", projects: ["/b"] });
+    expect(withoutProject(scope, "/A", "win32")).toEqual({ mode: "projects", projects: ["/b"] });
   });
 
   it("keeps the project list when a scope loses its last entry", () => {

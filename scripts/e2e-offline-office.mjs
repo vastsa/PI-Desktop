@@ -2,10 +2,10 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { access, cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { networkInterfaces, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { bindingForCustomModel } from "../packages/shared/dist/model-catalog.js";
 import { IPC } from "../packages/shared/dist/protocol.js";
 import { waitFor } from "./e2e/wait.mjs";
@@ -20,7 +20,11 @@ await access(join(sample, "SKILL.md"));
 
 const root = await mkdtemp(join(tmpdir(), "pie-office-e2e-"));
 const workspace = join(root, "project");
+const otherProject = join(root, "Project");
 const skillPath = join(root, ".agents", "skills", "docx");
+const skillSource = join(root, "skill-source", "docx");
+const skillLink = relative(dirname(skillPath), skillSource);
+const preserved = ["data", ".agents", "skill-source"];
 const resources = join(dirname(appBin), "resources");
 const runtime = join(resources, "office-runtime");
 const model = "offline-office-fixture";
@@ -45,15 +49,15 @@ const wordSteps = () => [
   { name: "Skill", args: { id: skillId } },
   bash([
     `node make.cjs ${quote(created)} ${quote(createdText)}`,
-    `python -B ${skillScript("validate.py")} ${quote(created)}`,
-    `python -B ${skillScript("unpack.py")} ${quote(original)} unpacked`,
+    `python ${skillScript("validate.py")} ${quote(created)}`,
+    `python ${skillScript("unpack.py")} ${quote(original)} unpacked`,
     `python -B -c ${quote(words)} unpacked/word/document.xml`,
   ].join(" && ")),
   { name: "Edit", args: { path: "unpacked/word/document.xml", old_string: before, new_string: after } },
   bash([
     `test ! -e ${quote(edited)}`,
-    `python -B ${skillScript("pack.py")} unpacked ${quote(edited)} --original ${quote(original)}`,
-    `python -B ${skillScript("validate.py")} ${quote(edited)}`,
+    `python ${skillScript("pack.py")} unpacked ${quote(edited)} --original ${quote(original)}`,
+    `python ${skillScript("validate.py")} ${quote(edited)}`,
   ].join(" && ")),
 ];
 
@@ -169,9 +173,8 @@ async function stop() {
   try { await exited; } finally { clearTimeout(force); }
 }
 
-async function selectOffice({ evaluate }, enabled) {
-  const targetClass = enabled ? "is-global" : "is-off";
-  const label = enabled ? "Everywhere" : "Off";
+async function selectOffice({ evaluate }, mode) {
+  const label = { global: "Everywhere", projects: "Projects", off: "Off" }[mode];
   const row = `[...document.querySelectorAll(".plugins-row")].find(
     el => el.querySelector(".plugins-row-id")?.textContent === "pie.office-runtime")`;
   await waitFor(() => evaluate(`(() => {
@@ -193,7 +196,7 @@ async function selectOffice({ evaluate }, enabled) {
     if (!option) return false;
     option.click(); return true;
   })()`), 20_000, "extension scope " + label);
-  await waitFor(() => evaluate(`Boolean((${row})?.querySelector(".scope-compact-trigger.${targetClass}"))`),
+  await waitFor(() => evaluate(`Boolean((${row})?.querySelector(".scope-compact-trigger.is-${mode}"))`),
     20_000, "extension state " + label);
 }
 
@@ -236,9 +239,15 @@ const runtimeId = "pie.office-runtime";
 const legacyTitle = "Office upgrade fixture";
 const upgradeState = process.env.PI_CODE_E2E_UPGRADE_STATE;
 
+async function installLinkedSkill() {
+  await mkdir(dirname(skillPath), { recursive: true });
+  await cp(resolve(sample), skillSource, { recursive: true, verbatimSymlinks: true });
+  await symlink(skillLink, skillPath, "dir");
+}
+
 async function seedLegacy() {
   assert.ok(upgradeState, "Set PI_CODE_E2E_UPGRADE_STATE to an empty test directory.");
-  await cp(resolve(sample), skillPath, { recursive: true });
+  await installLinkedSkill();
   const app = await boot();
   await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
   const { plugin } = await app.invoke(IPC.invoke.pluginSetScope, {
@@ -251,7 +260,9 @@ async function seedLegacy() {
   await app.invoke(IPC.invoke.sessionCreate, { title: legacyTitle, mode: "agent" });
   await stop();
   await mkdir(upgradeState);
-  for (const name of ["data", ".agents"]) await cp(join(root, name), join(upgradeState, name), { recursive: true });
+  for (const name of preserved) {
+    await cp(join(root, name), join(upgradeState, name), { recursive: true, verbatimSymlinks: true });
+  }
   console.log("PASS: legacy installation saved an enabled project scope, session and user Skill.");
 }
 
@@ -262,21 +273,60 @@ function stdout(result) {
 }
 
 async function snapshot(directory) {
-  const files = (await readdir(directory, { recursive: true, withFileTypes: true })).filter((file) => file.isFile());
-  return Object.fromEntries(await Promise.all(files.map(async (file) => {
-    const filePath = join(file.parentPath, file.name);
-    return [filePath.slice(directory.length), await readFile(filePath)];
-  })));
+  const files = await readdir(directory, { recursive: true, withFileTypes: true });
+  return Object.fromEntries(await Promise.all(files
+    .filter((file) => file.isFile() || file.isSymbolicLink())
+    .map(async (file) => {
+      const path = join(file.parentPath, file.name);
+      return [relative(directory, path), file.isSymbolicLink() ? await readlink(path) : await readFile(path)];
+    })));
+}
+
+async function checkProjectPicker(app, run, officeOn, officeOff) {
+  await selectOffice(app, "projects");
+  const option = (path) => `[...document.querySelectorAll(".scope-popover [role=option]")].find(
+    option => option.querySelector(".scope-option-path")?.textContent === ${JSON.stringify(path)})`;
+  for (const path of [workspace, otherProject]) {
+    await waitFor(() => app.evaluate(`Boolean(${option(path)})`), 10_000, "project picker lists " + path);
+  }
+
+  const select = async (path, selected) => {
+    await app.evaluate(`(() => {
+      const option = ${option(path)};
+      if (option.getAttribute("aria-selected") !== ${JSON.stringify(String(selected))}) option.click();
+    })()`);
+    await waitFor(() => app.evaluate(`(${option(path)})?.getAttribute("aria-selected") === ${JSON.stringify(String(selected))}`),
+      10_000, "project picker selection " + path);
+  };
+  const checkBash = async (path, expected) => {
+    const result = await run(`Check project scope for ${path}.`, [bash(probe)], { projectPath: path });
+    assert.equal(stdout(result[0]), expected);
+  };
+
+  await select(workspace, true);
+  await select(otherProject, false);
+  await checkBash(workspace, officeOn);
+  await checkBash(otherProject, officeOff);
+  await select(otherProject, true);
+  await checkBash(workspace, officeOn);
+  await checkBash(otherProject, officeOn);
+  await select(workspace, false);
+  await checkBash(workspace, officeOff);
+  await checkBash(otherProject, officeOn);
+  await app.evaluate(`document.querySelector(".scope-popover-close").click()`);
 }
 
 async function verifyWord() {
   await mkdir(workspace);
   if (upgradeState) {
-    for (const name of ["data", ".agents"]) await cp(join(upgradeState, name), join(root, name), { recursive: true });
+    for (const name of preserved) {
+      await cp(join(upgradeState, name), join(root, name), { recursive: true, verbatimSymlinks: true });
+    }
   } else {
-    await cp(resolve(sample), skillPath, { recursive: true });
+    await installLinkedSkill();
   }
-  const skillFiles = await snapshot(skillPath);
+  assert.equal(await readlink(skillPath), skillLink);
+  const skillFiles = await snapshot(skillSource);
   assert.deepEqual(skillFiles, await snapshot(sample));
   await writeFile(join(workspace, "make.cjs"), `
 const { Document, Packer, Paragraph, TextRun } = require('docx');
@@ -325,11 +375,17 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
   const off = stdout((await run("Check the Bash environment before enabling.", [bash(probe)]))[0]);
   assert.ok(!off.includes(runtime));
 
-  await selectOffice(app, true);
+  await mkdir(otherProject);
+  for (const path of [workspace, otherProject]) {
+    await app.invoke(IPC.invoke.projectGroupCreate, { name: path.split("/").at(-1), folders: [path] });
+  }
+  await selectOffice(app, "global");
   const on = stdout((await run("Check the runtime in an unbound local session.", [bash(probe)]))[0]);
   assert.ok(on.includes(join(runtime, "node/bin/node")), on);
   assert.ok(on.includes(join(runtime, "python/bin/python")), on);
   assert.equal(system(), terminal);
+  await checkProjectPicker(app, run, on, off);
+  await selectOffice(app, "global");
 
   const rejectPath = join(workspace, "不得 创建.docx");
   const denied = await run("Decline the document write.", [
@@ -361,23 +417,19 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
   assert.deepEqual(readback(created), [createdText, untouched]);
   assert.deepEqual(readback(edited), [after, untouched]);
   assert.deepEqual(await readFile(join(workspace, original)), originalBytes);
-  assert.deepEqual(await snapshot(skillPath), skillFiles);
+  assert.equal(await readlink(skillPath), skillLink);
+  assert.deepEqual(await snapshot(skillSource), skillFiles, "Skill source changed after running the original commands");
 
-  const other = join(root, "Project");
-  await mkdir(other);
-  await app.invoke(IPC.invoke.pluginSetScope, { id: runtimeId, scope: { mode: "projects", projects: [workspace] } });
-  assert.equal(stdout((await run("Check the selected project.", [bash(probe)], { projectPath: workspace }))[0]), on);
-  assert.equal(stdout((await run("Check the project outside the scope.", [bash(probe)], { projectPath: other }))[0]), off);
-
-  await selectOffice(app, false);
+  await selectOffice(app, "off");
   await stop();
   app = await boot();
   assert.equal((await row())?.enabled, false);
   assert.equal(stdout((await run("Check a new local session after disabling.", [bash(probe)]))[0]), off);
   assert.equal((await app.invoke(IPC.invoke.skillList, { level: "global" })).skills.find((item) => item.id === skillId)?.path,
     join(skillPath, "SKILL.md"));
-  assert.deepEqual(await snapshot(skillPath), skillFiles);
-  console.log(`PASS: ${upgradeState ? "legacy upgrade" : "clean installation"}, global unbound and selected project Bash, separate terminal, permission denial, unmodified docx Skill discovery and invocation, Chinese DOCX readback and source preservation, disablement after restart.`);
+  assert.equal(await readlink(skillPath), skillLink);
+  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  console.log(`PASS: ${upgradeState ? "legacy upgrade" : "clean installation"}, global unbound and selected project Bash, separate terminal, permission denial, linked docx Skill discovery and invocation with original commands, Chinese DOCX readback and source preservation, disablement after restart.`);
 }
 
 try {

@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 /// Where an extension is allowed to run.
 ///
@@ -85,11 +84,13 @@ pub fn normalize_project_path(path: &str) -> String {
     crate::db::normalize_project_path(path).unwrap_or_default()
 }
 
-/// Case-insensitive path comparison: macOS and Windows both hand us
-/// case-varying spellings of one directory, and a scope that silently stops
-/// matching because of capitalization reads as a bug.
+/// Linux case variants are distinct; keep the existing macOS and Windows comparison.
 fn same_path(a: &str, b: &str) -> bool {
-    a.to_lowercase() == b.to_lowercase()
+    if cfg!(target_os = "linux") {
+        a == b
+    } else {
+        a.to_lowercase() == b.to_lowercase()
+    }
 }
 
 /// True when `target` is the scoped directory or sits underneath it, so scoping
@@ -100,11 +101,6 @@ pub fn project_path_matches(entry: &str, target: &str) -> bool {
     let target = normalize_project_path(target);
     if scoped.is_empty() || target.is_empty() {
         return false;
-    }
-    // Distinct Linux directories can differ only in case. A selected project
-    // must not enable the runtime in its case-variant sibling.
-    if cfg!(target_os = "linux") {
-        return Path::new(&target).starts_with(Path::new(&scoped));
     }
     if same_path(&scoped, &target) {
         return true;
@@ -169,11 +165,14 @@ mod tests {
 
     #[test]
     fn normalized_drops_blanks_and_duplicates() {
-        let scope = projects(&["/repo/", "/REPO", "  ", "/other"]).normalized();
-        assert_eq!(
-            scope.projects,
-            vec!["/repo".to_string(), "/other".to_string()]
-        );
+        let scope = projects(&["/repo/", "/REPO", "  ", "/other", "/repo"]).normalized();
+        let expected = if cfg!(target_os = "linux") {
+            vec!["/repo", "/REPO", "/other"]
+        } else {
+            vec!["/repo", "/other"]
+        };
+        assert_eq!(scope.projects, expected);
+        assert!(scope.matches(Some("/REPO/child")));
     }
 
     #[test]

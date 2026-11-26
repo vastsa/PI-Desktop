@@ -25,12 +25,12 @@ control (`off` / `projects` / `global`) is derived by `activationState`, which l
 a user narrow an extension, switch it off, and switch it back on without
 re-picking projects.
 
-`isActiveInProject` is the single matching rule: comparison is case-insensitive
-and trailing-separator-insensitive, a scoped path also matches its
+Matching and deduplication are case-sensitive on Linux, where differently cased
+paths can be distinct directories. macOS and Windows keep their case-insensitive
+comparison. The picker uses the same project identity as scope storage and
+dispatch. Trailing separators are ignored, a scoped path also matches its
 subdirectories, a `projects`-mode extension is inactive in a session with no
 project, and a missing or unrecognized scope reads as global.
-`normalizeProjectPath` mirrors host-core's `normalize_project_path` so a path
-chosen in the picker compares equal to the `projects` table.
 
 ### 2. Scope is enforced at catalog assembly and at dispatch
 

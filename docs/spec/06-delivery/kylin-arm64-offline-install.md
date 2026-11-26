@@ -116,16 +116,19 @@ loopback proxy alone can miss direct connections from child processes.
 ## Office Runtime and a self-installed Word Skill
 
 On the Pie Code 0.23.1 maintenance line, the Kylin ARM64 Debian package
-ships an Office Runtime extension without any office Skills. Users install
-the complete `docx` Skill through Agent → Skills, or place it under
-`~/.agents/skills` or the project Skill directory. Pie uses the existing
-discovery and does not rewrite the Skill or its links.
+ships an Office Runtime extension without any office Skills. To install a
+`docx` folder that contains symbolic links, place the complete folder or a link
+to it under `~/.agents/skills` or the project Skill directory. If Agent → Skills
+finds it in **Scan skills from other tools**, choose **Symlink** and keep the
+source in place. **Import Folder** and the scan's **Copy** mode skip symbolic
+links inside the folder.
 
 In Extensions, Office Runtime starts disabled, even after upgrading an
 enabled legacy Offline Office candidate. Enable it everywhere or choose
 local projects. Everywhere includes sessions with no project. Each new
-local Bash command resolves the current scope from its session; remote
-workspaces and system terminals keep their existing environment. Approved
+local Bash command resolves the current scope from its session. Linux treats
+`project` and `Project` as separate choices. Remote workspaces and system
+terminals keep their existing environment. Approved
 foreground and background Bash commands search the packaged Python and
 Node first, and CommonJS can resolve `docx` through `NODE_PATH`. The same
 Bash permission applies whether a Skill or an ordinary prompt calls it.
@@ -165,10 +168,12 @@ PI_CODE_E2E_DOCX_SKILL=/absolute/path/to/original/docx \
 The scenario loads the installed Skill from the real Agent tool, approves
 Bash and Edit through the existing permission broker, and reads back the
 new and edited DOCX files. It uses the Skill's unpack, validate and pack
-scripts and its CommonJS docx-js authoring path. It compares the original
-documents and Skill files byte for byte, tests denied Bash and global
-Bash in an unbound session, switches between selected and unselected
-projects, then disables the extension and restarts. For an upgrade test,
+scripts using the Skill's original Python commands without `-B`, and its
+CommonJS docx-js authoring path. It checks that the document, the linked Skill
+source and link targets stay unchanged and that no Python cache files are
+added. It tests denied Bash and global Bash in an unbound session, then adds
+and removes two case-variant folders through the Extensions project picker and
+checks Bash in each folder. Finally it disables the extension and restarts. For an upgrade test,
 run the same command against an installed legacy candidate with
 `--seed-legacy` and `PI_CODE_E2E_UPGRADE_STATE` pointing to a new disposable
 directory. Upgrade the installation, keep the same environment variable,
