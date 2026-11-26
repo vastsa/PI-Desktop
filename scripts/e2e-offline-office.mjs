@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { access, cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import { bindingForCustomModel } from "../packages/shared/dist/model-catalog.js";
 import { IPC } from "../packages/shared/dist/protocol.js";
 import { waitFor } from "./e2e/wait.mjs";
@@ -24,6 +25,8 @@ assert.ok(Object.values(networkInterfaces()).flat().every((address) => address.i
 await access(join(sample, "SKILL.md"));
 
 const root = await mkdtemp(join(tmpdir(), "pie-office-e2e-"));
+const shellEnv = { HOME: root, PATH: process.env.PATH, SHELL: "/bin/bash" };
+const runFile = promisify(execFile);
 const workspace = join(root, "project");
 const otherProject = join(root, "Project");
 const skillPath = join(root, ".agents", "skills", skillName);
@@ -33,7 +36,6 @@ const preserved = ["data", ".agents", "skill-source"];
 const resources = join(dirname(appBin), "resources");
 const runtime = join(resources, "office-runtime");
 const model = "offline-office-fixture";
-const marker = "OFFICE_RUNTIME_FIXTURE_COMPLETE";
 const original = "原始 文档.docx";
 const created = "新建 文档.docx";
 const edited = "另存 文档.docx";
@@ -42,16 +44,17 @@ const after = "这是修改正文";
 const untouched = "这一段保持原样";
 const createdText = "这是可编辑的新文档";
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
-const probe = "printf '%s\\n' \"\${NODE_PATH-}\"; command -v node || :; command -v python || :";
+const probe = "printf '%s\\n' \"$PATH\" \"\${NODE_PATH-}\"; command -v node || :; command -v python || :";
 const skillScript = (name) => quote(join(skillPath, "scripts", "office", name));
 const bash = (command) => ({ name: "Bash", args: { command } });
+const loadSkill = () => ({ name: "Skill", args: { id: skillId } });
 const words = [
   "import sys, xml.etree.ElementTree as E",
   "root = E.parse(sys.argv[1])",
   "for node in root.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'): print(node.text or '')",
 ].join("\n");
 const wordSteps = () => [
-  { name: "Skill", args: { id: skillId } },
+  loadSkill(),
   bash([
     `node make.cjs ${quote(created)} ${quote(createdText)}`,
     `python ${skillScript("validate.py")} ${quote(created)}`,
@@ -74,6 +77,9 @@ let desktop;
 let connected;
 let log = "";
 let modelError;
+let turn = 0;
+const toolPrefix = () => `office_${turn}_`;
+const completionMarker = () => `OFFICE_RUNTIME_FIXTURE_${turn}_COMPLETE`;
 let steps = [];
 let results = [];
 
@@ -88,7 +94,7 @@ const provider = createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     const request = JSON.parse(raw);
     const tools = request.tools.map((tool) => tool.function.name);
-    results = request.messages.filter((message) => message.role === "tool" && /^office_\d+$/.test(message.tool_call_id))
+    results = request.messages.filter((message) => message.role === "tool" && message.tool_call_id?.startsWith(toolPrefix()))
       .map((message) => toolText(message.content));
     const tool = steps[results.length];
     if (steps[0]?.name === "Skill" && results.length) {
@@ -97,9 +103,9 @@ const provider = createServer(async (req, res) => {
     }
     if (tool) assert.ok(tools.includes(tool.name), `Missing ${tool.name}`);
     const delta = tool ? { role: "assistant", tool_calls: [{
-      index: 0, id: `office_${results.length}`, type: "function",
+      index: 0, id: `${toolPrefix()}${results.length}`, type: "function",
       function: { name: tool.name, arguments: JSON.stringify(tool.args) },
-    }] } : { role: "assistant", content: marker };
+    }] } : { role: "assistant", content: completionMarker() };
     const frame = (change, reason) => "data: " + JSON.stringify({
       id: "office-fixture", object: "chat.completion.chunk", created: 1, model,
       choices: [{ index: 0, delta: change, finish_reason: reason }],
@@ -117,9 +123,9 @@ async function boot() {
   desktop = spawn(appBin, ["--remote-debugging-port=0", "--user-data-dir=" + join(root, "profile")], {
     cwd: dirname(appBin),
     env: {
-      PATH: process.env.PATH, DISPLAY: process.env.DISPLAY, XAUTHORITY: process.env.XAUTHORITY,
+      ...shellEnv, DISPLAY: process.env.DISPLAY, XAUTHORITY: process.env.XAUTHORITY,
       DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS,
-      HOME: root, PI_DESKTOP_DATA_DIR: join(root, "data"), PI_CODING_AGENT_DIR: join(root, "agent"),
+      PI_DESKTOP_DATA_DIR: join(root, "data"), PI_CODING_AGENT_DIR: join(root, "agent"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -178,6 +184,25 @@ async function stop() {
   try { await exited; } finally { clearTimeout(force); }
 }
 
+async function restart({ evaluate, invoke }) {
+  const quit = async () => {
+    await invoke(IPC.invoke.appQuit);
+    await waitFor(() => evaluate(`(() => {
+      const dialog = document.querySelector('[role="dialog"][aria-labelledby="lifecycle-confirmation-title"]');
+      const confirm = [...(dialog?.querySelectorAll("button") ?? [])].find(button => button.textContent.trim() === "Quit");
+      if (!confirm) return false;
+      confirm.click(); return true;
+    })()`), 10_000, "Quit confirmation");
+  };
+  const [[code]] = await Promise.all([
+    once(desktop, "exit", { signal: AbortSignal.timeout(20_000) }),
+    quit(),
+  ]);
+  assert.equal(code, 0, "Pie Code should exit normally before restart");
+  connected.close();
+  return boot();
+}
+
 async function selectOffice({ evaluate }, mode) {
   const label = { global: "Everywhere", projects: "Projects", off: "Off" }[mode];
   const row = `[...document.querySelectorAll(".plugins-row")].find(
@@ -205,14 +230,15 @@ async function selectOffice({ evaluate }, mode) {
     20_000, "extension state " + label);
 }
 
-async function runTurn({ invoke }, providerId, label, plan, { projectPath, deny, beforeApprove } = {}) {
+async function runTurn({ invoke }, providerId, label, plan, { projectPath, sessionId, deny, beforeApprove } = {}) {
+  const { session } = sessionId
+    ? await invoke(IPC.invoke.sessionGet, sessionId)
+    : await invoke(IPC.invoke.sessionCreate, { title: label, projectPath, mode: "agent", providerId, modelId: model });
+  assert.equal(session.projectPath ?? undefined, projectPath);
+  turn++;
   steps = plan;
   results = [];
   modelError = undefined;
-  const { session } = await invoke(IPC.invoke.sessionCreate, {
-    title: label, projectPath, mode: "agent", providerId, modelId: model,
-  });
-  assert.equal(session.projectPath ?? undefined, projectPath);
   await invoke(IPC.invoke.agentPrompt, {
     sessionId: session.id, content: label, permissionMode: "ask",
   });
@@ -233,10 +259,40 @@ async function runTurn({ invoke }, providerId, label, plan, { projectPath, deny,
   }
   await waitFor(async () => {
     if (modelError) throw modelError;
-    return JSON.stringify(await invoke(IPC.invoke.sessionGet, session.id)).includes(marker);
+    const result = await invoke(IPC.invoke.sessionGet, session.id);
+    if (!JSON.stringify(result).includes(completionMarker())) return false;
+    const { runningSessionIds } = await invoke(IPC.invoke.sessionList);
+    return !runningSessionIds.includes(session.id);
   }, 45_000, `${label}: completion`, 150);
   assert.equal(results.length, plan.length);
-  return [...results];
+  return { sessionId: session.id, results: [...results] };
+}
+
+async function newProjectSession({ evaluate, invoke }, path) {
+  const group = `[data-sidebar-project-group=${JSON.stringify(path)}]`;
+  await waitFor(() => evaluate(`(() => {
+    const button = document.querySelector(${JSON.stringify(group + ' [data-action="toggle-project-collapse"]')});
+    if (!button?.getClientRects().length) return false;
+    button.click(); return true;
+  })()`), 20_000, "sidebar project " + path);
+  await waitFor(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(group + '[data-current-workspace="true"]')}))`),
+    20_000, "active sidebar project " + path);
+
+  const { sessions } = await invoke(IPC.invoke.sessionList);
+  const existing = new Set(sessions.map(session => session.id));
+  await waitFor(() => evaluate(`(() => {
+    const button = [...document.querySelectorAll('[data-nav="new-task"]')].find(item => item.getClientRects().length);
+    if (!button) return false;
+    button.click(); return true;
+  })()`), 20_000, "New Task");
+  let session;
+  await waitFor(async () => {
+    const { sessions } = await invoke(IPC.invoke.sessionList);
+    session = sessions.find(item => !existing.has(item.id));
+    return session;
+  }, 20_000, "new sidebar session");
+  assert.equal(session.projectPath, path, "New Task should use the selected project");
+  return session.id;
 }
 
 const legacyId = "pie.offline-office";
@@ -287,7 +343,7 @@ async function snapshot(directory) {
     })));
 }
 
-async function checkProjectPicker(app, run, officeOn, officeOff) {
+async function checkProjectPicker(app, checkBash, officeOn, officeOff) {
   await selectOffice(app, "projects");
   const option = (path) => `[...document.querySelectorAll(".scope-popover [role=option]")].find(
     option => option.querySelector(".scope-option-path")?.textContent === ${JSON.stringify(path)})`;
@@ -303,21 +359,19 @@ async function checkProjectPicker(app, run, officeOn, officeOff) {
     await waitFor(() => app.evaluate(`(${option(path)})?.getAttribute("aria-selected") === ${JSON.stringify(String(selected))}`),
       10_000, "project picker selection " + path);
   };
-  const checkBash = async (path, expected) => {
-    const result = await run(`Check project scope for ${path}.`, [bash(probe)], { projectPath: path });
-    assert.equal(stdout(result[0]), expected);
-  };
-
   await select(workspace, true);
   await select(otherProject, false);
   await checkBash(workspace, officeOn);
-  await checkBash(otherProject, officeOff);
+  await checkBash(otherProject, officeOff.get(otherProject));
   await select(otherProject, true);
   await checkBash(workspace, officeOn);
   await checkBash(otherProject, officeOn);
   await select(workspace, false);
-  await checkBash(workspace, officeOff);
+  await checkBash(workspace, officeOff.get(workspace));
   await checkBash(otherProject, officeOn);
+  // Leave only the project that contains the Word fixture selected.
+  await select(workspace, true);
+  await select(otherProject, false);
   await app.evaluate(`document.querySelector(".scope-popover-close").click()`);
 }
 
@@ -377,16 +431,17 @@ main().catch((error) => { console.error(error); process.exitCode = 1; });
   const extract = (file) => `python -m markitdown ${quote(file)}`;
   const script = (file) => quote(join(skillPath, "scripts", file));
   const absent = (file) => assert.rejects(stat(join(workspace, file)), { code: "ENOENT" });
-  const denied = await run("Decline creating an editable presentation.", [bash(make(fresh, newTitle))], { deny: true });
+  const { results: denied } = await run("Decline creating an editable presentation.", [bash(make(fresh, newTitle))], { deny: true });
   assert.match(denied[0], /denied|rejected/i);
   await absent(fresh);
-  stdout((await run("Prepare the original presentation.", [bash(make(source, sourceTitle))], {
+  const { results: [prepared] } = await run("Prepare the original presentation.", [bash(make(source, sourceTitle))], {
     beforeApprove: () => absent(source),
-  }))[0]);
+  });
+  stdout(prepared);
   const originalBytes = await readFile(join(workspace, source));
 
   let bashApprovals = 0;
-  const ppt = await run("Use the installed pptx Skill to extract, create, and save a copy.", [
+  const { results: ppt } = await run("Use the installed pptx Skill to extract, create, and save a copy.", [
     { name: "Skill", args: { id: skillId } },
     bash([
       `node -p ${quote("require.resolve('pptxgenjs')")}`,
@@ -465,8 +520,10 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
     cwd: workspace, env: { ...process.env, NODE_PATH: join(runtime, "node/lib/node_modules") },
   });
   const originalBytes = await readFile(join(workspace, original));
-  const system = () => execFileSync("/bin/bash", ["-lc", probe], { encoding: "utf8" });
-  const terminal = system();
+  const system = async () => (await runFile("/bin/bash", ["-lc", probe], {
+    cwd: root, env: shellEnv, encoding: "utf8", timeout: 5_000,
+  })).stdout;
+  const terminal = await system();
   assert.ok(!terminal.includes(runtime));
 
   provider.listen(0, "127.0.0.1");
@@ -487,31 +544,65 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
   await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
   await discoverSkill(app);
   const providerId = await connectFixtureModel(app);
+  await app.invoke(IPC.invoke.settingsSet, { defaultProviderId: providerId, defaultModelId: model });
   const run = (label, plan, opts) => runTurn(app, providerId, label, plan, opts);
-  const off = stdout((await run("Check the Bash environment before enabling.", [bash(probe)]))[0]);
-  assert.ok(!off.includes(runtime));
+  const readBash = async (projectPath, sessionId) => {
+    const { results: [result] } = await run(`Check the Bash environment for ${projectPath ?? "an unbound session"}.`,
+      [bash(probe)], { projectPath, sessionId });
+    return stdout(result);
+  };
+  const checkBash = async (projectPath, expected, sessionId) => {
+    assert.equal(await readBash(projectPath, sessionId), expected);
+  };
 
   await mkdir(otherProject);
   for (const path of [workspace, otherProject]) {
     await app.invoke(IPC.invoke.projectGroupCreate, { name: path.split("/").at(-1), folders: [path] });
   }
+  const off = new Map();
+  for (const path of [workspace, otherProject, undefined]) {
+    const baseline = await readBash(path);
+    assert.ok(!baseline.includes(runtime));
+    off.set(path, baseline);
+  }
   await selectOffice(app, "global");
-  const on = stdout((await run("Check the runtime in an unbound local session.", [bash(probe)]))[0]);
+  const on = await readBash(undefined);
   assert.ok(on.includes(join(runtime, "node/bin/node")), on);
   assert.ok(on.includes(join(runtime, "python/bin/python")), on);
-  assert.equal(system(), terminal);
-  await checkProjectPicker(app, run, on, off);
+  assert.equal(await system(), terminal);
+  await checkProjectPicker(app, checkBash, on, off);
+  await checkBash(undefined, off.get(undefined));
   await selectOffice(app, "global");
+  await checkBash(workspace, on);
+  await checkBash(otherProject, on);
+  await selectOffice(app, "projects");
+
+  // Registered project groups are not automatically opened in the sidebar.
+  const sidebar = await app.invoke(IPC.invoke.sidebarPreferencesGet);
+  await app.invoke(IPC.invoke.sidebarPreferencesSet, { ...sidebar, openProjectPaths: [workspace, otherProject] });
+  app = await restart(app);
+  const scoped = await row();
+  assert.equal(scoped?.enabled, true);
+  assert.deepEqual(scoped.scope, { mode: "projects", projects: [workspace] });
+  const checkSkillOutsideScope = async (projectPath, sessionId) => {
+    const { results } = await run("Load the user Skill and check Bash outside Office Runtime.",
+      [loadSkill(), bash(probe)], { projectPath, sessionId });
+    assert.equal(stdout(results[1]), off.get(projectPath));
+  };
+  await checkSkillOutsideScope(otherProject, await newProjectSession(app, otherProject));
+  await checkBash(workspace, on, await newProjectSession(app, workspace));
+  await checkSkillOutsideScope(undefined);
+  assert.equal(await system(), terminal);
 
   const rejectPath = join(workspace, "不得 创建.docx");
-  const denied = await run("Decline the document write.", [
+  const { results: denied } = await run("Decline the document write.", [
     bash(`node make.cjs ${quote(rejectPath)} ${quote(createdText)}`),
   ], { projectPath: workspace, deny: true });
   assert.match(denied[0], /denied|rejected/i);
   await assert.rejects(stat(rejectPath), { code: "ENOENT" });
 
   let bashApprovals = 0;
-  const word = await run("Use the installed docx Skill to extract, create and save a copy.", wordSteps(), {
+  const { sessionId: wordSessionId, results: word } = await run("Use the installed docx Skill to extract, create and save a copy.", wordSteps(), {
     projectPath: workspace,
     async beforeApprove(name) {
       if (name !== "Bash") return;
@@ -537,15 +628,15 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
   assert.deepEqual(await snapshot(skillSource), skillFiles, "Skill source changed after running the original commands");
 
   await selectOffice(app, "off");
-  await stop();
-  app = await boot();
+  await checkBash(workspace, off.get(workspace), wordSessionId);
+  app = await restart(app);
   assert.equal((await row())?.enabled, false);
-  assert.equal(stdout((await run("Check a new local session after disabling.", [bash(probe)]))[0]), off);
+  await checkBash(workspace, off.get(workspace));
   assert.equal((await app.invoke(IPC.invoke.skillList, { level: "global" })).skills.find((item) => item.id === skillId)?.path,
     join(skillPath, "SKILL.md"));
   assert.equal(await readlink(skillPath), skillLink);
   assert.deepEqual(await snapshot(skillSource), skillFiles);
-  console.log(`PASS: ${upgradeState ? "legacy upgrade" : "clean installation"}, global unbound and selected project Bash, separate terminal, permission denial, linked docx Skill discovery and invocation with original commands, Chinese DOCX readback and source preservation, disablement after restart.`);
+  console.log(`PASS: ${upgradeState ? "legacy upgrade" : "clean installation"}, global and project-scoped Bash, selected scope after restart, separate terminal, permission denial and linked docx Skill in the selected project, Chinese DOCX readback and source preservation, disablement before and after restart.`);
 }
 
 try {

@@ -134,7 +134,10 @@ and rendering tools first. CommonJS can resolve `docx` and `pptxgenjs`
 through `NODE_PATH`. Packaged Python does not write bytecode caches next to
 the user's Skill scripts. The same
 Bash permission applies whether a Skill or an ordinary prompt calls it.
-An incomplete runtime reports the missing path and how to recover.
+An incomplete runtime reports the missing path and how to recover, including
+when the launcher exists but its renderer executable is missing. The host
+removes temporary rendering profiles after a Bash command exits, times out,
+or is stopped.
 
 Stage the approved ARM64 Office Runtime 1.0.2 Python, Python dependencies,
 and Node layers on a case-sensitive Linux filesystem, preserving relative
@@ -173,14 +176,37 @@ new and edited DOCX files. It uses the Skill's unpack, validate and pack
 scripts using the Skill's original Python commands without `-B`, and its
 CommonJS docx-js authoring path. It checks that the document, the linked Skill
 source and link targets stay unchanged and that no Python cache files are
-added. It tests denied Bash and global Bash in an unbound session, then adds
-and removes two case-variant folders through the Extensions project picker and
-checks Bash in each folder. Finally it disables the extension and restarts. For an upgrade test,
+added. It checks global Bash in an unbound session, then adds and removes two
+case-variant folders through the Extensions project picker and checks Bash in
+each folder. It checks both projects after switching back to Everywhere, then
+restarts with only the Word project selected. It selects each project in the
+sidebar, opens a New Task, and verifies the new chat's project. The unselected
+and unbound chats load the Skill and run Bash in the same turn. Their
+`PATH` and `NODE_PATH` match the baseline recorded with Office Runtime off,
+as do the system terminal's. The denial and Word workflow run in the selected
+project. After disabling
+the runtime, the scenario checks Bash in the existing session and then in a new
+session in the same project after another restart. For an upgrade test,
 run the same command against an installed legacy candidate with
 `--seed-legacy` and `PI_CODE_E2E_UPGRADE_STATE` pointing to a new disposable
 directory. Upgrade the installation, keep the same environment variable,
 and run without `--seed-legacy` to verify the old session and user Skill
 survive and the old activation state does not enable the new runtime.
+
+Run the separate loopback remote-workspace fixture after `pnpm build:js`, using
+the inspected package's resources and its matching Host binary:
+
+```sh
+export PI_CODE_E2E_OFFICE_RESOURCES='/opt/Pie Code/resources'
+PI_HOST_CORE_BINARY="$PI_CODE_E2E_OFFICE_RESOURCES/bin/pi-desktop-host-core" \
+  node scripts/e2e-local-agent-remote-tools.mjs
+```
+
+The fixture uses the same loopback model, relay and remote Host to compare
+remote Bash's `PATH` and `NODE_PATH` before and after enabling Office Runtime
+globally on the local Host. It uses a temporary login profile and requires no
+external host.
+
 Keep the candidate revision, DEB digest, package inspection, and target
 result together. Earlier candidates with built-in Skills are not evidence
 for this package.
@@ -196,8 +222,18 @@ Stage these inputs in the same runtime tree before running `dist:kylin`:
 | Edit and save a copy | The same defusedxml and lxml used by Word, with the unpack, clean, and pack scripts supplied by the user's original Skill. |
 | Render a thumbnail | Pillow 12.3.0, AlmaLinux 8.10 LibreOffice Impress 7.1.8.1 and Poppler 20.11.0 with vendor security updates. Stage the headless payload under `libreoffice/` and `poppler/`; the package supplies the launchers. Keep component versions, source references, and license notices in `metadata/native-office/`. |
 
+Stage the headless Impress payload and its libraries, plus only the
+`pdftoppm` executable and its libraries from Poppler. Each native RPM represented
+in the payload needs its version, exact source RPM reference, and readable
+license notices. The package check requires entries for `libreoffice-core`,
+`libreoffice-impress`, `poppler`, and `poppler-utils`.
+
 Use an ARM64 renderer build that fits the target's glibc 2.31 and is approved
 for redistribution. The earlier LibreOffice 6.4 runtime does not qualify.
+Before public distribution, inspect the exact DEB's payload and hand off the
+corresponding source RPMs referenced in its `metadata/native-office/sources.json`,
+including applicable patches. Check the source files against the recorded
+digests and keep the sources and notices with the same release candidate.
 Inspect all packaged ELF files with `check-linux-deb.mjs` before testing the
 installed DEB. In the same Kylin loopback-only environment used for Word, run:
 

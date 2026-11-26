@@ -14,7 +14,15 @@ async fn office_runtime_is_opt_in_and_follows_the_session_scope() {
         ("node/bin/node", "#!/bin/sh\nprintf pie-office"),
         ("python/bin/python", ""),
         ("python/bin/python3", ""),
-        ("bin/soffice", ""),
+        (
+            "bin/soffice",
+            include_str!("../../../../scripts/office-runtime-bin/soffice"),
+        ),
+        (
+            "libreoffice/program/oosplash",
+            "#!/bin/sh\nprintf '%s' \"$HOME\" > profile-path\nprintf ready > profile-ready\ncase \"$*\" in *--wait-for-stop*) exec sleep 30;; esac",
+        ),
+        ("poppler/bin/pdftoppm", "#!/bin/sh\nexit 0"),
         ("bin/pdftoppm", "#!/bin/sh\nprintf ppt-thumbnail"),
         ("python/lib/python3.12/site-packages/PIL/__init__.py", ""),
         ("python/lib/python3.12/site-packages/markitdown/__init__.py", ""),
@@ -164,13 +172,68 @@ async fn office_runtime_is_opt_in_and_follows_the_session_scope() {
     })
     .await
     .unwrap();
-    fs::remove_file(office.join("bin/pdftoppm")).unwrap();
+    let profile_ready = project.join("profile-ready");
+    let profile_path = project.join("profile-path");
+    let rendered = execute(bound.clone(), "soffice".into(), false).await;
+    assert_eq!(rendered["content"]["exitCode"], 0, "{rendered}");
+    let normal_profile = std::path::PathBuf::from(fs::read_to_string(&profile_path).unwrap());
+    assert!(!normal_profile.exists(), "profile leaked after normal exit");
+    fs::remove_file(&profile_ready).unwrap();
+    let render = tokio::spawn({
+        let state = state.clone();
+        let tx = tx.clone();
+        let session = bound.clone();
+        async move {
+            handle_request(
+                state,
+                "tools.execute",
+                json!({
+                    "sessionId": session,
+                    "toolCallId": "stop-office-render",
+                    "toolName": "Bash",
+                    "args": { "command": "soffice --wait-for-stop" },
+                    "expectedCommandShellId": BASH_ID,
+                    "expectedCommandShellDialect": "posix",
+                    "mode": "agent"
+                }),
+                tx,
+            )
+            .await
+            .unwrap()
+        }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !profile_ready.exists() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let profile = std::path::PathBuf::from(fs::read_to_string(&profile_path).unwrap());
+    assert!(profile.is_dir());
+    let aborted = handle_request(
+        state.clone(),
+        "tools.abort",
+        json!({ "sessionId": bound, "toolCallId": "stop-office-render" }),
+        tx.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(aborted["found"], true);
+    assert_eq!(render.await.unwrap()["errorCode"], "TOOL_ABORTED");
+    let leaked = profile.exists();
+    if leaked {
+        fs::remove_dir_all(&profile).unwrap();
+    }
+    assert!(!leaked, "profile leaked after stopping a render");
+
+    fs::remove_file(office.join("poppler/bin/pdftoppm")).unwrap();
     let missing = probe(bound.clone()).await;
     assert_eq!(missing["errorCode"], "TOOL_FAILED");
     assert!(missing["content"]["error"]
         .as_str()
         .unwrap()
-        .contains("bin/pdftoppm"));
+        .contains("poppler/bin/pdftoppm"));
     state
         .lock()
         .await

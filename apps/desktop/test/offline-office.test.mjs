@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,6 +8,14 @@ import test from "node:test";
 import bundleOfflineOffice from "../../../scripts/bundle-offline-office.mjs";
 
 const site = "python/lib/python3.12/site-packages";
+const nativePackages = Object.entries({
+  "libreoffice-core": "7.1.8.1-3.el8_10.alma.1",
+  "libreoffice-impress": "7.1.8.1-3.el8_10.alma.1",
+  "poppler": "20.11.0-14.el8_10",
+  "poppler-utils": "20.11.0-14.el8_10",
+}).map(([name, version]) => ({
+  name, version, source: { url: "https://example.test/" + name + ".src.rpm" }, notices: ["LICENSE"],
+}));
 
 async function withRuntime(run, { wordOnly = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), "pie-office-package-test-"));
@@ -58,14 +67,16 @@ async function withRuntime(run, { wordOnly = false } = {}) {
       }
       await put(`${site}/google/_upb/_message.abi3.so`);
       await put("metadata/python-dependencies.json", JSON.stringify({ packages: pythonVersions.map(([name, version]) => ({ name, version })) }));
-      await put("metadata/native-office/sources.json", JSON.stringify({ packages: [{
-        name: "renderer", source: { url: "https://example.test/renderer.src" }, notices: ["LICENSE"],
-      }] }));
-      await put("metadata/native-office/licenses/renderer/LICENSE", "Renderer license notice.\n");
-      for (const file of ["libreoffice/program/oosplash", "poppler/bin/pdftoppm"]) await put(file, "#!/bin/sh\n", 0o755);
+      await put("metadata/native-office/sources.json", JSON.stringify({ packages: nativePackages }));
+      for (const { name } of nativePackages) {
+        await put("metadata/native-office/licenses/" + name + "/LICENSE", "Renderer license notice.\n");
+      }
+      await put("libreoffice/program/oosplash", "#!/bin/bash\nprintf '%s\\n' \"$HOME\" \"\${!#}\"\n", 0o755);
+      await put("poppler/bin/pdftoppm", "#!/bin/sh\nprintf '%s\\n' \"$1\"\n", 0o755);
     }
     for (const file of ["node/bin/node", "python/bin/python3.12"]) await put(file, "#!/bin/sh\n", 0o755);
-    await run({ put, bundle, resources, runtime });
+    const runtimeProfiles = await mkdtemp(join(root, "renderer-profiles-"));
+    await run({ put, bundle, resources, runtime, runtimeProfiles });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -74,7 +85,7 @@ async function withRuntime(run, { wordOnly = false } = {}) {
 test("the Kylin package installs only the runtime and a disabled extension without skills", {
   skip: process.platform === "win32",
 }, async () => {
-  await withRuntime(async ({ put, bundle, resources }) => {
+  await withRuntime(async ({ put, bundle, resources, runtimeProfiles }) => {
     await put("wx-runtime/wheels.tar.xz");
     await put("word/SKILL.md");
     await put("node/lib/node_modules/unlocked/SKILL.md");
@@ -87,6 +98,7 @@ test("the Kylin package installs only the runtime and a disabled extension witho
     await put("libreoffice/program/gdbtrace");
     await put("libreoffice/presets/database/example.odb");
     await put("bin/soffice", "foreign launcher\n", 0o755);
+    await put("poppler/bin/pdfinfo", "#!/bin/sh\n", 0o755);
     await put("bin/unrelated-command", "#!/bin/sh\n", 0o755);
     await bundle();
     assert.deepEqual((await readdir(resources)).sort(), ["office-runtime", "plugins"]);
@@ -105,7 +117,14 @@ test("the Kylin package installs only the runtime and a disabled extension witho
       assert.ok(files.includes(name), `${name} was not packaged`);
     }
     assert.ok(files.includes(`${site}/lxml/__init__.py`));
-    assert.match(await readFile(join(resources, "office-runtime/bin/soffice"), "utf8"), /oosplash/);
+    assert.ok(!files.includes("poppler/bin/pdfinfo"));
+    const launch = (name, args) => execFileSync(join(resources, "office-runtime/bin", name), args, {
+      encoding: "utf8", env: { ...process.env, PI_OFFICE_RUNTIME_PROFILES: runtimeProfiles },
+    }).trimEnd().split("\n");
+    const [profile, lastArg] = launch("soffice", ["-env:UserInstallation=file:///fixture", "原始 演示.pptx"]);
+    assert.equal(dirname(profile), runtimeProfiles);
+    assert.equal(lastArg, "原始 演示.pptx");
+    assert.deepEqual(launch("pdftoppm", ["原始 演示.pdf"]), ["原始 演示.pdf"]);
     assert.ok(!files.some((name) => /SKILL\.md|wx-runtime|\.whl$|\.docx$|\.tar\.gz$|\.zip$|\.d\.ts$|\.odb$|gdbtrace|isoschematron|unrelated-command/.test(name)), files.join("\n"));
   });
 });
@@ -140,7 +159,27 @@ test("the Kylin package rejects a renderer without a source or license notice", 
   skip: process.platform === "win32",
 }, async () => {
   await withRuntime(async ({ put, bundle }) => {
-    await put("metadata/native-office/sources.json", JSON.stringify({ packages: [{ name: "renderer", notices: [] }] }));
-    await assert.rejects(bundle(), /source or license notice is missing: renderer/);
+    await put("metadata/native-office/sources.json", JSON.stringify({ packages: nativePackages.map(
+      (pkg) => pkg.name === "poppler-utils" ? { ...pkg, notices: [] } : pkg,
+    ) }));
+    await assert.rejects(bundle(), /source or license notice is missing: poppler-utils/);
+  });
+});
+
+test("the Kylin package requires provenance for both renderers", { skip: process.platform === "win32" }, async () => {
+  await withRuntime(async ({ put, bundle }) => {
+    await put("metadata/native-office/sources.json", JSON.stringify({ packages: nativePackages.filter(
+      (pkg) => pkg.name.startsWith("libreoffice"),
+    ) }));
+    await assert.rejects(bundle(), /Missing native Office Runtime package: poppler/);
+  });
+});
+
+test("the Kylin package requires a native dependency version", { skip: process.platform === "win32" }, async () => {
+  await withRuntime(async ({ put, bundle }) => {
+    await put("metadata/native-office/sources.json", JSON.stringify({ packages: nativePackages.map(
+      (pkg) => pkg.name === "poppler-utils" ? { ...pkg, version: undefined } : pkg,
+    ) }));
+    await assert.rejects(bundle(), /version is missing: poppler-utils/);
   });
 });

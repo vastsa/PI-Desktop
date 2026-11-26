@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { constants } from "node:fs";
+import { constants, mkdtempSync, rmSync } from "node:fs";
 import { access, chmod, cp, lstat, mkdir, readdir, readFile, readlink, realpath, stat, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, sep } from "node:path";
 
 const plugin = new URL("../apps/desktop/resources/office-runtime/", import.meta.url);
@@ -11,6 +12,7 @@ const renderCommands = ["soffice", "pdftoppm"];
 const executables = ["node/bin/node", "python/bin/python3.12"];
 const nativeMetadata = "metadata/native-office";
 const nativeRuntime = ["libreoffice", "poppler", nativeMetadata];
+const requiredNativePackages = ["libreoffice-core", "libreoffice-impress", "poppler", "poppler-utils"];
 const metadata = ["metadata/runtime-source.json", "metadata/package-lock.json", "metadata/python-dependencies.json"];
 const pythonPackages = {
   beautifulsoup4: ["bs4"], certifi: ["certifi"], charset_normalizer: ["charset_normalizer"],
@@ -97,14 +99,24 @@ async function verifyNativeNotices(runtime) {
   const { packages } = await readJson(runtime, `${nativeMetadata}/sources.json`);
   if (!Array.isArray(packages) || !packages.length) throw new Error("Missing native dependency sources in Office Runtime.");
   const leaf = (name) => typeof name === "string" && name !== "." && name !== ".." && basename(name) === name && name.length > 0;
-  for (const { name, source, notices } of packages) {
-    if (!leaf(name) || !source?.url || !Array.isArray(notices) || !notices.length || !notices.every(leaf)) {
+  const seen = new Set();
+  for (const { name, version, source, notices } of packages) {
+    if (!leaf(name) || typeof source?.url !== "string" || !source.url.trim() ||
+        !Array.isArray(notices) || !notices.length || !notices.every(leaf)) {
       throw new Error(`Office Runtime source or license notice is missing: ${name}`);
     }
+    if (typeof version !== "string" || !version.trim()) {
+      throw new Error(`Office Runtime native dependency version is missing: ${name}`);
+    }
+    if (seen.has(name)) throw new Error(`Duplicate native Office Runtime package: ${name}`);
+    seen.add(name);
     for (const notice of notices) {
       const file = await stat(join(runtime, nativeMetadata, "licenses", name, notice));
       if (!file.isFile() || !file.size) throw new Error(`Office Runtime license notice is empty: ${name}/${notice}`);
     }
+  }
+  for (const name of requiredNativePackages) {
+    if (!seen.has(name)) throw new Error("Missing native Office Runtime package: " + name);
   }
 }
 
@@ -141,7 +153,14 @@ Promise.all([Packer.toBuffer(new Document({ sections: [] })), pptx.write({ outpu
       ...opts, cwd: runtime, env: { ...process.env, NODE_OPTIONS: "", NODE_PATH: join(runtime, "node/lib/node_modules") },
     });
     execFileSync(python, ["-I", "-B", "-c", "import defusedxml.minidom, lxml.etree, PIL.Image, pptx; from markitdown import MarkItDown; MarkItDown()"], opts);
-    execFileSync(join(runtime, "bin/soffice"), ["--headless", "--version"], opts);
+    const profiles = mkdtempSync(join(tmpdir(), "pie-office-inspection-"));
+    try {
+      execFileSync(join(runtime, "bin/soffice"), ["--headless", "--version"], {
+        ...opts, env: { ...process.env, PI_OFFICE_RUNTIME_PROFILES: profiles },
+      });
+    } finally {
+      rmSync(profiles, { recursive: true, force: true });
+    }
     execFileSync(join(runtime, "bin/pdftoppm"), ["-v"], opts);
   } catch (error) {
     throw new Error(`Office Runtime package smoke test failed: ${error.message}`, { cause: error });
@@ -164,6 +183,7 @@ export default async function bundleOfflineOffice(context, runtime = process.env
   });
   const keep = (source) => {
     const name = relative(runtime, source).split(sep).join("/");
+    if (name.startsWith("poppler/bin/")) return name === "poppler/bin/pdftoppm";
     return !legacyPath.test(name) && !archive.test(name) &&
       !/(?:^|\/)(?:__pycache__|tests?|examples?)(?:\/|$)/.test(name) &&
       !/\.(?:pyc|map|h)$|\.d\.[cm]?ts$|(?:^|\/)_tkinter[^/]*\.so$/.test(name) &&

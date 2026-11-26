@@ -6,6 +6,7 @@ export const koEntries: ChangelogEntry[] = [
     date: "2026-11-25",
     highlights: [
       "Kylin ARM64에서 Agent → Skills에 Word 스킬을 설치하고 확장의 Office 런타임을 켜면 오프라인에서 Word 문서를 읽고 만들거나 복사본을 편집할 수 있습니다.",
+      "Kylin ARM64에서 Office 런타임을 켜면 직접 설치한 PowerPoint 스킬로 오프라인에서 텍스트를 추출하고, 미리보기를 만들고, 편집 가능한 프레젠테이션을 생성하거나 수정본을 복사본으로 저장할 수 있습니다.",
     ],
   },
   {

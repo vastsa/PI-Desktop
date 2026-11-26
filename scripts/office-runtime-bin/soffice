@@ -5,6 +5,12 @@ base=$(cd -- "$(dirname -- "$0")/../libreoffice" && pwd -P)
 export SAL_USE_VCLPLUGIN=svp SAL_ENABLE_FILE_LOCKING=1
 libraries="$base/program:$base/lib"
 
+# The host cleans this directory after the Bash runner exits, even on stop.
+profile=$(mktemp -d "${PI_OFFICE_RUNTIME_PROFILES:?Office rendering requires a managed profile directory}/impress.XXXXXXXX")
+export HOME="$profile" XDG_CONFIG_HOME="$profile/.config" XDG_CACHE_HOME="$profile/.cache"
+export XDG_DATA_HOME="$profile/.local/share" XDG_RUNTIME_DIR="$profile" GNUPGHOME="$profile/.gnupg"
+mkdir -m 700 "$GNUPGHOME"
+
 for arg; do
   case "$arg" in
     -env:UserInstallation=*)
@@ -12,11 +18,4 @@ for arg; do
       ;;
   esac
 done
-
-# Keep headless conversions independent of the user's office profile and keyring.
-profile=$(mktemp -d /tmp/pie-office-impress.XXXXXXXX)
-trap 'status=$?; rm -rf -- "$profile" || :; exit "$status"' EXIT
-export HOME="$profile" XDG_CONFIG_HOME="$profile/.config" XDG_CACHE_HOME="$profile/.cache"
-export XDG_DATA_HOME="$profile/.local/share" XDG_RUNTIME_DIR="$profile" GNUPGHOME="$profile/.gnupg"
-mkdir -m 700 "$GNUPGHOME"
-LD_LIBRARY_PATH="$libraries" "$base/program/oosplash" "-env:UserInstallation=file://$profile/lo" --headless --nologo --norestore --nodefault "$@"
+LD_LIBRARY_PATH="$libraries" exec "$base/program/oosplash" "-env:UserInstallation=file://$profile/lo" --headless --nologo --norestore --nodefault "$@"
