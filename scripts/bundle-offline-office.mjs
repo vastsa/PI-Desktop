@@ -29,8 +29,8 @@ async function verifyRuntimeLinks(runtime) {
 
 export async function verifyOfflineOfficeRuntime(runtime) {
   await verifyRuntimeLinks(runtime);
-  for (const interpreter of ["node/bin/node", "python/bin/python3.12"]) {
-    await access(join(runtime, interpreter), constants.X_OK);
+  for (const executable of ["node/bin/node", "python/bin/python3.12", "libreoffice/program/soffice", "libreoffice/program/soffice.bin"]) {
+    await access(join(runtime, executable), constants.X_OK);
   }
   const { packages } = JSON.parse(await readFile(join(runtime, "metadata/package-lock.json"), "utf8"));
   if (packages?.["node_modules/docx"]?.version !== "9.16.0") {
@@ -44,25 +44,42 @@ export async function verifyOfflineOfficeRuntime(runtime) {
     const installed = JSON.parse(await readFile(join(runtime, "node/lib", relative, "package.json"), "utf8"));
     if (installed.version !== locked.version) throw new Error(`Office Runtime version mismatch: ${relative}`);
   }
-  for (const module of ["lxml", "docx"]) {
-    await access(join(runtime, "python/lib/python3.12/site-packages", module, "__init__.py"));
+  const site = join(runtime, "python/lib/python3.12/site-packages");
+  for (const module of ["lxml", "docx", "openpyxl", "pandas", "numpy", "dateutil"]) {
+    await access(join(site, module, "__init__.py"));
+  }
+  await access(join(site, "six.py"));
+  for (const [name, version] of [["pandas", "3.1.1"], ["python_dateutil", "2.9.0.post0"]]) {
+    const metadata = await readFile(join(site, `${name}-${version}.dist-info`, "METADATA"), "utf8").catch((cause) => {
+      throw new Error(`Expected ${name} ${version} in the Office Runtime.`, { cause });
+    });
+    if (!metadata.split(/\r?\n/).includes(`Version: ${version}`)) {
+      throw new Error(`Expected ${name} ${version} in the Office Runtime.`);
+    }
   }
   await access(join(runtime, "metadata/runtime-source.json"));
 }
 
 export async function smokeTestOfflineOffice(resources) {
-  const launcher = join(resources, "plugins", "pie.offline-office", "word", "word.sh");
   const workspace = await mkdtemp(join(tmpdir(), "pie-office-smoke-"));
   const text = "离线办公验证";
   const output = "Word smoke.docx";
-  const run = (args, input) => execFileSync("/bin/sh", [launcher, ...args], {
+  const run = (skill, args, input) => execFileSync("/bin/sh", [
+    join(resources, "plugins", "pie.offline-office", skill, `${skill}.sh`), ...args,
+  ], {
     cwd: workspace, encoding: "utf8", input, stdio: "pipe", timeout: 30_000,
   });
+  let skill = "Word";
   try {
-    run(["create", output, ""], text + "\n");
-    if (run(["extract", output]) !== text + "\n") throw new Error("Unexpected DOCX readback.");
+    run("word", ["create", output, ""], text + "\n");
+    if (run("word", ["extract", output]) !== text + "\n") throw new Error("Unexpected DOCX readback.");
+    skill = "Excel";
+    const excel = "Excel smoke.xlsx";
+    run("excel", ["create", excel, "Data"], JSON.stringify([{ item: text, amount: 250 }]));
+    const data = JSON.parse(run("excel", ["read", excel, "Data"]));
+    if (JSON.stringify(data.data) !== JSON.stringify([[text, 250]])) throw new Error("Unexpected XLSX readback.");
   } catch (error) {
-    throw new Error(`Office Word package smoke test failed: ${error.message}`, { cause: error });
+    throw new Error(`Office ${skill} package smoke test failed: ${error.message}`, { cause: error });
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

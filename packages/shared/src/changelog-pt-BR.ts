@@ -4,7 +4,10 @@ export const ptBREntries: ChangelogEntry[] = [
   {
     version: "0.23.1",
     date: "2026-11-25",
-    highlights: ["Ative o Office offline em Extensões no Kylin ARM64 para criar documentos do Word, extrair texto ou salvar uma cópia."],
+    highlights: [
+      "Ative o Office offline em Extensões no Kylin ARM64 para criar documentos do Word, extrair texto ou salvar uma cópia.",
+      "O Office offline também lê, cria e salva cópias de pastas de trabalho do Excel e recalcula fórmulas sob demanda.",
+    ],
   },
   {
     version: "0.23.0",
