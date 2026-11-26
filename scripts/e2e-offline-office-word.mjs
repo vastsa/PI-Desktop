@@ -38,6 +38,8 @@ const before = "跨格式文字";
 const after = "替换内容";
 const untouched = ppt ? "不修改的第二页" : "不修改的中文段落";
 const newBody = "新建正文含中文";
+const hiddenPptText = "隐藏形状中的文字";
+const ambiguousPptCopy = "有歧义的 副本.pptx";
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
 let connected;
 let desktop;
@@ -79,6 +81,7 @@ const provider = createServer(async (req, res) => {
         `${office} replace -- ${edit.map(quote).join(" ")}`,
         "printf '%s\\n' 'Edited deck:'",
         `${office} extract -- ${quote(edited)}`,
+        `! ${office} replace -- ${[original, ambiguousPptCopy, "1", "1", after].map(quote).join(" ")}`,
       ] : [
         `${office} create ${quote(created)} '中文标题' < body.txt`,
         `${office} extract ${quote(original)}`,
@@ -227,8 +230,11 @@ async function runTurn({ invoke }, providerId, enabled) {
       assert.equal(bash.exitCode, 0, "The PowerPoint command sequence must succeed.");
       assert.ok(bash.stdout.split("Source deck:")[0].includes(`Slide 1\n中文标题\n${newBody}\n\nSlide 2\n新建第二页\n可编辑正文`),
         "The Agent must see text from both slides of the created deck.");
-      assert.ok(bash.stdout.split("Edited deck:")[1]?.includes(`Slide 1\n原件首页\n${after}，保留后缀\n\nSlide 2\n${untouched}\n${before}`),
+      assert.ok(bash.stdout.split("Edited deck:")[1]?.includes(`Slide 1\n原件首页\n${after}，保留后缀\n1\n页码 1\n\nSlide 2\n${untouched}\n${before}`),
         "The Agent must see the edited first slide and untouched second slide in the saved copy.");
+      assert.ok(!bash.stdout.includes(hiddenPptText), "Hidden shape text must not reach the Agent.");
+      assert.match(bash.stderr, /Text occurs more than once on this slide/);
+      await assert.rejects(stat(join(workspace, ambiguousPptCopy)), { code: "ENOENT" });
     }
   }
 }
@@ -241,6 +247,9 @@ async function prepareOfficeFiles() {
       { title: "中文标题", body: newBody }, { title: "新建第二页", body: "可编辑正文" },
     ]));
     py(`from pptx import Presentation
+from pptx.oxml import parse_xml
+from pptx.oxml.ns import qn
+from pptx.util import Inches
 import sys
 deck = Presentation()
 slide = deck.slides.add_slide(deck.slide_layouts[1])
@@ -249,6 +258,16 @@ para = slide.placeholders[1].text_frame.paragraphs[0]
 para.add_run().text = "跨格式"
 para.runs[0].font.bold = True
 para.add_run().text = "文字，保留后缀"
+def box(text):
+    shape = slide.shapes.add_textbox(0, 0, Inches(2), Inches(1))
+    shape.text = text
+    return shape
+box(${JSON.stringify(hiddenPptText)})._element.find(".//" + qn("p:cNvPr")).set("hidden", "1")
+box("1")
+footer = box("页码 ")
+footer.text_frame.paragraphs[0]._p.append(parse_xml(
+    '<a:fld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+    'id="{9AE197BA-8C2B-4FC0-AFA6-C3138E0160A1}" type="slidenum"><a:t>1</a:t></a:fld>'))
 slide = deck.slides.add_slide(deck.slide_layouts[1])
 slide.shapes.title.text = ${JSON.stringify(untouched)}
 slide.placeholders[1].text = ${JSON.stringify(before)}

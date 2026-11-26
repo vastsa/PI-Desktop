@@ -60,6 +60,8 @@
 - **Expected:** Extraction reaches the session. The new file opens with
   editable slide text. The edited copy contains the first-slide change;
   the second slide, the other package parts and the input file are unchanged.
+  Hidden text is omitted. A second edit matching ordinary text and a
+  slide-number field is refused without creating a file.
 - **Specs linked:** [Kylin acceptance runbook](../kylin-arm64-offline-install.md#offline-office--powerpoint).
 - **Acceptance criterion:** A, C, E, G, Quality.
 - **Milestone:** M6+ (Pie Code 0.23.1).

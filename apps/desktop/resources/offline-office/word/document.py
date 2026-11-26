@@ -1,11 +1,11 @@
-import os
-import shutil
 import sys
-from copy import copy
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 from zipfile import BadZipFile, ZipFile
+
+# Isolated Python does not add the bundled skill directory to sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from office_document import replacement_text, save_package_copy
 
 try:
     from lxml import etree
@@ -79,43 +79,14 @@ def replace(root, old, new):
     if not old or any(char in old for char in NON_TEXT.values()) or any(char in new for char in "\t\r\n"):
         raise ValueError("Specify a nonempty literal to find and plain text on one line.")
 
-    match = None
-    for nodes in paragraphs(root):
-        current = "".join(text for _, text in nodes)
-        start = current.find(old)
-        if start < 0:
-            continue
-        if match is not None or current.find(old, start + 1) >= 0:
-            raise ValueError("Text occurs more than once; specify a unique match.")
-        match = nodes, start, start + len(old)
-    if match is None:
-        raise ValueError("Text was not found in the Word document body.")
-
-    nodes, start, end = match
-    offset = 0
-    for node, text in nodes:
-        right = offset + len(text)
-        if node is not None and right > start and offset < end and text:
-            prefix = text[:max(0, start - offset)]
-            suffix = text[max(0, end - offset):]
-            node.text = prefix + (new if offset <= start else "") + suffix
-            if node.text != node.text.strip():
-                node.set(SPACE, "preserve")
-        offset = right
-
-
-def save_copy(source, member, root, output):
-    with TemporaryDirectory(prefix=".pie-word-", dir=output.parent) as directory:
-        staged = Path(directory) / "document.docx"
-        with ZipFile(staged, "w") as target:
-            target.comment = source.comment
-            for part in source.infolist():
-                if part.filename == member:
-                    target.writestr(copy(part), etree.tostring(root, encoding="UTF-8", xml_declaration=True))
-                else:
-                    with source.open(part) as reader, target.open(copy(part), "w") as writer:
-                        shutil.copyfileobj(reader, writer)
-        os.link(staged, output)
+    for node, text in replacement_text(
+        paragraphs(root), old, new,
+        missing="Text was not found in the Word document body.",
+        repeated="Text occurs more than once; specify a unique match.",
+    ):
+        node.text = text
+        if text != text.strip():
+            node.set(SPACE, "preserve")
 
 
 def main():
@@ -130,7 +101,8 @@ def main():
         else:
             output, old, new = args
             replace(root, old, new)
-            save_copy(archive, member, root, Path(output))
+            content = etree.tostring(root, encoding="UTF-8", xml_declaration=True)
+            save_package_copy(archive, Path(output), member, content)
             print(f"Saved {output}")
 
 

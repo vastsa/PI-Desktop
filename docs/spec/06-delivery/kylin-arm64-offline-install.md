@@ -176,12 +176,13 @@ overwritten.
 The same Offline Office extension exposes `pie.offline-office/ppt`. In a
 local Agent session, the skill uses the normal Bash approval flow and the
 packaged Python. It creates `.pptx` files with editable title and body text,
-and extracts text in slide order from shapes, groups and tables. Image text,
+and extracts text in slide order from visible shapes, groups and tables. Image text,
 chart content, embedded objects and speaker notes are outside scope. The
 reader accepts presentations up to 256 MiB after ZIP expansion.
 
 The skill can replace a unique literal within one paragraph on a selected
-slide and save it to a new file. The replacement uses the first matched
+slide and save it to a new file. Visible fields such as slide numbers count
+toward uniqueness but remain read-only. The replacement uses the first matched
 run's formatting. The input and all other package parts stay unchanged;
 existing destination files are rejected.
 
@@ -194,5 +195,6 @@ PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
 
 Verify that the session creates and extracts an editable two-slide deck,
 then saves and reads back an edit to the first slide of a separate deck.
-Both filenames contain Chinese characters and spaces. The test compares
-the original bytes and every package part outside the edited slide.
+The filenames contain Chinese characters and spaces. The test verifies that
+hidden text is omitted and ambiguous edits involving a slide number are refused.
+It compares the original bytes and every package part outside the edited slide.

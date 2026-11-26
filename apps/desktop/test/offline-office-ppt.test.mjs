@@ -31,7 +31,7 @@ test("the bundled extension advertises PPT and its launcher requires the bundled
   }
 });
 
-test("PPT creates editable slides, extracts them in deck order and saves just the selected slide", async (t) => {
+async function withPowerPoint(t, verify) {
   const check = spawnSync("python3", ["-c", "import pptx"]);
   if (check.status !== 0) {
     t.skip("Python 3 with python-pptx is available in the Office Runtime, not this host.");
@@ -49,6 +49,14 @@ test("PPT creates editable slides, extracts them in deck order and saves just th
   const ppt = (operation, ...args) => run([script, operation, "--", ...args]);
   const inspect = (program, ...args) => success(run(["-c", program, ...args]));
   try {
+    await verify({ root, run, inspect, ppt, script, success });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+test("PPT creates editable slides, extracts them in deck order and saves just the selected slide", (t) =>
+  withPowerPoint(t, async ({ root, run, inspect, ppt, script, success }) => {
     const slides = JSON.stringify([
       { title: "第二页标题", body: "这段内容保留，重复词" },
       { title: "首页标题", body: "重复词，保留后缀" },
@@ -123,7 +131,85 @@ with ZipFile(source) as before, ZipFile(output) as after:
     const bad = ppt("extract", "无效 文件.pptx");
     assert.notEqual(bad.status, 0);
     assert.match(bad.stderr, /PowerPoint operation failed/);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
+  }));
+
+test("PPT excludes hidden shapes and recognizes visible read-only fields", (t) =>
+  withPowerPoint(t, async ({ root, inspect, ppt, success }) => {
+    inspect(`from pptx import Presentation
+from pptx.oxml import parse_xml
+from pptx.oxml.ns import qn
+from pptx.util import Inches
+import sys
+
+deck = Presentation()
+slide = deck.slides.add_slide(deck.slide_layouts[6])
+shapes = slide.shapes
+def box(collection, text):
+    shape = collection.add_textbox(0, 0, Inches(3), Inches(1))
+    shape.text = text
+    return shape
+def hide(shape, value):
+    shape._element.find(".//" + qn("p:cNvPr")).set("hidden", value)
+
+box(shapes, "可见正文")
+hide(box(shapes, "隐藏文本"), "true")
+group = shapes.add_group_shape()
+box(group.shapes, "可见正文")
+hide(group, "1")
+box(shapes, "1")
+footer = box(shapes, "Page ")
+footer.text_frame.paragraphs[0]._p.append(parse_xml(
+    '<a:fld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+    'id="{9AE197BA-8C2B-4FC0-AFA6-C3138E0160A1}" type="slidenum"><a:t>1</a:t></a:fld>'))
+deck.save(sys.argv[1])`, source);
+
+    await t.test("omits hidden text without treating it as a duplicate", () => {
+      assert.equal(success(ppt("extract", source)), "Slide 1\n可见正文\n1\nPage 1\n");
+      success(ppt("replace", source, "可见 副本.pptx", "1", "可见正文", "改写正文"));
+      assert.equal(success(ppt("extract", "可见 副本.pptx")), "Slide 1\n改写正文\n1\nPage 1\n");
+    });
+
+    await t.test("counts page numbers for uniqueness and refuses to edit a field", async () => {
+      for (const [old, message] of [["1", /Text occurs more than once/], ["Page 1", /read-only field/i]]) {
+        const result = ppt("replace", source, edited, "1", old, "不会写入");
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, message);
+        await assert.rejects(stat(join(root, edited)), { code: "ENOENT" });
+      }
+    });
+  }));
+
+test("PPT rejects duplicate package parts and checks the expanded size before reading slides", (t) =>
+  withPowerPoint(t, async ({ inspect, ppt, script }) => {
+    inspect(`from pathlib import Path
+from unittest.mock import patch
+from zipfile import ZipFile
+from pptx import Presentation
+import sys
+
+source, script = sys.argv[1:]
+sys.path.insert(0, str(Path(script).parent))
+from presentation import check_package
+
+deck = Presentation()
+deck.slides.add_slide(deck.slide_layouts[1])
+deck.save(source)
+with ZipFile(source) as archive:
+    size = sum(part.file_size for part in archive.infolist())
+    with patch("presentation.MAX_EXPANDED_SIZE", size):
+        check_package(archive)
+    with patch("presentation.MAX_EXPANDED_SIZE", size - 1):
+        try:
+            check_package(archive)
+        except ValueError as error:
+            assert str(error) == "Expanded presentation exceeds 256 MiB."
+        else:
+            raise AssertionError("An archive above the expanded-size limit was accepted")
+with ZipFile(source, "a") as archive:
+    archive.writestr("docProps/custom-note.txt", "first")
+    archive.writestr("docProps/custom-note.txt", "second")`, source, script);
+
+    const result = ppt("extract", source);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /duplicate package parts/i);
+  }));

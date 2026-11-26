@@ -1,12 +1,12 @@
 import argparse
 import json
-import os
-import shutil
 import sys
-from copy import copy
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from zipfile import BadZipFile, ZipFile
+
+# Isolated Python does not add the bundled skill directory to sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from office_document import replacement_text, save_new, save_package_copy
 
 try:
     from lxml.etree import LxmlError
@@ -24,13 +24,6 @@ def pptx_path(value):
     if path.suffix.lower() != ".pptx":
         raise argparse.ArgumentTypeError("Use .pptx filenames.")
     return path
-
-
-def save_new(output, write):
-    with TemporaryDirectory(prefix=".pie-ppt-", dir=output.parent) as directory:
-        staged = Path(directory) / "presentation.pptx"
-        write(staged)
-        os.link(staged, output)
 
 
 def create(output):
@@ -51,6 +44,8 @@ def create(output):
 
 def paragraphs(shapes):
     for shape in shapes:
+        if any(props.get("hidden") in ("1", "true") for props in shape._element.xpath("./*/p:cNvPr")):
+            continue
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
             yield from paragraphs(shape.shapes)
         elif shape.has_text_frame:
@@ -61,57 +56,33 @@ def paragraphs(shapes):
                     yield from cell.text_frame.paragraphs
 
 
-def run_groups(paragraph):
-    # paragraph.runs omits breaks and fields, which must interrupt a match.
-    runs = iter(paragraph.runs)
-    group = []
-    for child in paragraph._p:
-        if child.tag == qn("a:r"):
-            group.append(next(runs))
-        elif group:
-            yield group
-            group = []
-    if group:
-        yield group
+def text_segments(paragraph):
+    # Fields are visible but read-only. Line breaks and empty fields interrupt a match.
+    return [(child, child.text) if child.tag == qn("a:r") else (None, child.text or "\v")
+            for child in paragraph._p.content_children]
 
 
 def replace(slide, old, new):
     if not old or any(character in old + new for character in "\t\r\n\v"):
         raise ValueError("Specify a nonempty literal to find and plain text on one line.")
-    match = None
-    for paragraph in paragraphs(slide.shapes):
-        for runs in run_groups(paragraph):
-            text = "".join(run.text for run in runs)
-            start = text.find(old)
-            if start < 0:
-                continue
-            if match is not None or text.find(old, start + 1) >= 0:
-                raise ValueError("Text occurs more than once on this slide; specify a unique match.")
-            match = runs, start, start + len(old)
-    if match is None:
-        raise ValueError("Text was not found on this slide.")
-    runs, start, end = match
-    offset = 0
-    for run in runs:
-        text = run.text
-        right = offset + len(text)
-        if text and right > start and offset < end:
-            run.text = text[:max(0, start - offset)] + (new if offset <= start else "") + text[max(0, end - offset):]
-        offset = right
+    for run, text in replacement_text(
+        (text_segments(paragraph) for paragraph in paragraphs(slide.shapes)), old, new,
+        missing="Text was not found on this slide.",
+        repeated="Text occurs more than once on this slide; specify a unique match.",
+    ):
+        run.text = text
 
 
-def copy_with_slide(source, staged, member, content):
-    # Saving the whole deck through python-pptx would reserialize untouched parts.
-    if member not in source.namelist():
-        raise ValueError("The selected slide has no package part.")
-    with ZipFile(staged, "w") as target:
-        target.comment = source.comment
-        for part in source.infolist():
-            if part.filename == member:
-                target.writestr(copy(part), content)
-            else:
-                with source.open(part) as reader, target.open(copy(part), "w") as writer:
-                    shutil.copyfileobj(reader, writer)
+MAX_EXPANDED_SIZE = 256 * 1024 * 1024
+
+
+def check_package(archive):
+    # python-pptx inflates every ZIP member in memory before reading slides.
+    if sum(part.file_size for part in archive.infolist()) > MAX_EXPANDED_SIZE:
+        raise ValueError("Expanded presentation exceeds 256 MiB.")
+    names = archive.namelist()
+    if len(set(names)) != len(names):
+        raise ValueError("Presentation contains duplicate package parts.")
 
 
 def main():
@@ -130,12 +101,7 @@ def main():
         create(args.output)
         return
     with args.source.open("rb") as source, ZipFile(source) as archive:
-        # python-pptx inflates every ZIP member in memory before reading slides.
-        if sum(part.file_size for part in archive.infolist()) > 256 * 1024 * 1024:
-            raise ValueError("Expanded presentation exceeds 256 MiB.")
-        names = archive.namelist()
-        if len(set(names)) != len(names):
-            raise ValueError("Presentation contains duplicate package parts.")
+        check_package(archive)
         deck = Presentation(source)
         if args.operation == "extract":
             for page, slide in enumerate(deck.slides, 1):
@@ -156,7 +122,8 @@ def main():
         slide = slides[args.slide - 1]
         replace(slide, args.old, args.new)
         member, content = original_members[slide.part], slide.part.blob
-        save_new(args.output, lambda staged: copy_with_slide(archive, staged, member, content))
+        # Saving the whole deck through python-pptx would reserialize untouched parts.
+        save_package_copy(archive, args.output, member, content)
 
 
 if __name__ == "__main__":

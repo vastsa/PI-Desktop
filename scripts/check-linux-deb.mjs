@@ -63,7 +63,8 @@ try {
     }
     await verifyOfflineOfficeRuntime(runtime);
     for (const file of [
-      "manifest.json", "main.cjs", "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
+      "manifest.json", "main.cjs", "office_document.py",
+      "word/SKILL.md", "word/word.sh", "word/create.cjs", "word/document.py",
       "ppt/SKILL.md", "ppt/ppt.sh", "ppt/presentation.py",
     ]) {
       if (!existsSync(path.join(officePlugin, file))) {
