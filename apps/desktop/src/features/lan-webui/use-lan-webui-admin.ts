@@ -27,6 +27,7 @@ export function useLanWebUiAdmin() {
         if (!active.current || ticket !== generation.current) return;
         setView(next);
         setLoadFailed(false);
+        if (next.error) setError(next.error);
       },
       () => {
         if (active.current && ticket === generation.current) setLoadFailed(true);

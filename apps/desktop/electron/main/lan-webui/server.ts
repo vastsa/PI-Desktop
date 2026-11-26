@@ -1,8 +1,9 @@
-import { randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import type { LanDevice } from "@pi-desktop/shared";
 import { LanError, type LanChange, type LanRequest } from "./ports";
+import { LABEL_MAX, MAX_DEVICES, type LanPairedDevice } from "./state";
 
 export type LanAsset = { type: string; body: string };
 export type LanServerHandler = {
@@ -13,17 +14,20 @@ export type LanServerHandler = {
 
 const CODE_TTL_MS = 5 * 60_000;
 const CODE_ATTEMPTS = 5;
-const MAX_DEVICES = 16;
+const COOKIE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const MAX_BODY = 300 * 1024;
 const MAX_IDEMPOTENT = 200;
 const HEARTBEAT_MS = 25_000;
-const LABEL_MAX = 60;
 const SESSION_COOKIE = "pi_lan";
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-type Device = LanDevice & { token: string; csrf: string; streams: Set<ServerResponse>; idempotent: Map<string, Promise<unknown>> };
+type Device = LanPairedDevice & { streams: Set<ServerResponse>; idempotent: Map<string, Promise<unknown>> };
 
 const secret = () => randomBytes(32).toString("base64url");
+const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
+// An open page keeps its CSRF token across restart without persisting a second secret.
+const csrfFor = (token: string) => createHmac("sha256", token).update("pi-lan-csrf-v1").digest("base64url");
+const liveDevice = (paired: LanPairedDevice): Device => ({ ...paired, streams: new Set(), idempotent: new Map() });
 
 const sameSecret = (a: string, b: string) => {
   const left = Buffer.from(a);
@@ -88,27 +92,35 @@ export function createLanServer(options: {
   assets: ReadonlyMap<string, LanAsset>;
   onChange?: () => void;
   now?: () => number;
+  pairings?: { devices: readonly LanPairedDevice[]; save: (devices: LanPairedDevice[]) => void };
 }) {
   const now = options.now ?? Date.now;
   let server: Server | null = null;
   let host = "";
   let code: { value: string; expiresAt: number; attempts: number } | null = null;
   const devices = new Map<string, Device>();
+  for (const paired of options.pairings?.devices ?? []) {
+    if (paired.expiresAt > now()) devices.set(paired.id, liveDevice(paired));
+  }
   const sockets = new Set<Socket>();
   let unsubscribe: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
 
   const changed = () => options.onChange?.();
 
-  const deviceFor = (request: IncomingMessage): Device | null => {
+  const deviceFor = (request: IncomingMessage): { device: Device; token: string } | null => {
     const token = cookies(request).get(SESSION_COOKIE);
-    if (!token) return null;
-    for (const device of devices.values()) if (sameSecret(device.token, token)) return device;
+    if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+    pruneExpired();
+    const hash = tokenHash(token);
+    for (const device of devices.values()) {
+      if (sameSecret(device.tokenHash, hash)) return { device, token };
+    }
     return null;
   };
 
   function requireDevice(device: Device) {
-    if (!devices.has(device.id)) throw new LanError(401, "UNAUTHORIZED");
+    if (devices.get(device.id) !== device || device.expiresAt <= now()) throw new LanError(401, "UNAUTHORIZED");
   }
 
   /** DNS rebinding and cross-site request guard; not a TLS check. */
@@ -121,6 +133,28 @@ export function createLanServer(options: {
   function closeStreams(device: Device) {
     for (const stream of device.streams) stream.end();
     device.streams.clear();
+  }
+
+  function pruneExpired() {
+    const time = now();
+    for (const device of devices.values()) {
+      if (device.expiresAt > time) continue;
+      devices.delete(device.id);
+      closeStreams(device);
+    }
+  }
+
+  function saveDevices(next: Iterable<LanPairedDevice>) {
+    options.pairings?.save(Array.from(next, ({ id, label, lastActiveAt, tokenHash, expiresAt }) => (
+      { id, label, lastActiveAt, tokenHash, expiresAt }
+    )));
+  }
+
+  function removeDevice(device: Device) {
+    saveDevices([...devices.values()].filter(({ id }) => id !== device.id));
+    devices.delete(device.id);
+    closeStreams(device);
+    changed();
   }
 
   function expireCode() {
@@ -141,17 +175,20 @@ export function createLanServer(options: {
       }
       throw new LanError(403, "PAIRING_FAILED");
     }
+    pruneExpired();
     if (devices.size >= MAX_DEVICES) throw new LanError(429, "RATE_LIMITED");
 
-    // Consume the code and register the device together, without an async gap.
+    // Save before consuming the code or issuing the cookie, without an async gap.
+    const token = secret();
+    const lastActiveAt = now();
+    const device = liveDevice({
+      id: randomUUID(), label, lastActiveAt, tokenHash: tokenHash(token), expiresAt: lastActiveAt + COOKIE_TTL_SECONDS * 1000,
+    });
+    saveDevices([...devices.values(), device]);
     code = null;
-    const device: Device = {
-      id: randomUUID(), label, lastActiveAt: now(), token: secret(), csrf: secret(),
-      streams: new Set(), idempotent: new Map(),
-    };
     devices.set(device.id, device);
     changed();
-    sendJson(response, 200, { state: "paired" }, { "Set-Cookie": cookie(SESSION_COOKIE, device.token, 12 * 60 * 60) });
+    sendJson(response, 200, { state: "paired" }, { "Set-Cookie": cookie(SESSION_COOKIE, token, COOKIE_TTL_SECONDS) });
   }
 
   function events(device: Device, request: IncomingMessage, response: ServerResponse, sessionFilter: string | null) {
@@ -172,6 +209,7 @@ export function createLanServer(options: {
   async function broadcast(change: LanChange) {
     if (![...devices.values()].some((device) => device.streams.size)) return;
     const reveal = change.sessionId && await options.handler.mayReveal(change.sessionId).catch(() => false);
+    pruneExpired();
     const data = reveal ? { sessionId: change.sessionId } : {};
     for (const device of devices.values()) {
       for (const stream of device.streams) {
@@ -184,23 +222,22 @@ export function createLanServer(options: {
   }
 
   async function api(request: IncomingMessage, response: ServerResponse, url: URL) {
-    const device = deviceFor(request);
-    if (!device) throw new LanError(401, "UNAUTHORIZED");
+    const paired = deviceFor(request);
+    if (!paired) throw new LanError(401, "UNAUTHORIZED");
+    const { device, token } = paired;
     device.lastActiveAt = now();
     const method = request.method === "POST" ? "POST" : "GET";
     if (url.pathname === "/v1/me" && method === "GET") {
       // Compatibility metadata for already-open browser tabs; not per-device grants.
       const access = { deviceId: device.id, projectScope: "all-local", temporary: true, chat: true, organize: true };
-      return sendJson(response, 200, { csrf: device.csrf, access, label: device.label });
+      return sendJson(response, 200, { csrf: csrfFor(token), access, label: device.label });
     }
     if (method === "POST") {
       const csrf = String(request.headers["x-csrf-token"] ?? "");
-      if (!sameSecret(device.csrf, csrf)) throw new LanError(403, "CSRF");
+      if (!sameSecret(csrfFor(token), csrf)) throw new LanError(403, "CSRF");
     }
     if (url.pathname === "/v1/logout" && method === "POST") {
-      closeStreams(device);
-      devices.delete(device.id);
-      changed();
+      removeDevice(device);
       return sendJson(response, 200, { ok: true }, { "Set-Cookie": cookie(SESSION_COOKIE, "", 0) });
     }
     if (method === "GET" && url.pathname === "/v1/events") return events(device, request, response, null);
@@ -296,13 +333,14 @@ export function createLanServer(options: {
       host = `${address}:${boundPort}`;
       unsubscribe = options.handler.subscribe((change) => void broadcast(change));
       heartbeat = setInterval(() => {
+        pruneExpired();
         for (const device of devices.values()) for (const stream of device.streams) stream.write(": ping\n\n");
       }, HEARTBEAT_MS);
       heartbeat.unref?.();
       return { address, port: boundPort };
     },
 
-    /** Stopping invalidates every pairing and device credential. */
+    /** Close the listener and discard runtime state; the service owns durable intent. */
     async stop(): Promise<void> {
       const current = server;
       server = null;
@@ -337,15 +375,14 @@ export function createLanServer(options: {
     },
 
     devices(): LanDevice[] {
+      pruneExpired();
       return [...devices.values()].map(({ id, label, lastActiveAt }) => ({ id, label, lastActiveAt }));
     },
 
     revoke(id: string): void {
       const device = devices.get(id);
       if (!device) return;
-      closeStreams(device);
-      devices.delete(id);
-      changed();
+      removeDevice(device);
     },
   };
 }

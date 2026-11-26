@@ -20,8 +20,11 @@ export function LanWebUiSection() {
   const restoreAddFocus = useRef(false);
 
   const running = view?.running === true;
+  const enabled = view?.enabled ?? running;
   const interfaces = view?.interfaces ?? [];
-  const address = view?.address ?? interfaces.find((entry) => entry.address === preferredAddress)?.address ?? interfaces[0]?.address;
+  const selectedAddress = preferredAddress || view?.address;
+  const address = running ? view?.address
+    : selectedAddress ? interfaces.find((entry) => entry.address === selectedAddress)?.address : interfaces[0]?.address;
   const localOnly = address === "127.0.0.1";
   const paired = pairing && !busy && view?.code === null && view.devices.some((entry) => !pairing.has(entry.id));
 
@@ -44,22 +47,22 @@ export function LanWebUiSection() {
     clearError();
     setPairing(null);
   };
-  const toggle = () => {
-    if (running) {
-      void run({ kind: "stop" });
-      return;
-    }
+  const start = () => {
     const parsed = Number(port);
     const invalid = !Number.isInteger(parsed) || parsed < 1024 || parsed > 65535;
     setPortError(invalid);
     if (!invalid && address) void run({ kind: "start", address, port: parsed });
+  };
+  const toggle = () => {
+    if (enabled) void run({ kind: "stop" });
+    else start();
   };
 
   const errorText = error ? t(`lan:errors.${error}`, { defaultValue: t("lan:errors.FAILED") }) : null;
   const portErrorText = portError ? t("lan:errors.INVALID_PORT") : error === "PORT_IN_USE" ? errorText : null;
   const time = (ts: number) => formatUpdated(ts, i18n.language);
   const status = loadFailed ? t("statusUnavailable") : !view ? t("statusLoading")
-    : running ? t("statusOn", { count: view.devices.length }) : t("statusOff");
+    : running ? t("statusOn", { count: view.devices.length }) : enabled ? t("statusNotRunning") : t("statusOff");
 
   return (
     <>
@@ -77,7 +80,7 @@ export function LanWebUiSection() {
           {loadFailed && !view ? (
             <Button type="button" size="sm" onClick={refresh}>{t("retry")}</Button>
           ) : (
-            <SettingsToggle checked={running} label={t("enable")} busy={busy} disabled={!view || !address} onChange={toggle} />
+            <SettingsToggle checked={enabled} label={t("enable")} busy={busy} disabled={!view || (!enabled && !address)} onChange={toggle} />
           )}
         </SettingsRow>
 
@@ -126,6 +129,9 @@ export function LanWebUiSection() {
 
         {!pairing && (portErrorText || errorText) ? (
           <p id={portErrorId} className="lan-error" role="alert">{portErrorText || errorText}</p>
+        ) : null}
+        {enabled && !running ? (
+          <Button type="button" size="sm" disabled={busy || !address} onClick={start}>{t("retry")}</Button>
         ) : null}
       </SettingsCard>
 

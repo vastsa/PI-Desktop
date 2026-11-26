@@ -56,13 +56,18 @@ numbers refer to the [WebUI acceptance catalog](../06-delivery/e2e/live-and-remo
    attempts for malformed input or duplicate submits while pairing.
 4. Devices shows the label and last activity of each paired browser. **Remove**
    and browser sign-out invalidate that device's cookie and streams. Turning
-   off closes the listener and signs out every device; a subsequent start
-   requires fresh pairing. Closing a browser tab is not sign-out.
+   off in Settings closes the listener and revokes every pairing. The next
+   launch stays off and retains only the last binding for manual enablement.
+   Closing a browser tab is not sign-out.
 5. Minimizing or hiding Desktop does not stop the service. Phone backgrounding,
    Wi-Fi loss or closing a tab does not stop it. A browser cannot generate a
    pairing code or submit a tool or plan approval. Sleep makes Desktop
-   unreachable. If the bound address changes, restart the service on Desktop.
-   Quitting Desktop stops the service; each launch starts **off**. Do not
+   unreachable. Quitting Desktop closes the listener. On its next launch,
+   Desktop tries the last explicitly enabled address and port, and the same
+   browser can reconnect without a new code while its pairing is valid.
+   An unavailable address or port leaves the listener down without changing
+   the saved preference. Settings shows the cause and lets the user retry or
+   turn it off. Selecting a different binding requires fresh pairing. Do not
    promise active turns survive process exit.
 
 Show actionable failures on the side that can fix them: no eligible interface,
@@ -219,13 +224,17 @@ Session archive is **owner-only** in RACP. The LAN WebUI does not reuse RACP
 its organize operations against the current local catalog and only writes
 the same Desktop organization record the sidebar uses (§5).
 
-Use a Host-issued `HttpOnly`, host-only, `SameSite=Strict` session cookie
-(12 hours; no `Secure` flag because the MVP is HTTP), exact Host/Origin
-validation, and CSRF tokens for authenticated mutations. Device credentials live
-only in Desktop memory: stopping the service or quitting Desktop signs every
-device out. No session credentials in URLs, local storage or logs. A QR may
-include the one-time code in a fragment; the browser removes it before sending
-requests, and submits it only in the pairing POST body. Serve assets locally
+Use a Host-issued `HttpOnly`, host-only, `SameSite=Strict` cookie (no `Secure`
+flag because the MVP is HTTP), exact Host/Origin validation, and CSRF tokens
+for authenticated mutations. Both browser and server expire the pairing after
+30 days from redemption. Desktop stores a verifier of the random cookie, not
+its value, in a machine-local profile file with the listener preference and
+device metadata. Pairing codes, streams and in-flight request state are never
+persisted. An explicit disable, removal or sign-out is saved before it is
+acknowledged. Invalid saved state is not used to open the listener. No session
+credentials in URLs, local storage or logs. A QR may include the one-time
+code in a fragment; the browser removes it before sending requests, and
+submits it only in the pairing POST body. Serve assets locally
 under a restrictive CSP; never cache authenticated data (`no-store`). Logs
 record only start/stop and failure codes, not prompts, history, codes or
 cookies. Bound request bodies (300 KiB), prompts (256 KiB), pages (50 items)
@@ -313,7 +322,7 @@ settings) and `apps/desktop/src/features/lan-webui/lan-catalog-sync.ts`
 
 | Area | Delivered | Not yet |
 |---|---|---|
-| W01 | Off by default; interface + port; one-time-code pairing with copy and QR; remove devices; stop signs everyone out | HTTPS (deliberately deferred) |
+| W01 | Off by default; remembers opt-in, binding and unexpired pairings across launches; one-time-code pairing with copy and QR; explicit disable revokes access | HTTPS (deliberately deferred) |
 | W02/W03 | Local projects and temporary conversations; search; archived filter; rename, pin, archive/restore with revision conflicts; new session in the explicit project | Reuse of an existing empty session |
 | W04 | Paged history; live assistant text; send; queue; cancel queued; stop the named turn; “waiting on Desktop” for approvals and input | Answering ordinary questions from the browser; model label is the raw model id |
 | W05 | Idempotency keys for every mutation; SSE change notices with refetch; reconnect banner | Cursor-based replay (refetch is used instead) |
@@ -322,6 +331,7 @@ settings) and `apps/desktop/src/features/lan-webui/lan-catalog-sync.ts`
 | W08 | Existing names, pins and archives keep working; browser edits survive stale sidebar writes | — |
 
 Automated coverage: `apps/desktop/test/lan-webui-organization.test.mjs`,
+`lan-webui-restart.test.mjs` (saved startup and pairing lifecycle),
 `lan-webui-user-path.test.mjs` (real HTTP listener, fake Desktop),
 `lan-webui-browser-user-path.test.mjs` (Electron Chromium at phone size driving
 the shipped page), and `lan-webui-settings-user-path.test.mjs` (Desktop System

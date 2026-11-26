@@ -107,13 +107,11 @@ export function desktop() {
       bucket[entry.key] = { ...(bucket[entry.key] ?? {}), ...entry.patch };
     },
   };
-  const workspace = createLanWorkspace({
+  const workspaceDeps = {
     getHost: () => host,
     getBridge: () => bridge,
     channels: { sessionCreate: "create", sessionRename: "rename", projectGroupRename: "groupRename", agentAbort: "abort" },
     activeTurns,
-    organization,
-    notifyDesktop: (sessionId) => calls.push(["notify", sessionId ?? null]),
     async invoke(channel, args) {
       calls.push([channel, args]);
       if (channel === "create") {
@@ -132,8 +130,13 @@ export function desktop() {
       }
       return {};
     },
+  };
+  const workspace = createLanWorkspace({
+    ...workspaceDeps,
+    organization,
+    notifyDesktop: (sessionId) => calls.push(["notify", sessionId ?? null]),
   });
-  return { workspace, calls, turns, activeTurns, queue, meta, sessions, groups };
+  return { workspace, workspaceDeps, calls, turns, activeTurns, queue, meta, sessions, groups };
 }
 
 /** A tiny cookie-keeping browser against the real HTTP listener. */

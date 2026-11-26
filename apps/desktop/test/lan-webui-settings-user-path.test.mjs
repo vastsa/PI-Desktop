@@ -32,14 +32,14 @@ const listeners = new Set();
 const writes = [];
 const copied = [];
 const view = {
-  running: false, origin: null, address: null, port: null, code: null, devices: [], error: null,
+  enabled: false, running: false, origin: null, address: null, port: null, code: null, devices: [], error: null,
   interfaces: [{ address: "192.168.1.20", name: "Wi-Fi" }],
 };
 let stateReads = 0;
 let startFails = true;
 let issueCount = 0;
 const emit = () => { for (const listener of listeners) listener(null); };
-const snapshot = (error = null) => ({ ok: true, data: structuredClone({ ...view, error }) });
+const snapshot = (error = view.error) => ({ ok: true, data: structuredClone({ ...view, error }) });
 
 window.piDesktop = {
   platform: "darwin",
@@ -62,7 +62,7 @@ window.piDesktop = {
           emit(); // Main can notify before the IPC reply arrives.
           return snapshot("PORT_IN_USE");
         }
-        Object.assign(view, { running: true, address: action.address, port: action.port, origin: "http://" + action.address + ":" + action.port });
+        Object.assign(view, { enabled: true, running: true, address: action.address, port: action.port, origin: "http://" + action.address + ":" + action.port, error: null });
         break;
       case "issueCode":
         issueCount++;
@@ -72,7 +72,7 @@ window.piDesktop = {
         view.devices = view.devices.filter((item) => item.id !== action.id);
         break;
       case "stop":
-        Object.assign(view, { running: false, address: null, port: null, origin: null, code: null, devices: [] });
+        Object.assign(view, { enabled: false, running: false, origin: null, code: null, devices: [], error: null });
         break;
       default:
         throw new Error("Unexpected LAN action: " + action.kind);
@@ -173,6 +173,17 @@ window.lanSettingsProbe = async () => {
   check(q(".lan-device").querySelectorAll("button").length === 1, "a paired device can be removed, not configured");
   click(button(lanEn.remove));
   await wait(() => q(".lan-devices-empty")?.textContent === lanEn.noDevices, "device removed");
+
+  const failRestore = () => {
+    Object.assign(view, { running: false, origin: null, error: "PORT_IN_USE" });
+    emit();
+    return wait(() => alert() === lanEn.errors.PORT_IN_USE && q('.lan-status').textContent === lanEn.statusNotRunning, "restore error is visible");
+  };
+  await failRestore();
+  check(toggle().getAttribute("aria-checked") === "true" && field().value === "38180", "enabled preference and port survive a failed bind");
+  click(button(lanEn.retry, section()));
+  await wait(() => button(lanEn.addDevice) && !alert(), "retry uses the saved binding");
+  await failRestore();
   click(toggle());
   await wait(() => toggle().getAttribute("aria-checked") === "false" && !button(lanEn.addDevice), "service stopped");
   await i18n.changeLanguage("zh-CN");
@@ -233,7 +244,8 @@ app.whenReady().then(async () => {
       { kind: "start", address: "192.168.1.20", port: 38180 },
       { kind: "start", address: "192.168.1.20", port: 38180 },
       { kind: "issueCode" }, { kind: "issueCode" }, { kind: "issueCode" },
-      { kind: "revoke", id: "device" }, { kind: "stop" },
+      { kind: "revoke", id: "device" },
+      { kind: "start", address: "192.168.1.20", port: 38180 }, { kind: "stop" },
     ],
     copied: ["http://192.168.1.20:38180", "034209"],
     remainingListeners: 0,

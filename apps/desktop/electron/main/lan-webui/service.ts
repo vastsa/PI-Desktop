@@ -9,9 +9,15 @@ import { onLanAgentEvent } from "./agent-tap";
 import { getLanOrganization } from "./organization";
 import { LanError } from "./ports";
 import { createLanServer, type LanAsset } from "./server";
+import { createLanStateStore, type LanBinding, type LanSavedState } from "./state";
 import { createLanWorkspace, type LanWorkspaceDeps } from "./workspace";
 
 const DEFAULT_PORT = 37180;
+
+function actionError(error: unknown): string {
+  if (error instanceof LanError) return error.code;
+  return (error as NodeJS.ErrnoException)?.code === "EADDRINUSE" ? "PORT_IN_USE" : "FAILED";
+}
 
 /** IPv4 private LAN addresses plus loopback, in that order. */
 export function listLanInterfaces(source = networkInterfaces()): LanInterface[] {
@@ -46,25 +52,80 @@ export function createLanWebUiService(deps: {
   const offAgent = onLanAgentEvent((envelope) => workspace.ingest(envelope));
   const offWrites = organization.onRendererWrite(() => workspace.catalogChanged());
   let server: ReturnType<typeof createLanServer> | null = null;
-  let address: string | null = null;
-  let port: number | null = null;
+  const store = createLanStateStore(deps.dataDir);
+  let saved: LanSavedState = { enabled: false, binding: null, devices: [] };
+  let restoreError: string | null = null;
+  let disposal: Promise<void> | null = null;
   const notifyAdmin = () => deps.sendToRenderer(IPC.event.lanWebUiChanged, null);
 
-  const ensureServer = () => {
-    server ??= createLanServer({ handler: workspace, assets: deps.assets(), onChange: notifyAdmin });
-    return server;
-  };
+  function save(state: LanSavedState) {
+    try {
+      store.write(state);
+    } catch {
+      deps.log("warn", "lan webui could not save local state");
+      throw new LanError(500, "SAVE_FAILED");
+    }
+    saved = state;
+  }
 
-  function view(error: string | null = null): LanAdminView {
+  async function open(binding: LanBinding, remember: boolean) {
+    if (server) throw new LanError(409, "ALREADY_RUNNING");
+    if (!listLanInterfaces().some(({ address }) => address === binding.address)) {
+      throw new LanError(400, "INVALID_ADDRESS");
+    }
+    const sameBinding = saved.binding?.address === binding.address && saved.binding.port === binding.port;
+    const devices = saved.enabled && sameBinding ? saved.devices : [];
+    const next = createLanServer({
+      handler: workspace, assets: deps.assets(), onChange: notifyAdmin,
+      pairings: { devices, save: (devices) => save({ ...saved, devices }) },
+    });
+    try {
+      const bound = await next.start(binding.address, binding.port);
+      if (disposal) throw new LanError(409, "NOT_RUNNING");
+      if (remember) save({ enabled: true, binding: bound, devices });
+      server = next;
+      restoreError = null;
+      deps.log("info", "lan webui started", { port: bound.port });
+      notifyAdmin();
+    } catch (error) {
+      await next.stop();
+      throw error;
+    }
+  }
+
+  async function close() {
     const current = server;
-    const running = current?.running() === true;
+    server = null;
+    await current?.stop();
+  }
+
+  async function restore() {
+    try {
+      saved = store.read();
+      if (saved.enabled && saved.binding) await open(saved.binding, false);
+    } catch (error) {
+      restoreError = actionError(error);
+      deps.log("warn", "lan webui restore failed", { code: restoreError });
+    }
+  }
+
+  // State reads and start/stop actions wait for restore and for each other.
+  let pending = restore();
+  function enqueue<T>(work: () => Promise<T>): Promise<T> {
+    const result = pending.then(work);
+    pending = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  function view(error = restoreError): LanAdminView {
     return {
-      running,
-      origin: running ? current!.origin() : null,
-      address: running ? address : null,
-      port: running ? port : null,
-      code: running ? current!.code() : null,
-      devices: running ? current!.devices() : [],
+      enabled: saved.enabled,
+      running: server !== null,
+      origin: server?.origin() ?? null,
+      address: saved.binding?.address ?? null,
+      port: saved.binding?.port ?? null,
+      code: server?.code() ?? null,
+      devices: server?.devices() ?? [],
       interfaces: listLanInterfaces(),
       error,
     };
@@ -72,29 +133,32 @@ export function createLanWebUiService(deps: {
 
   async function admin(action: LanAdminAction): Promise<LanAdminView> {
     try {
+      if (disposal) throw new LanError(409, "NOT_RUNNING");
       switch (action?.kind) {
         case "state":
           break;
         case "start": {
-          const allowed = listLanInterfaces().some((entry) => entry.address === action.address);
-          const requestedPort = Number.isInteger(action.port) && action.port > 0 && action.port < 65536 ? action.port : DEFAULT_PORT;
-          if (!allowed) throw new LanError(400, "INVALID_ADDRESS");
-          const bound = await ensureServer().start(action.address, requestedPort);
-          address = bound.address;
-          port = bound.port;
-          deps.log("info", "lan webui started", { port: bound.port });
-          notifyAdmin();
+          const port = Number.isInteger(action.port) && action.port > 0 && action.port < 65_536 ? action.port : DEFAULT_PORT;
+          await open({ address: action.address, port }, true);
           break;
         }
         case "stop":
-          await server?.stop();
-          address = null;
-          port = null;
-          deps.log("info", "lan webui stopped");
-          notifyAdmin();
+          try {
+            if (saved.enabled) save({ ...saved, enabled: false, devices: [] });
+            restoreError = null;
+          } catch (error) {
+            restoreError = actionError(error);
+            throw error;
+          } finally {
+            // Always stop serving, even when the setting could not be saved.
+            await close();
+            deps.log("info", "lan webui stopped");
+            notifyAdmin();
+          }
           break;
         case "issueCode":
-          ensureServer().issueCode();
+          if (!server) throw new LanError(409, "NOT_RUNNING");
+          server.issueCode();
           break;
         case "revoke":
           server?.revoke(String(action.id));
@@ -106,9 +170,7 @@ export function createLanWebUiService(deps: {
           throw new LanError(400, "INVALID_ARGUMENT");
       }
     } catch (error) {
-      const code = error instanceof LanError
-        ? error.code
-        : (error as { code?: unknown })?.code === "EADDRINUSE" ? "PORT_IN_USE" : "FAILED";
+      const code = actionError(error);
       if (!(error instanceof LanError)) deps.log("warn", "lan webui action failed", { kind: action?.kind, code });
       return view(code);
     }
@@ -116,12 +178,19 @@ export function createLanWebUiService(deps: {
   }
 
   return {
-    admin,
-    async dispose(): Promise<void> {
+    admin: (action: LanAdminAction) => enqueue(() => admin(action)),
+    dispose(): Promise<void> {
+      if (disposal) return disposal;
       offAgent();
       offWrites();
-      await server?.stop();
-      workspace.dispose();
+      disposal = enqueue(async () => {
+        try {
+          await close();
+        } finally {
+          workspace.dispose();
+        }
+      });
+      return disposal;
     },
   };
 }

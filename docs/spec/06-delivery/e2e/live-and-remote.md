@@ -766,13 +766,17 @@ user's running instance.
   and code, then try pasting six digits with spaces or full-width digits. Scan
   a fresh QR with the phone camera and submit the prefilled code. Open a project
   and a temporary conversation; add project C on Desktop. Repeat with cookies
-  blocked, wrong and expired codes, and rapid duplicate submit. Stop and restart.
+  blocked, wrong and expired codes, and rapid duplicate submit. Quit Desktop
+  and launch it again; reopen the same address in the paired browser. Repeat
+  with the saved port in use. Turn off the service in Settings and relaunch.
 - **Expected:** No listener by default and no project data before pairing.
   A scan opens the bound origin and clears its fragment without submitting;
   a valid code connects on one submit. The desktop lists the device without
   extra approval. A, B, C and temporary conversations are available. Invalid,
   expired or redeemed codes fail, and blocked cookies show a specific error.
-  Stopping invalidates credentials and releases the port; restart requires pairing.
+  Desktop restores the exact binding and unexpired pairings, not unused codes.
+  A blocked bind does not fall back and can be retried or disabled. Explicit
+  disable invalidates credentials, releases the port and stays off on relaunch.
 - **Acceptance:** A, E; W01, W06.
 
 ### E2E-270: Organize projects and sessions without stealing navigation
@@ -842,7 +846,8 @@ user's running instance.
 - **Steps:** Lose a create/send response, background the phone, switch Wi-Fi
   off/on, refresh and reattach. Exercise same-key retry, a duplicate event,
   a stale cursor/new epoch and slow-client overflow. Switch sessions while an
-  old history page is outstanding. Separately restart Desktop, re-enable and pair.
+  old history page is outstanding. Separately restart Desktop and reconnect
+  the same paired browser without re-enabling or submitting another code.
 - **Expected:** One original admission per intent, no automatic draft or tool
   replay. A transient disconnect does not stop the turn. Cursor replay or a
   replacement snapshot restores committed and partial content, queue and
@@ -858,14 +863,18 @@ user's running instance.
 - **Steps:** Exercise catalog, histories, commands and SSE. Check wrong
   Origin/Host, missing CSRF, the device cap and rejected admin/owner operations.
   Remove one device while a temporary history request and stream are in flight;
-  then change the desktop network. Inspect fixture logs and caches.
+  sign out on the other, restart Desktop and try the old cookies. Re-pair and
+  advance the clock to the pairing expiry; change the desktop address. Inspect
+  the fixture profile, logs and caches.
 - **Expected:** The SSH-backed project remains hidden. Paired devices have the
   same local WebUI operations, but no generic owner/SSH exemption or raw RPC.
   Removal closes streams and refuses later requests, in-flight results and
   cached mutation results for that device. Other devices remain connected. The
   release also requires canceling revoked devices' not-started queued work.
-  Credentials and content do not leak to logs or persistent caches. There is no
-  connection on other interfaces or automatic sharing on the new network.
+  Revoked or expired cookies cannot reconnect across a restart. The profile has
+  verifiers, not bearer cookies or codes, and there are no credentials in logs
+  or authenticated response caches. An unavailable saved address is not
+  replaced automatically.
 - **Acceptance:** D, E; W01, W02, W06.
 
 ### E2E-275: Preserve an existing desktop profile and disable cleanly

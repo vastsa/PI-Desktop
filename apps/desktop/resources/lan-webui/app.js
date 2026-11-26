@@ -883,8 +883,10 @@
   async function signOut() {
     try {
       await api("POST", "/v1/logout", {});
-    } catch {
-      // Signed out either way.
+    } catch (error) {
+      // A failed revocation must not look like a successful sign-out.
+      fail(error);
+      return;
     }
     state.me = null;
     state.pending.clear();

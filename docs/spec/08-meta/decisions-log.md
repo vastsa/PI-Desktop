@@ -5440,3 +5440,10 @@ See ADR 0344.
   use the supported local project and temporary-conversation operations, with
   no separate grant switches. The existing local Agent safety rules and
   device revocation remain. See [Code pairing](../../adr/lan-webui-code-pairing.md).
+
+## 2026-11-26 — LAN WebUI restores the opted-in listener and paired devices (D688)
+
+- Restart on the exact saved binding and accept unexpired browser cookies from
+  the same pairing. Keep only device metadata and cookie verifiers on Desktop.
+  Explicit disable or revocation persists; first launch still starts off. See
+  the [code pairing amendment](../../adr/lan-webui-code-pairing.md#amendment-remember-pairing-across-desktop-launches-d688).

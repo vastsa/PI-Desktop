@@ -167,7 +167,7 @@ test("pairing codes expire and exactly one redemption creates a device", async (
   assert.deepEqual(responses.map((response) => response.status).sort(), [200, 403]);
   const accepted = responses.find((response) => response.ok);
   const [cookie] = accepted.headers.getSetCookie();
-  assert.match(cookie, /^pi_lan=[^;]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=43200$/);
+  assert.match(cookie, /^pi_lan=[^;]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=2592000$/);
   assert.equal(responses.find((response) => !response.ok).headers.getSetCookie().length, 0);
   assert.equal(server.devices().length, 2);
 });

@@ -34,5 +34,22 @@ Anyone who obtains an active code can pair without another prompt. Display it
 only for an intended device and use the existing plain-HTTP service only on a
 trusted LAN. Stop the service or remove a device to revoke access.
 
-No durable grants are migrated. An app restart invalidates existing pairings;
-older open browser tabs can still check the issued cookie with `/pair/status`.
+The original implementation kept all grants in memory. The amendment below
+supersedes that lifecycle, not the code-only enrollment or its scope.
+
+## Amendment: Remember pairing across Desktop launches (D688)
+
+An app quit is not an explicit revocation. Remember the opt-in and its exact
+address and port alongside the paired devices in the local Desktop profile.
+Restart only if the same binding is still allowed and available. An explicit
+disable, device removal or sign-out durably revokes access; fresh installs
+and profiles with no saved opt-in still start off.
+
+Keeping all state in memory requires repeated pairing, while storing reusable
+cookie values would unnecessarily expose credentials to anyone who can read
+the profile. Store SHA-256 verifiers of random 256-bit cookies instead, limit
+browser cookies and server records to 30 days, and retain the existing CSRF
+and request checks. This trades a longer credential lifetime on unencrypted
+HTTP for reconnect convenience; use it only on trusted networks. Pairing
+codes and live connections still die with the process. There is no state to
+migrate from the previous version; opt in and pair once after upgrading.

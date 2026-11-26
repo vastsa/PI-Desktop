@@ -58,8 +58,11 @@ export interface LanInterface {
   name: string;
 }
 export interface LanAdminView {
+  /** Saved preference; a failed bind can leave the service enabled but not running. */
+  enabled: boolean;
   running: boolean;
   origin: string | null;
+  /** Last successfully selected binding, even when unavailable or disabled. */
   address: string | null;
   port: number | null;
   code: { value: string; expiresAt: number } | null;

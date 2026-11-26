@@ -25,6 +25,6 @@ export function registerLanWebUiIpc(options: {
     return service.admin(action);
   });
   onConfirmedQuit(() => {
-    void service.dispose();
+    void service.dispose().catch(() => options.log("warn", "lan webui disposal failed"));
   });
 }
