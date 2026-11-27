@@ -1,5 +1,8 @@
 import { RemoteProjectGroups } from "./remote/RemoteProjectGroups";
-import { groupRemoteProjectSessions } from "../lib/remote-project-catalog";
+import {
+  groupRemoteProjectSessions,
+  remoteProjectCollapseKey,
+} from "../lib/remote-project-catalog";
 import { compareProjectGroups } from "../lib/project-order";
 import { isRemoteSession, sessionAllows } from "../lib/remote-session-safety";
 import {
@@ -37,6 +40,7 @@ import {
 } from "../lib/sidebar-session-groups";
 import {
   getVisibleProjectSessions,
+  resolveProjectCollapseAllAction,
   updateProjectSessionExpansion,
 } from "../lib/sidebar-project-sessions";
 import {
@@ -117,12 +121,14 @@ import {
   IconBranch,
   IconCheck,
   IconChevronDown,
+  IconCollapseAll,
   IconCopy,
   IconCircleAlert,
   IconNewSession,
   IconFolder,
   IconMore,
   IconNewProject,
+  IconExpandAll,
   IconPin,
   IconPencil,
   IconSidebar,
@@ -293,6 +299,7 @@ export function Sidebar({
   const archiveProjectAction = useAppStore((s) => s.archiveProject);
   const restoreProject = useAppStore((s) => s.restoreProject);
   const setProjectCollapsed = useAppStore((s) => s.setProjectCollapsed);
+  const setProjectsCollapsed = useAppStore((s) => s.setProjectsCollapsed);
   const setProjectSort = useAppStore((s) => s.setProjectSort);
   const reorderProjects = useAppStore((s) => s.reorderProjects);
   const showToast = useAppStore((s) => s.showToast);
@@ -1021,6 +1028,26 @@ export function Sidebar({
     filtered.filter((session) => isRemoteSession(session) && !pinnedSessionIds.has(session.id)), compareSessions,
     displayProjectSort,
   ), [filtered, pinnedSessionIds, compareSessions, displayProjectSort]);
+  // Every group the project toolbar's collapse-all control (#2584) acts on:
+  // the retained local groups plus the host-owned remote ones, which fold
+  // through the same store and so must fold together with them.
+  const projectCollapseTargets = useMemo(() => {
+    const targets: { key: string; collapsed: boolean }[] = [];
+    for (const entry of projectEntries) {
+      targets.push({
+        key: entry.key,
+        collapsed: entry.meta.collapsed ?? projectCollapsed[entry.key] ?? false,
+      });
+    }
+    for (const { project } of remoteProjectGroups) {
+      const key = remoteProjectCollapseKey(project.key);
+      targets.push({ key, collapsed: projectCollapsed[key] ?? false });
+    }
+    return targets;
+  }, [projectEntries, projectCollapsed, remoteProjectGroups]);
+  const projectCollapseAllAction = resolveProjectCollapseAllAction(
+    projectCollapseTargets.map((target) => target.collapsed),
+  );
   // Flat ordered list of every visible session id — used for Shift+click range
   // selection. Follows render order; a project session also listed under
   // Recent keeps its first (Recent) position.
@@ -1246,6 +1273,19 @@ export function Sidebar({
     setExpandedProjectSessions((previous) =>
       updateProjectSessionExpansion(previous, projectKey, true),
     );
+  };
+
+  const toggleAllProjectsCollapsed = () => {
+    if (projectCollapseTargets.length === 0) return;
+    const collapse = projectCollapseAllAction === "collapse";
+    setProjectsCollapsed(
+      projectCollapseTargets.map((target) => target.key),
+      collapse,
+    );
+    // Folding a group also folds its expanded session page, the same way the
+    // per-project disclosure does, so reopening a project starts at the top.
+    if (collapse) setExpandedProjectSessions({});
+    closeMenus(false);
   };
 
   const toggleSessionPin = (session: SessionSummary) => {
@@ -2263,6 +2303,7 @@ export function Sidebar({
     const { visibleSessions, hiddenCount } = getVisibleProjectSessions(
       history,
       sessionsExpanded,
+      settings?.sidebarVisibleSessionCount,
     );
 
     // The live counts cover every session in the group, including pinned and
@@ -2713,6 +2754,30 @@ export function Sidebar({
               }}
             >
               <span className="sidebar-list-label">{t("nav.projects")}</span>
+              {projectCollapseTargets.length > 0 ? (
+                <TooltipButton
+                  type="button"
+                  className="sidebar-toolbar-button"
+                  data-action="toggle-all-projects-collapse"
+                  tooltip={
+                    projectCollapseAllAction === "collapse"
+                      ? t("nav.collapseAllProjects")
+                      : t("nav.expandAllProjects")
+                  }
+                  ariaLabel={
+                    projectCollapseAllAction === "collapse"
+                      ? t("nav.collapseAllProjects")
+                      : t("nav.expandAllProjects")
+                  }
+                  onClick={toggleAllProjectsCollapsed}
+                >
+                  {projectCollapseAllAction === "collapse" ? (
+                    <IconCollapseAll size={14} />
+                  ) : (
+                    <IconExpandAll size={14} />
+                  )}
+                </TooltipButton>
+              ) : null}
               {showNewProject ? (
                 <TooltipButton
                   type="button"

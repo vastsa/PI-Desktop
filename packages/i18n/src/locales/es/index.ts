@@ -234,6 +234,8 @@ export const es = {
     "home": "Inicio",
     "newTask": "Nueva tarea",
     "newProject": "Nuevo proyecto",
+    "collapseAllProjects": "Contraer todos los proyectos",
+    "expandAllProjects": "Expandir todos los proyectos",
     "projects": "Proyectos",
     "remoteProjects": "Remoto",
     "plugins": "Extensiones",
@@ -1101,6 +1103,10 @@ export const es = {
     "sidebarRunningBadge": "Insignia de recuento",
     "sidebarRunningRail": "Carril de actividad",
     sidebarSessionTime: "Hora de sesión",
+    "sidebarVisibleSessionCount": "Sesiones por proyecto",
+    "sidebarVisibleSessionCountDesc":
+      "Cuántas sesiones muestra cada proyecto en la barra lateral antes de que el resto se pliegue tras «Cargar más» ({{min}}-{{max}}).",
+    "sidebarVisibleSessionCountSaveError": "No se pudo guardar el número de sesiones.",
     sidebarModules: "Módulos de la barra lateral",
     sidebarModule: {
       newTask: "Nueva tarea",

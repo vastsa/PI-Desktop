@@ -6,6 +6,7 @@ type ClipboardDirectoryPaste = {
 import { projectPlanHistory } from "./plan-history";
 import { guardRemoteInvocation } from "./remote-ipc-safety";
 import { isRemoteSession, safeSessionSummary } from "./remote-session-safety";
+import { normalizeVisibleProjectSessionCount } from "./sidebar-project-sessions";
 import type {
   ConfigSyncTestInput,
   ConfigSyncTestResult,
@@ -557,6 +558,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     sidebarRunningBadge?: unknown;
     sidebarRunningRail?: unknown;
     sidebarSessionTime?: unknown;
+    sidebarVisibleSessionCount?: unknown;
     updatePreference?: unknown;
     lastNotifiedUpdateVersion?: unknown;
     networkProxy?: unknown;
@@ -576,6 +578,15 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       value.largePasteThreshold
   ) {
     throw Object.assign(new Error("largePasteThreshold is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(value, "sidebarVisibleSessionCount") &&
+    normalizeVisibleProjectSessionCount(value.sidebarVisibleSessionCount) !==
+      value.sidebarVisibleSessionCount
+  ) {
+    throw Object.assign(new Error("sidebarVisibleSessionCount is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
   }

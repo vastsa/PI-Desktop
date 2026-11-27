@@ -262,6 +262,7 @@ export function createProjectSlice({
   | "restoreProject"
   | "restoreProjects"
   | "setProjectCollapsed"
+  | "setProjectsCollapsed"
   | "toggleProjectCollapsed"
   | "setProjectSort"
   | "reorderProjects"
@@ -769,6 +770,27 @@ export function createProjectSlice({
             [key]: { ...(state.projectMeta[key] || {}), collapsed: next },
           },
         };
+      });
+      persistCurrentSidebar(get);
+    },
+
+    // One write for the whole project list: the sidebar's collapse-all
+    // control (#2584) would otherwise persist once per project.
+    setProjectsCollapsed: (paths, collapsed) => {
+      const keys = new Set<string>();
+      for (const path of paths) {
+        const key = normalizeProjectPath(path);
+        if (key) keys.add(key);
+      }
+      if (keys.size === 0) return;
+      set((state) => {
+        const projectCollapsed = { ...state.projectCollapsed };
+        const projectMeta = { ...state.projectMeta };
+        for (const key of keys) {
+          projectCollapsed[key] = collapsed;
+          projectMeta[key] = { ...(projectMeta[key] || {}), collapsed };
+        }
+        return { projectCollapsed, projectMeta };
       });
       persistCurrentSidebar(get);
     },

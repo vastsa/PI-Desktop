@@ -299,6 +299,11 @@ export type AppSettings = {
    */
   sidebarSessionTime?: boolean;
   /**
+   * Sessions listed per project group before the remaining ones fold behind
+   * "load more" (#2584). Valid range is 1-20; an absent value means ten.
+   */
+  sidebarVisibleSessionCount?: number;
+  /**
    * Per-module visibility for the left sidebar. Every module is shown unless
    * its key is explicitly `false`, so an absent object keeps the released
    * layout. Settings stays reachable regardless: it has no key here.

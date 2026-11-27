@@ -243,6 +243,8 @@ export const tr = {
     home: "Ana sayfa",
     newTask: "Yeni görev",
     newProject: "Yeni proje",
+    collapseAllProjects: "Tüm projeleri daralt",
+    expandAllProjects: "Tüm projeleri genişlet",
     projects: "Projeler",
     remoteProjects: "Uzak",
     plugins: "Uzantılar",
@@ -1108,6 +1110,10 @@ export const tr = {
     sidebarRunningBadge: "Sayı rozeti",
     sidebarRunningRail: "Etkinlik şeridi",
     sidebarSessionTime: "Oturum saati",
+    sidebarVisibleSessionCount: "Proje başına oturum",
+    sidebarVisibleSessionCountDesc:
+      "Kalan oturumlar \"Daha fazla yükle\" arkasına katlanmadan önce her projenin kenar çubuğunda listeleyeceği oturum sayısı ({{min}}-{{max}}).",
+    sidebarVisibleSessionCountSaveError: "Oturum sayısı kaydedilemedi.",
     sidebarModules: "Kenar çubuğu modülleri",
     sidebarModule: {
       newTask: "Yeni görev",

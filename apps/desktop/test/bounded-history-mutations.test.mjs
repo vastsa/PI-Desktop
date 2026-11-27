@@ -180,6 +180,7 @@ test("the real store/API/preload/IPC path uploads bounded ids with more than 64 
   const { api } = load("../src/lib/api.ts", {
     "@pi-desktop/shared": shared, "./plan-history": {}, "./remote-session-safety": safety,
     "./remote-ipc-safety": { guardRemoteInvocation() {} },
+    "./sidebar-project-sessions": load("../src/lib/sidebar-project-sessions.ts", {}),
   }, { window: { piDesktop: bridge } });
   const h = harness({ state: { messages: huge }, runtime: { loadFullSessionMessages: async () => huge }, api });
   await h.actions.deleteMessage("u2");

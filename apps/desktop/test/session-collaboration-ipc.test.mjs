@@ -101,6 +101,7 @@ function rendererApi(invoke) {
       i18next: { default: i18n },
     }),
     "./remote-session-safety": load("../src/lib/remote-session-safety.ts", {}),
+    "./sidebar-project-sessions": load("../src/lib/sidebar-project-sessions.ts", {}),
   }, {
     window: { piDesktop: bridge },
   });

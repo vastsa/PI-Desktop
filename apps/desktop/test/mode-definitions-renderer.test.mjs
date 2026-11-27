@@ -20,6 +20,7 @@ const modesApi = await import("../src/features/modes/modes-api.ts");
 const settingsModel = await import("../src/features/modes/modes-settings-model.ts");
 const planning = await import("../src/stores/helpers/planning-projection.ts");
 const safety = await import("../src/lib/remote-session-safety.ts");
+const sidebarProjectSessions = await import("../src/lib/sidebar-project-sessions.ts");
 
 const t = (key) => `t:${key}`;
 
@@ -311,6 +312,7 @@ function loadApi(bridge) {
     "./plan-history": { projectPlanHistory: (messages) => messages },
     "./remote-session-safety": safety,
     "./remote-ipc-safety": { guardRemoteInvocation() {} },
+    "./sidebar-project-sessions": sidebarProjectSessions,
   };
   const module = { exports: {} };
   new Function("require", "exports", "module", "window", outputText)(

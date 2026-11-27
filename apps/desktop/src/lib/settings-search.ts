@@ -100,6 +100,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.sidebarRunningBadge",
       "settings.sidebarRunningRail",
       "settings.sidebarSessionTime",
+      "settings.sidebarVisibleSessionCount",
+      "settings.sidebarVisibleSessionCountDesc",
       "settings.sidebarModules",
       "settings.sidebarModule.newTask",
       "settings.sidebarModule.scheduled",
