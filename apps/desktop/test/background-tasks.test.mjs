@@ -144,32 +144,32 @@ test("the running/stopped/failed/exited labels are translated", () => {
   assert.match(i18nEn, /backgroundTasks: \{[^}]*running: "Running"/);
 });
 
-test("the container shows only live work: a finished row expires and can be removed", async () => {
+test("the container shows only live work: a finished row leaves as soon as it ends", async () => {
   const visibility = await readFile(
     new URL("../src/features/chat/background-tasks/bar-visibility.ts", import.meta.url),
     "utf8",
   );
-  // The grace window is a named constant, not a magic number in the component.
-  assert.match(visibility, /export const ENDED_VISIBLE_MS = 10_000;/);
-  assert.match(controller, /selectVisibleTasks\(visibility, sessionTasks, clock, expandedId\)/);
-  assert.match(controller, /observeTasks\(current, result\.tasks, observedAt\)/);
+  // Live means running, or a continuation decision still pending; the row
+  // being read is the only ended row that stays (#2632).
+  assert.match(visibility, /task\.state === "running"/);
+  assert.match(visibility, /task\.continuation === "pending"/);
+  assert.match(visibility, /task\.id === pinnedId/);
+  assert.match(controller, /selectVisibleTasks\(sessionTasks, expandedId\)/);
   // Removal is refused for a live task in the state layer, not just by hiding
   // the control.
-  assert.match(visibility, /task\.state === "running" \|\| task\.continuation === "pending"\) return state;/);
   assert.match(controller, /if \(!task \|\| task\.state === "running" \|\| task\.continuation === "pending"\)/);
-  assert.match(controller, /dismissTask\(current, task\)/);
   // A finished row offers removal instead of stopping.
   assert.match(bar, /\{t\("backgroundTasks\.dismiss"\)\}/);
   assert.match(bar, /onClick=\{\(\) => onRemove\(task\.id\)\}/);
 });
 
-test("the container filters to the active session and badges new work", () => {
+test("the container filters to the active session and badges its running work", () => {
   assert.match(controller, /task\.sessionId === sessionId/);
   // The wire contract stays session-agnostic.
   assert.match(controller, /api\.backgroundTasksList\(\)/);
-  // The badge clears only when the user enters the tasks tab.
-  assert.match(controller, /const openTasksTab = useCallback/);
-  assert.match(controller, /clearBadge\(selectTab\(current, sessionId, "tasks"\), sessionId\)/);
+  // The badge is the running-row count, derived from the rows — never view
+  // state a tab click can clear (#2632).
+  assert.match(controller, /const badge = sides\.runningTasks/);
 });
 
 test("deleting a session signals its tasks from the shared cleanup path only", () => {

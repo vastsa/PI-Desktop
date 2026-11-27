@@ -835,7 +835,6 @@ export const ptBR = {
     title: "Pendências e tarefas em segundo plano",
     tabTodo: "Pendências",
     tabTasks: "Tarefas em segundo plano",
-    newTasks: "{{count}} tarefas novas",
     runningCount: "{{count}} em execução",
     expand: "Expandir {{label}}",
     collapse: "Recolher {{label}}",
