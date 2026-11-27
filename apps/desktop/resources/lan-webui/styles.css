@@ -202,7 +202,10 @@ p {
   outline: 1.5px solid color-mix(in oklab, var(--ds-accent) 80%, transparent);
   outline-offset: 2px;
 }
-[tabindex="-1"]:focus {
+[tabindex="-1"]:focus,
+input:focus-visible,
+textarea:focus-visible {
+  /* Fields carry their own focus treatment; the generic outline is for controls. */
   outline: none;
 }
 .sr-only {
@@ -1146,8 +1149,8 @@ main > button.fab:active:not(:disabled) {
 }
 .composer:focus-within {
   box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--ds-text-primary) 18%, transparent),
-    var(--ds-shadow-composer);
+    0 0 0 0.5px color-mix(in oklab, var(--ds-text-primary) 16%, transparent),
+    0 4px 16px color-mix(in oklab, #000000 8%, transparent);
 }
 .composer textarea {
   flex: 1;
