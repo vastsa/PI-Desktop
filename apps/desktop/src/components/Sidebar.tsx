@@ -2754,42 +2754,44 @@ export function Sidebar({
               }}
             >
               <span className="sidebar-list-label">{t("nav.projects")}</span>
-              {projectCollapseTargets.length > 0 ? (
-                <TooltipButton
-                  type="button"
-                  className="sidebar-toolbar-button"
-                  data-action="toggle-all-projects-collapse"
-                  tooltip={
-                    projectCollapseAllAction === "collapse"
-                      ? t("nav.collapseAllProjects")
-                      : t("nav.expandAllProjects")
-                  }
-                  ariaLabel={
-                    projectCollapseAllAction === "collapse"
-                      ? t("nav.collapseAllProjects")
-                      : t("nav.expandAllProjects")
-                  }
-                  onClick={toggleAllProjectsCollapsed}
-                >
-                  {projectCollapseAllAction === "collapse" ? (
-                    <IconCollapseAll size={14} />
-                  ) : (
-                    <IconExpandAll size={14} />
-                  )}
-                </TooltipButton>
-              ) : null}
-              {showNewProject ? (
-                <TooltipButton
-                  type="button"
-                  className="sidebar-toolbar-button"
-                  data-action="new-project"
-                  tooltip={t("nav.newProject")}
-                  ariaLabel={t("nav.newProject")}
-                  onClick={() => void openProjectPicker()}
-                >
-                  <IconNewProject size={14} />
-                </TooltipButton>
-              ) : null}
+              <div className="sidebar-toolbar-actions">
+                {projectCollapseTargets.length > 0 ? (
+                  <TooltipButton
+                    type="button"
+                    className="sidebar-toolbar-button"
+                    data-action="toggle-all-projects-collapse"
+                    tooltip={
+                      projectCollapseAllAction === "collapse"
+                        ? t("nav.collapseAllProjects")
+                        : t("nav.expandAllProjects")
+                    }
+                    ariaLabel={
+                      projectCollapseAllAction === "collapse"
+                        ? t("nav.collapseAllProjects")
+                        : t("nav.expandAllProjects")
+                    }
+                    onClick={toggleAllProjectsCollapsed}
+                  >
+                    {projectCollapseAllAction === "collapse" ? (
+                      <IconCollapseAll size={14} />
+                    ) : (
+                      <IconExpandAll size={14} />
+                    )}
+                  </TooltipButton>
+                ) : null}
+                {showNewProject ? (
+                  <TooltipButton
+                    type="button"
+                    className="sidebar-toolbar-button"
+                    data-action="new-project"
+                    tooltip={t("nav.newProject")}
+                    ariaLabel={t("nav.newProject")}
+                    onClick={() => void openProjectPicker()}
+                  >
+                    <IconNewProject size={14} />
+                  </TooltipButton>
+                ) : null}
+              </div>
             </div>
 
             <div
