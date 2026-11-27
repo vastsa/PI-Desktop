@@ -753,19 +753,24 @@ folder/mixed-selection behavior. No system clipboard contents are changed.
   `session-message-outbox.dead-letter.json` holds that key with its payload and
   error, and that `session-message-outbox.json` drops below the cap. 5) Restart
   the app and confirm the quarantined append is not replayed. 6) Optional:
-  delete the failing session and confirm its dead letter is dropped.
+  delete the failing session and confirm its dead letter is dropped. Repeat in
+  an isolated profile with a process exit immediately before and immediately
+  after the dead-letter rename. Reopen and enqueue a new snapshot with the
+  same key.
 - **Expected**: The failing append is paused four times with a growing backoff
   and quarantined on the fifth consecutive failure, then skipped. Later
   appends from every session drain, no enqueue is rejected with `outbox is
   full`, and the queued outbox file empties. The dead letter survives a
-  restart without being replayed.
+  restart without being replayed. At either interruption point the rejected
+  snapshot is archived once, and the new snapshot still reaches the host.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md`, ADR 0041, D318, D444, D597, D656
 - **Acceptance**: F (persistence)
 - **Milestone**: M2
-- **Status**: Unit-covered (`persistence-outbox.test.mjs` bounded retry,
-  quarantine, dead-letter persistence and cap tests); desktop journey
-  outstanding
+- **Status**: Bounded retry, dead-letter retention and capacity are covered by
+  `persistence-outbox.test.mjs`. Process interruption and filesystem errors
+  are covered by `persistence-outbox-quarantine.test.mjs`. The full desktop
+  journey is outstanding.
 
 ## E2E-SESSION-outbox-empty-snapshot-is-atomic
 
