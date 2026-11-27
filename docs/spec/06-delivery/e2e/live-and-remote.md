@@ -806,6 +806,8 @@ fixtures; do not use a user's running instance.
 - **Steps:** Double-tap New session in B, send text, stream a reply, then continue
   the same session on Desktop. Queue a second message while busy and cancel it;
   interrupt the named active turn. Reopen the older B chat and load older pages.
+  Delay a history response, switch chats, then release it. Load an older page
+  in the current chat while a live update refreshes it.
   Create a temporary conversation from its own entry, and one in B from Home's
   New conversation picker. Reopen B's chat from Home's Recent list. Repeat with
   no configured model and with a pre-existing eligible empty conversation in B.
@@ -820,6 +822,8 @@ fixtures; do not use a user's running instance.
   queued only by request; otherwise its client sees busy and keeps the draft.
   Canceled work never runs and stop preserves partial output. Paging older
   items keeps position, without wrong-project empty reuse or duplicate creates.
+  A late page from the previous chat leaves the current transcript and cursor
+  intact. A refresh within the current chat still allows its page to load.
   A temporary session has no project and never inherits A or B.
   Missing model blocks send, preserves text and points to Desktop setup.
   The selected model is used for the next turn and is visible on Desktop
