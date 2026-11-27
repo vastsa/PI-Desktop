@@ -23,6 +23,7 @@
 @import "./theme-overrides.css";
 @import "./composer-menus.css";
 @import "./settings.css";
+@import "./lan-webui.css";
 @import "./startup-overlays.css";
 @import "./destinations.css";
 @import "./projects.css";

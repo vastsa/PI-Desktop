@@ -1,5 +1,6 @@
 import {
   bindingSupportsImages,
+  configuredChatModels,
   effectiveContextWindow,
   isImageOnlyChatModel,
   type ImageGenerationBindings,
@@ -46,16 +47,6 @@ export function composerModelChatEligible(
   return !isImageOnlyChatModel(imageGeneration, providerId, modelId, metadata);
 }
 
-function configuredModelIds(provider: ConfiguredProvider): string[] {
-  const ids = (provider.models ?? [])
-    .map((binding) => binding.id.trim())
-    .filter(Boolean);
-  if (ids.length > 0) return [...new Set(ids)];
-
-  const legacyId = provider.defaultModelId?.trim();
-  return legacyId ? [legacyId] : [];
-}
-
 /**
  * Build the Composer model list from the models explicitly enabled in
  * provider settings. Discovery only enriches an exact configured id; it does
@@ -67,21 +58,7 @@ export function composerModelsForProvider(
   discovered: readonly ModelInfo[] | undefined,
   imageGeneration?: ImageGenerationBindings | null,
 ): ModelInfo[] {
-  return configuredModelIds(provider).filter((modelId) => {
-    const metadata = (discovered ?? []).find((model) =>
-      sameComposerModelId(model.modelId, modelId),
-    );
-    // Only a pure image-generation endpoint is excluded: a model the user
-    // marked for image generation that also supports conversation stays in
-    // the Composer list (#2253).
-    return !isImageOnlyChatModel(imageGeneration, provider.id, modelId, metadata)
-      && !(discovered ?? []).some((model) =>
-        sameComposerModelId(model.modelId, modelId) && model.discoveryState === "unlisted");
-  }).map((modelId) => {
-    const metadata = (discovered ?? []).find((model) =>
-      sameComposerModelId(model.modelId, modelId),
-    );
-    const binding = composerModelBinding(provider, modelId);
+  return configuredChatModels(provider, discovered, imageGeneration).map(({ modelId, metadata, binding }) => {
     const contextWindow = effectiveContextWindow(
       metadata?.contextWindow,
       binding?.contextWindow,
