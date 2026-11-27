@@ -52,8 +52,9 @@
     const active = document.activeElement;
     const keep = same && active instanceof HTMLElement && active.id && app.contains(active) ? active.id : "";
     const range = keep && typeof active.selectionStart === "number" ? [active.selectionStart, active.selectionEnd] : null;
-    app.replaceChildren(...nodes.filter(Boolean));
+    app.replaceChildren(...nodes.flat().filter(Boolean));
     app.dataset.view = view;
+    trackDock();
     if (!same && view !== "loading") enterPage();
     const next = keep ? document.getElementById(keep) : null;
     if (next) {
@@ -68,6 +69,18 @@
     }
     return !same;
   }
+  // Toasts rise above the composer dock, whose height changes as a prompt grows.
+  const dockObserver = typeof ResizeObserver === "function"
+    ? new ResizeObserver(([entry]) => {
+        if (entry?.target.isConnected) document.documentElement.style.setProperty("--dock", `${Math.round(entry.target.getBoundingClientRect().height)}px`);
+      })
+    : null;
+  function trackDock() {
+    dockObserver?.disconnect();
+    const dock = app.querySelector(".chat-dock");
+    if (dock) dockObserver?.observe(dock);
+    else document.documentElement.style.removeProperty("--dock");
+  }
   /** A new page slides in from the side it was reached from; refreshes never move. */
   let direction = "push";
   function enterPage() {
@@ -80,9 +93,24 @@
   });
   // Safari only paints :active feedback once the page listens for touches.
   document.addEventListener("touchstart", () => {}, { passive: true });
-  // The sticky header gains its hairline only once content scrolls beneath it.
-  const syncScrolled = () => document.documentElement.classList.toggle("scrolled", window.scrollY > 2);
-  window.addEventListener("scroll", syncScrolled, { passive: true });
+  // The bar gains its hairline once content scrolls beneath it. On list pages
+  // the compact bar title takes over when the large title passes under the bar.
+  function syncScrolled() {
+    const root = document.documentElement;
+    root.classList.toggle("scrolled", window.scrollY > 2);
+    const bar = app.querySelector(".header");
+    const large = app.querySelector(".large-title h1");
+    root.classList.toggle("collapsed", Boolean(bar && large && large.getBoundingClientRect().bottom <= bar.getBoundingClientRect().bottom + 1));
+  }
+  let scrollFrame = 0;
+  window.addEventListener("scroll", () => {
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = 0;
+      syncScrolled();
+      syncJump();
+    });
+  }, { passive: true });
   let toastTimer = null;
   function notify(message, duration = 4000) {
     toast.textContent = message;
@@ -90,8 +118,11 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (toast.hidden = true), duration);
   }
+  // Clear first so a repeated message (“Copied” twice) is announced again.
   const announce = (message) => {
-    if (message) announcer.textContent = message;
+    if (!message) return;
+    announcer.textContent = "";
+    setTimeout(() => (announcer.textContent = message), 30);
   };
   function setOffline(lost) {
     state.online = !lost;
@@ -104,15 +135,23 @@
   const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "");
 
   async function copyWithFeedback(text, button) {
-    if (await copyText(text)) {
-      notify(t("copied"), 1500);
-      if (button?.isConnected) {
-        button.replaceChildren(icon("check", "sm"));
-        setTimeout(() => button.isConnected && button.replaceChildren(icon("copy", "sm")), 1500);
-      }
-    } else {
+    if (!(await copyText(text))) {
       notify(t("copyFailed"));
+      return;
     }
+    announce(t("copied"));
+    // The control confirms the copy in place; a toast only when it is gone.
+    if (!button?.isConnected) {
+      notify(t("copied"), 1500);
+      return;
+    }
+    button.classList.add("copied");
+    button.replaceChildren(icon("check", "sm"));
+    setTimeout(() => {
+      if (!button.isConnected) return;
+      button.classList.remove("copied");
+      button.replaceChildren(icon("copy", "sm"));
+    }, 1500);
   }
   const markdownOptions = { labels: { copyCode: t("copyCode"), image: t("imagePlaceholder") }, onCopy: copyWithFeedback };
 
@@ -219,7 +258,9 @@
   };
   const back = (fallback) => (history.length > 1 ? history.back() : go(fallback));
   window.addEventListener("hashchange", (event) => {
+    // Menus belong to the page that opened them; Back must not carry them along.
     modelPicker.dismiss();
+    if (!sheet.hidden) closeSheet(false);
     const prefill = takePairingCode();
     if (prefill && !state.me) {
       showPair("", prefill);
@@ -285,6 +326,7 @@
     if (opener) sheetReturn = opener;
     document.getElementById("sheet-title").textContent = title;
     document.getElementById("sheet-actions").replaceChildren(...children);
+    sheetPanel.style.translate = "";
     sheet.hidden = false;
   }
   function openSheet(title, actions, opener) {
@@ -319,11 +361,17 @@
   }, { passive: true });
   const endDrag = () => {
     if (!drag) return;
-    const dismiss = drag.dy > 72;
+    const { dy } = drag;
     drag = null;
     sheetPanel.style.transition = "";
-    sheetPanel.style.translate = "";
-    if (dismiss) closeSheet();
+    if (dy <= 72) {
+      sheetPanel.style.translate = "";
+      return;
+    }
+    // A dismissed sheet keeps travelling from where the finger let go as it fades.
+    sheetPanel.style.translate = `0 ${dy + 32}px`;
+    closeSheet();
+    setTimeout(() => { if (sheet.hidden) sheetPanel.style.translate = ""; }, 260);
   };
   sheetPanel.addEventListener("touchend", endDrag);
   sheetPanel.addEventListener("touchcancel", endDrag);
@@ -415,15 +463,24 @@
     return label ? { icon: "folder", text: label, class: "scope" } : null;
   }
 
-  function header({ title, backTo, subtitle = [], actions = [], root = false }) {
-    return el("header", { class: root ? "header root" : "header" }, [
-      backTo ? el("button", { type: "button", class: "icon-btn", "aria-label": t("back"), onclick: () => back(backTo) }, icon("back")) : null,
-      el("div", { class: "header-title" }, [
-        el("h1", { id: "view-title", tabindex: "-1", text: title }),
-        subtitle.length ? el("p", { class: "header-sub" }, subtitle.map(metaItem)) : null,
+  /**
+   * A conversation keeps its title in the bar. List pages lead with a large
+   * title in the page that hands over to a compact bar title on scroll.
+   */
+  function header({ title, backTo, subtitle = [], actions = [], large = false }) {
+    const backButton = backTo ? el("button", { type: "button", class: "icon-btn back", "aria-label": t("back"), onclick: () => back(backTo) }, icon("back")) : null;
+    const heading = el("h1", { id: "view-title", tabindex: "-1", text: title });
+    const sub = subtitle.length ? el("p", { class: large ? "large-sub" : "header-sub" }, subtitle.map(metaItem)) : null;
+    if (!large) return el("header", { class: "header" }, [backButton, el("div", { class: "header-title" }, [heading, sub]), ...actions]);
+    return [
+      el("header", { class: "header large" }, [
+        backButton,
+        el("div", { class: "header-compact", "aria-hidden": "true" }, el("span", { text: title })),
+        el("span", { class: "header-spacer" }),
+        ...actions,
       ]),
-      ...actions,
-    ]);
+      el("div", { class: "large-title" }, [heading, sub]),
+    ];
   }
   const moreButton = (name, actions) => el("button", {
     type: "button",
@@ -438,30 +495,45 @@
       id: "list-search", type: "search", placeholder: t("search"), "aria-label": t("search"),
       value: state.query[key], enterkeyhint: "search", autocomplete: "off",
     });
+    const clear = el("button", {
+      type: "button", class: "icon-btn search-clear", "aria-label": t("clearSearch"), hidden: !state.query[key],
+      onclick: () => {
+        search.value = "";
+        search.dispatchEvent(new Event("input"));
+        search.focus();
+      },
+    }, icon("close", "sm"));
     let timer = null;
     search.addEventListener("input", () => {
       // Keep the latest text in the query so a re-render never drops keystrokes.
       state.query[key] = search.value;
+      clear.hidden = !search.value;
       clearTimeout(timer);
       timer = setTimeout(() => render(), 250);
     });
-    return el("div", { class: "toolbar" }, el("div", { class: "search" }, [icon("search", "sm"), search]));
+    return el("div", { class: "toolbar" }, el("div", { class: "search" }, [icon("search", "sm"), search, clear]));
   }
 
   function row({ icon: iconName, title, meta = [], time = "", onOpen, actions = [], moreLabel }) {
-    return el("li", { class: "row" }, [
+    const more = actions.length
+      ? el("button", { type: "button", class: "row-more icon-btn", "aria-label": moreLabel, "aria-haspopup": "dialog", onclick: (event) => openSheet(title, actions, event.currentTarget) }, icon("more"))
+      : null;
+    const item = el("li", { class: "row" }, [
       el("button", { type: "button", class: "row-main", onclick: onOpen }, [
         iconName ? el("span", { class: "row-icon" }, icon(iconName)) : null,
         el("span", { class: "row-text" }, [
-          el("span", { class: "row-title", text: title }),
+          el("span", { class: "row-head" }, [
+            el("span", { class: "row-title", text: title }),
+            time ? el("span", { class: "row-time", text: time }) : null,
+          ]),
           meta.length ? el("span", { class: "row-meta" }, meta.map(metaItem)) : null,
         ]),
-        time ? el("span", { class: "row-time", text: time }) : null,
       ]),
-      actions.length
-        ? el("button", { type: "button", class: "row-more icon-btn", "aria-label": moreLabel, "aria-haspopup": "dialog", onclick: (event) => openSheet(title, actions, event.currentTarget) }, icon("more"))
-        : null,
+      more,
     ]);
+    // A long press (Android) or secondary click opens the same labeled menu.
+    if (more) item.addEventListener("contextmenu", (event) => { event.preventDefault(); openSheet(title, actions, more); });
+    return item;
   }
   function sessionRow(item, showScope) {
     const title = item.title || t("untitled");
@@ -536,16 +608,19 @@
 
     return show(
       archived ? "home:archived" : "home",
-      archived ? header({ title: t("archivedView"), backTo: "#/projects" }) : header({ title: t("appTitle"), root: true }),
+      header(archived ? { title: t("archivedView"), backTo: "#/projects", large: true } : { title: t("appTitle"), large: true }),
       searchField("home"),
       ...parts,
       browsing ? el("div", { class: "footer" }, [
         archivedLink("#/archived"),
-        el("button", {
-          type: "button",
-          class: "link signout",
-          onclick: (event) => openSheet(t("signOutConfirm"), [{ icon: "logout", label: t("signOut"), danger: true, run: signOut }], event.currentTarget),
-        }, [icon("logout", "sm"), el("span", { text: t("signOut") })]),
+        el("div", { class: "device" }, [
+          state.me?.label ? el("p", { class: "device-name" }, [icon("pair", "xs"), el("span", { text: t("thisDevice", { name: state.me.label }) })]) : null,
+          el("button", {
+            type: "button",
+            class: "link signout",
+            onclick: (event) => openSheet(t("signOutConfirm"), [{ icon: "logout", label: t("signOut"), danger: true, run: signOut }], event.currentTarget),
+          }, [icon("logout", "sm"), el("span", { text: t("signOut") })]),
+        ]),
       ]) : null,
       browsing ? newConversationButton((button) => void pickNewConversation(button)) : null,
       browsing ? el("div", { class: "fab-spacer", "aria-hidden": "true" }) : null,
@@ -569,8 +644,8 @@
     return show(
       `sessions:${projectId}${archived ? ":archived" : ""}`,
       archived
-        ? header({ title: t("archivedView"), backTo: projectHash(projectId), subtitle: [{ icon: projectId === TEMP ? "temporary" : "folder", text: name }] })
-        : header({ title: name, backTo: "#/projects" }),
+        ? header({ title: t("archivedView"), backTo: projectHash(projectId), subtitle: [{ icon: projectId === TEMP ? "temporary" : "folder", text: name }], large: true })
+        : header({ title: name, backTo: "#/projects", large: true }),
       searchField("sessions"),
       archived ? null : newConversationButton((button) => void createSession(projectId, button)),
       list,
@@ -612,20 +687,20 @@
     onclick: (event) => void copyWithFeedback(text, event.currentTarget),
   }, icon("copy", "sm")));
 
-  function transcript(items, open, running) {
+  function transcript(items, open, running, mark) {
     const nodes = [];
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
       if (item.role === "tool") {
         const run = [item];
         while (items[i + 1]?.role === "tool") run.push(items[++i]);
-        nodes.push(steps(run, open));
+        nodes.push(mark(steps(run, open), `tool:${run[0].id}`));
         continue;
       }
-      nodes.push(message(item));
+      nodes.push(mark(message(item), item.id, item));
       // Copy sits under the last answer of each exchange.
       const next = items.slice(i + 1).find((candidate) => candidate.role !== "tool");
-      if (item.role === "assistant" && item.text && (next ? next.role === "user" : !running)) nodes.push(copyButton(item.text));
+      if (item.role === "assistant" && item.text && (next ? next.role === "user" : !running)) nodes.push(mark(copyButton(item.text), `copy:${item.id}`));
     }
     return nodes;
   }
@@ -655,7 +730,8 @@
     return left;
   }
 
-  const chatState = { sessionId: null, older: [], olderCursor: undefined, phase: null, open: new Set(), items: [] };
+  const freshChat = () => ({ older: [], olderCursor: undefined, phase: null, open: new Set(), items: [], keys: null, pendingTexts: new Set(), hadLive: false });
+  const chatState = { sessionId: null, ...freshChat() };
   const phaseText = { running: "running", "waiting-approval": "waitingApproval", "waiting-input": "waitingInput", idle: "replyDone" };
   const nearBottom = () => {
     const scroller = document.scrollingElement;
@@ -665,10 +741,9 @@
     const jump = document.getElementById("jump-latest");
     if (jump) jump.hidden = nearBottom();
   }
-  window.addEventListener("scroll", syncJump, { passive: true });
 
   async function renderChat(token, sessionId, refresh) {
-    if (chatState.sessionId !== sessionId) Object.assign(chatState, { sessionId, older: [], olderCursor: undefined, phase: null, open: new Set(), items: [] });
+    if (chatState.sessionId !== sessionId) Object.assign(chatState, { sessionId, ...freshChat() });
     const conversation = await api("GET", `/v1/sessions/${enc(sessionId)}`);
     if (token !== state.renderToken) return undefined;
     const { session } = conversation;
@@ -708,12 +783,24 @@
         },
       }));
     }
-    messages.append(...transcript(items, chatState.open, running));
-    for (const entry of pending) messages.append(message({ role: "user", text: entry.text }, "pending"));
-    if (conversation.liveText) messages.append(message({ role: "assistant", text: conversation.liveText }, "live"));
+    // Only what arrives while the reader watches fades in. The first paint,
+    // refreshes, a pending turn yielding to its Host record and a streamed
+    // answer settling into its record all stay still.
+    const previous = chatState.keys;
+    const keys = new Set();
+    const mark = (node, key, item) => {
+      keys.add(key);
+      const settled = item && ((item.role === "user" && chatState.pendingTexts.has(item.text.trim())) || (item.role === "assistant" && chatState.hadLive));
+      if (previous && !previous.has(key) && !settled) node.classList.add("enter");
+      return node;
+    };
+    messages.append(...transcript(items, chatState.open, running, mark));
+    for (const entry of pending) messages.append(mark(message({ role: "user", text: entry.text }, "pending"), `pending:${entry.text}`));
+    if (conversation.liveText) messages.append(mark(message({ role: "assistant", text: conversation.liveText }, "live"), "live"));
     else if (running && !conversation.waiting) {
-      messages.append(el("div", { class: "working" }, [el("span", { class: "working-dots", "aria-hidden": "true" }, [el("i"), el("i"), el("i")]), el("span", { text: t("working") })]));
+      messages.append(mark(el("div", { class: "working" }, el("span", { class: "shimmer", text: t("working") })), "working"));
     }
+    Object.assign(chatState, { keys, pendingTexts: new Set(pending.map((entry) => entry.text)), hadLive: Boolean(conversation.liveText) });
     if (!items.length && !pending.length && !conversation.liveText && !running) {
       messages.append(el("div", { class: "chat-empty" }, [
         icon(session.projectId ? "folder" : "temporary", "lg"),
@@ -768,7 +855,7 @@
       class: "icon-btn jump",
       hidden: true,
       "aria-label": t("jumpLatest"),
-      onclick: () => window.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" }),
+      onclick: () => window.scrollTo({ top: scroller.scrollHeight, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }),
     }, icon("down", "sm"));
     const dock = el("div", { class: "chat-dock" }, [jump, ...notices, queue, composer]);
     const changed = show(`chat:${sessionId}`, head, messages, dock);
@@ -835,7 +922,8 @@
       fit();
       sync();
       document.querySelector(".chat-empty")?.remove();
-      document.querySelector(".messages")?.append(message({ role: "user", text }, "pending"));
+      document.querySelector(".messages")?.append(message({ role: "user", text }, "pending enter"));
+      chatState.keys?.add(`pending:${text}`);
       document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight;
       try {
         await api("POST", `/v1/sessions/${enc(sessionId)}/turns`, { text, queue: running }, newKey());
@@ -884,6 +972,7 @@
       }
       // Move screen-reader focus to the new page title, never into a field.
       if (changed) document.getElementById("view-title")?.focus({ preventScroll: true });
+      syncScrolled();
     } catch (error) {
       if (token !== state.renderToken) return;
       if (error instanceof ApiError && error.code === "NOT_FOUND" && route.view !== "home") {
@@ -898,17 +987,22 @@
   }
 
   function skeleton(route) {
-    const bar = (cls) => el("span", { class: `skeleton ${cls}` });
-    const body = route.view === "chat"
-      ? el("div", { class: "messages skeleton-chat" }, [bar("bubble user"), bar("line wide"), bar("line"), bar("line short"), bar("bubble user narrow"), bar("line wide"), bar("line")])
-      : el("ul", { class: "list skeleton-list" }, Array.from({ length: 6 }, () => el("li", { class: "skeleton-row" }, [bar("title"), bar("meta")])));
-    return el("div", { class: "skeleton-page", "aria-busy": "true", "aria-label": t("loading") }, [
-      el("div", { class: "header" + (route.view === "home" ? " root" : "") }, [
-        route.view === "home" ? null : el("button", { type: "button", class: "icon-btn", "aria-label": t("back"), onclick: () => back("#/projects") }, icon("back")),
-        el("div", { class: "header-title" }, bar("heading")),
-      ]),
-      body,
-    ]);
+    const block = (cls) => el("span", { class: `skeleton ${cls}` });
+    const backButton = route.view === "home" && !route.archived
+      ? null
+      : el("button", { type: "button", class: "icon-btn back", "aria-label": t("back"), onclick: () => back("#/projects") }, icon("back"));
+    const parts = route.view === "chat"
+      ? [
+          el("div", { class: "header" }, [backButton, el("div", { class: "header-title" }, [block("heading"), block("sub")])]),
+          el("div", { class: "messages skeleton-chat" }, [block("bubble"), block("line wide"), block("line"), block("line short"), block("bubble narrow"), block("line wide"), block("line")]),
+        ]
+      : [
+          el("div", { class: "header large" }, backButton),
+          el("div", { class: "large-title" }, block("title-lg")),
+          el("div", { class: "toolbar" }, block("field")),
+          el("ul", { class: "list skeleton-list" }, Array.from({ length: 6 }, () => el("li", { class: "skeleton-row" }, [block("title"), block("meta")]))),
+        ];
+    return el("div", { class: "skeleton-page", "aria-busy": "true", "aria-label": t("loading") }, parts);
   }
 
   // ---------- pairing ----------
@@ -925,7 +1019,7 @@
     setOffline(false);
     const code = el("input", {
       id: "pair-code", class: "code", inputmode: "numeric", autocomplete: "one-time-code",
-      maxlength: "32", required: true, value: prefill, "aria-describedby": "pair-status",
+      maxlength: "32", required: true, value: prefill, placeholder: "000000", "aria-describedby": "pair-status",
     });
     const label = el("input", { id: "pair-label", maxlength: "60", autocomplete: "off", value: /iPhone|iPad|Android/.exec(navigator.userAgent)?.[0] || "Browser" });
     const status = el("p", { id: "pair-status", class: "pair-status", role: "status", text: message || "" });

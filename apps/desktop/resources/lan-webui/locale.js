@@ -16,6 +16,7 @@ window.LAN_LOCALES = {
     projects: "Projects",
     temporary: "Temporary conversations",
     search: "Search",
+    clearSearch: "Clear search",
     showArchived: "Archived",
     noProjects: "No local projects.",
     noMatches: "Nothing matches.",
@@ -78,6 +79,7 @@ window.LAN_LOCALES = {
     readOnlySession: "Continue this conversation on the computer.",
     offline: "Connection lost. Reconnecting…",
     signOut: "Disconnect this device",
+    thisDevice: "This device: {name}",
     errors: {
       BUSY: "A reply is still running. Queue your message or stop it first.",
       MODEL_BUSY: "Wait for the current and queued work to finish before changing models.",
@@ -111,6 +113,7 @@ window.LAN_LOCALES = {
     projects: "项目",
     temporary: "临时会话",
     search: "搜索",
+    clearSearch: "清除搜索",
     showArchived: "已归档",
     noProjects: "没有本机项目。",
     noMatches: "没有匹配项。",
@@ -173,6 +176,7 @@ window.LAN_LOCALES = {
     readOnlySession: "请在电脑上继续该会话。",
     offline: "连接已断开，正在重连…",
     signOut: "断开此设备",
+    thisDevice: "本设备：{name}",
     errors: {
       BUSY: "回复仍在进行。可以排队发送，或先停止。",
       MODEL_BUSY: "请等当前任务和排队任务结束后再切换模型。",

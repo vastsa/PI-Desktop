@@ -274,22 +274,31 @@ and devices (16); never silently truncate input.
   floating layers (action sheet, toast, status pill), Lucide icons, and the
   shared radius, type and motion ramps, mirrored as tokens in the page's own
   stylesheet. Light or dark follows the phone's system preference. Phone-only
-  deviations: 16 px form fields so iOS does not zoom on focus, a New session
-  capsule pinned within thumb reach, a floating composer pill, and rename in
-  the action sheet instead of a native prompt. A live refresh keeps the
-  focused field, caret and draft; Back restores the list scroll position.
+  deviations: 16 px reading size for answers, rows and form fields (iOS does
+  not zoom a 16 px field on focus), a New session capsule pinned within thumb
+  reach, a floating composer pill, list pages that lead with a large title
+  handing over to the bar on scroll, and rename in the action sheet instead of
+  a native prompt. Floating layers enter with a fade and at most 8 px of
+  travel, so their actions are tappable from the first frame; a sheet can also
+  be pulled down to dismiss. A live refresh keeps the focused field, caret and
+  draft; Back restores the list scroll position and closes any open menu.
+  Wider windows keep one readable column under a full-width bar, move New
+  conversation into the bar, and show sheets as centred dialogs.
 - Home leads with Recent conversations across projects (running work always
   listed), then Projects with Temporary first. One search covers project names
-  and conversation titles. Archived items sit behind one Archived entry per
-  list (`#/archived`, `#/p/:id/archived`) instead of a sticky filter. Home's New
-  conversation asks only for the destination. Disconnecting this device asks
-  for confirmation.
+  and conversation titles and can be cleared in place. Row menus also open on
+  long-press or secondary click. Archived items sit behind one Archived entry
+  per list (`#/archived`, `#/p/:id/archived`) instead of a sticky filter.
+  Home's New conversation asks only for the destination. Home names the paired
+  device above Disconnect, and disconnecting asks for confirmation.
 - A conversation names its project and run state in the header and its model
   in the composer (or the header when it is not editable). An empty one shows
   where it will run. Answers render the safe Markdown subset
   (no HTML, no remote images, only `http(s)` links opening in a new tab);
   consecutive tool calls fold into one step summary; code blocks and the last
-  answer of each exchange offer Copy (with a non-secure-context fallback). A
+  answer of each exchange offer Copy, confirmed on the control itself (with a
+  non-secure-context fallback); content that arrives while the reader watches
+  fades in, while refreshes and settling records stay still. A
   sent message appears immediately and yields to the Host record, the queue
   entry, or a 30 s timeout; a failed send restores the text to the draft.
   While a reply runs without streamed text a working cue shows; the composer
