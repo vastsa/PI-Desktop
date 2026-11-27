@@ -53,11 +53,13 @@
   The source document, Skill files and link targets are unchanged, with no new
   Python cache files. The disabled extension leaves the user Skill available.
   Repeat for both the published 0.23.0 DEB and the earlier 0.23.1 candidate
-  with the old extension enabled for one project. The completed conversation,
-  theme and user Skill survive each upgrade; the old extension disappears
-  and the new runtime starts off with its default scope. The runbook's
-  separate loopback fixture compares the same remote Bash path before and
-  after enabling Office Runtime locally.
+  with the old extension enabled for one project. Reuse the isolated home
+  and package installation through each upgrade. The managed storage
+  locations, browser state, non-default theme, existing project file,
+  completed conversation and user Skill survive in place. The old extension
+  disappears and the new runtime starts off with its default scope. The
+  runbook's separate loopback fixture compares the same remote Bash path
+  before and after enabling Office Runtime locally.
 - **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#office-runtime-and-a-self-installed-word-skill).
 - **Acceptance criterion**: A, C, E, G, Quality.
 - **Milestone**: M6+ (Pie Code 0.23.1).

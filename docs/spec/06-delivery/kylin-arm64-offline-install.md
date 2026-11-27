@@ -191,12 +191,17 @@ session in the same project after another restart. For upgrades, use two
 separate disposable installations with the same original docx Skill. Run the
 same command with `--seed-0.23.0` against the published 0.23.0 DEB and with
 `--seed-legacy` against the old 0.23.1 DEB containing Offline Office. For each
-run, set `PI_CODE_E2E_UPGRADE_STATE` to a new disposable directory. The legacy
-seed enables the old extension for one project. Install the final DEB over
-each source and run without a seed flag, keeping the corresponding state
-directory. Verify the saved theme, completed conversation and user Skill
-survive. The legacy extension is gone and Office Runtime starts off with
-its default scope.
+seed, set `PI_CODE_E2E_UPGRADE_STATE` to a path that does not yet exist in
+the disposable installation. The harness uses this directory as its
+isolated home and keeps it for both invocations. It writes a normal managed
+storage preference with non-default locations and seeds a light theme,
+browser state, a project file, a completed conversation, and a user Skill.
+The legacy seed also enables the old extension for that project. Install
+the final DEB over each source and rerun without a seed flag, keeping the
+same home, package database, and installation path. The verification checks
+the original storage locations and user data in place. The legacy extension
+is gone and Office Runtime starts off with its default scope. Keep the
+disposable directory until the run output has been recorded.
 
 Run the separate loopback remote-workspace fixture after `pnpm build:js`, using
 the inspected package's resources and its matching Host binary:
@@ -398,9 +403,11 @@ the packaged application sources unchanged.
   (76,043,636 bytes smaller than the 381,299,452-byte reference).
 - SHA-256: `ae9605579a88faa6f54d8602512c9ff5b700dd0fa5f36c0780bebfe978301300`.
   This matches the DEB used for the clean install and both upgrades.
-- Office harness base: the same maintenance commit. Script blobs:
-  `b7b40874030b3facc33bdc5812a9d94ee951af03` for the clean install and
-  `e36919a441979a0dc39ec4efa8a5fe639a438a25` for the final upgrade reruns.
+- Office harness base: the same maintenance commit. The clean installation
+  and both in-place upgrades used the checked-in
+  `scripts/e2e-offline-office.mjs` (Git blob
+  `21bfd40d8bc2eb6ea8944da6dc0e1857940884db`) and shared package outputs from
+  that base. Reproduce with the Word and other Skill commands above.
 - Upgrade source SHA-256: published 0.23.0
   `4078e13c28d90123e65440a6ae2808c1d839391297328d26f60721e9ff7e4fbb`;
   legacy 0.23.1 `3770cc9f977d7e33c0b8b3b067ccc0368d80fd6333ffb74ea07a0c95f48d3e44`.
@@ -415,8 +422,28 @@ the packaged application sources unchanged.
 | Package inspection | Passed. Checked the actual DEB, `app.asar`, and the nested dateutil time-zone archive. The package carries the disabled Office Runtime extension without contributed Skills, old launchers, templates, or the WX offline archive. Verified 523 ARM64 ELF files at glibc 2.31 or below; optional microphone add-ons are excluded from that count. |
 | Office Skills | Passed. All five original Skills ran independently through local Agent sessions with the usual Bash denial and approval flow. Readback covered editable DOCX and PPTX, thumbnails, XLSX formula caches of 250 and 260, ordered PDF merge and all three Office exports, and WX conversion audits and independent review. Inputs and supplied Skill files were preserved. |
 | Runtime scope and network | Passed. Verified default off, Everywhere including an unbound session, selected projects and switching, restart, disablement, and matching terminal environment. System Python, glibc, and system-shell PATH matched before and after. The Word process tree made only loopback requests; the checker rejected a separate non-loopback negative control. The remote Bash scope fixture passed in an isolated Debian 11 ARM64 container using this DEB's Host and resources. |
-| Upgrades | Passed from the published 0.23.0 and a legacy 0.23.1 candidate enabled for a project. Both retained the theme, completed conversation and original user Skill. The old extension was absent and the new runtime started disabled with an empty project list. Bash in the still-existing old project could not see the runtime. |
+| Upgrades | Passed in place from the published 0.23.0 and a legacy 0.23.1 candidate enabled for a project. Both retained non-default storage locations, browser state, the light theme, the existing project file, completed conversation and original user Skill. The legacy path used a relative state directory through a symbolic link. The old extension was absent, the new runtime started disabled with an empty project list, and Bash in the old project could not see the runtime. |
 | User plugins | Passed. Saved a setting from the plugin's configuration sheet, changed and reloaded the development source, and removed the plugin without deleting its source. The native file picker accepted versions 1.0.0 and 1.0.1 of the same local plugin ID; the replacement kept the selected project and stayed enabled. Uninstall removed the installed package from the plugin list. |
+
+Selected rerun output (the three installations printed the same DEB digest
+above, and the runner reported no failed steps):
+
+```text
+PASS clean-install
+PASS word
+PASS pptx
+PASS xlsx
+PASS pdf
+PASS wx
+PASS seed-0230
+PASS upgrade-install-0230
+PASS verify-0230
+PASS seed-legacy
+PASS upgrade-install-legacy
+PASS verify-legacy
+PASS process-tree network trace: only loopback requests (0 IPv6 route checks)
+PASS system-unchanged
+```
 
 JavaScript: 9,659 passed, 37 skipped, no failures. Host: 1,329 passed,
 one ignored, no failures. Desktop typecheck and lint passed. A pristine
