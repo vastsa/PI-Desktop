@@ -739,13 +739,20 @@ async function main() {
       });
       const ids = (messages) => messages.map((message) => message.id);
 
-      // One live branch, archived twice: the second archive must refresh the
-      // reference, not mint a variant.
+      // Create a real revision through regeneration, then restore it as the
+      // live branch. Stamping a prompt alone does not create a revision row.
       const first = randomUUID();
       const firstAnswer = randomUUID();
       const laterAnswer = randomUUID();
-      await append(user(first, "first prompt", first, 1, 1));
+      await append(user(first, "first prompt"));
       await append(assistant(firstAnswer, "first answer"));
+      await host.call("session.truncateFrom", { sessionId, fromMessageId: first });
+      await host.call("session.activateRevision", {
+        sessionId, rootUserId: first, revisionIndex: 1, prefix: [],
+      });
+
+      // Archiving the same live branch twice must refresh the reference,
+      // not mint another variant.
       const archived = await host.call("session.saveActiveRevision", { sessionId });
       await append(assistant(laterAnswer, "a later answer on the same branch"));
       const refreshed = await host.call("session.saveActiveRevision", { sessionId });

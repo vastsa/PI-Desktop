@@ -166,6 +166,8 @@ The minimum selection is:
   installed-layout artifact with an isolated profile.
 - Session-list refresh or model capability lookup: `pnpm test:e2e` and
   `pnpm test:e2e:boot`, including the synthetic large-list responsiveness check.
+- LAN WebUI pairing, navigation, chat, or model selection: `pnpm test:e2e:lan-webui`
+  on a runner with Electron and a display (Xvfb on Linux).
 - Settings/composer/plugin search theme surfaces: `pnpm build:js` followed by
   `pnpm test:e2e:theme-surfaces`.
 - Composer clipboard representation and text insertion: `pnpm test:e2e:composer-paste`.
@@ -335,6 +337,7 @@ identify the platform validation still needed.
 | Post-baseline local automation | E2E-220 |
 | Post-baseline local automation (MCP `pi_session_get` large compaction) | E2E-MCP-session-get-projects-large-compaction |
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232, E2E-REMOTE-HOST-settings-compact-inventory |
+| [LAN WebUI MVP](../01-product/03-lan-webui-mvp.md) (M6+, partially automated) | [LAN companion scenarios](e2e/live-and-remote.md#lan-webui-mvp-acceptance): E2E-269, E2E-270, E2E-271, E2E-272, E2E-273, E2E-274, E2E-275, E2E-276 |
 | Trusted extensions (R7 v1) | E2E-DIALOG-long-text-boundaries, E2E-241, E2E-242, E2E-HOOKS-prompt-chain, E2E-HOOKS-context-every-request, E2E-HOOKS-cancel-and-dispose, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-TRUSTED-EXTENSION-temporary-session-cwd-is-scratch, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list, E2E-PLUGIN-provider-catalog-add-service |
 | Trusted extensions (R7 v1 npm recovery) | E2E-PLUGIN-import-extension-recovers-missing-npm |
 | Post-MVP regression coverage (plugin tool dispatch) | E2E-PLUGIN-slow-tool-is-not-cut-off-by-host-dispatch |

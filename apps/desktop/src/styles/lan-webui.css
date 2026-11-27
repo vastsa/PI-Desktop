@@ -1,0 +1,366 @@
+/* LAN WebUI connection, devices and pairing dialogs. */
+.lan-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lan-address,
+.lan-device {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.lan-address {
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+
+.lan-address-icon,
+.lan-device-icon,
+.lan-dialog-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-secondary);
+}
+
+.lan-address-icon,
+.lan-dialog-icon {
+  background: color-mix(in oklab, var(--ds-accent) 12%, var(--ds-tile));
+  color: var(--ds-accent);
+}
+
+.lan-address-copy,
+.lan-device-copy {
+  display: grid;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+
+.lan-address-label,
+.lan-device-name {
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-compact);
+}
+
+.lan-address-url,
+.lan-pair-url-text {
+  color: var(--ds-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.lan-address-hint,
+.lan-device-meta,
+.lan-dialog-description,
+.lan-code-meta,
+.lan-pair-waiting {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-body);
+}
+
+.field-input.lan-port-input {
+  width: min(100%, 9ch);
+  min-height: var(--ds-settings-picker-height);
+  padding-block: 6px;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.lan-port-input.is-invalid {
+  outline: 1px solid var(--ds-error);
+}
+
+.lan-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-inline-start: 2px solid var(--ds-error);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--ds-error) 8%, transparent);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-body);
+}
+
+.lan-dialog-error {
+  margin: 0 20px 12px;
+}
+
+.lan-devices {
+  container-type: inline-size;
+  border-radius: var(--radius-md-plus);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lan-device + .lan-device {
+  border-block-start: 1px solid var(--ds-border-subtle);
+}
+
+.lan-device-actions,
+.lan-code-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.lan-devices-empty {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed var(--ds-border-default);
+  border-radius: inherit;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm-plus);
+  text-align: center;
+}
+
+.lan-devices-empty > svg {
+  flex: 0 0 auto;
+}
+
+@container (max-width: 380px) {
+  .lan-device {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .lan-device-actions {
+    grid-column: 2;
+  }
+}
+
+/* The shell keeps the title and actions visible while the contents scroll. */
+.overlay.lan-dialog-overlay {
+  padding: clamp(12px, 4vmin, 24px);
+}
+
+.dialog.lan-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 520px);
+  max-height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.lan-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 20px 16px;
+}
+
+.lan-dialog-icon {
+  flex: 0 0 auto;
+}
+
+.lan-dialog-heading {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lan-dialog-title {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-compact);
+}
+
+.lan-dialog-description {
+  margin: 4px 0 0;
+}
+
+.lan-dialog-close {
+  flex: 0 0 auto;
+}
+
+.lan-dialog button[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.lan-dialog-body {
+  min-height: 0;
+  padding: 4px 20px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 8px;
+}
+
+.lan-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+
+.lan-pair-content {
+  display: grid;
+  align-items: start;
+  gap: 16px;
+}
+
+.lan-pair-scan {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+}
+
+.lan-pair-scan p {
+  margin: 0;
+}
+
+.lan-pair-qr {
+  display: block;
+  width: 112px;
+  aspect-ratio: 1;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+/* A fixed light quiet zone keeps the code readable in both themes. */
+.lan-pair-qr rect { fill: var(--ds-qr-background); }
+.lan-pair-qr path { fill: var(--ds-qr-foreground); }
+
+@media (min-width: 560px) {
+  .lan-pair-content:has(> .lan-pair-scan) {
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+
+  .lan-pair-scan {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .lan-pair-qr { width: 136px; }
+}
+
+.lan-pair-steps {
+  display: grid;
+  gap: 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lan-pair-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.lan-pair-step-number {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-primary);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--font-weight-semibold);
+}
+
+.lan-pair-step-body {
+  min-width: 0;
+}
+
+.lan-pair-step-title {
+  margin: 2px 0 8px;
+  color: var(--ds-text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+}
+
+.lan-pair-url {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 8px 10px 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+}
+
+.lan-pair-url-text {
+  min-width: 0;
+}
+
+.lan-code {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(3px, 1vw, 8px);
+  max-width: 22rem;
+}
+
+.lan-code-digit {
+  display: grid;
+  min-height: 44px;
+  place-items: center;
+  padding-block: 4px;
+  border: 1px solid var(--ds-border-default);
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  color: var(--ds-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+.lan-code.is-expired .lan-code-digit {
+  color: var(--ds-text-secondary);
+}
+
+.lan-code-meta {
+  justify-content: space-between;
+  gap: 2px 8px;
+  max-width: 22rem;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lan-pair-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 0 0;
+}
+
+.lan-pair-waiting-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  background: var(--ds-success);
+}

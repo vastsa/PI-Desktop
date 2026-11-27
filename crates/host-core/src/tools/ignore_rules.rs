@@ -20,7 +20,8 @@ use std::path::{Path, PathBuf};
 pub const WORKSPACE_IGNORE_FILE: &str = ".pi-desktopignore";
 
 /// Exact file names on the security denylist (spec 15 §3).
-const SENSITIVE_FILE_NAMES: &[&str] = &["id_rsa", "id_ed25519", "credentials.json", ".env"];
+const SENSITIVE_FILE_NAMES: &[&str] =
+    &["id_rsa", "id_ed25519", "credentials.json", ".env", ".npmrc"];
 
 /// File-name suffixes on the security denylist (spec 15 §3).
 const SENSITIVE_SUFFIXES: &[&str] = &[".pem", ".key", ".p12", ".pfx"];
@@ -226,6 +227,7 @@ mod tests {
             "bundle.p12",
             "cert.pfx",
             "credentials.json",
+            ".npmrc",
         ] {
             assert!(is_sensitive_file_name(name), "{name} must be denied");
         }
@@ -254,9 +256,11 @@ mod tests {
     fn rg_args_keep_only_denylist_when_scoped() {
         let scoped = rg_args(Path::new("/nonexistent"), true);
         assert!(scoped.contains(&"!*.pem".to_string()));
+        assert!(scoped.contains(&"!.npmrc".to_string()));
         assert!(!scoped.contains(&"!node_modules".to_string()));
         let unscoped = rg_args(Path::new("/nonexistent"), false);
         assert!(unscoped.contains(&"!node_modules".to_string()));
         assert!(unscoped.contains(&"!*.log".to_string()));
+        assert!(unscoped.contains(&"!.npmrc".to_string()));
     }
 }

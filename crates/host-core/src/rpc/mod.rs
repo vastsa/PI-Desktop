@@ -12,6 +12,7 @@ mod review_actions_rpc;
 mod scheduled_rpc;
 mod scheduled_settings;
 mod scheduled_tools;
+mod session_configuration;
 mod session_display;
 mod todos;
 mod window_corner_rpc;
@@ -3062,51 +3063,7 @@ async fn handle_request(
             todos::get_from(&st, session_id)
         }
 
-        "session.configure" => {
-            let id = params
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
-            let mode = params
-                .get("mode")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| rpc_err(1002, "mode required", "INVALID_PARAMS"))?;
-            let thinking_level = thinking_level_param(&params)?;
-            let fast_mode = fast_mode_param(&params)?;
-            let st = state.lock().await;
-            let prepared = modes_rpc::prepare_configure(&st, id, mode, &params)?;
-            let session = sessions::configure_session_with_mode_snapshot(
-                &st.db,
-                id,
-                mode,
-                params.get("providerId").and_then(|v| v.as_str()),
-                params.get("modelId").and_then(|v| v.as_str()),
-                thinking_level.as_deref(),
-                params.get("permissionMode").and_then(|v| v.as_str()),
-                fast_mode,
-                prepared.snapshot_hash(),
-            )
-            .map_err(|e| {
-                let message = e.to_string();
-                if message.starts_with("PLAN_") {
-                    plan_rpc_err(message)
-                } else {
-                    rpc_err(1002, message, "INVALID_PARAMS")
-                }
-            })?
-            .ok_or_else(|| rpc_err(1007, "session not found", "NOT_FOUND"))?;
-            let paused_run = modes_rpc::finish_configure(&st, prepared)?;
-            let session = remote_tools::decorate_session(
-                &st.db,
-                serde_json::to_value(session)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?,
-            )?;
-            drop(st);
-            if let Some(run) = paused_run {
-                modes_rpc::notify(&tx, &run).await;
-            }
-            Ok(json!({ "session": session }))
-        }
+        "session.configure" => session_configuration::configure(&state, &tx, params).await,
         "session.delete" => {
             let id = params
                 .get("id")

@@ -41,6 +41,7 @@ import {
   pluginWorkPanelTab,
 } from "../../lib/work-panel-tabs";
 import { useAppStore } from "../../stores/app-store";
+import { subscribeLanCatalogSync } from "../lan-webui/lan-catalog-sync";
 import { useSidebarTransition } from "./useSidebarTransition";
 import { useStartupAnimation } from "./useStartupAnimation";
 import { useStartupWatchdog } from "./useStartupWatchdog";
@@ -818,6 +819,7 @@ export function useAppShellRuntime() {
         .catch(() => undefined);
     });
     const offRemoteInteractions = subscribeRemoteInteractions();
+    const offLanCatalog = subscribeLanCatalogSync();
     const offSessionsChanged = api.onSessionsChanged((event) => {
       const store = useAppStore.getState();
       const revealImportedProjects =
@@ -996,6 +998,7 @@ export function useAppShellRuntime() {
       offComposerSuggestion();
       offSessionsChanged();
       offRemoteInteractions();
+      offLanCatalog();
       offNotificationActivated();
       window.removeEventListener("keydown", onKey);
     };
