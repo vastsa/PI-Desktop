@@ -11,7 +11,8 @@
 //! that emits an event is the RPC layer, and the tests use a recorder.
 
 use super::*;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// What an install is doing right now.
@@ -99,6 +100,10 @@ pub(crate) trait InstallObserver {
     fn cancelled(&self) -> bool {
         false
     }
+
+    fn begin_install(&self) -> bool {
+        !self.cancelled()
+    }
 }
 
 /// An observer for a caller with no interface to report to.
@@ -108,55 +113,65 @@ impl InstallObserver for NoProgress {
     fn progress(&mut self, _event: InstallProgress) {}
 }
 
-/// A one-way flag the cancel action flips and the download loop reads.
+/// Cancellation and final installation compete for the same transition.
 #[derive(Clone, Default, Debug)]
-pub(crate) struct CancelToken(Arc<AtomicBool>);
+pub(crate) struct CancelToken(Arc<AtomicU8>);
+
+const PENDING: u8 = 0;
+const CANCELLED_STATE: u8 = 1;
+const INSTALLING: u8 = 2;
 
 impl CancelToken {
-    pub(crate) fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
+    pub(crate) fn cancel(&self) -> bool {
+        self.0
+            .compare_exchange(PENDING, CANCELLED_STATE, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    }
+
+    pub(crate) fn begin_install(&self) -> bool {
+        self.0
+            .compare_exchange(PENDING, INSTALLING, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
     }
 
     pub(crate) fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::SeqCst) == CANCELLED_STATE
     }
 }
 
-/// Slot the cancel RPC flips without taking the AppState lock.
-///
-/// `market.install` holds that lock for the whole download, so a cancel that
-/// waited on it would only run after the install finished. The token is an
-/// `Arc`, so this is a second handle to the same flag.
-static ACTIVE_CANCEL: OnceLock<Mutex<Option<CancelToken>>> = OnceLock::new();
+type ActiveInstalls = HashMap<usize, (String, CancelToken)>;
 
-fn active_cancel_slot() -> &'static Mutex<Option<CancelToken>> {
-    ACTIVE_CANCEL.get_or_init(|| Mutex::new(None))
+fn active_installs() -> std::sync::MutexGuard<'static, ActiveInstalls> {
+    static ACTIVE: OnceLock<Mutex<ActiveInstalls>> = OnceLock::new();
+    ACTIVE
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
 }
 
-pub(crate) fn arm_active_cancel(token: &CancelToken) {
-    *active_cancel_slot()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = Some(token.clone());
-}
+pub(crate) struct ActiveInstall(usize);
 
-pub(crate) fn disarm_active_cancel() {
-    *active_cancel_slot()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = None;
-}
-
-/// Flip the running install's cancel flag. Does not take AppState.
-pub(crate) fn cancel_active_install() -> bool {
-    let guard = active_cancel_slot()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    match guard.as_ref() {
-        Some(token) => {
-            token.cancel();
-            true
-        }
-        None => false,
+impl Drop for ActiveInstall {
+    fn drop(&mut self) {
+        active_installs().remove(&self.0);
     }
+}
+
+/// Call only while holding the authenticated owner's AppState lock.
+pub(crate) fn arm_active_cancel(owner: usize, id: &str, token: &CancelToken) -> ActiveInstall {
+    active_installs().insert(owner, (id.to_owned(), token.clone()));
+    ActiveInstall(owner)
+}
+
+pub(crate) fn has_active_install(owner: usize) -> bool {
+    active_installs().contains_key(&owner)
+}
+
+/// Flip only the matching install's flag without taking AppState.
+pub(crate) fn cancel_active_install(owner: usize, id: &str) -> bool {
+    active_installs()
+        .get(&owner)
+        .is_some_and(|(active_id, token)| active_id == id && token.cancel())
 }
 
 /// The error a cancelled install ends with.
@@ -320,13 +335,22 @@ mod tests {
 
     #[test]
     fn cancel_active_install_flips_the_armed_token() {
-        disarm_active_cancel();
-        assert!(!cancel_active_install(), "nothing is running");
+        let owner = 0;
+        let id = "demo.hello";
+        assert!(!cancel_active_install(owner, id), "nothing is running");
         let token = CancelToken::default();
-        arm_active_cancel(&token);
-        assert!(cancel_active_install());
+        let active = arm_active_cancel(owner, id, &token);
+        assert!(!cancel_active_install(owner + 1, id));
+        assert!(!cancel_active_install(owner, "demo.other"));
+        assert!(cancel_active_install(owner, id));
         assert!(token.is_cancelled());
-        disarm_active_cancel();
-        assert!(!cancel_active_install());
+        assert!(!token.begin_install());
+        assert!(!cancel_active_install(owner, id));
+        drop(active);
+        assert!(!has_active_install(owner));
+        let committed = CancelToken::default();
+        let _active = arm_active_cancel(owner, id, &committed);
+        assert!(committed.begin_install());
+        assert!(!cancel_active_install(owner, id));
     }
 }

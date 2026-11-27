@@ -25,12 +25,6 @@ pub struct PluginManager {
     pub(crate) bundled_ids: BTreeSet<String>,
     /// Catalog channel pinned by app settings.
     pub(crate) market_channel: MarketChannel,
-    /// Cancel token of the install currently running, when one is.
-    ///
-    /// The renderer's cancel action flips it and the download loop reads it.
-    /// Only one install runs at a time — the RPC that starts one holds the
-    /// state lock — so a single slot is enough.
-    pub(crate) install_cancel: Option<CancelToken>,
     /// Locale a row's display fields are resolved against.
     ///
     /// The desktop shell owns the app language — `settings.language`, or the
@@ -53,7 +47,6 @@ impl PluginManager {
             runtime: Vec::new(),
             bundled_ids: BTreeSet::new(),
             market_channel,
-            install_cancel: None,
             locale: "en".into(),
         };
         let _ = mgr.ensure_dirs();

@@ -212,7 +212,8 @@ impl PluginManager {
         };
         // The last safe point: after this the package is being written into the
         // plugin directory, and stopping half way is worse than finishing.
-        if report.cancelled() {
+        if !report.observer.begin_install() {
+            let _ = fs::remove_file(&package_path);
             return Err(report.failed(Vec::new(), anyhow!(super::progress::CANCELLED)));
         }
         report.phase(InstallPhase::Install);
