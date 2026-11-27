@@ -9,15 +9,18 @@ import { dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { bindingForCustomModel } from "../packages/shared/dist/model-catalog.js";
 import { IPC } from "../packages/shared/dist/protocol.js";
+import { verifyPdfSkillRecipes } from "./e2e/pdf-skill-recipes.mjs";
 import { waitFor } from "./e2e/wait.mjs";
 
 const appBin = process.env.PI_CODE_E2E_APP_BIN;
 const pptx = process.argv.includes("--pptx");
-const skillName = pptx ? "pptx" : "docx";
+const pdf = process.argv.includes("--pdf");
+assert.ok(!(pdf && pptx), "Choose one Office acceptance scenario.");
+const skillName = pdf ? "pdf" : pptx ? "pptx" : "docx";
 const sampleVariable = `PI_CODE_E2E_${skillName.toUpperCase()}_SKILL`;
 const sample = process.env[sampleVariable];
 assert.ok(appBin && sample, `Set PI_CODE_E2E_APP_BIN and ${sampleVariable} to the installed binary and original ${skillName} Skill directory.`);
-assert.ok(!pptx || (!process.argv.includes("--seed-legacy") && !process.env.PI_CODE_E2E_UPGRADE_STATE),
+assert.ok(skillName === "docx" || (!process.argv.includes("--seed-legacy") && !process.env.PI_CODE_E2E_UPGRADE_STATE),
   "Use the Word scenario for legacy upgrade verification.");
 assert.equal(process.platform + "/" + process.arch, "linux/arm64");
 assert.ok(Object.values(networkInterfaces()).flat().every((address) => address.internal),
@@ -99,7 +102,8 @@ const provider = createServer(async (req, res) => {
     const tool = steps[results.length];
     if (steps[0]?.name === "Skill" && results.length) {
       assert.ok(results[0].includes(`Location: ${join(skillPath, "SKILL.md")}`), results[0]);
-      assert.match(results[0], /scripts\/office\/unpack\.py/);
+      if (pdf) verifyPdfSkillRecipes(results[0]);
+      else assert.match(results[0], /scripts\/office\/unpack\.py/);
     }
     if (tool) assert.ok(tools.includes(tool.name), `Missing ${tool.name}`);
     const delta = tool ? { role: "assistant", tool_calls: [{
@@ -391,6 +395,125 @@ async function connectFixtureModel(app) {
   return configured.id;
 }
 
+// Independent one-page inputs with a real xref and predictable text.
+function plainPdf(text) {
+  const stream = `BT /F1 12 Tf 36 144 Td (${text}) Tj ET\n`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}endstream`,
+  ];
+  let document = "%PDF-1.4\n";
+  const entries = objects.map((object, index) => {
+    const offset = document.length;
+    document += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  return document + `xref\n0 6\n0000000000 65535 f \n${entries.join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${document.length}\n%%EOF\n`;
+}
+
+async function verifyPdf() {
+  await mkdir(workspace);
+  await installLinkedSkill();
+  const skillFiles = await snapshot(sample);
+  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  const pages = ["第一份 源文件.pdf", "第二份 源文件.pdf"];
+  const merged = "按序 合并.pdf";
+  const directory = "另存 PDF";
+  const office = [
+    { file: "独立 文档.docx", text: "文档验收", filter: "writer_pdf_Export" },
+    { file: "独立 演示.pptx", text: "演示验收", filter: "impress_pdf_Export" },
+    { file: "独立 表格.xlsx", text: "表格验收", filter: "calc_pdf_Export" },
+  ];
+  const outputPath = (file) => join(directory, file.replace(/\.[^.]+$/, ".pdf"));
+  await writeFile(join(workspace, pages[0]), plainPdf("First source page"));
+  await writeFile(join(workspace, pages[1]), plainPdf("Second source page"));
+  execFileSync(join(runtime, "node/bin/node"), ["-e", `
+const fs = require('node:fs/promises');
+const { Document, Packer, Paragraph } = require('docx');
+const PptxGenJS = require('pptxgenjs');
+const [word, wordText, deck, deckText] = process.argv.slice(1);
+const ppt = new PptxGenJS();
+ppt.addSlide().addText(deckText, { x: 1, y: 1, w: 7, h: 1 });
+Promise.all([
+  Packer.toBuffer(new Document({ sections: [{ children: [new Paragraph(wordText)] }] }))
+    .then(bytes => fs.writeFile(word, bytes)),
+  ppt.writeFile({ fileName: deck }),
+]).catch(error => { console.error(error); process.exitCode = 1; });
+`, office[0].file, office[0].text, office[1].file, office[1].text], {
+    cwd: workspace, env: { ...process.env, NODE_PATH: join(runtime, "node/lib/node_modules") },
+  });
+  execFileSync(join(runtime, "python/bin/python3"), ["-I", "-B", "-c", `
+import sys, xlsxwriter
+with xlsxwriter.Workbook(sys.argv[1]) as book:
+    book.add_worksheet().write("A1", sys.argv[2])
+`, office[2].file, office[2].text], { cwd: workspace });
+  const inputs = await snapshot(workspace);
+
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const app = await boot();
+  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
+  await discoverSkill(app);
+  const providerId = await connectFixtureModel(app);
+  await app.invoke(IPC.invoke.projectGroupCreate, { name: "PDF project", folders: [workspace] });
+  await selectOffice(app, "global");
+
+  const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
+  const python = (program, ...args) => `python -c ${[program, ...args].map(quote).join(" ")}`;
+  const extract = (file) => python(`
+import json, pypdf, sys
+print(json.dumps([pypdf.__file__, [p.extract_text().strip() for p in pypdf.PdfReader(sys.argv[1]).pages]]))
+`, file);
+  const merge = python(`
+import pypdf, sys
+writer = pypdf.PdfWriter()
+for source in sys.argv[2:]:
+    for page in pypdf.PdfReader(source).pages:
+        writer.add_page(page)
+with open(sys.argv[1], "xb") as output:
+    writer.write(output)
+`, merged, pages[1], pages[0]); // Deliberately reverse the source order.
+  const exportOffice = [
+    `mkdir -- ${quote(directory)}`,
+    ...office.flatMap(({ file, filter }) => [
+      `soffice --headless --convert-to pdf:${filter} --outdir ${quote(directory)} ${quote(file)}`,
+      `test -s ${quote(outputPath(file))}`,
+    ]),
+  ].join(" && ");
+  const absent = async () => {
+    for (const name of [merged, directory]) await assert.rejects(stat(join(workspace, name)), { code: "ENOENT" });
+  };
+  const { results: denied } = await run("Deny PDF writes.", [bash(`${merge} && ${exportOffice}`)], { deny: true });
+  assert.match(denied[0], /denied|rejected/i);
+  await absent();
+
+  function readPages(result) {
+    const [module, text] = JSON.parse(stdout(result));
+    assert.ok(module.startsWith(runtime + "/python/"), `pypdf resolved outside Office Runtime: ${module}`);
+    return text;
+  }
+  const { results: pdfResults } = await run("Use the installed PDF Skill to extract and merge.", [
+    loadSkill(), bash(extract(pages[0])), bash(merge), bash(extract(merged)),
+  ]);
+  assert.deepEqual(readPages(pdfResults[1]), ["First source page"]);
+  stdout(pdfResults[2]);
+  assert.deepEqual(readPages(pdfResults[3]), ["Second source page", "First source page"]);
+
+  const { results: exports } = await run("Export the three independent Office inputs to PDF.", [
+    bash("command -v soffice"), bash(exportOffice), ...office.map(({ file }) => bash(extract(outputPath(file)))),
+  ]);
+  assert.equal(stdout(exports[0]).trim(), join(runtime, "bin/soffice"));
+  stdout(exports[1]);
+  for (const [index, { text }] of office.entries()) assert.deepEqual(readPages(exports[index + 2]), [text]);
+  for (const [name, bytes] of Object.entries(inputs)) assert.deepEqual(await readFile(join(workspace, name)), bytes);
+  assert.equal(await readlink(skillPath), skillLink);
+  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  console.log("PASS: original PDF Skill, Bash denial, text extraction, ordered merge, Word/PowerPoint/Excel PDF readback and source preservation.");
+}
+
 async function verifyPptx() {
   const source = "原始 演示.pptx";
   const fresh = "新建 演示.pptx";
@@ -641,6 +764,7 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
 
 try {
   if (process.argv.includes("--seed-legacy")) await seedLegacy();
+  else if (pdf) await verifyPdf();
   else if (pptx) await verifyPptx();
   else await verifyWord();
 } catch (error) {
