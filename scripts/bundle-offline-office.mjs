@@ -8,7 +8,7 @@ const plugin = new URL("../apps/desktop/resources/office-runtime/", import.meta.
 const ARM64 = 3; // electron-builder's Arch.arm64.
 const stdlib = "python/lib/python3.12";
 const site = stdlib + "/site-packages";
-const runtimeCommands = ["bin/soffice", "bin/pdftoppm", "bin/office-python", "libexec/timeout"];
+const runtimeCommands = ["bin/soffice", "bin/pdftoppm", "bin/python", "bin/office-python", "libexec/timeout"];
 const executables = ["node/bin/node", "python/bin/python3.12"];
 const nativeMetadata = "metadata/native-office";
 const nativeRuntime = ["libreoffice", "poppler", nativeMetadata];
@@ -129,7 +129,7 @@ async function verifyNativeNotices(runtime) {
 
 export async function verifyOfflineOfficeRuntime(runtime) {
   await verifyRuntimeLinks(runtime, true);
-  for (const executable of [...executables, "python/bin/python", "python/bin/python3",
+  for (const executable of [...executables, "python/bin/python", "python/bin/python3", "bin/python3",
     "libreoffice/program/oosplash", "poppler/bin/pdftoppm", ...runtimeCommands]) {
     await access(join(runtime, executable), constants.X_OK);
   }
@@ -226,6 +226,7 @@ export default async function bundleOfflineOffice(context, runtime = process.env
   }
   await symlink("python3.12", join(output, "python/bin/python"));
   await symlink("python3.12", join(output, "python/bin/python3"));
+  await symlink("python", join(output, "bin/python3"));
   await verifyOfflineOfficeRuntime(output);
   await cp(plugin, join(resources, "plugins", "pie.office-runtime"), { recursive: true });
 }

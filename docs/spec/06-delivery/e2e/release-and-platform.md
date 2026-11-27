@@ -93,7 +93,8 @@
   `PI_CODE_E2E_APP_BIN` and `PI_CODE_E2E_XLSX_SKILL`. Enable Office Runtime
   from Extensions. Deny a Bash write, then approve the local workflow: load
   the Skill, analyze the source with pandas, and create and save a copy using
-  openpyxl. Approve the Skill's original `scripts/recalc.py` for each output.
+  openpyxl. Approve the original `python scripts/recalc.py` workflow for each
+  output without setting a LibreOffice profile or using a different command.
 - **Expected**: No denied output is written. The two-sheet workbooks have
   Chinese names with spaces. Their formulas, untouched sheet and sample
   styles survive. Formula caches are empty before the explicit recalc;

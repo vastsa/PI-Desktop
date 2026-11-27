@@ -173,6 +173,30 @@ test("soffice can reuse the Bash-owned home across separate calls", { skip: proc
   });
 });
 
+test("ordinary Python isolates the Excel Skill's recalculation without redirecting other scripts", { skip: process.platform === "win32" }, async () => {
+  await withRuntime(async ({ put, bundle, resources, runtime, runtimeProfiles }) => {
+    await put("python/bin/python3.12", "#!/bin/sh\nprintf '%s\\n' \"$HOME\"\n", 0o755);
+    await put("user Excel Skill/SKILL.md", "---\nname: xlsx\n---\n");
+    await put("user Excel Skill/scripts/recalc.py");
+    await put("user Excel Skill/scripts/office/soffice.py");
+    await put("other/scripts/recalc.py");
+    await bundle();
+    const packaged = join(resources, "office-runtime");
+    const home = join(runtime, "real home");
+    const run = (command, cwd, script) => execFileSync("/bin/bash", ["-c", `exec ${command} "$1"`, "bash", script], {
+      cwd, encoding: "utf8", env: { ...process.env, HOME: home, PI_OFFICE_RUNTIME_PROFILES: runtimeProfiles,
+        PATH: `${packaged}/bin:${packaged}/python/bin:${process.env.PATH}` },
+    }).trimEnd();
+    const skill = join(runtime, "user Excel Skill");
+    const first = run("python", skill, "scripts/recalc.py");
+    const second = run("python3", runtime, join(skill, "scripts/recalc.py"));
+    assert.equal(dirname(first), runtimeProfiles);
+    assert.equal(dirname(second), runtimeProfiles);
+    assert.notEqual(first, second);
+    assert.equal(run("python", join(runtime, "other"), "scripts/recalc.py"), home);
+  });
+});
+
 test("the Office Python timeout keeps subprocesses in the Bash runner's group", { skip: process.platform !== "linux" }, async () => {
   await withRuntime(async ({ put, bundle, resources, runtimeProfiles }) => {
     await put("python/bin/python3.12", "#!/bin/sh\nexec timeout 5 sh -c 'ps -o pgid= -p \"$$\"'\n", 0o755);

@@ -69,6 +69,10 @@ pub(super) fn configure(
         "node/bin/node",
         "python/bin/python",
         "python/bin/python3",
+        "bin/python",
+        "bin/python3",
+        "bin/office-python",
+        "libexec/timeout",
         "bin/soffice",
         "bin/pdftoppm",
         "libreoffice/program/oosplash",
@@ -81,10 +85,17 @@ pub(super) fn configure(
     for name in [
         "node/lib/node_modules/docx/package.json",
         "node/lib/node_modules/pptxgenjs/package.json",
+        "libreoffice/program/libsclo.so",
+        "libreoffice/presets/basic/script.xlc",
+        "libreoffice/presets/basic/Standard/script.xlb",
         "python/lib/python3.12/site-packages/PIL/__init__.py",
+        "python/lib/python3.12/site-packages/dateutil/__init__.py",
         "python/lib/python3.12/site-packages/defusedxml/__init__.py",
+        "python/lib/python3.12/site-packages/et_xmlfile/__init__.py",
         "python/lib/python3.12/site-packages/lxml/__init__.py",
         "python/lib/python3.12/site-packages/markitdown/__init__.py",
+        "python/lib/python3.12/site-packages/openpyxl/__init__.py",
+        "python/lib/python3.12/site-packages/pandas/__init__.py",
     ] {
         if !runtime.join(name).is_file() {
             return Err(failed(name));
@@ -116,7 +127,7 @@ pub(super) fn configure(
         profiles.0.to_string_lossy().into_owned(),
     ));
     command.insert_str(0, concat!(
-        "export PATH=\"$PI_OFFICE_RUNTIME_ROOT/node/bin:$PI_OFFICE_RUNTIME_ROOT/python/bin:$PI_OFFICE_RUNTIME_ROOT/bin${PATH:+:$PATH}\"\n",
+        "export PATH=\"$PI_OFFICE_RUNTIME_ROOT/node/bin:$PI_OFFICE_RUNTIME_ROOT/bin:$PI_OFFICE_RUNTIME_ROOT/python/bin${PATH:+:$PATH}\"\n",
         "export NODE_PATH=\"$PI_OFFICE_RUNTIME_ROOT/node/lib/node_modules${NODE_PATH:+:$NODE_PATH}\"\n",
         // Importing scripts from the user's Skill must not write beside them.
         "export PYTHONDONTWRITEBYTECODE=1\n",

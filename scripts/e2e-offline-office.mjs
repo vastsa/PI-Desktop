@@ -393,6 +393,23 @@ async function connectFixtureModel(app) {
   return configured.id;
 }
 
+async function startDocumentScenario(projectName) {
+  await mkdir(workspace);
+  await installLinkedSkill();
+  const skillFiles = await snapshot(sample);
+  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const app = await boot();
+  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
+  await discoverSkill(app);
+  const providerId = await connectFixtureModel(app);
+  await app.invoke(IPC.invoke.projectGroupCreate, { name: projectName, folders: [workspace] });
+  await selectOffice(app, "global");
+  const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
+  return { run, skillFiles };
+}
+
 async function verifyPptx() {
   const source = "原始 演示.pptx";
   const fresh = "新建 演示.pptx";
@@ -401,10 +418,7 @@ async function verifyPptx() {
   const updatedTitle = "另存后的首页";
   const newTitle = "新建可编辑演示";
   const secondTitle = "第二页保持原样";
-  await mkdir(workspace);
-  await installLinkedSkill();
-  const skillFiles = await snapshot(sample);
-  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  const { run, skillFiles } = await startDocumentScenario("PPT project");
   await writeFile(join(workspace, "make-ppt.cjs"), `
 const PptxGenJS = require('pptxgenjs');
 const fs = require('node:fs/promises');
@@ -419,16 +433,6 @@ async function main() {
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
 `);
-  provider.listen(0, "127.0.0.1");
-  await once(provider, "listening");
-  const app = await boot();
-  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
-  await discoverSkill(app);
-  const providerId = await connectFixtureModel(app);
-  await app.invoke(IPC.invoke.projectGroupCreate, { name: "PPT project", folders: [workspace] });
-  await selectOffice(app, "global");
-
-  const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
   const make = (file, title) => `node make-ppt.cjs ${quote(file)} ${quote(title)}`;
   const extract = (file) => `python -m markitdown ${quote(file)}`;
   const script = (file) => quote(join(skillPath, "scripts", file));
@@ -500,10 +504,7 @@ async function verifyXlsx() {
   const source = "原始 工作簿.xlsx";
   const fresh = "新建 工作簿.xlsx";
   const copy = "另存 工作簿.xlsx";
-  await mkdir(workspace);
-  await installLinkedSkill();
-  const skillFiles = await snapshot(sample);
-  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  const { run, skillFiles } = await startDocumentScenario("Excel project");
   const abs = (file) => join(workspace, file);
   await writeFile(abs("workbook.py"), `
 import sys
@@ -528,16 +529,6 @@ sheet["B3"] = int(second)
 with open(path, "xb") as output:
     book.save(output)
 `);
-  provider.listen(0, "127.0.0.1");
-  await once(provider, "listening");
-  const app = await boot();
-  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
-  await discoverSkill(app);
-  const providerId = await connectFixtureModel(app);
-  await app.invoke(IPC.invoke.projectGroupCreate, { name: "Excel project", folders: [workspace] });
-  await selectOffice(app, "global");
-
-  const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
   const make = (file, amount, from = "") => `python workbook.py ${quote(file)} ${amount}${from ? " " + quote(from) : ""}`;
   const absent = (file) => assert.rejects(stat(abs(file)), { code: "ENOENT" });
   const { results: [denied] } = await run("Decline creating a workbook.", [bash(make(fresh, 150))], { deny: true });
@@ -582,7 +573,7 @@ print(json.dumps([book.sheetnames, book["销售"]["B3"].value, book["销售"]["B
     assert.deepEqual(readback(copy), expected(160, cachedCopy));
   };
   check(null, null);
-  const recalc = (name) => `office-python ${quote(join(skillPath, "scripts", "recalc.py"))} ${quote(name)} 15`;
+  const recalc = (name) => `python ${quote(join(skillPath, "scripts", "recalc.py"))} ${quote(name)} 15`;
   const { results: [, ...runs] } = await run("Use the xlsx Skill to recalculate both output workbooks.",
     [loadSkill(), bash(recalc(fresh)), bash(recalc(copy))]);
   for (const result of runs) {
@@ -670,7 +661,7 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
   await selectOffice(app, "global");
   const on = await readBash(undefined);
   assert.ok(on.includes(join(runtime, "node/bin/node")), on);
-  assert.ok(on.includes(join(runtime, "python/bin/python")), on);
+  assert.ok(on.includes(join(runtime, "bin/python")), on);
   assert.equal(await system(), terminal);
   await checkProjectPicker(app, checkBash, on, off);
   await checkBash(undefined, off.get(undefined));

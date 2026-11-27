@@ -142,8 +142,9 @@ or is stopped.
 Stage the approved ARM64 Office Runtime 1.0.2 Python, Python dependencies,
 and Node layers on a case-sensitive Linux filesystem, preserving relative
 links. Overlay the locked docx 9.16.0 production package tree under
-`node/lib/node_modules`; see the PowerPoint staging inputs below for the
-combined Node lock. Place the original runtime provenance at
+`node/lib/node_modules`. Before running `dist:kylin`, stage the mandatory
+[PowerPoint](#self-installed-powerpoint-skill) and [Excel](#self-installed-excel-skill)
+inputs in the same tree. Place the original runtime provenance at
 `metadata/runtime-source.json`. Packaging selects the interpreters, Python
 standard library, and the Word, PowerPoint, and Excel runtime packages and licenses.
 It does not ship Skill launchers, templates, WX archives, or unrelated
@@ -225,8 +226,8 @@ Stage these inputs in the same runtime tree before running `dist:kylin`:
 Stage the headless Impress payload and its libraries, plus only the
 `pdftoppm` executable and its libraries from Poppler. Each native RPM represented
 in the payload needs its version, exact source RPM reference, and readable
-license notices. The package check requires entries for `libreoffice-core`,
-`libreoffice-impress`, `poppler`, and `poppler-utils`.
+license notices. The shared package check requires `libreoffice-core`,
+`libreoffice-impress`, `libreoffice-calc`, `poppler`, and `poppler-utils`.
 
 Use an ARM64 renderer build that fits the target's glibc 2.31 and is approved
 for redistribution. The earlier LibreOffice 6.4 runtime does not qualify.
@@ -269,19 +270,18 @@ payload onto the staged LibreOffice tree. Keep LibreOffice's standard
 The user's Skill supplies the recalc script and its macro. No compiler is
 needed when local Unix sockets are available.
 
-After creating or saving a copy, ask the agent to run the original recalc
-script on the output in an approved Office Runtime Bash command:
+After creating or saving a copy, run the original Skill's recalc command
+on the output with the usual Bash approval:
 
 ```sh
-office-python '/absolute/path/to/xlsx/scripts/recalc.py' '另存 工作簿.xlsx'
+python '/absolute/path/to/xlsx/scripts/recalc.py' '另存 工作簿.xlsx'
 ```
 
-The Office Runtime extension description points to this command. It runs the
-bundled Python and lets the script's LibreOffice calls share a temporary
-profile, leaving the user's usual LibreOffice profile alone. Its GNU
-`timeout` call stays in the Bash process group so Stop can end recalculation.
-Read the saved formula
-values back: the script can report success when no cached value was written.
+In enabled local Bash sessions, the bundled `python` and `python3` give this
+script its own temporary LibreOffice profile. Both Calc calls share it;
+ordinary Python commands still use the usual home directory. The Skill's GNU
+`timeout` stays in the Bash process group so Stop can end recalculation.
+Read formula values back: the script can report success with an empty cache.
 
 Test the installed candidate in the same loopback-only Kylin setup:
 
