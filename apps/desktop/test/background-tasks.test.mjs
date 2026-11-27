@@ -155,6 +155,13 @@ test("the container shows only live work: a finished row leaves as soon as it en
   assert.match(visibility, /task\.continuation === "pending"/);
   assert.match(visibility, /task\.id === pinnedId/);
   assert.match(controller, /selectVisibleTasks\(sessionTasks, expandedId\)/);
+  // The pin on a row being read lives only while its preview is on screen:
+  // collapse or a switch to Todo closes the preview, so the row cannot
+  // reappear later with no output on screen (#2634).
+  assert.match(controller, /const reading = tasksPanelVisible\(dock, sides\)/);
+  assert.match(controller, /if \(!reading\) setExpandedId\(null\)/);
+  // A session switch closes the preview too.
+  assert.match(controller, /useEffect\(\(\) => \{\n    setExpandedId\(null\);\n  \}, \[sessionId\]\)/);
   // Removal is refused for a live task in the state layer, not just by hiding
   // the control.
   assert.match(controller, /if \(!task \|\| task\.state === "running" \|\| task\.continuation === "pending"\)/);
@@ -170,6 +177,9 @@ test("the container filters to the active session and badges its running work", 
   // The badge is the running-row count, derived from the rows — never view
   // state a tab click can clear (#2632).
   assert.match(controller, /const badge = sides\.runningTasks/);
+  // Both sides and the panel rule come from dock-state, so the render rule,
+  // the badge rule, and the preview rule share one tab decision.
+  assert.match(controller, /import \{[\s\S]*?sidesFor,[\s\S]*?tasksPanelVisible,[\s\S]*?\} from "\.\/dock-state"/);
 });
 
 test("deleting a session signals its tasks from the shared cleanup path only", () => {

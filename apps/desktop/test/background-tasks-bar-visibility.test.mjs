@@ -11,6 +11,7 @@ import test from "node:test";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { selectVisibleTasks } = await import("../src/features/chat/background-tasks/bar-visibility.ts");
+const { sidesFor, tasksPanelVisible } = await import("../src/features/chat/background-tasks/dock-state.ts");
 
 const task = (id, state, extra = {}) => ({
   id,
@@ -58,4 +59,50 @@ test("a running task is visible whether or not its output is open", () => {
   const running = task("a", "running");
   assert.deepEqual(ids(selectVisibleTasks([running])), ["a"]);
   assert.deepEqual(ids(selectVisibleTasks([running], "a")), ["a"]);
+});
+
+/*
+ * The pin on a row being read lives only while its preview is on screen.
+ * The pieces the hook composes are pure, so the regression drives them the
+ * way the hook does: the rows carry the pin, the sides describe them, and
+ * `tasksPanelVisible` decides whether the preview is on screen; when it is
+ * not, the hook closes the preview (`expandedId` becomes null) (#2634).
+ */
+
+test("regression: the row being read stays while its preview is on screen", () => {
+  // start → open output: the task finishes while the user reads it.
+  const running = task("a", "running");
+  const dock = { chosenTab: "tasks", collapsed: false };
+  const rows = selectVisibleTasks([running], "a");
+  assert.equal(tasksPanelVisible(dock, sidesFor(rows, [])), true);
+
+  const ended = { ...running, state: "exited", exitCode: 0 };
+  assert.deepEqual(ids(selectVisibleTasks([ended], "a")), ["a"]);
+  // The pinned row keeps the tasks side non-empty, so the panel — and the
+  // read — survives the task ending underneath it.
+  assert.equal(tasksPanelVisible(dock, sidesFor(selectVisibleTasks([ended], "a"), [])), true);
+});
+
+test("regression: a finished row whose preview left the screen cannot reappear", () => {
+  const todos = [{ status: "in_progress" }];
+  const started = task("a", "running");
+  const dock = { chosenTab: "tasks", collapsed: false };
+
+  // start → open output: the preview is on screen, the row is pinned.
+  const rows = selectVisibleTasks([started], "a");
+  assert.equal(tasksPanelVisible(dock, sidesFor(rows, todos)), true);
+
+  // → collapse (or switch to Todo): the preview is no longer on screen, so
+  // the hook closes it — `expandedId` becomes null before the task ends.
+  assert.equal(tasksPanelVisible({ ...dock, collapsed: true }, sidesFor(rows, todos)), false);
+  assert.equal(
+    tasksPanelVisible({ ...dock, chosenTab: "todo" }, sidesFor(rows, todos)),
+    false,
+  );
+
+  // → finish, then reopen: the ended row must not reappear. That the hook
+  // really closes the preview when the panel hides is asserted by the source
+  // contract test in background-tasks.test.mjs.
+  const ended = { ...started, state: "exited", exitCode: 0 };
+  assert.deepEqual(selectVisibleTasks([ended], null), []);
 });

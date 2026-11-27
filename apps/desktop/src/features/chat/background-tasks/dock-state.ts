@@ -1,3 +1,6 @@
+import type { BackgroundTaskSummary } from "../../../lib/api";
+import type { SessionTodo } from "@pi-desktop/shared";
+
 /**
  * View state for the shared Todo/background-task container.
  *
@@ -96,6 +99,30 @@ export type DockSides = {
   inProgressTodos: number;
 };
 
+/**
+ * Both sides of the container, described the way the tab rule expects.
+ *
+ * The task side describes the rows the container can render, and the todo side
+ * comes from the caller, which owns that read. The render rule and the badge
+ * rule consume this one description, so they cannot disagree about which tasks
+ * are live in the session.
+ */
+export function sidesFor(
+  rows: readonly BackgroundTaskSummary[],
+  todos: readonly SessionTodo[],
+): DockSides {
+  let runningTasks = 0;
+  for (const task of rows) {
+    if (task.state === "running") runningTasks += 1;
+  }
+  return {
+    hasTodo: todos.length > 0,
+    hasTasks: rows.length > 0,
+    runningTasks,
+    inProgressTodos: todos.filter((todo) => todo.status === "in_progress").length,
+  };
+}
+
 export function resolveDockTabFor(state: DockSessionState, sides: DockSides): DockTab {
   return resolveDockTab(
     state,
@@ -104,6 +131,18 @@ export function resolveDockTabFor(state: DockSessionState, sides: DockSides): Do
     sides.runningTasks,
     sides.inProgressTodos,
   );
+}
+
+/**
+ * Whether the tasks panel is the one on screen. A collapsed container shows no
+ * panel at all, so it never counts as looking at the tasks.
+ *
+ * The hook keeps the output-preview pin alive only while this holds: a row
+ * being read stays only while its preview is actually on screen, so collapsing
+ * the container or switching to Todo ends the read (#2632, #2634).
+ */
+export function tasksPanelVisible(state: DockSessionState, sides: DockSides): boolean {
+  return !state.collapsed && resolveDockTabFor(state, sides) === "tasks";
 }
 
 /**

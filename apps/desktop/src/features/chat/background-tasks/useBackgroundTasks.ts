@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type BackgroundTaskOutput, type BackgroundTaskSummary } from "../../../lib/api";
 import { selectVisibleTasks } from "./bar-visibility";
 import {
-  type DockSides,
   EMPTY_DOCK_VIEW,
   type DockTab,
   type DockViewState,
@@ -11,6 +10,8 @@ import {
   resolveDockTabFor,
   selectTab,
   sessionDockState,
+  sidesFor,
+  tasksPanelVisible,
   toggleCollapsed,
 } from "./dock-state";
 import type { SessionTodo } from "@pi-desktop/shared";
@@ -18,29 +19,6 @@ import type { SessionTodo } from "@pi-desktop/shared";
 const REFRESH_MS = 1_000;
 type Failure = "load" | "output" | "stop" | "remove";
 
-/**
- * Both sides of the container, described the way the tab rule expects.
- *
- * The task side describes the rows the container can render, and the todo side
- * comes from the caller, which owns that read. The render rule and the badge
- * rule consume this one description, so they cannot disagree about which tasks
- * are live in the session.
- */
-function sidesFor(
-  rows: readonly BackgroundTaskSummary[],
-  todos: readonly SessionTodo[],
-): DockSides {
-  let runningTasks = 0;
-  for (const task of rows) {
-    if (task.state === "running") runningTasks += 1;
-  }
-  return {
-    hasTodo: todos.length > 0,
-    hasTasks: rows.length > 0,
-    runningTasks,
-    inProgressTodos: todos.filter((todo) => todo.status === "in_progress").length,
-  };
-}
 /**
  * Background tasks for one session, plus the shared container's view state.
  *
@@ -245,9 +223,29 @@ export function useBackgroundTasks(
   // that already left it cannot decide which panel is on screen.
   const sides = sidesFor(visibleTasks, todos);
   const activeTab: DockTab = resolveDockTabFor(dock, sides);
+  // The tasks panel on screen is the one place a preview is visible; anywhere
+  // else — collapsed, or the Todo tab — the read is over (#2634).
+  const reading = tasksPanelVisible(dock, sides);
   // The badge mirrors the session's live work: it rises when a task starts and
   // falls as tasks end, and no view action can change it (#2632).
   const badge = sides.runningTasks;
+
+  // The pin on a row being read lives only while its preview is on screen:
+  // once the panel hides — collapse, or a switch to Todo — the preview
+  // closes, so a finished row cannot reappear later with no output on screen
+  // (#2634). While the panel stays on screen, the row persists until the
+  // reader closes it. `expandedId` is a dependency so a pin written while the
+  // panel is hidden (the hidden panel is still keyboard-focusable) is cleared
+  // too.
+  useEffect(() => {
+    if (!reading) setExpandedId(null);
+  }, [reading, expandedId]);
+
+  // A preview belongs to the session it was opened in; a session switch
+  // closes it.
+  useEffect(() => {
+    setExpandedId(null);
+  }, [sessionId]);
 
   return {
     /** The session's rows the container may render: live, or being read. */

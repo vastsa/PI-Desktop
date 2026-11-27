@@ -1272,9 +1272,11 @@ journeys cover successful reads, saves and directory browsing.
   command above the output, preserving whitespace and wrapping to fit even
   before the task produces any output.
   An ended task's row leaves the bar as soon as its end state arrives — only
-  the row whose output preview is open stays — and the tab badge falls with
+  the row whose output preview is open stays, and only while the tasks panel
+  is on screen (collapsing the container or switching to Todo closes the
+  preview, so the row cannot reappear later) — and the tab badge falls with
   the running count, so finished commands do not accumulate above the
-  composer (#2632).
+  composer (#2632, #2634).
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` (§5),
   `03-runtime/06-host-rpc-protocol.md` (§4)
 - **Acceptance criterion**: C, E, F

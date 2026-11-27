@@ -20,6 +20,8 @@ const {
   resolveDockTabFor,
   selectTab,
   sessionDockState,
+  sidesFor,
+  tasksPanelVisible,
   toggleCollapsed,
 } = await import("../src/features/chat/background-tasks/dock-state.ts");
 
@@ -102,6 +104,32 @@ test("one populated side renders alone, so the tab list is not rendered", () => 
   assert.equal(resolveDockTabFor(EMPTY_SESSION_DOCK, sides), "todo");
   // The container hides the tab list exactly when one side is empty.
   assert.equal(sides.hasTodo && sides.hasTasks, false);
+});
+
+test("the tasks panel is on screen only when expanded and selected", () => {
+  // This decides whether a preview can be on screen at all: the pin on a
+  // row being read lives only while this holds (#2634).
+  const sides = { hasTodo: true, hasTasks: true, runningTasks: 1, inProgressTodos: 1 };
+  const open = { ...EMPTY_SESSION_DOCK, collapsed: false };
+  assert.equal(tasksPanelVisible(open, sides), true);
+  // A collapsed container shows no panel at all.
+  assert.equal(tasksPanelVisible(EMPTY_SESSION_DOCK, sides), false);
+  // The todo panel on screen is not the tasks panel either.
+  const onTodo = { ...open, chosenTab: "todo" };
+  assert.equal(tasksPanelVisible(onTodo, sides), false);
+});
+
+test("sides describe the rows as the tab rule sees them", () => {
+  const rows = [
+    { state: "running" },
+    { state: "exited" },
+    { state: "exited" },
+  ];
+  const todos = [{ status: "in_progress" }, { status: "completed" }];
+  const sides = sidesFor(rows, todos);
+  assert.equal(sides.hasTasks, true);
+  assert.equal(sides.runningTasks, 1, "only a running row counts as live work");
+  assert.equal(sides.inProgressTodos, 1);
 });
 
 test("collapse is one container-wide condition, both tabs share it", () => {
