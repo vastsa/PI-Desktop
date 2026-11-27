@@ -20,6 +20,7 @@ async function assets() {
     ["/locale.js", { type: "text/javascript; charset=utf-8", body: await read("locale.js") }],
     ["/kit.js", { type: "text/javascript; charset=utf-8", body: await read("kit.js") }],
     ["/markdown.js", { type: "text/javascript; charset=utf-8", body: await read("markdown.js") }],
+    ["/model-picker.js", { type: "text/javascript; charset=utf-8", body: await read("model-picker.js") }],
     ["/styles.css", { type: "text/css; charset=utf-8", body: await read("styles.css") }],
   ]);
 }
@@ -156,6 +157,19 @@ const journey = String.raw`(async () => {
   result.emptyChat = document.querySelector(".chat-empty-title")?.textContent;
   input.value = "hello from phone";
   input.dispatchEvent(new Event("input"));
+  // Search and select a configured model before sending the same draft.
+  tap(document.getElementById("model-trigger"));
+  const modelSearch = await wait(() => document.querySelector("dialog[open] input:not([hidden])"), "model search");
+  modelSearch.value = "steady";
+  modelSearch.dispatchEvent(new Event("input"));
+  const matches = document.querySelectorAll("dialog[open] .model-options button");
+  result.modelMatches = Array.from(matches, (button) => button.querySelector(".model-option-name").textContent);
+  tap(matches[0]);
+  await wait(() => !document.querySelector("dialog[open]") && document.getElementById("model-trigger").textContent.includes("steady-chat"), "model saved");
+  result.draftAfterModelChange = document.getElementById("composer-input").value;
+  tap(document.getElementById("model-trigger"));
+  result.checkedModel = (await wait(() => document.querySelector('dialog[open] button[aria-current="true"] .model-option-name'), "selected model")).textContent;
+  tap(document.querySelector("dialog[open] .model-picker-header button"));
   tap(document.querySelector(".composer button.primary"));
   // The message shows at once, before the Host confirms it.
   result.optimistic = document.querySelector(".msg.user.pending")?.textContent.includes("hello from phone") === true;
@@ -165,6 +179,7 @@ const journey = String.raw`(async () => {
   result.strayText.push(document.getElementById("app").innerText);
   // While a reply runs: a working cue, and Stop is the only action until there is text.
   result.working = Boolean(document.querySelector(".working"));
+  result.modelBusy = document.getElementById("model-trigger").disabled;
   result.composerRunning = {
     sendHidden: document.querySelector(".composer .send").hidden,
     stop: Boolean(document.querySelector(".composer .stop")?.offsetParent),
@@ -298,6 +313,11 @@ test("a phone pairs with a formatted paste, uses projects and conversations, and
   assert.equal(fake.sessions.find((session) => session.id === "s-a1").title, "Fix login flow");
   assert.match(result.chatHash, /^#\/s\/s-new-1$/);
   assert.equal(result.emptyChat, "Alpha", "a new conversation shows where it will run");
+  assert.deepEqual(result.modelMatches, ["Steady"]);
+  assert.equal(result.draftAfterModelChange, "hello from phone");
+  assert.equal(result.checkedModel, "Steady");
+  assert.equal(result.modelBusy, true);
+  assert.equal(fake.sessions.find(({ id }) => id === "s-new-1").modelId, "steady-chat");
   assert.equal(result.optimistic, true, "a sent message appears before the Host confirms it");
   assert.equal(result.working, true);
   assert.deepEqual(result.composerRunning, { sendHidden: true, stop: true });

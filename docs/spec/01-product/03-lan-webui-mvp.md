@@ -109,6 +109,13 @@ invalidate stale rows and deep links; do not redirect to a different session.
   A new session inherits the configured desktop default; an existing one uses
   its own configuration. If no usable model exists, preserve the draft and
   point to model setup on Desktop. Never ask the phone for a provider key.
+- In an idle, writable local Agent conversation, tap the model chip under the
+  draft to search the Desktop's configured chat models by model or service.
+  The picker marks the session's saved selection and applies a new choice to
+  that conversation's next turn, without clearing the draft or changing
+  Desktop defaults. Keep the previous binding on failure and let the user
+  reload the choices. Running, queued, waiting, archived, scheduled, and
+  extension-owned sessions cannot be changed from this picker.
 - Page older history backwards without losing the reading position. Render
   user/assistant text, safe Markdown, code and bounded tool summaries in order.
   Unsupported cards or attachments get a typed, non-executable placeholder;
@@ -153,6 +160,14 @@ they live. Catalog changes reach other clients
 even when they are not subscribed to that conversation; clients invalidate and
 refetch a scoped view rather than streaming every transcript. A deep link
 restores only the browser's navigation, after fresh authorization.
+
+`GET /v1/sessions/:id/models` returns the configured model choices, the saved
+selection when it is still listed, and an opaque revision. The choices carry
+only provider/model IDs and display labels. `POST /v1/sessions/:id/model`
+accepts only `{ providerId, modelId, revision }` and returns `{ ok: true }`.
+The server revalidates session eligibility, idleness, and the binding against
+the current local catalog. A stale selection returns `CONFLICT` rather than
+overwriting a newer edit. See [LAN model selection](../../adr/lan-webui-session-model-selection.md).
 
 - Mutations carry a principal-bound idempotency key; organization edits carry
   the last observed resource revision and an **explicit desired value**, not
@@ -205,7 +220,7 @@ diagnostics that the safe transcript projection does not already expose.
 | Operation | Available after pairing | Not exposed by pairing |
 |---|---|---|
 | View | Local project and temporary catalogs, safe history, activity and scoped events | Remote project metadata, paths, secrets or arbitrary file reads |
-| Chat | Create, send/queue, interrupt, cancel queued work, answer ordinary typed questions when supported | Shell endpoint, remote approvals, raising permission mode, configuring providers |
+| Chat | Create, select a configured model in an idle local Agent conversation, send/queue, interrupt, cancel queued work, answer ordinary typed questions when supported | Shell endpoint, remote approvals, raising permission mode, configuring providers |
 | Organize | Rename, set pin, set archive/restore on eligible objects | Permanent delete, project registration/root editing, granting roles |
 
 Check the device credential, live resource scope, object state, and policy on
@@ -269,8 +284,9 @@ and devices (16); never silently truncate input.
   list (`#/archived`, `#/p/:id/archived`) instead of a sticky filter. Home's New
   conversation asks only for the destination. Disconnecting this device asks
   for confirmation.
-- A conversation names its project, model and run state in the header; an
-  empty one shows where it will run. Answers render the safe Markdown subset
+- A conversation names its project and run state in the header and its model
+  in the composer (or the header when it is not editable). An empty one shows
+  where it will run. Answers render the safe Markdown subset
   (no HTML, no remote images, only `http(s)` links opening in a new tab);
   consecutive tool calls fold into one step summary; code blocks and the last
   answer of each exchange offer Copy (with a non-secure-context fallback). A

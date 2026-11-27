@@ -801,13 +801,16 @@ user's running instance.
 ### E2E-271: Create and continue the same session on phone and desktop
 
 - **Preconditions:** Desktop is viewing A. The phone is paired. A usable
-  fixture model is configured. B has an existing chat with paged history.
+  fixture provider has two saved chat models. B has a chat with paged history.
 - **Steps:** Double-tap New session in B, send text, stream a reply, then continue
   the same session on Desktop. Queue a second message while busy and cancel it;
   interrupt the named active turn. Reopen the older B chat and load older pages.
   Create a temporary conversation from its own entry, and one in B from Home's
   New conversation picker. Reopen B's chat from Home's Recent list. Repeat with
   no configured model and with a pre-existing eligible empty conversation in B.
+  In a new B chat, type a draft, search for and select the other configured
+  model on the phone, and send. Retry during a running or queued turn and
+  after a competing Desktop model change.
   From idle, send two different prompts simultaneously from Desktop and the
   phone, first without queuing and then with explicit queue admission.
 - **Expected:** The initial double-tap/send yields one session and one user
@@ -818,6 +821,9 @@ user's running instance.
   items keeps position, without wrong-project empty reuse or duplicate creates.
   A temporary session has no project and never inherits A or B.
   Missing model blocks send, preserves text and points to Desktop setup.
+  The selected model is used for the next turn and is visible on Desktop
+  without changing its active conversation or default model. Draft text
+  survives the switch. Running work and a newer model choice are not overwritten.
   A sent message shows immediately and is replaced, not duplicated, by the
   Host record; a failed send returns its text to the draft. Recent rows name
   their project, and running sessions stay listed.
@@ -862,6 +868,9 @@ user's running instance.
   and an SSH-backed project. Use a controlled clock and a second interface.
 - **Steps:** Exercise catalog, histories, commands and SSE. Check wrong
   Origin/Host, missing CSRF, the device cap and rejected admin/owner operations.
+  Check that an unpaired device cannot list models, and that a paired device
+  cannot select an unconfigured model or alter mode or permissions via the
+  model endpoint. Check that the picker exposes no credentials or endpoints.
   Remove one device while a temporary history request and stream are in flight;
   sign out on the other, restart Desktop and try the old cookies. Re-pair and
   advance the clock to the pairing expiry; change the desktop address. Inspect

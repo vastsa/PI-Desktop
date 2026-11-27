@@ -1,14 +1,18 @@
 import { createHash } from "node:crypto";
 import {
   LAN_TEMPORARY_PROJECT,
+  modelWireIdsEqual,
+  trustedExtensionAgentKeyFromProviderId,
   type AgentEventEnvelope,
   type LanConversation,
   type LanMessage,
+  type LanModelCatalog,
   type LanPage,
   type LanProject,
   type LanSession,
   type ProjectGroupRecord,
 } from "@pi-desktop/shared";
+import { readLanModelOptions, type ReadCachedModels } from "./models";
 import type { LanMeta, LanOrganization } from "./organization";
 import { normalizeProjectKey } from "./organization";
 import { LanError, type LanChange, type LanRequest } from "./ports";
@@ -35,7 +39,9 @@ export type LanWorkspaceDeps = {
   getHost(): LanHost | null;
   getBridge(): LanBridge | null;
   invoke(channel: string, args: unknown[]): Promise<unknown>;
-  channels: { sessionCreate: string; sessionRename: string; projectGroupRename: string; agentAbort: string };
+  channels: { sessionCreate: string; sessionConfigure: string; sessionRename: string; projectGroupRename: string; agentAbort: string };
+  acquireSessionOperation(sessionId: string): Promise<() => void>;
+  readCachedModels: ReadCachedModels;
   activeTurns: ReadonlyMap<string, string>;
   organization: Pick<LanOrganization, "read" | "patch">;
   /** Ask Desktop to refresh its catalog (and an idle open transcript); never navigates. */
@@ -48,7 +54,10 @@ type HostSession = {
   projectPath?: string | null;
   mode?: string;
   source?: string;
-  modelId?: string;
+  providerId?: string | null;
+  modelId?: string | null;
+  scheduledRun?: boolean;
+  remoteWorkspace?: unknown;
   updatedAt?: string;
 };
 type HostMessage = { id: string; role: string; content?: unknown; toolName?: string; parentToolCallId?: string };
@@ -198,7 +207,9 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
     if (projectId === undefined) throw new LanError(404, "NOT_FOUND");
     const meta = deps.organization.read();
     const label = projectId === null ? null : projectLabels(list, meta).get(projectId) ?? null;
-    return { session, projectId, meta, view: sessionView(session, projectId, meta, label) };
+    const group = projectId === null ? undefined : list.find((candidate) => candidate.id === projectId);
+    const projectArchived = group !== undefined && projectView(group, meta).archived;
+    return { session, view: sessionView(session, projectId, meta, label), projectArchived };
   }
 
   function projectLabels(list: ProjectGroupRecord[], meta: LanMeta): Map<string, string> {
@@ -294,7 +305,8 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
   }
 
   async function conversation(sessionId: string): Promise<LanConversation> {
-    const { session, view } = await requireLocalSession(sessionId);
+    const local = await requireLocalSession(sessionId);
+    const { session, view } = local;
     const [messages, pending] = await Promise.all([
       history(sessionId, null),
       deps.getBridge()?.pendingInteractiveRequests(sessionId).catch(() => ({ asks: [], permissions: [] })) ??
@@ -313,7 +325,76 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
       waiting,
       queue,
       modelLabel: session.modelId ?? null,
+      canSelectModel: !modelRestriction(local),
     };
+  }
+
+  type LocalSession = Awaited<ReturnType<typeof requireLocalSession>>;
+  function modelRestriction({ session, view, projectArchived }: LocalSession) {
+    if (view.readOnly || session.remoteWorkspace || session.scheduledRun ||
+      (session.providerId && trustedExtensionAgentKeyFromProviderId(session.providerId))) return "READ_ONLY";
+    if (view.archived || projectArchived) return "ARCHIVED";
+    return null;
+  }
+
+  function modelPrecondition({ session }: LocalSession) {
+    return {
+      projectPath: session.projectPath ?? null,
+      providerId: session.providerId ?? null,
+      modelId: session.modelId ?? null,
+    };
+  }
+
+  async function requireModelSession(sessionId: string) {
+    const local = await requireLocalSession(sessionId);
+    const denied = modelRestriction(local);
+    if (denied) throw new LanError(409, denied);
+    return { ...local, modelRevision: revision(sessionId, local.view.projectId, modelPrecondition(local)) };
+  }
+
+  async function listSessionModels(sessionId: string): Promise<LanModelCatalog> {
+    const local = await requireModelSession(sessionId);
+    const items = await readLanModelOptions(host(), deps.readCachedModels);
+    const activeModelId = local.session.modelId;
+    const selected = activeModelId && items.find(({ providerId, modelId }) =>
+      providerId === local.session.providerId && modelWireIdsEqual(modelId, activeModelId));
+    return { items, selected: selected ? { providerId: selected.providerId, modelId: selected.modelId } : null, revision: local.modelRevision };
+  }
+
+  async function setSessionModel(sessionId: string, body: Record<string, unknown>) {
+    const { providerId, modelId, revision: expectedRevision } = body;
+    if (Object.keys(body).length !== 3 || typeof providerId !== "string" || !providerId ||
+      typeof modelId !== "string" || !modelId || typeof expectedRevision !== "string" ||
+      !/^[A-Za-z0-9_-]{12}$/.test(expectedRevision)) throw new LanError(400, "INVALID_ARGUMENT");
+
+    const release = await deps.acquireSessionOperation(sessionId);
+    try {
+      const before = await requireModelSession(sessionId);
+      if (expectedRevision !== before.modelRevision) throw new LanError(409, "CONFLICT");
+      const options = await readLanModelOptions(host(), deps.readCachedModels, providerId);
+      if (!options.some((option) => option.modelId === modelId)) throw new LanError(409, "MODEL_UNAVAILABLE");
+      const runtime = bridge();
+      const pending = await runtime.pendingInteractiveRequests(sessionId);
+      const local = await requireModelSession(sessionId);
+      if (expectedRevision !== local.modelRevision) throw new LanError(409, "CONFLICT");
+      if (pending.asks.length || pending.permissions.length || deps.activeTurns.has(sessionId) ||
+        runtime.queue.list(sessionId).length) throw new LanError(409, "MODEL_BUSY");
+      // The Host repeats the scope/model comparison under its write lock.
+      await deps.invoke(deps.channels.sessionConfigure, [sessionId, {
+        mode: "agent", providerId, modelId, expectedAgentModel: modelPrecondition(local),
+      }]);
+      deps.notifyDesktop();
+      emit({ sessionId });
+      return { ok: true };
+    } catch (error) {
+      const code = (error as { errorCode?: unknown })?.errorCode;
+      if (code === "CONFLICT") throw new LanError(409, "CONFLICT");
+      if (code === "NOT_FOUND") throw new LanError(404, "NOT_FOUND");
+      if (code === "PLAN_CONFIGURATION_BLOCKED") throw new LanError(409, "MODEL_BUSY");
+      throw error;
+    } finally {
+      release();
+    }
   }
 
   async function createSession(body: Record<string, unknown>) {
@@ -430,6 +511,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
         if (resource === "projects" && !id) return listProjects(query);
         if (resource === "sessions" && !id) return listSessions(query);
         if (resource === "sessions" && id && !sub) return conversation(id);
+        if (resource === "sessions" && id && sub === "models" && parts.length === 4) return listSessionModels(id);
         if (resource === "sessions" && id && sub === "history") {
           await requireLocalSession(id);
           return history(id, query.get("cursor"));
@@ -439,6 +521,7 @@ export function createLanWorkspace(deps: LanWorkspaceDeps) {
         if (resource === "projects" && id && sub === "organize") return organizeProject(id, body);
         if (resource === "sessions" && id && sub === "organize") return organizeSession(id, body);
         if (resource === "sessions" && id && sub === "turns") return sendTurn(deviceId, id, body, key);
+        if (resource === "sessions" && id && sub === "model" && parts.length === 4) return setSessionModel(id, body);
         if (resource === "turns" && id?.endsWith(":interrupt")) return interrupt(id.slice(0, -10), body);
         if (resource === "turns" && id?.endsWith(":cancel")) return cancel(id.slice(0, -7), body);
       }

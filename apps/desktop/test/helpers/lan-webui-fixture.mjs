@@ -55,11 +55,21 @@ export function desktop() {
   const turns = [];
   const activeTurns = new Map();
   const queue = new Map();
+  const providers = [
+    { id: "local-ai", name: "Local AI", enabled: true, authKind: "none", models: [
+      { id: "swift-chat", alias: "Swift" }, { id: "steady-chat", alias: "Steady" },
+      { id: "retired-chat" }, { id: "gpt-image-1" },
+    ], baseUrl: "https://private.example.test" },
+    { id: "inactive", name: "Inactive", enabled: false, hasSecret: true, models: [{ id: "hidden-chat" }] },
+    { id: "signed-out", name: "Signed out", enabled: true, authKind: "oauth", hasSecret: false, models: [{ id: "unavailable-chat" }] },
+  ];
   let created = 0;
   const host = {
     async call(method, params) {
       if (method === "project.groups.list") return { groups };
       if (method === "session.list") return { sessions };
+      if (method === "providers.list") return { providers };
+      if (method === "settings.get") return { imageGeneration: { providerId: "local-ai", modelId: "gpt-image-1" } };
       if (method === "session.get") {
         const session = sessions.find((s) => s.id === params.id);
         return {
@@ -110,7 +120,9 @@ export function desktop() {
   const workspaceDeps = {
     getHost: () => host,
     getBridge: () => bridge,
-    channels: { sessionCreate: "create", sessionRename: "rename", projectGroupRename: "groupRename", agentAbort: "abort" },
+    channels: { sessionCreate: "create", sessionConfigure: "configure", sessionRename: "rename", projectGroupRename: "groupRename", agentAbort: "abort" },
+    acquireSessionOperation: async () => () => {},
+    readCachedModels: async () => [{ modelId: "retired-chat", discoveryState: "unlisted" }, { modelId: "unconfigured-chat" }],
     activeTurns,
     async invoke(channel, args) {
       calls.push([channel, args]);
@@ -118,6 +130,12 @@ export function desktop() {
         const id = `s-new-${++created}`;
         sessions.push({ id, title: "", projectPath: args[0].projectPath ?? null, mode: "agent", updatedAt: "2026-11-09" });
         return { session: { id } };
+      }
+      if (channel === "configure") {
+        const [id, { providerId, modelId }] = args;
+        const session = sessions.find((s) => s.id === id);
+        Object.assign(session, { providerId, modelId });
+        return { session };
       }
       if (channel === "rename") {
         const session = sessions.find((s) => s.id === args[0]);

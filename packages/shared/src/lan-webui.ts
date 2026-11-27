@@ -47,6 +47,22 @@ export interface LanConversation {
   waiting: "approval" | "input" | null;
   queue: Array<{ id: string; text: string }>;
   modelLabel: string | null;
+  /** Whether the session is eligible for model changes when idle. */
+  canSelectModel?: boolean;
+}
+export interface LanModelRef {
+  providerId: string;
+  modelId: string;
+}
+/** An intentionally narrow projection of a configured chat model. */
+export interface LanModelOption extends LanModelRef {
+  label: string;
+  providerLabel: string;
+}
+export interface LanModelCatalog {
+  items: LanModelOption[];
+  selected: LanModelRef | null;
+  revision: string;
 }
 export interface LanDevice {
   id: string;

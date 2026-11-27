@@ -255,3 +255,36 @@ test("the recent list spans every visible scope, lifts running work and names ea
   // An unknown explicit project is still not found.
   assert.equal((await phone.request("GET", "/v1/sessions?projectId=nope")).status, 404);
 });
+
+test("a paired browser can switch only to configured chat models in an idle local session", async (t) => {
+  const { phone, origin, activeTurns, queue, sessions, calls } = await setup(t);
+  const path = "/v1/sessions/s-a1";
+  assert.equal((await browser(origin).request("GET", `${path}/models`)).status, 401);
+  const { status, body: catalog } = await phone.request("GET", `${path}/models`);
+  assert.equal(status, 200);
+  assert.deepEqual(catalog.items, [
+    { providerId: "local-ai", modelId: "swift-chat", label: "Swift", providerLabel: "Local AI" },
+    { providerId: "local-ai", modelId: "steady-chat", label: "Steady", providerLabel: "Local AI" },
+  ]);
+  assert.equal(catalog.selected, null);
+  const choose = { providerId: "local-ai", modelId: "steady-chat", revision: catalog.revision };
+  assert.equal((await phone.request("POST", `${path}/model`, choose, { "X-CSRF-Token": "" })).status, 403);
+  assert.equal((await phone.request("POST", `${path}/model`, { ...choose, mode: "plan" })).body.code, "INVALID_ARGUMENT");
+  assert.equal((await phone.request("POST", `${path}/model`, { ...choose, modelId: "unconfigured-chat" })).body.code, "MODEL_UNAVAILABLE");
+  assert.equal((await phone.request("POST", "/v1/sessions/s-plan/model", choose)).body.code, "READ_ONLY");
+  assert.equal((await phone.request("POST", "/v1/sessions/s-ssh/model", choose)).status, 404);
+  activeTurns.set("s-a1", "active-turn");
+  assert.equal((await phone.request("POST", `${path}/model`, choose)).body.code, "MODEL_BUSY");
+  activeTurns.delete("s-a1");
+  queue.set("s-a1", [{ id: "queued-turn", content: "next" }]);
+  assert.equal((await phone.request("POST", `${path}/model`, choose)).body.code, "MODEL_BUSY");
+  queue.delete("s-a1");
+
+  assert.deepEqual(await phone.request("POST", `${path}/model`, choose), { status: 200, body: { ok: true } });
+  assert.equal((await phone.request("GET", path)).body.modelLabel, "steady-chat");
+  assert.deepEqual((await phone.request("GET", `${path}/models`)).body.selected, { providerId: "local-ai", modelId: "steady-chat" });
+  assert.equal((await phone.request("POST", `${path}/model`, { ...choose, modelId: "swift-chat" })).body.code, "CONFLICT");
+  assert.equal(calls.filter(([channel]) => channel === "configure").length, 1);
+  assert.equal(sessions.find(({ id }) => id === "s-a1").mode, "agent");
+  assert.equal(sessions.find(({ id }) => id === "s-tmp").modelId, undefined);
+});

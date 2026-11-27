@@ -5,6 +5,7 @@ import stylesCss from "../../../resources/lan-webui/styles.css?raw";
 import localeJs from "../../../resources/lan-webui/locale.js?raw";
 import kitJs from "../../../resources/lan-webui/kit.js?raw";
 import markdownJs from "../../../resources/lan-webui/markdown.js?raw";
+import modelPickerJs from "../../../resources/lan-webui/model-picker.js?raw";
 import type { LanAsset } from "./server";
 
 export function lanWebUiAssets(): ReadonlyMap<string, LanAsset> {
@@ -14,6 +15,7 @@ export function lanWebUiAssets(): ReadonlyMap<string, LanAsset> {
     ["/locale.js", { type: "text/javascript; charset=utf-8", body: localeJs }],
     ["/kit.js", { type: "text/javascript; charset=utf-8", body: kitJs }],
     ["/markdown.js", { type: "text/javascript; charset=utf-8", body: markdownJs }],
+    ["/model-picker.js", { type: "text/javascript; charset=utf-8", body: modelPickerJs }],
     ["/styles.css", { type: "text/css; charset=utf-8", body: stylesCss }],
   ]);
 }

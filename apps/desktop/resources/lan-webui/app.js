@@ -162,6 +162,14 @@
     notify(errorText(error instanceof ApiError ? error.code : "FAILED"));
   }
 
+  const modelPicker = window.createLanModelPicker({
+    t, errorText,
+    load: (sessionId) => api("GET", `/v1/sessions/${enc(sessionId)}/models`),
+    save: (sessionId, choice) => api("POST", `/v1/sessions/${enc(sessionId)}/model`, choice, newKey()),
+    refresh: (sessionId) => state.route.view === "chat" && state.route.sessionId === sessionId ? render({ refresh: true }) : undefined,
+    onSavingChange: () => state.syncComposer?.(),
+  });
+
   async function loadAll(path) {
     const items = [];
     let cursor = null;
@@ -195,6 +203,7 @@
   };
   const back = (fallback) => (history.length > 1 ? history.back() : go(fallback));
   window.addEventListener("hashchange", (event) => {
+    modelPicker.dismiss();
     const prefill = takePairingCode();
     if (prefill && !state.me) {
       showPair("", prefill);
@@ -700,6 +709,8 @@
       : null;
 
     const canChat = !session.readOnly && !session.archived;
+    if (!conversation.canSelectModel || !canChat) modelPicker.dismiss();
+    if (!canChat) state.syncComposer = null;
     const composer = canChat ? buildComposer(sessionId, conversation) : null;
     const title = session.title || t("untitled");
     const head = header({
@@ -707,7 +718,7 @@
       backTo: projectHash(session.projectId),
       subtitle: [
         scopeMeta(session),
-        conversation.modelLabel ? { text: conversation.modelLabel, class: "model" } : null,
+        !conversation.canSelectModel && conversation.modelLabel ? { text: conversation.modelLabel, class: "model" } : null,
         sessionStatus(conversation.waiting ? "waiting" : running ? "running" : session.status),
       ].filter(Boolean),
       actions: [moreButton(title, organizeActions("sessions", session))],
@@ -729,6 +740,7 @@
 
   function buildComposer(sessionId, conversation) {
     const running = Boolean(conversation.activeTurnId);
+    const modelTrigger = conversation.canSelectModel ? modelPicker.trigger(sessionId, conversation.modelLabel) : null;
     const input = el("textarea", {
       id: "composer-input", rows: "1", "aria-label": t("composer"),
       placeholder: running ? t("composerFollowUp") : t("composer"), enterkeyhint: "send",
@@ -752,14 +764,21 @@
     const sync = () => {
       const hasText = Boolean(input.value.trim());
       send.hidden = running && !hasText;
-      send.disabled = state.sending || !hasText || !state.online;
+      const savingModel = modelPicker.isSaving(sessionId);
+      send.disabled = state.sending || savingModel || !hasText || !state.online;
+      if (modelTrigger) {
+        const busy = running || conversation.waiting || conversation.queue.length || state.sending;
+        const restriction = !state.online ? "NETWORK" : busy ? "MODEL_BUSY" : null;
+        modelTrigger.disabled = Boolean(restriction) || savingModel;
+        modelPicker.sync(sessionId, restriction);
+      }
     };
     state.syncComposer = sync;
     const fit = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
     input.addEventListener("input", () => { state.drafts.set(sessionId, input.value); fit(); sync(); });
     const submit = async () => {
       const text = input.value.trim();
-      if (!text || state.sending || !state.online) return;
+      if (!text || state.sending || modelPicker.isSaving(sessionId) || !state.online) return;
       state.sending = true;
       // Show the message at once; the Host record replaces it when it lands.
       const entry = { text, seen: userCount(chatState.items, text), acked: 0 };
@@ -793,7 +812,7 @@
     });
     setTimeout(fit, 0);
     sync();
-    return el("div", { class: "composer" }, [input, el("div", { class: "actions" }, [stop, send])]);
+    return el("div", { class: modelTrigger ? "composer has-model-picker" : "composer" }, [input, modelTrigger, el("div", { class: "actions" }, [stop, send])]);
   }
 
   async function render(options = {}) {
@@ -832,6 +851,7 @@
   }
 
   function showPair(message, prefill = "") {
+    modelPicker.dismiss();
     closeEvents();
     setOffline(false);
     const code = el("input", {

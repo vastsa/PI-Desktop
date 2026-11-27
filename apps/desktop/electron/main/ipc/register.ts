@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { dialog, shell, type BrowserWindow, type IpcMain, type IpcMainInvokeEvent } from "electron";
-import { err, ErrorCodes, IPC, ok, type LifecycleDialogChoice, type Result } from "@pi-desktop/shared";
+import { err, ErrorCodes, IPC, ok, type LifecycleDialogChoice, type ModelInfo, type Result } from "@pi-desktop/shared";
 import type { AgentHostBridge } from "../agent-host-bridge";
 import type { AgentSidecar } from "../agent-sidecar";
 import type { HostProcess } from "../host-process";
@@ -607,8 +607,14 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
       getHost,
       getBridge: () => getAgentHostBridge(),
       invoke: (channel, args) => invokeInternal(channel, args),
+      acquireSessionOperation,
+      readCachedModels: async (providerId) => {
+        const result: { models: ModelInfo[] } = await invokeInternal(IPC.invoke.providersListModels, [{ providerId, source: "cache" }]);
+        return result.models;
+      },
       channels: {
         sessionCreate: IPC.invoke.sessionCreate,
+        sessionConfigure: IPC.invoke.sessionConfigure,
         sessionRename: IPC.invoke.sessionRename,
         projectGroupRename: IPC.invoke.projectGroupRename,
         agentAbort: IPC.invoke.agentAbort,

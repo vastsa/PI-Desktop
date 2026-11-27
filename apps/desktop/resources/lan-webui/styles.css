@@ -1120,6 +1120,110 @@ main > button.fab {
   stroke: none;
 }
 
+/* Keep the model choice under the prompt without making the text field narrower. */
+.composer.has-model-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding-inline-start: 8px;
+}
+.composer.has-model-picker textarea {
+  grid-column: 1 / -1;
+  padding-inline: 10px;
+}
+.model-trigger {
+  justify-self: start;
+  min-width: var(--tap);
+  max-width: 100%;
+  padding-inline: 10px;
+  border-radius: var(--radius-full);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+}
+.model-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-trigger .icon {
+  rotate: 90deg;
+}
+
+.model-picker {
+  position: fixed;
+  inset: auto 0 0;
+  width: min(100%, 520px);
+  max-width: none;
+  max-height: min(520px, 85dvh);
+  margin: 0 auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-elevation-stroke), var(--ds-shadow-dialog);
+  color: var(--ds-text-primary);
+}
+.model-picker::backdrop {
+  background: var(--ds-scrim);
+}
+.model-picker-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: inherit;
+  padding: 8px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+.model-picker-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline-start: 8px;
+}
+.model-picker-header h2 {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+}
+.model-picker-status {
+  padding: 8px;
+  color: var(--ds-text-secondary);
+}
+.model-options {
+  min-height: 0;
+  margin: 0;
+  padding: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+.model-options button {
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: start;
+}
+.model-options button[aria-current="true"] {
+  background: var(--ds-tile);
+}
+.model-option-copy {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.model-option-provider {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+@media (min-width: 640px) {
+  .model-picker {
+    inset: 0;
+    margin: auto;
+    border-radius: var(--radius-2xl);
+  }
+}
+
 /* ---------- floating layers ---------- */
 .status-pill:not([hidden]) {
   position: fixed;
