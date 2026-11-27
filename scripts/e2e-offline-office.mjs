@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { access, cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { access, cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
@@ -11,15 +11,27 @@ import { bindingForCustomModel } from "../packages/shared/dist/model-catalog.js"
 import { IPC } from "../packages/shared/dist/protocol.js";
 import { waitFor } from "./e2e/wait.mjs";
 import { verifyPdfSkillRecipes } from "./e2e/pdf-skill-recipes.mjs";
+import { assertWxBootstrapAbsent, copyStandaloneWxSkill, wxBootstrapEntries } from "./e2e/wx-offline-fixture.mjs";
 
+const officeRecipe = (result) => assert.ok(result.includes("scripts/office/unpack.py"), result);
+const scenarios = {
+  docx: { run: verifyWord, verifySkill: officeRecipe },
+  pptx: { run: verifyPptx, verifySkill: officeRecipe },
+  xlsx: { run: verifyXlsx, verifySkill: (result) => assert.ok(result.includes("scripts/recalc.py"), result) },
+  pdf: { run: verifyPdf, verifySkill: verifyPdfSkillRecipes },
+  wx: {
+    run: verifyWx,
+    skillName: "wx-doc-format",
+    install: installWxSkill,
+    verifySkill: (result) => assert.match(result, /scripts\/run\.sh[\s\S]*--review/),
+  },
+};
+const selected = Object.keys(scenarios).filter((name) => name !== "docx" && process.argv.includes(`--${name}`));
+assert.ok(selected.length <= 1, "Select one Office scenario at a time.");
+const scenarioName = selected[0] ?? "docx";
+const { run: runScenario, skillName = scenarioName, verifySkill, install = installLinkedSkill } = scenarios[scenarioName];
 const appBin = process.env.PI_CODE_E2E_APP_BIN;
-const pptx = process.argv.includes("--pptx");
-const xlsx = process.argv.includes("--xlsx");
-const pdf = process.argv.includes("--pdf");
-const wx = process.argv.includes("--wx");
-assert.ok([pptx, xlsx, pdf, wx].filter(Boolean).length <= 1, "Select one Office scenario at a time.");
-const skillName = wx ? "wx-doc-format" : pdf ? "pdf" : xlsx ? "xlsx" : pptx ? "pptx" : "docx";
-const sampleVariable = `PI_CODE_E2E_${wx ? "WX" : skillName.toUpperCase()}_SKILL`;
+const sampleVariable = `PI_CODE_E2E_${scenarioName.toUpperCase()}_SKILL`;
 const sample = process.env[sampleVariable];
 assert.ok(appBin && sample, `Set PI_CODE_E2E_APP_BIN and ${sampleVariable} to the installed binary and original ${skillName} Skill directory.`);
 assert.ok(skillName === "docx" || (!process.argv.includes("--seed-legacy") && !process.env.PI_CODE_E2E_UPGRADE_STATE),
@@ -104,9 +116,7 @@ const provider = createServer(async (req, res) => {
     const tool = steps[results.length];
     if (steps[0]?.name === "Skill" && results.length) {
       assert.ok(results[0].includes(`Location: ${join(skillPath, "SKILL.md")}`), results[0]);
-      if (pdf) verifyPdfSkillRecipes(results[0]);
-      else if (wx) assert.match(results[0], /scripts\/run\.sh[\s\S]*--review/);
-      else assert.ok(results[0].includes(xlsx ? "scripts/recalc.py" : "scripts/office/unpack.py"), results[0]);
+      verifySkill(results[0]);
     }
     if (tool) assert.ok(tools.includes(tool.name), `Missing ${tool.name}`);
     const delta = tool ? { role: "assistant", tool_calls: [{
@@ -311,6 +321,15 @@ async function installLinkedSkill() {
   await mkdir(dirname(skillPath), { recursive: true });
   await cp(resolve(sample), skillSource, { recursive: true, verbatimSymlinks: true });
   await symlink(skillLink, skillPath, "dir");
+  return skillSource;
+}
+
+async function installWxSkill() {
+  await copyStandaloneWxSkill(sample, skillPath);
+  await Promise.all(["OFFLINE_PACKAGE", "scripts/run.sh", "assets/wx_template.docx", "wheelhouse/wheels.tar.xz"]
+    .map((name) => access(join(skillPath, name))));
+  await assertWxBootstrapAbsent(skillPath);
+  return skillPath;
 }
 
 async function seedLegacy() {
@@ -402,10 +421,9 @@ async function connectFixtureModel(app) {
 
 async function startDocumentScenario(projectName) {
   await mkdir(workspace);
-  if (wx) await cp(resolve(sample), skillPath, { recursive: true, verbatimSymlinks: true });
-  else await installLinkedSkill();
+  const installedSkill = await install();
   const skillFiles = await snapshot(sample);
-  assert.deepEqual(await snapshot(wx ? skillPath : skillSource), skillFiles);
+  assert.deepEqual(await snapshot(installedSkill), skillFiles);
   provider.listen(0, "127.0.0.1");
   await once(provider, "listening");
   const app = await boot();
@@ -420,11 +438,7 @@ async function startDocumentScenario(projectName) {
 
 async function verifyWx() {
   const template = join(skillPath, "assets/wx_template.docx");
-  const state = join(skillPath, ".deps/.wxdf-state.json");
-  await Promise.all(["OFFLINE_PACKAGE", "scripts/run.sh", "assets/wx_template.docx", "wheelhouse/wheels.tar.xz"]
-    .map((name) => access(join(sample, name))));
   const { run, skillFiles } = await startDocumentScenario("WX project");
-  await assert.rejects(stat(join(skillPath, ".deps")), { code: "ENOENT" }, "Start with the original offline archive, before first use.");
   const inputs = [
     { file: "原始 说明.md", text: "这是 Markdown 原文。", output: "排版 Markdown.docx", audit: "转换 Markdown.json" },
     { file: "原始 文档.docx", text: "这是 Word 原文。", output: "排版 Word.docx", audit: "转换 Word.json" },
@@ -453,6 +467,10 @@ Packer.toBuffer(doc).then(bytes => writeFile(file, bytes)).catch(error => { cons
 
   const { results: denied } = await run("Deny the first WX conversion.", [loadSkill(), bash(convert(inputs[0]))], { deny: true });
   assert.match(denied[1], /denied|rejected/i);
+  await assertWxBootstrapAbsent(skillPath);
+  for (const name of [inputs[0].output, inputs[0].audit]) {
+    await assert.rejects(lstat(join(workspace, name)), { code: "ENOENT" });
+  }
   assert.deepEqual(await snapshot(workspace), originals);
   assert.deepEqual(await snapshot(skillPath), skillFiles);
 
@@ -504,10 +522,13 @@ print(json.dumps([summary, paragraphs]))`;
   const score = /总分：(\d+(?:\.\d+)?)\/100/.exec(reviewed[2]);
   assert.ok(score && Number(score[1]) <= 100, reviewed[2]);
   assert.match(reviewed[2], /## 整改建议[\s\S]*开头的手工编号多余，请删掉/);
-  for (const [name, bytes] of Object.entries(originals)) assert.deepEqual(await readFile(join(workspace, name)), bytes);
-  assert.equal(JSON.parse(await readFile(state, "utf8")).python_tag, "cp312");
-  // The original installer keeps its generated dependencies and lock in the user Skill directory.
-  const installed = await snapshot(skillPath, [".deps", ".deps.lock"]);
+  for (const [name, bytes] of Object.entries(originals)) {
+    const originalPath = join(workspace, name);
+    assert.ok((await lstat(originalPath)).isFile(), `WX original is no longer a regular file: ${name}`);
+    assert.deepEqual(await readFile(originalPath), bytes);
+  }
+  assert.ok((await lstat(join(skillPath, ".deps"))).isDirectory(), "WX did not create its offline dependencies.");
+  const installed = await snapshot(skillPath, wxBootstrapEntries);
   assert.deepEqual(Object.keys(installed).sort(), Object.keys(skillFiles).sort());
   for (const [name, content] of Object.entries(skillFiles)) assert.deepEqual(installed[name], content, `WX Skill file changed: ${name}`);
   console.log(`PASS: original standalone WX Skill, Bash denial, first-use offline setup, Markdown and DOCX conversion with audited readback, independent review (${score[1]}/100), and source preservation.`);
@@ -943,11 +964,7 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
 
 try {
   if (process.argv.includes("--seed-legacy")) await seedLegacy();
-  else if (wx) await verifyWx();
-  else if (pdf) await verifyPdf();
-  else if (pptx) await verifyPptx();
-  else if (xlsx) await verifyXlsx();
-  else await verifyWord();
+  else await runScenario();
 } catch (error) {
   console.error(log.slice(-9000));
   throw error;

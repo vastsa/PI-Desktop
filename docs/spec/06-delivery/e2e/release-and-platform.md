@@ -131,21 +131,24 @@
 
 - **Preconditions**: The inspected ARM64 DEB is installed on Kylin V10 SP1
   with loopback-only networking, no CheeseAgent, and a clean profile. Supply
-  a fresh extraction of the original Linux ARM64 WX offline archive.
+  a fresh extraction of the original Linux ARM64 WX offline archive with no
+  links to an existing installation.
 - **Steps**: Run `node scripts/e2e-offline-office.mjs --wx` with
   `PI_CODE_E2E_APP_BIN` and `PI_CODE_E2E_WX_SKILL`. Install WX in the normal
   user Skill directory, enable Office Runtime, load the Skill, and deny the
   first Bash write. Approve its original launcher for Markdown and DOCX
   conversion and for independent review of the source DOCX.
-- **Expected**: Denial leaves files untouched. The launcher bootstraps from
-  the user's wheel archive. Both outputs have the expected text and WX
-  style, both conversion audits pass, and the separate review supplies a
-  score and remediation. Originals and supplied Skill files stay unchanged.
+- **Expected**: Denial leaves files untouched and creates no bootstrap
+  state. On approval, the launcher bootstraps from the user's wheel archive.
+  Both outputs have the expected text and WX style, both conversion audits
+  pass, and the separate review supplies a score and remediation. Originals
+  and supplied Skill files stay unchanged.
   The inspected package contains no WX Skill, scripts, template or archive.
 - **Specs linked**: [Kylin acceptance runbook](../kylin-arm64-offline-install.md#self-installed-wx-skill).
 - **Acceptance criterion**: A, C, E, G, Quality.
 - **Milestone**: M6+ (Pie Code 0.23.1).
-- **Status**: Automated scenario; retain results for the exact tested DEB.
+- **Status**: Automated scenario; retain the harness revision and base with
+  the results for the exact tested DEB.
 
 ## Windows background process snapshot clock
 

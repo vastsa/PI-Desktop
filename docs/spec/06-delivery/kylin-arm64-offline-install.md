@@ -358,7 +358,12 @@ its Python packages offline. Pie adds no WX dependency, template, script or
 archive to the Debian package.
 
 In the same loopback-only Kylin environment, use the already inspected and
-installed DEB and a fresh extraction of the user's offline archive:
+installed DEB and a fresh extraction of the user's offline archive. Pass the
+extracted directory itself. The scenario rejects a linked root, absolute links,
+and relative links that are broken or resolve outside the copied Skill.
+From the checkout supplying the scenario, record the harness commit and its
+base separately from the DEB build commit and SHA-256. Record any local
+changes and keep the run output with this evidence.
 
 ```sh
 PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
@@ -367,10 +372,13 @@ PI_CODE_E2E_WX_SKILL=/absolute/path/to/original/wx-doc-format \
 ```
 
 The scenario discovers and loads the original Skill, denies a Bash write,
-then approves Markdown and DOCX conversion. It reads the output text, WX
-style and public conversion audits back through Bash, and reads the independent
-review score and remediation through the Agent's Read tool. Both input files
-and all supplied Skill files must stay unchanged. Expand the same DEB and
-inspect its resources and `app.asar` contents, including nested archives,
-for WX launchers, `wx-doc-format`, `wx_template.docx` and the WX wheel archive.
+and checks that `.deps`, `.deps.lock`, and conversion outputs are absent.
+It then approves Markdown and DOCX conversion with the packaged Python
+and checks that the launcher created the offline dependencies. It reads
+the output text, WX style, and public conversion audits back through Bash,
+and reads the independent review score and remediation through the Agent's
+Read tool. Both inputs and all supplied Skill files must stay unchanged.
+Expand the same DEB and inspect its resources and `app.asar` contents,
+including nested archives, for WX launchers, `wx-doc-format`,
+`wx_template.docx`, and the WX wheel archive.
 Record their absence alongside the package's runtime and license checks.
