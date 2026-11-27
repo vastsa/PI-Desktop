@@ -11,6 +11,8 @@
  * tests share one implementation instead of re-deriving these rules per surface.
  */
 
+import { isImageOnlyChatModel, type ImageGenerationBindings } from "./image-generation.js";
+import { modelWireIdsEqual } from "./types/models.js";
 import { publishedThinkingLevels } from "./thinking-levels.js";
 import type {
   ModelLimitSource,
@@ -417,4 +419,27 @@ export function formatModelPrice(cost?: ModelInfo["cost"]): string {
         ? "free"
         : `$${value < 1 ? value.toFixed(2) : String(value)}`;
   return `${price(input)} / ${price(output)}`;
+}
+
+/** The Composer only offers enabled providers that are ready to run. */
+export function isChatProviderReady(provider: { enabled?: boolean; hasSecret?: boolean; authKind?: string }): boolean {
+  return provider.enabled === true && (provider.hasSecret === true || provider.authKind === "none");
+}
+
+/** Discovery can filter or decorate a configured model; it never adds one. */
+export function configuredChatModels(
+  provider: { id: string; models?: readonly ModelBinding[]; defaultModelId?: string },
+  discovered: readonly ModelInfo[] = [],
+  imageGeneration?: ImageGenerationBindings | null,
+) {
+  const ids = (provider.models ?? []).map(({ id }) => id.trim()).filter(Boolean);
+  const legacyId = provider.defaultModelId?.trim();
+  return [...new Set(ids.length ? ids : legacyId ? [legacyId] : [])].flatMap((modelId) => {
+    const matches = (model: ModelInfo) => modelWireIdsEqual(model.modelId, modelId);
+    const metadata = discovered.find(matches);
+    if (isImageOnlyChatModel(imageGeneration, provider.id, modelId, metadata) ||
+      discovered.some((model) => matches(model) && model.discoveryState === "unlisted")) return [];
+    const binding = provider.models?.find(({ id }) => modelWireIdsEqual(id, modelId));
+    return [{ modelId, metadata, binding }];
+  });
 }

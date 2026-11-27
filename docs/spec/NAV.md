@@ -11,6 +11,7 @@
 - [00-overview.md](01-product/00-overview.md)
 - [01-product-scope.md](01-product/01-product-scope.md)
 - [02-non-goals.md](01-product/02-non-goals.md)
+- [LAN WebUI MVP](01-product/03-lan-webui-mvp.md)
 
 ## 2. Architecture
 - [README.md](02-architecture/README.md)
