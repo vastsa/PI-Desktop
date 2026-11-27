@@ -340,3 +340,45 @@ the separate LibreOffice export route. The Excel sample documents formula
 recalculation; it does not supply an Excel-to-PDF recipe. PDF table
 extraction via pdfplumber, OCR and optional PDF command line alternatives
 are outside this qualification.
+
+## Self-installed WX Skill
+
+Extract the complete user-provided Linux ARM64 `wx-doc-format` offline
+archive (qualified sample: 0.21.3) into `~/.agents/skills/wx-doc-format`.
+Keep its scripts, template and wheel archive together. Use a writable user
+directory: the original launcher generates `.deps` and `.deps.lock` on first
+use. It leaves the supplied Skill files alone and needs no CheeseAgent link.
+
+Enable Office Runtime for the local session so the Skill's `python3` resolves
+to Pie's existing Python 3.12. Run the Skill's documented `sh scripts/run.sh`
+workflow with absolute paths and `WX_DOC_FORMAT_RELEASE=1`. Use a separate
+output and audit report for each ordinary conversion; run `--review` separately
+on the original DOCX with its own report path. The Skill's wheelhouse supplies
+its Python packages offline. Pie adds no WX dependency, template, script or
+archive to the Debian package.
+
+In the same loopback-only Kylin environment, use the already inspected and
+installed DEB and a fresh extraction of the user's offline archive. Pass the
+extracted directory itself. The scenario rejects a linked root, absolute links,
+and relative links that are broken or resolve outside the copied Skill.
+From the checkout supplying the scenario, record the harness commit and its
+base separately from the DEB build commit and SHA-256. Record any local
+changes and keep the run output with this evidence.
+
+```sh
+PI_CODE_E2E_APP_BIN='/opt/Pie Code/pie-code' \
+PI_CODE_E2E_WX_SKILL=/absolute/path/to/original/wx-doc-format \
+  node scripts/e2e-offline-office.mjs --wx
+```
+
+The scenario discovers and loads the original Skill, denies a Bash write,
+and checks that `.deps`, `.deps.lock`, and conversion outputs are absent.
+It then approves Markdown and DOCX conversion with the packaged Python
+and checks that the launcher created the offline dependencies. It reads
+the output text, WX style, and public conversion audits back through Bash,
+and reads the independent review score and remediation through the Agent's
+Read tool. Both inputs and all supplied Skill files must stay unchanged.
+Expand the same DEB and inspect its resources and `app.asar` contents,
+including nested archives, for WX launchers, `wx-doc-format`,
+`wx_template.docx`, and the WX wheel archive.
+Record their absence alongside the package's runtime and license checks.
