@@ -9,6 +9,7 @@ import { registerAgentExtensionIpc } from "../agent-extensions-ipc";
 import { readNpmPath, writeNpmPath } from "../npm-preferences";
 import { registerAgentIpc } from "./agent-ipc";
 import { registerAppIpc } from "./app-ipc";
+import { registerFileSearchIpc } from "./file-search-ipc";
 import { registerDiagnosticsIpc } from "./diagnostics-ipc";
 import { registerStartupAnimationIpc } from "./startup-animation-ipc";
 import { registerMarketIpc } from "./market-ipc";
@@ -586,6 +587,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     isDeveloperMode,
     getMainWindow,
   });
+  registerFileSearchIpc({ registrar, getHost });
 
   registerStartupAnimationIpc({ registrar, dataDir, stripWinLongPrefix });
   const invokeInternal = async (channel: string, args: readonly unknown[] = []) => {

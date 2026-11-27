@@ -162,6 +162,7 @@ export const IPC = {
     sessionFork: "pi-desktop/session/fork",
     sessionMoveProject: "pi-desktop/session/moveProject",
     sessionSearch: "pi-desktop/session/search",
+    filesSearchText: "pi-desktop/files/searchText",
     sessionSearchContext: "pi-desktop/session/searchContext",
     sessionGet: "pi-desktop/session/get",
     sessionCollaboration: "pi-desktop/session/collaboration",

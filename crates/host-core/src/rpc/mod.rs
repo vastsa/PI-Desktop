@@ -2035,6 +2035,10 @@ async fn handle_request(
     }
 
     match method {
+        "files.searchText" => {
+            crate::file_search::search_text(&params)
+                .map_err(|message| rpc_err(1002, message, "INVALID_ARGUMENT"))
+        }
         "visualizations.readFragment" => gen_ui::read_fragment(state, params).await,
         "tools.remoteComplete" | "tools.workspaceExecute" | "tools.workspaceAbort" => {
             remote_tools::handle(state, method, params, tx).await
