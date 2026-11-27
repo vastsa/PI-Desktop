@@ -166,6 +166,8 @@ The minimum selection is:
   installed-layout artifact with an isolated profile.
 - Session-list refresh or model capability lookup: `pnpm test:e2e` and
   `pnpm test:e2e:boot`, including the synthetic large-list responsiveness check.
+- LAN WebUI pairing, navigation, chat, or model selection: `pnpm test:e2e:lan-webui`
+  on a runner with Electron and a display (Xvfb on Linux).
 - Settings/composer/plugin search theme surfaces: `pnpm build:js` followed by
   `pnpm test:e2e:theme-surfaces`.
 - Composer clipboard representation and text insertion: `pnpm test:e2e:composer-paste`.

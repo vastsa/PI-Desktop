@@ -348,7 +348,7 @@ settings) and `apps/desktop/src/features/lan-webui/lan-catalog-sync.ts`
 
 Automated coverage: `apps/desktop/test/lan-webui-organization.test.mjs`,
 `lan-webui-restart.test.mjs` (saved startup and pairing lifecycle),
-`lan-webui-user-path.test.mjs` (real HTTP listener, fake Desktop),
-`lan-webui-browser-user-path.test.mjs` (Electron Chromium at phone size driving
-the shipped page), and `lan-webui-settings-user-path.test.mjs` (Desktop System
-settings in isolated Electron, with a fixture preload boundary).
+`lan-webui-user-path.test.mjs` (real HTTP listener, fake Desktop), and
+`lan-webui-settings-user-path.test.mjs` (isolated Desktop System settings).
+The phone-size Electron Chromium journey runs separately with
+`pnpm test:e2e:lan-webui` on the Electron-equipped CI runner.

@@ -751,12 +751,13 @@ their separate platform acceptance.
 
 These scenarios qualify the [LAN companion](../../01-product/03-lan-webui-mvp.md),
 not the SSH remote Host, a standalone server, or a public Gateway. For all eight:
-**Milestone:** M6+ (WebUI MVP). **Status:** Partially automated — the core user
-path, pairing guards and organization merge run in
-`apps/desktop/test/lan-webui-*.test.mjs` (real listener, fake Desktop, Electron
-Chromium at phone size); real-device steps remain Draft. Use an isolated Desktop
-profile, disposable test devices and deterministic fixtures. Do not use a
-user's running instance.
+**Milestone:** M6+ (WebUI MVP). **Status:** Partially automated — pairing
+guards, HTTP commands and organization merge run in
+`apps/desktop/test/lan-webui-*.test.mjs` against a real listener and fake Desktop.
+`pnpm test:e2e:lan-webui` drives the shipped page in Electron Chromium at phone
+size, including on the Electron-equipped CI runner. Real-device steps remain
+Draft. Use an isolated Desktop profile, disposable devices and deterministic
+fixtures; do not use a user's running instance.
 
 ### E2E-269: Enable, pair and shut down
 
