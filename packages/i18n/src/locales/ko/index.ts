@@ -845,7 +845,6 @@ export const ko = {
     title: "할 일 및 백그라운드 작업",
     tabTodo: "할 일",
     tabTasks: "백그라운드 작업",
-    newTasks: "새 작업 {{count}}개",
     runningCount: "{{count}}개 실행 중",
     expand: "{{label}} 펼치기",
     collapse: "{{label}} 접기",

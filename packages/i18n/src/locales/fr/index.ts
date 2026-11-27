@@ -836,7 +836,6 @@ export const fr = {
     title: "À faire et tâches en arrière-plan",
     tabTodo: "À faire",
     tabTasks: "Tâches en arrière-plan",
-    newTasks: "{{count}} nouvelles tâches",
     runningCount: "{{count}} en cours",
     expand: "Développer {{label}}",
     collapse: "Réduire {{label}}",

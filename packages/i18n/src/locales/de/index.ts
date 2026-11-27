@@ -836,7 +836,6 @@ export const de = {
     title: "Aufgaben",
     tabTodo: "To-do",
     tabTasks: "Hintergrundaufgaben",
-    newTasks: "{{count}} neue Aufgaben",
     runningCount: "{{count}} laufen",
     expand: "{{label}} ausklappen",
     collapse: "{{label}} einklappen",

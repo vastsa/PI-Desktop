@@ -7,9 +7,8 @@ import type { BackgroundTaskOutput, BackgroundTaskSummary } from "../../src/lib/
  * static render, so the test installs the two lists the hook keeps apart:
  * `tasks` are the rows the container may render, `sessionTasks` are every
  * registry entry the host still lists for the session — including finished
- * tasks it keeps as history after their grace window closed. Keeping both in
- * the fixture is the point: the rendered container must answer only to
- * `tasks`.
+ * tasks it keeps as history after their rows left. Keeping both in the fixture
+ * is the point: the rendered container must answer only to `tasks`.
  */
 export type DockFixture = {
   tasks: BackgroundTaskSummary[];

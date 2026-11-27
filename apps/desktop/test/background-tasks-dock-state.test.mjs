@@ -4,9 +4,9 @@ import test from "node:test";
 
 /*
  * The shared container's view state. These pin the rules a user can observe:
- * which panel is on screen, when a new task raises a badge, and what a click on
- * a tab does while the container is collapsed. All of it is plain renderer
- * memory, so a controlled input decides every case.
+ * which panel is on screen and what a click on a tab does while the container
+ * is collapsed. All of it is plain renderer memory, so a controlled input
+ * decides every case.
  */
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
@@ -15,27 +15,18 @@ const {
   EMPTY_SESSION_DOCK,
   badgeLabel,
   chooseTab,
-  clearBadge,
-  observeSessionTasks,
+  isReading,
   pruneDockView,
   resolveDockTab,
   resolveDockTabFor,
   selectTab,
   sessionDockState,
-  tasksPanelVisible,
+  sidesFor,
   toggleCollapsed,
+  visibleDockTab,
 } = await import("../src/features/chat/background-tasks/dock-state.ts");
 
 const SESSION = "session-1";
-
-const task = (id, state = "running") => ({
-  id,
-  sessionId: SESSION,
-  command: `cmd ${id}`,
-  commandShellId: "bash",
-  state,
-  elapsedMs: 1_000,
-});
 
 /** A container the user has opened, with one session's state patched in. */
 const view = (patch) => ({
@@ -80,13 +71,9 @@ test("clicking the already-active tab while collapsed still expands", () => {
 });
 
 test("only a user action writes the remembered tab", () => {
-  // Folding a snapshot into the badge must never overwrite what the user chose.
+  // Tab selection must never overwrite what the user chose.
   const chosen = chooseTab(EMPTY_DOCK_VIEW, SESSION, "todo");
-  const afterBadge = observeSessionTasks(chosen, SESSION, [task("a")], {
-    knownIds: new Set(),
-    tasksVisible: false,
-  });
-  assert.equal(sessionDockState(afterBadge.view, SESSION).chosenTab, "todo");
+  assert.equal(sessionDockState(chosen, SESSION).chosenTab, "todo");
 });
 
 test("the remember-chosen tab wins while its side has content", () => {
@@ -120,79 +107,63 @@ test("one populated side renders alone, so the tab list is not rendered", () => 
   assert.equal(sides.hasTodo && sides.hasTasks, false);
 });
 
-test("a collapsed container never counts as looking at the tasks panel", () => {
-  const sides = { hasTodo: true, hasTasks: true, runningTasks: 2, inProgressTodos: 0 };
-  const open = { ...EMPTY_SESSION_DOCK, collapsed: false };
-  assert.equal(tasksPanelVisible(open, sides), true);
-  assert.equal(tasksPanelVisible(EMPTY_SESSION_DOCK, sides), false);
-  // The todo panel on screen is not the tasks panel either.
-  const onTodo = { ...open, chosenTab: "todo" };
-  assert.equal(tasksPanelVisible(onTodo, sides), false);
+test("a row being read keeps the tasks panel on screen", () => {
+  // Without this guard the auto tab rule switches to Todo when the last
+  // running task ends, taking the panel — and the row being read — away
+  // mid-read (#2634).
+  const sides = { hasTodo: true, hasTasks: true, runningTasks: 0, inProgressTodos: 1 };
+  const auto = { ...EMPTY_SESSION_DOCK, collapsed: false };
+  assert.equal(resolveDockTabFor(auto, sides), "todo");
+  assert.equal(visibleDockTab(auto, sides, true), "tasks");
+  // Not reading: the auto rule decides as before.
+  assert.equal(visibleDockTab(auto, sides, false), "todo");
+  // A user tab choice still decides — reading never overrides Todo.
+  const onTodo = { ...auto, chosenTab: "todo" };
+  assert.equal(resolveDockTabFor(onTodo, sides), "todo");
 });
 
-test("the render rule and the badge rule share one tab decision", () => {
-  // Both read `resolveDockTabFor`, so they cannot disagree about which panel is
-  // on screen. This is the invariant the old duplicated call broke.
-  const sides = { hasTodo: true, hasTasks: true, runningTasks: 1, inProgressTodos: 1 };
-  const state = { ...EMPTY_SESSION_DOCK, collapsed: false };
-  assert.equal(resolveDockTabFor(state, sides), "tasks");
-  assert.equal(tasksPanelVisible(state, sides), true);
+test("the resolved panel, not the remembered choice, decides a read", () => {
+  // The follow-up regression: a user chose Todo, then removed every todo, so
+  // the panel fell back to Tasks without changing the choice. A read on that
+  // panel is a visible read and must survive the task ending (#2634).
+  const rememberedTodo = { ...EMPTY_SESSION_DOCK, chosenTab: "todo", collapsed: false };
+  const readRow = "task-1";
+  const openSides = { hasTodo: false, hasTasks: true, runningTasks: 1, inProgressTodos: 0 };
+  // Before the todos clear, the choice is live: the read is not on screen.
+  const withTodos = { hasTodo: true, hasTasks: true, runningTasks: 1, inProgressTodos: 1 };
+  assert.equal(isReading(rememberedTodo, withTodos, readRow), false);
+  // After the clear, the panel on screen is Tasks — through the task ending.
+  assert.equal(isReading(rememberedTodo, openSides, readRow), true);
+  const ended = { ...openSides, runningTasks: 0 };
+  assert.equal(isReading(rememberedTodo, ended, readRow), true);
+  // Todos coming back ends the read: the remembered Todo is on screen again.
+  assert.equal(isReading(rememberedTodo, withTodos, readRow), false);
 });
 
-test("a new task raises the badge only while the tasks panel is not on screen", () => {
-  const seen = new Set();
-  const raised = observeSessionTasks(EMPTY_DOCK_VIEW, SESSION, [task("a"), task("b")], {
-    knownIds: seen,
-    tasksVisible: false,
-  });
-  assert.equal(sessionDockState(raised.view, SESSION).newCount, 2);
-  assert.deepEqual([...raised.knownIds].sort(), ["a", "b"]);
-
-  const quiet = observeSessionTasks(EMPTY_DOCK_VIEW, SESSION, [task("a")], {
-    knownIds: new Set(),
-    tasksVisible: true,
-  });
-  assert.equal(sessionDockState(quiet.view, SESSION).newCount, 0);
+test("an automatic tab never interrupts a read, a collapse always does", () => {
+  const sides = { hasTodo: true, hasTasks: true, runningTasks: 0, inProgressTodos: 1 };
+  // No choice recorded: the open read keeps Tasks on screen.
+  const auto = { ...EMPTY_SESSION_DOCK, collapsed: false };
+  assert.equal(isReading(auto, sides, "task-1"), true);
+  // A choice of Tasks reads as before.
+  const onTasks = { ...auto, chosenTab: "tasks" };
+  assert.equal(isReading(onTasks, sides, "task-1"), true);
+  // No open row, or a collapsed container: nothing on screen to read.
+  assert.equal(isReading(auto, sides, null), false);
+  assert.equal(isReading({ ...auto, collapsed: true }, sides, "task-1"), false);
 });
 
-test("the same snapshot re-read does not count a task twice", () => {
-  const first = observeSessionTasks(EMPTY_DOCK_VIEW, SESSION, [task("a")], {
-    knownIds: new Set(),
-    tasksVisible: false,
-  });
-  assert.equal(sessionDockState(first.view, SESSION).newCount, 1);
-
-  const again = observeSessionTasks(first.view, SESSION, [task("a")], {
-    knownIds: first.knownIds,
-    tasksVisible: false,
-  });
-  assert.equal(sessionDockState(again.view, SESSION).newCount, 1);
-});
-
-test("a task that is already finished is not new work", () => {
-  const finished = observeSessionTasks(EMPTY_DOCK_VIEW, SESSION, [task("a", "exited")], {
-    knownIds: new Set(),
-    tasksVisible: false,
-  });
-  assert.equal(sessionDockState(finished.view, SESSION).newCount, 0);
-});
-
-test("entering the tasks tab is the only clear point for the badge", () => {
-  const raised = observeSessionTasks(EMPTY_DOCK_VIEW, SESSION, [task("a")], {
-    knownIds: new Set(),
-    tasksVisible: false,
-  });
-  // Re-reading the list with the panel still hidden keeps the badge.
-  const still = observeSessionTasks(raised.view, SESSION, [task("a")], {
-    knownIds: raised.knownIds,
-    tasksVisible: false,
-  });
-  assert.equal(sessionDockState(still.view, SESSION).newCount, 1);
-
-  const cleared = clearBadge(chooseTab(still.view, SESSION, "tasks"), SESSION);
-  assert.equal(sessionDockState(cleared, SESSION).newCount, 0);
-  // The remembered tab survives the clear.
-  assert.equal(sessionDockState(cleared, SESSION).chosenTab, "tasks");
+test("sides describe the rows as the tab rule sees them", () => {
+  const rows = [
+    { state: "running" },
+    { state: "exited" },
+    { state: "exited" },
+  ];
+  const todos = [{ status: "in_progress" }, { status: "completed" }];
+  const sides = sidesFor(rows, todos);
+  assert.equal(sides.hasTasks, true);
+  assert.equal(sides.runningTasks, 1, "only a running row counts as live work");
+  assert.equal(sides.inProgressTodos, 1);
 });
 
 test("collapse is one container-wide condition, both tabs share it", () => {
