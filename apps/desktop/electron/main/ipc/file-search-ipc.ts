@@ -13,16 +13,26 @@ export type ProjectTextMatch = {
 export type ProjectTextSearchResult = {
   /** Traversal engine that produced the rows, for diagnostics. */
   engine: string;
+  /** One page of match rows, starting at `offset`. */
   matches: ProjectTextMatch[];
-  truncated: boolean;
+  /** Every match the scan found, not just this page. */
+  total: number;
+  /** Files holding at least one match. */
+  fileCount: number;
+  offset: number;
+  nextOffset: number | null;
   scannedFiles: number;
   elapsedMs: number;
+  /** True when the page came from the cached scan instead of a new walk. */
+  cached: boolean;
 };
 
 export type ProjectTextSearchInput = {
   root: string;
   query: string;
   caseSensitive?: boolean;
+  offset?: number;
+  limit?: number;
 };
 
 export type FileSearchIpcDependencies = {
@@ -36,6 +46,9 @@ export type FileSearchIpcDependencies = {
  * The renderer must not touch the filesystem, so the channel only forwards the
  * request to host-core, which walks with ripgrep's `ignore` engine and applies
  * the private-key / `.env` denylist before anything reaches the window.
+ *
+ * The scan is complete; `offset` / `limit` only bound one IPC frame, so the
+ * dialog can page through a result set far larger than a single message.
  */
 export function registerFileSearchIpc({
   registrar,
@@ -51,10 +64,14 @@ export function registerFileSearchIpc({
       }
       const host = getHost();
       if (!host) throw new Error("host is not ready");
+      const offset = Number.isFinite(input.offset) ? Math.max(0, Math.floor(input.offset ?? 0)) : 0;
+      const limit = Number.isFinite(input.limit) ? Math.floor(input.limit ?? 0) : 0;
       return host.call<ProjectTextSearchResult>("files.searchText", {
         root,
         query,
         caseSensitive: input.caseSensitive === true,
+        offset,
+        ...(limit > 0 ? { limit } : {}),
       });
     },
   );

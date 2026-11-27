@@ -1,5 +1,5 @@
 import { OverlayBackdrop } from "./ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { listableSessions } from "../lib/session-origin";
@@ -22,6 +22,9 @@ import {
   IconSettings,
   IconSliders,
 } from "./icons";
+
+/** Hits fetched per Files-tab page; the host serves any offset from one scan. */
+const FILE_PAGE_SIZE = 200;
 
 /** Navigable pages surfaced by the global search alongside sessions. */
 const PAGE_ENTRIES = [
@@ -102,7 +105,10 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   // The dialog has two sources: conversation messages (existing behaviour) and
   // project file contents, which searches through host-core (#2584 follow-up).
   const [searchTab, setSearchTab] = useState<"sessions" | "files">("sessions");
-  const [fileRows, setFileRows] = useState<ProjectFileRow[]>([]);
+  // One slot per hit; slots arrive page by page, so a query with 200k hits is
+  // still a flat, indexable list for the virtual window below.
+  const [fileRows, setFileRows] = useState<(ProjectFileRow | null)[]>([]);
+  const [fileFileCount, setFileFileCount] = useState(0);
   // Literal case-insensitive matching is the default; the toggle opts in.
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [fileStatus, setFileStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -111,35 +117,105 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   // completion chat file references use (ADR 0262).
   const openFileRef = useOpenChatFileRef();
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  // Host scans once and serves any offset, so paging asks for the page a visible
+  // row belongs to instead of receiving the whole hit set in one frame.
+  const fileGeneration = useRef(0);
+  const filePagesRef = useRef(new Set<number>());
+  const fileQueryRef = useRef("");
   useEffect(() => {
     if (!open || searchTab !== "files") return;
     const trimmed = query.trim();
+    // A new query invalidates every page requested for the previous one.
+    const generation = ++fileGeneration.current;
+    filePagesRef.current = new Set();
+    fileQueryRef.current = trimmed;
     if (trimmed.length < 2 || !fileRoot) {
       setFileRows([]);
+      setFileFileCount(0);
       setFileStatus("idle");
       return;
     }
-    let cancelled = false;
+    setFileRows([]);
+    setFileFileCount(0);
     setFileStatus("loading");
     const timer = window.setTimeout(() => {
+      // Claim page 0 up front so the virtual window cannot request it twice
+      // while the first page is still in flight.
+      filePagesRef.current.add(0);
       api
-        .searchProjectText({ root: fileRoot, query: trimmed, caseSensitive })
+        .searchProjectText({
+          root: fileRoot,
+          query: trimmed,
+          caseSensitive,
+          offset: 0,
+          limit: FILE_PAGE_SIZE,
+        })
         .then((result) => {
-          if (cancelled) return;
-          setFileRows(result.matches);
+          if (generation !== fileGeneration.current) return;
+          const rows: (ProjectFileRow | null)[] = new Array(result.total).fill(null);
+          result.matches.forEach((row, index) => {
+            rows[index] = row;
+          });
+          setFileRows(rows);
+          setFileFileCount(result.fileCount);
           setFileStatus("idle");
         })
         .catch(() => {
-          if (cancelled) return;
+          if (generation !== fileGeneration.current) return;
+          filePagesRef.current.delete(0);
           setFileRows([]);
+          setFileFileCount(0);
           setFileStatus("error");
         });
     }, 220);
     return () => {
-      cancelled = true;
       window.clearTimeout(timer);
     };
   }, [open, searchTab, query, fileRoot, caseSensitive]);
+
+  /** Loads every page overlapping `[start, end)` that the dialog does not hold. */
+  const ensureFileRange = useCallback(
+    (start: number, end: number) => {
+      const trimmed = fileQueryRef.current;
+      if (!trimmed || !fileRoot) return;
+      const generation = fileGeneration.current;
+      const firstPage = Math.floor(start / FILE_PAGE_SIZE);
+      const lastPage = Math.floor((Math.max(end, start + 1) - 1) / FILE_PAGE_SIZE);
+      for (let page = firstPage; page <= lastPage; page += 1) {
+        if (filePagesRef.current.has(page)) continue;
+        filePagesRef.current.add(page);
+        const offset = page * FILE_PAGE_SIZE;
+        api
+          .searchProjectText({
+            root: fileRoot,
+            query: trimmed,
+            caseSensitive,
+            offset,
+            limit: FILE_PAGE_SIZE,
+          })
+          .then((result) => {
+            if (generation !== fileGeneration.current) return;
+            setFileFileCount(result.fileCount);
+            setFileRows((previous) => {
+              // The result set changed under us: drop this page rather than
+              // write rows at offsets that now mean something else.
+              if (previous.length !== result.total) return previous;
+              const next = previous.slice();
+              result.matches.forEach((row, index) => {
+                const at = offset + index;
+                if (at < next.length) next[at] = row;
+              });
+              return next;
+            });
+          })
+          .catch(() => {
+            if (generation !== fileGeneration.current) return;
+            filePagesRef.current.delete(page);
+          });
+      }
+    },
+    [fileRoot, caseSensitive],
+  );
   const [commandResult, setCommandResult] = useState<{
     query: string;
     hits: CommandItem[];
@@ -286,11 +362,13 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   }, [optionCount]);
 
   useEffect(() => {
-    if (!open) return;
+    // The Files list scrolls its own virtual window, so it keeps the active row
+    // in view itself; this only serves the shared session/page/settings list.
+    if (!open || searchTab === "files") return;
     document
       .getElementById(`global-search-option-${active}`)
       ?.scrollIntoView({ block: "nearest" });
-  }, [active, open]);
+  }, [active, open, searchTab]);
 
   if (!open) return null;
 
@@ -372,7 +450,11 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const runActive = () => {
     if (searchTab === "files") {
       const row = fileRows[active];
-      if (!row) return;
+      // A row outside the loaded pages opens once its page lands.
+      if (!row) {
+        ensureFileRange(active, active + 1);
+        return;
+      }
       openFileRow(row);
       return;
     }
@@ -495,9 +577,9 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             <>
               <ProjectFileSearchResults
                 rows={fileRows}
+                fileCount={fileFileCount}
                 query={query}
                 active={active}
-                baseIndex={0}
                 caseSensitive={caseSensitive}
                 onToggleCase={() => {
                   setCaseSensitive((value) => !value);
@@ -505,6 +587,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                 }}
                 onActivate={setActive}
                 onSelect={openFileRow}
+                onEnsureRange={ensureFileRange}
               />
               {fileStatus === "loading" ? (
                 <div className="search-empty" role="status">

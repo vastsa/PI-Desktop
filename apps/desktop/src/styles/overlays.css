@@ -27,6 +27,9 @@
 }
 
 .search-dialog {
+  /* Files-tab rows are virtualized, so their height is a layout contract shared
+     with ProjectFileSearchResults; keep the two in sync. */
+  --search-file-row-height: 56px;
   display: flex;
   width: min(100%, 620px);
   max-height: min(460px, 100%);
@@ -168,7 +171,60 @@
 .search-item-file {
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 2px;
+  /* Tight vertical padding: the fixed row height centers the two lines. */
+  padding: 6px 10px;
+}
+
+/* Files-tab layout. The header stays put and the list scrolls on its own, so
+   the dialog can virtualize a result set far taller than the window. */
+.search-results.is-files-tab {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.search-group[data-search-group="files"] {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.search-files-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.search-files-track {
+  position: relative;
+}
+
+.search-files-window {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+/* Loading / empty / error notices sit under the virtual list without stealing
+   its height. */
+.search-results.is-files-tab > .search-empty {
+  flex: 0 0 auto;
+}
+
+/* Fixed row height: ProjectFileSearchResults maps scroll offset to a row index
+   with it, so the two must stay in step. */
+.search-item-file,
+.search-file-placeholder {
+  box-sizing: border-box;
+  height: var(--search-file-row-height);
+  justify-content: center;
+}
+
+.search-file-placeholder {
+  border-radius: var(--radius-md-plus);
 }
 
 /* The path is metadata: small, mono, muted. The matched line is the content:
