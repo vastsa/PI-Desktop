@@ -156,10 +156,12 @@ test("the container shows only live work: a finished row leaves as soon as it en
   assert.match(visibility, /task\.id === pinnedId/);
   assert.match(controller, /selectVisibleTasks\(sessionTasks, expandedId\)/);
   // The pin on a row being read ends when its preview leaves the screen —
-  // collapse, or a switch to Todo — unless the task still runs, whose
-  // preview survives the switch and picks up the same read on return
-  // (#2634).
-  assert.match(controller, /const reading = expandedId !== null && !dock\.collapsed && dock\.chosenTab !== "todo"/);
+  // collapse, or a switch to a Todo panel that is actually visible — unless
+  // the task still runs, whose preview survives the switch and picks up the
+  // same read on return (#2634). The panel that resolves decides, not the
+  // remembered choice: a remembered Todo whose side emptied has already
+  // fallen back to Tasks.
+  assert.match(controller, /const reading = isReading\(dock, sides, expandedId\)/);
   assert.match(controller, /if \(expandedId === null \|\| reading\) return;/);
   assert.match(controller, /if \(pinnedTask\?\.state !== "running"\) setExpandedId\(null\)/);
   // The effect re-runs on every session task snapshot: that is what closes

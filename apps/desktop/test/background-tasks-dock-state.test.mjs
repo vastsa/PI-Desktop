@@ -15,6 +15,7 @@ const {
   EMPTY_SESSION_DOCK,
   badgeLabel,
   chooseTab,
+  isReading,
   pruneDockView,
   resolveDockTab,
   resolveDockTabFor,
@@ -119,6 +120,37 @@ test("a row being read keeps the tasks panel on screen", () => {
   // A user tab choice still decides — reading never overrides Todo.
   const onTodo = { ...auto, chosenTab: "todo" };
   assert.equal(resolveDockTabFor(onTodo, sides), "todo");
+});
+
+test("the resolved panel, not the remembered choice, decides a read", () => {
+  // The follow-up regression: a user chose Todo, then removed every todo, so
+  // the panel fell back to Tasks without changing the choice. A read on that
+  // panel is a visible read and must survive the task ending (#2634).
+  const rememberedTodo = { ...EMPTY_SESSION_DOCK, chosenTab: "todo", collapsed: false };
+  const readRow = "task-1";
+  const openSides = { hasTodo: false, hasTasks: true, runningTasks: 1, inProgressTodos: 0 };
+  // Before the todos clear, the choice is live: the read is not on screen.
+  const withTodos = { hasTodo: true, hasTasks: true, runningTasks: 1, inProgressTodos: 1 };
+  assert.equal(isReading(rememberedTodo, withTodos, readRow), false);
+  // After the clear, the panel on screen is Tasks — through the task ending.
+  assert.equal(isReading(rememberedTodo, openSides, readRow), true);
+  const ended = { ...openSides, runningTasks: 0 };
+  assert.equal(isReading(rememberedTodo, ended, readRow), true);
+  // Todos coming back ends the read: the remembered Todo is on screen again.
+  assert.equal(isReading(rememberedTodo, withTodos, readRow), false);
+});
+
+test("an automatic tab never interrupts a read, a collapse always does", () => {
+  const sides = { hasTodo: true, hasTasks: true, runningTasks: 0, inProgressTodos: 1 };
+  // No choice recorded: the open read keeps Tasks on screen.
+  const auto = { ...EMPTY_SESSION_DOCK, collapsed: false };
+  assert.equal(isReading(auto, sides, "task-1"), true);
+  // A choice of Tasks reads as before.
+  const onTasks = { ...auto, chosenTab: "tasks" };
+  assert.equal(isReading(onTasks, sides, "task-1"), true);
+  // No open row, or a collapsed container: nothing on screen to read.
+  assert.equal(isReading(auto, sides, null), false);
+  assert.equal(isReading({ ...auto, collapsed: true }, sides, "task-1"), false);
 });
 
 test("sides describe the rows as the tab rule sees them", () => {

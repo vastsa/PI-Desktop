@@ -151,6 +151,25 @@ export function visibleDockTab(
 }
 
 /**
+ * Whether the output preview is on screen: a row is open, the container is
+ * expanded, and the panel on screen is Tasks.
+ *
+ * The resolved panel, not the remembered choice, decides: choosing Todo ends a
+ * read only while the Todo side still has content, so clearing every todo —
+ * which falls back to Tasks without changing the choice — leaves the read
+ * alive (#2634). A tab the container chose on its own never interrupts the
+ * read either, because `visibleDockTab` keeps Tasks on screen for it.
+ */
+export function isReading(
+  state: DockSessionState,
+  sides: DockSides,
+  expandedId: string | null,
+): boolean {
+  if (expandedId === null || state.collapsed) return false;
+  return resolveDockTabFor(state, sides) === "tasks" || state.chosenTab === null;
+}
+
+/**
  * The user picked a tab. Only this writes the remembered choice, so a tab the
  * container chose on its own never overwrites what the user wanted.
  */

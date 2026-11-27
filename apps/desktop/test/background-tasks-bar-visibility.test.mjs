@@ -11,7 +11,7 @@ import test from "node:test";
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { selectVisibleTasks } = await import("../src/features/chat/background-tasks/bar-visibility.ts");
-const { sidesFor, visibleDockTab } = await import("../src/features/chat/background-tasks/dock-state.ts");
+const { isReading, sidesFor, visibleDockTab } = await import("../src/features/chat/background-tasks/dock-state.ts");
 
 const task = (id, state, extra = {}) => ({
   id,
@@ -63,29 +63,27 @@ test("a running task is visible whether or not its output is open", () => {
 
 /*
  * The pin on a row being read, driven the way the hook composes it: the rows
- * carry the pin, the sides describe them, `reading` says whether the preview
+ * carry the pin, the sides describe them, `isReading` says whether the preview
  * is on screen, and `visibleDockTab` keeps the tasks panel under it. When the
  * preview leaves the screen the hook closes the pin — unless the task is
  * still running, whose preview survives the switch and picks up the same
  * read when the user returns (#2634).
  */
 
-/** The hook's on-screen rule for the preview: expanded, open, not on Todo. */
-const reading = (expandedId, dock) => expandedId !== null && !dock.collapsed && dock.chosenTab !== "todo";
-
 test("regression: the row being read stays while its preview is on screen", () => {
   // start → open output: the task finishes while the user reads it.
   const running = task("a", "running");
   const dock = { chosenTab: "tasks", collapsed: false };
   const rows = selectVisibleTasks([running], "a");
-  assert.equal(visibleDockTab(dock, sidesFor(rows, []), reading("a", dock)), "tasks");
+  const sides = sidesFor(rows, []);
+  assert.equal(visibleDockTab(dock, sides, isReading(dock, sides, "a")), "tasks");
 
   const ended = { ...running, state: "exited", exitCode: 0 };
   assert.deepEqual(ids(selectVisibleTasks([ended], "a")), ["a"]);
   // The pinned row keeps the tasks side non-empty, so the panel — and the
   // read — survives the task ending underneath it.
-  const pinnedRows = selectVisibleTasks([ended], "a");
-  assert.equal(visibleDockTab(dock, sidesFor(pinnedRows, []), reading("a", dock)), "tasks");
+  const pinnedSides = sidesFor(selectVisibleTasks([ended], "a"), []);
+  assert.equal(visibleDockTab(dock, pinnedSides, isReading(dock, pinnedSides, "a")), "tasks");
 });
 
 test("regression: the auto tab rule does not take the panel from an open read", () => {
@@ -98,11 +96,12 @@ test("regression: the auto tab rule does not take the panel from an open read", 
 
   const ended = { ...running, state: "exited", exitCode: 0 };
   const rows = selectVisibleTasks([ended], "a");
-  assert.equal(reading("a", dock), true);
+  const sides = sidesFor(rows, todos);
+  assert.equal(isReading(dock, sides, "a"), true);
   // The panel stays on the tasks tab, so the row being read stays too.
-  assert.equal(visibleDockTab(dock, sidesFor(rows, todos), reading("a", dock)), "tasks");
+  assert.equal(visibleDockTab(dock, sides, isReading(dock, sides, "a")), "tasks");
   // Choosing Todo — the one user action that ends the read — still does.
-  assert.equal(reading("a", { ...dock, chosenTab: "todo" }), false);
+  assert.equal(isReading({ ...dock, chosenTab: "todo" }, sides, "a"), false);
 });
 
 test("regression: a finished row whose preview left the screen cannot reappear", () => {
@@ -112,14 +111,15 @@ test("regression: a finished row whose preview left the screen cannot reappear",
 
   // start → open output: the preview is on screen, the row is pinned.
   const rows = selectVisibleTasks([started], "a");
-  assert.equal(reading("a", dock), true);
+  const sides = sidesFor(rows, todos);
+  assert.equal(isReading(dock, sides, "a"), true);
 
   // → collapse (or switch to Todo): the preview is no longer on screen, so
   // the hook closes the pin — the running task's pin survives, but it goes
   // as soon as the task ends while hidden. That the hook closes it is pinned
   // by the source contract test in background-tasks.test.mjs.
-  assert.equal(reading("a", { ...dock, collapsed: true }), false);
-  assert.equal(reading("a", { ...dock, chosenTab: "todo" }), false);
+  assert.equal(isReading({ ...dock, collapsed: true }, sides, "a"), false);
+  assert.equal(isReading({ ...dock, chosenTab: "todo" }, sides, "a"), false);
 
   // → finish while hidden, then reopen: the ended row must not reappear.
   const ended = { ...started, state: "exited", exitCode: 0 };
@@ -131,17 +131,19 @@ test("regression: a running task's preview survives switching away and back", ()
   // task's log, switch to Todo and back — the read picks up where it left
   // off (#2634).
   const started = task("a", "running");
+  const todos = [{ status: "in_progress" }];
   const dock = { chosenTab: "tasks", collapsed: false };
-  assert.equal(reading("a", dock), true);
+  const sides = sidesFor(selectVisibleTasks([started], "a"), todos);
+  assert.equal(isReading(dock, sides, "a"), true);
 
   // Switch to Todo: the preview leaves the screen, but the task runs, so the
   // hook keeps the pin.
-  assert.equal(reading("a", { ...dock, chosenTab: "todo" }), false);
+  assert.equal(isReading({ ...dock, chosenTab: "todo" }, sides, "a"), false);
   assert.equal(started.state, "running");
 
   // Switch back: the preview is on screen again, the row is live, and the
   // same read continues.
   const rows = selectVisibleTasks([started], "a");
   assert.deepEqual(ids(rows), ["a"]);
-  assert.equal(visibleDockTab(dock, sidesFor(rows, []), reading("a", dock)), "tasks");
+  assert.equal(visibleDockTab(dock, sides, isReading(dock, sides, "a")), "tasks");
 });

@@ -19,12 +19,14 @@ async function until(predicate: () => boolean, message: string) {
 }
 const command = `# ${"long-argument-".repeat(30)}\n  sleep 60 # end of command`;
 let stops = 0;
+// The fixture task finishes when the #2634 follow-up scenario asks it to.
+let taskState: "running" | "exited" = "running";
 Object.defineProperty(window, "piDesktop", { value: {
   invoke: async (channel: string) => {
     let data: unknown;
     if (channel === IPC.invoke.backgroundTasksList) {
       data = { tasks: [{ id: "task-1", sessionId: "fixture", command,
-        commandShellId: "bash", state: "running", elapsedMs: 1000 }], version: 1 };
+        commandShellId: "bash", state: taskState, elapsedMs: 1000 }], version: 1 };
     } else if (channel === IPC.invoke.backgroundTasksOutput) {
       data = { id: "task-1", state: "running", stdout: "fixture log output", stderr: "", truncated: false };
     } else if (channel === IPC.invoke.todosGet) {
@@ -82,8 +84,32 @@ async function probe() {
       assertPanel(false);
       assert(document.querySelector("pre")?.textContent?.includes("fixture log output"), "Open log must survive switching");
     }
+    // #2634 follow-up: a remembered Todo whose side emptied falls back to
+    // Tasks without changing the choice. A read on that panel is a visible
+    // read, so it must survive the task ending.
+    flushSync(() => useAppStore.setState({ sessionTodos: { fixture: {
+      sessionId: "fixture", revision: 3, updatedAt: 3,
+      todos: [{ content: "fixture checklist item", status: "in_progress", priority: "high" }],
+    } } }));
+    select("Todo");
+    assertPanel(true);
+    flushSync(() => useAppStore.setState({ sessionTodos: { fixture: {
+      sessionId: "fixture", revision: 4, updatedAt: 4, todos: [],
+    } } }));
+    assertPanel(false);
+    const followRow = document.querySelector<HTMLElement>(".task-main");
+    assert(followRow, "Task row missing after the todo clear");
+    // The read from the previous scenario may still be open: close and reopen
+    // so the scenario opens its own read after the todo clear.
+    if (followRow.getAttribute("aria-expanded") === "true") flushSync(() => followRow.click());
+    assert(followRow.getAttribute("aria-expanded") !== "true", "Row must close before reopening");
+    flushSync(() => followRow.click());
+    await until(() => !!document.querySelector("pre")?.textContent?.includes("fixture log output"), "Log must load after the todo clear");
+    taskState = "exited";
+    await until(() => document.querySelector(".task-row")?.getAttribute("data-state") === "exited", "Task must finish");
+    await until(() => !!document.querySelector("pre")?.textContent?.includes("fixture log output"), "Open log must survive the task ending");
     assert(stops === 0, "Switching tabs must never stop a task");
-    return { ok: true, scenarios: 2 };
+    return { ok: true, scenarios: 3 };
   } finally { flushSync(() => root.unmount()); }
 }
 Object.assign(globalThis, { taskDockTabsProbe: probe });
