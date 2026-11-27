@@ -379,6 +379,23 @@ You can:
 
 ---
 
+## Continue from your phone
+
+Leave PI-Desktop running and pick up the same work from a phone, tablet, or another computer's browser on the same network.
+
+* Turn on **Settings → System → LAN WebUI** — it is off by default
+* Pair a browser by scanning a QR code or entering a one-time 6-digit code
+* Browse, search, and organize projects and sessions
+* Start a new session, send messages, queue prompts, or stop generation
+* Switch the model for the next turn and answer the agent's ordinary questions
+* Remove a paired device or turn the service off at any time
+
+Tool permissions and Plan / Goal approvals stay on Desktop. Using the WebUI never switches the project or session open on Desktop.
+
+> **LAN only.** Traffic uses plain HTTP on your local network. PI-Desktop never opens router ports or sets up a tunnel.
+
+---
+
 ## See what the agent is doing
 
 <table>
