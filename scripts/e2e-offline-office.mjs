@@ -16,9 +16,10 @@ const appBin = process.env.PI_CODE_E2E_APP_BIN;
 const pptx = process.argv.includes("--pptx");
 const xlsx = process.argv.includes("--xlsx");
 const pdf = process.argv.includes("--pdf");
-assert.ok([pptx, xlsx, pdf].filter(Boolean).length <= 1, "Select one Office scenario at a time.");
-const skillName = pdf ? "pdf" : xlsx ? "xlsx" : pptx ? "pptx" : "docx";
-const sampleVariable = `PI_CODE_E2E_${skillName.toUpperCase()}_SKILL`;
+const wx = process.argv.includes("--wx");
+assert.ok([pptx, xlsx, pdf, wx].filter(Boolean).length <= 1, "Select one Office scenario at a time.");
+const skillName = wx ? "wx-doc-format" : pdf ? "pdf" : xlsx ? "xlsx" : pptx ? "pptx" : "docx";
+const sampleVariable = `PI_CODE_E2E_${wx ? "WX" : skillName.toUpperCase()}_SKILL`;
 const sample = process.env[sampleVariable];
 assert.ok(appBin && sample, `Set PI_CODE_E2E_APP_BIN and ${sampleVariable} to the installed binary and original ${skillName} Skill directory.`);
 assert.ok(skillName === "docx" || (!process.argv.includes("--seed-legacy") && !process.env.PI_CODE_E2E_UPGRADE_STATE),
@@ -104,6 +105,7 @@ const provider = createServer(async (req, res) => {
     if (steps[0]?.name === "Skill" && results.length) {
       assert.ok(results[0].includes(`Location: ${join(skillPath, "SKILL.md")}`), results[0]);
       if (pdf) verifyPdfSkillRecipes(results[0]);
+      else if (wx) assert.match(results[0], /scripts\/run\.sh[\s\S]*--review/);
       else assert.ok(results[0].includes(xlsx ? "scripts/recalc.py" : "scripts/office/unpack.py"), results[0]);
     }
     if (tool) assert.ok(tools.includes(tool.name), `Missing ${tool.name}`);
@@ -338,13 +340,15 @@ function stdout(result) {
   return stdout;
 }
 
-async function snapshot(directory) {
+async function snapshot(directory, excluded = []) {
   const files = await readdir(directory, { recursive: true, withFileTypes: true });
   return Object.fromEntries(await Promise.all(files
     .filter((file) => file.isFile() || file.isSymbolicLink())
-    .map(async (file) => {
-      const path = join(file.parentPath, file.name);
-      return [relative(directory, path), file.isSymbolicLink() ? await readlink(path) : await readFile(path)];
+    .map((file) => [file, relative(directory, join(file.parentPath, file.name))])
+    .filter(([, name]) => !excluded.includes(name.split("/", 1)[0]))
+    .map(async ([file, name]) => {
+      const path = join(directory, name);
+      return [name, file.isSymbolicLink() ? await readlink(path) : await readFile(path)];
     })));
 }
 
@@ -398,9 +402,10 @@ async function connectFixtureModel(app) {
 
 async function startDocumentScenario(projectName) {
   await mkdir(workspace);
-  await installLinkedSkill();
+  if (wx) await cp(resolve(sample), skillPath, { recursive: true, verbatimSymlinks: true });
+  else await installLinkedSkill();
   const skillFiles = await snapshot(sample);
-  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  assert.deepEqual(await snapshot(wx ? skillPath : skillSource), skillFiles);
   provider.listen(0, "127.0.0.1");
   await once(provider, "listening");
   const app = await boot();
@@ -411,6 +416,101 @@ async function startDocumentScenario(projectName) {
   await selectOffice(app, "global");
   const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
   return { run, skillFiles };
+}
+
+async function verifyWx() {
+  const template = join(skillPath, "assets/wx_template.docx");
+  const state = join(skillPath, ".deps/.wxdf-state.json");
+  await Promise.all(["OFFLINE_PACKAGE", "scripts/run.sh", "assets/wx_template.docx", "wheelhouse/wheels.tar.xz"]
+    .map((name) => access(join(sample, name))));
+  const { run, skillFiles } = await startDocumentScenario("WX project");
+  await assert.rejects(stat(join(skillPath, ".deps")), { code: "ENOENT" }, "Start with the original offline archive, before first use.");
+  const inputs = [
+    { file: "原始 说明.md", text: "这是 Markdown 原文。", output: "排版 Markdown.docx", audit: "转换 Markdown.json" },
+    { file: "原始 文档.docx", text: "这是 Word 原文。", output: "排版 Word.docx", audit: "转换 Word.json" },
+  ];
+  const review = "独立 审查.md";
+  const title = "离线技术说明";
+  await writeFile(join(workspace, inputs[0].file), `# ${title}\n\n## 1. 验证目标\n\n${inputs[0].text}\n`);
+  execFileSync(join(runtime, "node/bin/node"), ["-e", `
+const { writeFile } = require('node:fs/promises');
+const { Document, HeadingLevel, Packer, Paragraph } = require('docx');
+const [file, title, text] = process.argv.slice(1);
+const doc = new Document({ sections: [{ children: [
+  new Paragraph({ text: title, heading: HeadingLevel.TITLE }),
+  new Paragraph({ text: '1. 验证目标', heading: HeadingLevel.HEADING_1 }),
+  new Paragraph(text),
+] }] });
+Packer.toBuffer(doc).then(bytes => writeFile(file, bytes)).catch(error => { console.error(error); process.exitCode = 1; });
+`, inputs[1].file, title, inputs[1].text], {
+    cwd: workspace, env: { ...shellEnv, NODE_PATH: join(runtime, "node/lib/node_modules") },
+  });
+  const originals = await snapshot(workspace);
+  const path = (file) => quote(join(workspace, file));
+  const launch = `WX_DOC_FORMAT_RELEASE=1 sh ${quote(join(skillPath, "scripts/run.sh"))}`;
+  const convert = ({ file, output, audit }) =>
+    `${launch} --input ${path(file)} --output ${path(output)} --template ${quote(template)} --report ${path(audit)}`;
+
+  const { results: denied } = await run("Deny the first WX conversion.", [loadSkill(), bash(convert(inputs[0]))], { deny: true });
+  assert.match(denied[1], /denied|rejected/i);
+  assert.deepEqual(await snapshot(workspace), originals);
+  assert.deepEqual(await snapshot(skillPath), skillFiles);
+
+  const readback = `
+import json, sys, xml.etree.ElementTree as ET, zipfile
+ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+def attr(name):
+    return '{' + ns['w'] + '}' + name
+with zipfile.ZipFile(sys.argv[1]) as doc:
+    body = ET.fromstring(doc.read('word/document.xml'))
+    styles = ET.fromstring(doc.read('word/styles.xml'))
+with open(sys.argv[2], encoding='utf-8') as report:
+    summary = json.load(report)['public_summary']
+style_names = {s.get(attr('styleId')): s.find('w:name', ns).get(attr('val'))
+    for s in styles.findall('w:style', ns)}
+paragraphs = []
+for p in body.findall('w:body/w:p', ns):
+    style = p.find('w:pPr/w:pStyle', ns)
+    paragraphs.append([''.join(t.text or '' for t in p.findall('.//w:t', ns)),
+        style_names.get(style.get(attr('val'))) if style is not None else None])
+print(json.dumps([summary, paragraphs]))`;
+  const { results: conversions } = await run("Convert Markdown and Word using the original WX Skill.", [
+    loadSkill(), bash("command -v python3"), ...inputs.map((input) => bash(convert(input))),
+    ...inputs.map(({ output, audit }) => bash(`python3 -B -c ${quote(readback)} ${path(output)} ${path(audit)}`)),
+  ]);
+  assert.equal(stdout(conversions[1]).trim(), join(runtime, "bin/python3"));
+  for (const [index, { text }] of inputs.entries()) {
+    stdout(conversions[2 + index]);
+    const [summary, paragraphs] = JSON.parse(stdout(conversions[2 + inputs.length + index]));
+    assert.ok(paragraphs.some(([body, style]) => body === title && style === "文档标题"), JSON.stringify(paragraphs));
+    assert.ok(paragraphs.some(([body]) => body === text), JSON.stringify(paragraphs));
+    assert.equal(summary.schema_version, "1.0");
+    assert.equal(summary.status, "completed", JSON.stringify(summary));
+    assert.equal(summary.manual_review_required, false);
+    assert.equal(summary.unexpected_styles_count, 0);
+    assert.ok(Array.isArray(summary.diagnostic_codes));
+    const auditStatus = (key) => summary.audits[key]?.status ?? summary.audits[key];
+    for (const key of ["model_audit", "saved_output_audit"]) assert.equal(auditStatus(key), "passed", JSON.stringify(summary));
+    for (const key of ["audit", "appendix_preservation_audit"]) {
+      assert.ok(["passed", "not_run", "not_applicable", "skipped"].includes(auditStatus(key)), JSON.stringify(summary));
+    }
+  }
+
+  const { results: reviewed } = await run("Review the original Word document, without converting it.", [
+    loadSkill(), bash(`${launch} --review --input ${path(inputs[1].file)} --template ${quote(template)} --report-md ${path(review)}`),
+    { name: "Read", args: { path: review } },
+  ]);
+  stdout(reviewed[1]);
+  const score = /总分：(\d+(?:\.\d+)?)\/100/.exec(reviewed[2]);
+  assert.ok(score && Number(score[1]) <= 100, reviewed[2]);
+  assert.match(reviewed[2], /## 整改建议[\s\S]*开头的手工编号多余，请删掉/);
+  for (const [name, bytes] of Object.entries(originals)) assert.deepEqual(await readFile(join(workspace, name)), bytes);
+  assert.equal(JSON.parse(await readFile(state, "utf8")).python_tag, "cp312");
+  // The original installer keeps its generated dependencies and lock in the user Skill directory.
+  const installed = await snapshot(skillPath, [".deps", ".deps.lock"]);
+  assert.deepEqual(Object.keys(installed).sort(), Object.keys(skillFiles).sort());
+  for (const [name, content] of Object.entries(skillFiles)) assert.deepEqual(installed[name], content, `WX Skill file changed: ${name}`);
+  console.log(`PASS: original standalone WX Skill, Bash denial, first-use offline setup, Markdown and DOCX conversion with audited readback, independent review (${score[1]}/100), and source preservation.`);
 }
 
 // Independent one-page inputs with a real xref and predictable text.
@@ -843,6 +943,7 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
 
 try {
   if (process.argv.includes("--seed-legacy")) await seedLegacy();
+  else if (wx) await verifyWx();
   else if (pdf) await verifyPdf();
   else if (pptx) await verifyPptx();
   else if (xlsx) await verifyXlsx();
