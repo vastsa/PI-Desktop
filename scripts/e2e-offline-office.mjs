@@ -9,14 +9,15 @@ import { dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { bindingForCustomModel } from "../packages/shared/dist/model-catalog.js";
 import { IPC } from "../packages/shared/dist/protocol.js";
-import { verifyPdfSkillRecipes } from "./e2e/pdf-skill-recipes.mjs";
 import { waitFor } from "./e2e/wait.mjs";
+import { verifyPdfSkillRecipes } from "./e2e/pdf-skill-recipes.mjs";
 
 const appBin = process.env.PI_CODE_E2E_APP_BIN;
 const pptx = process.argv.includes("--pptx");
+const xlsx = process.argv.includes("--xlsx");
 const pdf = process.argv.includes("--pdf");
-assert.ok(!(pdf && pptx), "Choose one Office acceptance scenario.");
-const skillName = pdf ? "pdf" : pptx ? "pptx" : "docx";
+assert.ok([pptx, xlsx, pdf].filter(Boolean).length <= 1, "Select one Office scenario at a time.");
+const skillName = pdf ? "pdf" : xlsx ? "xlsx" : pptx ? "pptx" : "docx";
 const sampleVariable = `PI_CODE_E2E_${skillName.toUpperCase()}_SKILL`;
 const sample = process.env[sampleVariable];
 assert.ok(appBin && sample, `Set PI_CODE_E2E_APP_BIN and ${sampleVariable} to the installed binary and original ${skillName} Skill directory.`);
@@ -103,7 +104,7 @@ const provider = createServer(async (req, res) => {
     if (steps[0]?.name === "Skill" && results.length) {
       assert.ok(results[0].includes(`Location: ${join(skillPath, "SKILL.md")}`), results[0]);
       if (pdf) verifyPdfSkillRecipes(results[0]);
-      else assert.match(results[0], /scripts\/office\/unpack\.py/);
+      else assert.ok(results[0].includes(xlsx ? "scripts/recalc.py" : "scripts/office/unpack.py"), results[0]);
     }
     if (tool) assert.ok(tools.includes(tool.name), `Missing ${tool.name}`);
     const delta = tool ? { role: "assistant", tool_calls: [{
@@ -395,6 +396,23 @@ async function connectFixtureModel(app) {
   return configured.id;
 }
 
+async function startDocumentScenario(projectName) {
+  await mkdir(workspace);
+  await installLinkedSkill();
+  const skillFiles = await snapshot(sample);
+  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const app = await boot();
+  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
+  await discoverSkill(app);
+  const providerId = await connectFixtureModel(app);
+  await app.invoke(IPC.invoke.projectGroupCreate, { name: projectName, folders: [workspace] });
+  await selectOffice(app, "global");
+  const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
+  return { run, skillFiles };
+}
+
 // Independent one-page inputs with a real xref and predictable text.
 function plainPdf(text) {
   const stream = `BT /F1 12 Tf 36 144 Td (${text}) Tj ET\n`;
@@ -415,10 +433,7 @@ function plainPdf(text) {
 }
 
 async function verifyPdf() {
-  await mkdir(workspace);
-  await installLinkedSkill();
-  const skillFiles = await snapshot(sample);
-  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  const { run, skillFiles } = await startDocumentScenario("PDF project");
   const pages = ["第一份 源文件.pdf", "第二份 源文件.pdf"];
   const merged = "按序 合并.pdf";
   const directory = "另存 PDF";
@@ -452,16 +467,6 @@ with xlsxwriter.Workbook(sys.argv[1]) as book:
 `, office[2].file, office[2].text], { cwd: workspace });
   const inputs = await snapshot(workspace);
 
-  provider.listen(0, "127.0.0.1");
-  await once(provider, "listening");
-  const app = await boot();
-  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
-  await discoverSkill(app);
-  const providerId = await connectFixtureModel(app);
-  await app.invoke(IPC.invoke.projectGroupCreate, { name: "PDF project", folders: [workspace] });
-  await selectOffice(app, "global");
-
-  const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
   const python = (program, ...args) => `python -c ${[program, ...args].map(quote).join(" ")}`;
   const extract = (file) => python(`
 import json, pypdf, sys
@@ -522,10 +527,7 @@ async function verifyPptx() {
   const updatedTitle = "另存后的首页";
   const newTitle = "新建可编辑演示";
   const secondTitle = "第二页保持原样";
-  await mkdir(workspace);
-  await installLinkedSkill();
-  const skillFiles = await snapshot(sample);
-  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  const { run, skillFiles } = await startDocumentScenario("PPT project");
   await writeFile(join(workspace, "make-ppt.cjs"), `
 const PptxGenJS = require('pptxgenjs');
 const fs = require('node:fs/promises');
@@ -540,16 +542,6 @@ async function main() {
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
 `);
-  provider.listen(0, "127.0.0.1");
-  await once(provider, "listening");
-  const app = await boot();
-  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
-  await discoverSkill(app);
-  const providerId = await connectFixtureModel(app);
-  await app.invoke(IPC.invoke.projectGroupCreate, { name: "PPT project", folders: [workspace] });
-  await selectOffice(app, "global");
-
-  const run = (label, plan, options) => runTurn(app, providerId, label, plan, { projectPath: workspace, ...options });
   const make = (file, title) => `node make-ppt.cjs ${quote(file)} ${quote(title)}`;
   const extract = (file) => `python -m markitdown ${quote(file)}`;
   const script = (file) => quote(join(skillPath, "scripts", file));
@@ -615,6 +607,93 @@ print(json.dumps([[shape.text for shape in slide.shapes if shape.has_text_frame]
   assert.equal(await readlink(skillPath), skillLink);
   assert.deepEqual(await snapshot(skillSource), skillFiles, "Skill source changed after running its original commands");
   console.log("PASS: linked pptx Skill discovery, permission denial and approval, extraction, thumbnails, editable creation, and save-as with source preservation.");
+}
+
+async function verifyXlsx() {
+  const source = "原始 工作簿.xlsx";
+  const fresh = "新建 工作簿.xlsx";
+  const copy = "另存 工作簿.xlsx";
+  const { run, skillFiles } = await startDocumentScenario("Excel project");
+  const abs = (file) => join(workspace, file);
+  await writeFile(abs("workbook.py"), `
+import sys
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font
+
+path, second, *source = sys.argv[1:]
+book = load_workbook(source[0]) if source else Workbook()
+sheet = book.active
+if not source:
+    sheet.title = "销售"
+    sheet.append(["城市", "金额"])
+    sheet.append(["北京", 100])
+    sheet.append(["成都", 150])
+    sheet["B4"] = "=SUM(B2:B3)"
+    reference = book.create_sheet("保留")
+    reference.append(["说明", "金额"])
+    reference.append(["保持原样", 42.5])
+    reference["A1"].font = Font(bold=True)
+    reference["B2"].number_format = "0.00"
+sheet["B3"] = int(second)
+with open(path, "xb") as output:
+    book.save(output)
+`);
+  const make = (file, amount, from = "") => `python workbook.py ${quote(file)} ${amount}${from ? " " + quote(from) : ""}`;
+  const absent = (file) => assert.rejects(stat(abs(file)), { code: "ENOENT" });
+  const { results: [denied] } = await run("Decline creating a workbook.", [bash(make(fresh, 150))], { deny: true });
+  assert.match(denied, /denied|rejected/i);
+  await absent(fresh);
+  const { results: [prepared] } = await run("Prepare the source workbook.", [bash(make(source, 150))],
+    { beforeApprove: () => absent(source) });
+  stdout(prepared);
+  const original = await readFile(abs(source));
+  const analyze = `import sys, pandas, openpyxl
+print(pandas.__file__)
+print(openpyxl.__file__)
+sheets = pandas.read_excel(sys.argv[1], sheet_name=None)
+print(int(sheets["销售"]["金额"].sum()))
+print(sheets["保留"].iloc[0]["说明"])
+`;
+  const { results: [, edited] } = await run("Load the xlsx Skill, analyze the source, create, and save a copy.", [
+    loadSkill(),
+    bash([`python -c ${quote(analyze)} ${quote(source)}`, make(fresh, 150), make(copy, 160, source)].join(" && ")),
+  ], { beforeApprove: () => Promise.all([absent(fresh), absent(copy)]) });
+  const [pandasPath, openpyxlPath, total, untouchedText] = stdout(edited).trimEnd().split("\n");
+  for (const path of [pandasPath, openpyxlPath]) {
+    assert.ok(path.startsWith(runtime + "/"), `Excel library came from outside Office Runtime: ${path}`);
+  }
+  assert.deepEqual([total, untouchedText], ["250", "保持原样"]);
+
+  const readback = (file) => JSON.parse(execFileSync(join(runtime, "python/bin/python3"), ["-I", "-B", "-c", `
+import json, sys
+from openpyxl import load_workbook
+book = load_workbook(sys.argv[1])
+cache = load_workbook(sys.argv[1], data_only=True)
+reference = book["保留"]
+print(json.dumps([book.sheetnames, book["销售"]["B3"].value, book["销售"]["B4"].value,
+    cache["销售"]["B4"].value, list(reference.values), reference["A1"].font.bold,
+    reference["B2"].number_format]))
+`, abs(file)], { encoding: "utf8" }));
+  const expected = (second, cached) => [
+    ["销售", "保留"], second, "=SUM(B2:B3)", cached, [["说明", "金额"], ["保持原样", 42.5]], true, "0.00",
+  ];
+  const check = (cachedFresh, cachedCopy) => {
+    assert.deepEqual(readback(fresh), expected(150, cachedFresh));
+    assert.deepEqual(readback(copy), expected(160, cachedCopy));
+  };
+  check(null, null);
+  const recalc = (name) => `python ${quote(join(skillPath, "scripts", "recalc.py"))} ${quote(name)} 15`;
+  const { results: [, ...runs] } = await run("Use the xlsx Skill to recalculate both output workbooks.",
+    [loadSkill(), bash(recalc(fresh)), bash(recalc(copy))]);
+  for (const result of runs) {
+    assert.deepEqual(JSON.parse(stdout(result)), { status: "success", total_errors: 0, error_summary: {}, total_formulas: 1 });
+  }
+  check(250, 260);
+  assert.deepEqual(await readFile(abs(source)), original);
+  assert.equal(await readlink(skillPath), skillLink);
+  assert.deepEqual(await snapshot(skillSource), skillFiles);
+  await assert.rejects(stat(join(root, ".config/libreoffice")), { code: "ENOENT" });
+  console.log("PASS: original xlsx Skill, permission denial and approval, analysis, creation and save-as, formula caches 250 and 260, and preservation of source, styles, and untouched sheet.");
 }
 
 async function verifyWord() {
@@ -691,7 +770,7 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
   await selectOffice(app, "global");
   const on = await readBash(undefined);
   assert.ok(on.includes(join(runtime, "node/bin/node")), on);
-  assert.ok(on.includes(join(runtime, "python/bin/python")), on);
+  assert.ok(on.includes(join(runtime, "bin/python")), on);
   assert.equal(await system(), terminal);
   await checkProjectPicker(app, checkBash, on, off);
   await checkBash(undefined, off.get(undefined));
@@ -766,6 +845,7 @@ try {
   if (process.argv.includes("--seed-legacy")) await seedLegacy();
   else if (pdf) await verifyPdf();
   else if (pptx) await verifyPptx();
+  else if (xlsx) await verifyXlsx();
   else await verifyWord();
 } catch (error) {
   console.error(log.slice(-9000));

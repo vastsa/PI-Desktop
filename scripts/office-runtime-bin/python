@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+bin=$(cd -- "$(dirname -- "$0")" && pwd -P)
+
+# The original Excel Skill uses Python's HOME to find the same profile as Calc.
+script=${1:-}
+if [[ -n ${PI_OFFICE_RUNTIME_PROFILES:-} && ${script##*/} == recalc.py && -f $script ]]; then
+  directory=$(dirname -- "$script")
+  if [[ -f $directory/office/soffice.py && -f $directory/../SKILL.md ]] &&
+    grep -Eq '^name:[[:blank:]]*xlsx[[:blank:]]*$' "$directory/../SKILL.md"; then
+    exec "$bin/office-python" "$@"
+  fi
+fi
+
+exec "$bin/../python/bin/python" "$@"
