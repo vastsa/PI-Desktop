@@ -116,7 +116,9 @@ invalidate stale rows and deep links; do not redirect to a different session.
   Desktop defaults. Keep the previous binding on failure and let the user
   reload the choices. Running, queued, waiting, archived, scheduled, and
   extension-owned sessions cannot be changed from this picker.
-- Page older history backwards without losing the reading position. Render
+- Page older history backwards without losing the reading position. A page
+  requested before navigating away must not change the new view's messages,
+  pagination cursor or scroll position. Render
   user/assistant text, safe Markdown, code and bounded tool summaries in order.
   Unsupported cards or attachments get a typed, non-executable placeholder;
   do not fetch embedded remote images or open local files from transcript text.
