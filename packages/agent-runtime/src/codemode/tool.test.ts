@@ -121,19 +121,24 @@ describe("codemode tool", () => {
       active -= 1;
       return "ok";
     });
+    // A worker may deliver each Read in a different event-loop iteration.
+    // Hold the first read until another actually enters, not for a tick count.
+    let releaseReads!: () => void;
+    const readsOverlap = new Promise<void>((resolve) => { releaseReads = resolve; });
     const read = textTool("Read", "parallel", async () => {
       readActive += 1;
       maxRead = Math.max(maxRead, readActive);
-      await gate();
-      await gate();
+      if (readActive === 2) releaseReads();
+      await readsOverlap;
       readActive -= 1;
       return "ok";
     });
     const { run } = harness([bash, read]);
-    await run(`
+    const result = await run(`
       await Promise.all([tools.Bash({}), tools.Bash({}), tools.Bash({})]);
       await Promise.all([tools.Read({}), tools.Read({}), tools.Read({})]);
     `);
+    expect(result.isError).toBeUndefined();
     expect(maxSequential).toBe(1);
     expect(maxRead).toBeGreaterThan(1);
   });
