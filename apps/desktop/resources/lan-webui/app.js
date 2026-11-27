@@ -743,7 +743,7 @@
     const modelTrigger = conversation.canSelectModel ? modelPicker.trigger(sessionId, conversation.modelLabel) : null;
     const input = el("textarea", {
       id: "composer-input", rows: "1", "aria-label": t("composer"),
-      placeholder: running ? t("composerFollowUp") : t("composer"), enterkeyhint: "send",
+      placeholder: running ? t("composerFollowUp") : t("composer"), enterkeyhint: "send", autocapitalize: "sentences",
     });
     input.value = state.drafts.get(sessionId) || "";
     const send = el("button", {
@@ -776,6 +776,14 @@
     state.syncComposer = sync;
     const fit = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
     input.addEventListener("input", () => { state.drafts.set(sessionId, input.value); fit(); sync(); });
+    // Opening the keyboard shrinks the viewport; keep the latest reply in view.
+    input.addEventListener("focus", () => {
+      const viewport = window.visualViewport;
+      if (!viewport || !nearBottom()) return;
+      const pin = () => { document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight; };
+      viewport.addEventListener("resize", pin, { once: true });
+      setTimeout(() => viewport.removeEventListener("resize", pin), 800);
+    });
     const submit = async () => {
       const text = input.value.trim();
       if (!text || state.sending || modelPicker.isSaving(sessionId) || !state.online) return;

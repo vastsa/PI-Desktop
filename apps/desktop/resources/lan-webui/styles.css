@@ -644,8 +644,12 @@ main > button.fab {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 18px;
-  padding: 12px 0 20px;
+  gap: 16px;
+  padding: 16px 0 24px;
+}
+/* A new exchange gets a little more air than the parts of one answer. */
+.messages > .msg.user:not(:first-child) {
+  margin-top: 8px;
 }
 .load-older {
   align-self: center;
@@ -664,17 +668,20 @@ main > button.fab {
 }
 .msg.user {
   align-self: flex-end;
-  max-width: 85%;
-  padding: 9px 15px;
-  border-radius: var(--radius-lg-plus);
-  border-bottom-right-radius: var(--radius-xs);
+  max-width: min(82%, 560px);
+  padding: 10px 14px;
+  border-radius: var(--radius-xl);
+  border-bottom-right-radius: 6px;
   background: var(--ds-tile-deep);
+  line-height: var(--leading-relaxed);
 }
 .msg.assistant {
   align-self: stretch;
+  padding-inline: 2px;
 }
 .msg.user.pending {
   opacity: 0.6;
+  transition: opacity var(--motion-duration-normal) var(--motion-ease-out);
 }
 .msg.tool {
   display: flex;
@@ -692,6 +699,14 @@ main > button.fab {
 .msg.tool .icon {
   margin-top: 1px;
   color: var(--ds-text-muted);
+}
+/* Long tool commands stay two lines on a phone instead of a wall of text. */
+.msg.tool > span:last-child {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 /* The streaming caret describes work in flight, so it may keep animating. */
 .msg.live > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
@@ -796,6 +811,7 @@ main > button.fab {
   font-family: var(--font-mono);
   font-size: var(--text-md);
   font-variant-ligatures: none;
+  overflow-wrap: anywhere;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
@@ -842,8 +858,12 @@ main > button.fab {
   margin: 0;
   padding: 12px 14px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   font-family: var(--font-mono);
-  font-size: var(--text-md);
+  font-size: var(--text-sm-plus);
+  tab-size: 2;
   line-height: var(--leading-relaxed);
   white-space: pre;
   -webkit-user-select: text;
@@ -854,9 +874,16 @@ main > button.fab {
   background: none;
   font-size: inherit;
 }
+.code-block pre::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar {
+  display: none;
+}
 .table-wrap {
   margin: 0.9em 0;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   border-radius: var(--radius-md-plus);
   background: var(--ds-tile);
 }
@@ -940,7 +967,7 @@ main > button.fab {
 }
 .msg-actions {
   display: flex;
-  margin: -16px 0 -8px -14px;
+  margin: -12px 0 -6px -12px;
 }
 .msg-actions .icon-btn {
   color: var(--ds-text-muted);
@@ -1009,8 +1036,13 @@ main > button.fab {
   flex-direction: column;
   gap: 8px;
   margin: 0 calc(-1 * var(--pad-right)) 0 calc(-1 * var(--pad-left));
-  padding: 10px var(--pad-right) calc(10px + env(safe-area-inset-bottom)) var(--pad-left);
-  background: linear-gradient(to top, var(--ds-bg-primary) 72%, transparent);
+  padding: 20px var(--pad-right) max(10px, env(safe-area-inset-bottom)) var(--pad-left);
+  background: linear-gradient(to top, var(--ds-bg-primary) calc(100% - 28px), color-mix(in oklab, var(--ds-bg-primary) 0%, transparent));
+  /* Taps on the faded strip above the composer reach the transcript beneath. */
+  pointer-events: none;
+}
+.chat-dock > * {
+  pointer-events: auto;
 }
 .notice {
   display: flex;
@@ -1072,35 +1104,57 @@ main > button.fab {
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  padding: 4px 4px 4px 18px;
-  border-radius: var(--radius-2xl);
+  padding: 4px 4px 4px 16px;
+  border-radius: 26px;
   background: var(--ds-bg-composer);
   box-shadow: var(--ds-elevation-stroke), var(--ds-shadow-composer);
+  transition: box-shadow var(--motion-duration-fast) var(--motion-ease-out);
+}
+.composer:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--ds-text-primary) 18%, transparent),
+    var(--ds-shadow-composer);
 }
 .composer textarea {
   flex: 1;
   min-height: var(--tap);
-  max-height: 40vh;
-  padding: 10px 0;
+  /* Keep the transcript visible above the keyboard while a long prompt grows. */
+  max-height: min(36dvh, 240px);
+  padding: 11px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: 0;
   background: transparent;
+  line-height: var(--leading-normal);
   resize: none;
+  scrollbar-width: thin;
 }
 .composer textarea:focus {
   background: transparent;
   box-shadow: none;
 }
+.composer textarea::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .composer .actions {
   display: flex;
   flex: none;
   align-items: center;
+  gap: 2px;
 }
-/* 44px hit target around a 34px disc: the background paints the content box. */
+/* 44px hit target around a 36px disc: the background paints the content box. */
 .composer .send,
 .composer .stop {
-  padding: 5px;
+  padding: 4px;
   border-radius: var(--radius-round);
   background-clip: content-box;
+}
+.composer .send .icon,
+.composer .stop .icon {
+  width: 18px;
+  height: 18px;
 }
 .composer .send {
   width: var(--tap);
@@ -1116,6 +1170,8 @@ main > button.fab {
   color: var(--ds-text-primary);
 }
 .composer .stop .icon {
+  width: 14px;
+  height: 14px;
   fill: currentColor;
   stroke: none;
 }
@@ -1125,17 +1181,20 @@ main > button.fab {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  padding-inline-start: 8px;
+  row-gap: 0;
+  padding: 6px 4px 4px 6px;
+  border-radius: var(--radius-2xl);
 }
 .composer.has-model-picker textarea {
   grid-column: 1 / -1;
-  padding-inline: 10px;
+  padding: 8px 10px 4px;
 }
 .model-trigger {
   justify-self: start;
+  gap: 4px;
   min-width: var(--tap);
   max-width: 100%;
-  padding-inline: 10px;
+  padding-inline: 10px 8px;
   border-radius: var(--radius-full);
   color: var(--ds-text-secondary);
   font-size: var(--text-md);
@@ -1148,6 +1207,7 @@ main > button.fab {
 }
 .model-trigger .icon {
   rotate: 90deg;
+  color: var(--ds-text-muted);
 }
 
 .model-picker {
