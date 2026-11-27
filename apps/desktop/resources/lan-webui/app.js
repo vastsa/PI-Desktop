@@ -765,6 +765,9 @@
 
     const messages = el("div", { class: "messages" });
     if (nextCursor) {
+      // A background refresh keeps the route object. Navigating away and back replaces it.
+      const route = state.route;
+      const stillOnPage = () => state.me && state.route === route;
       messages.append(el("button", {
         type: "button",
         class: "link load-older",
@@ -773,12 +776,13 @@
           try {
             const before = scroller.scrollHeight;
             const page = await api("GET", `/v1/sessions/${enc(sessionId)}/history?cursor=${enc(nextCursor)}`);
+            if (!stillOnPage()) return;
             chatState.older = [...page.items, ...chatState.older];
             chatState.olderCursor = page.nextCursor;
             await render({ refresh: true });
-            scroller.scrollTop += scroller.scrollHeight - before;
+            if (stillOnPage()) scroller.scrollTop += scroller.scrollHeight - before;
           } catch (error) {
-            fail(error);
+            if (stillOnPage()) fail(error);
           }
         },
       }));

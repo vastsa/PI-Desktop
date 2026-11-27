@@ -341,6 +341,71 @@ test("a phone pairs with a formatted paste, uses projects and conversations, and
   assert.equal(server.devices().length, 0, "browser sign-out revoked its device");
 });
 
+test("late history stays with its chat while the current chat can page through a refresh", { timeout: 60_000 }, async (t) => {
+  const script = String.raw`(async () => {
+    const wait = async (check) => {
+      const deadline = performance.now() + 5000;
+      while (!check()) {
+        if (performance.now() > deadline) throw new Error("Timed out: " + check);
+        await new Promise(requestAnimationFrame);
+      }
+    };
+    const older = () => document.querySelector(".load-older");
+    const messages = () => document.querySelector(".messages").textContent;
+    const view = () => document.getElementById("app").dataset.view;
+    let events;
+    window.EventSource = class extends EventSource {
+      constructor(url) { super(url); events = this; }
+    };
+    const refresh = async () => {
+      const button = older();
+      events.dispatchEvent(new MessageEvent("change", { data: "{}" }));
+      await wait(() => older() && older() !== button);
+    };
+    const pages = new Map();
+    const request = window.fetch.bind(window);
+    window.fetch = async (path, options) => {
+      const url = new URL(path, location.href);
+      const id = url.pathname.split("/")[3];
+      if (url.pathname.endsWith("/history")) {
+        return new Promise((resolve) => pages.set(id, {
+          cursor: url.searchParams.get("cursor"),
+          finish: (text, nextCursor) => resolve(Response.json({ items: [{ id: text, role: "user", text }], nextCursor })),
+        }));
+      }
+      const response = await request(path, options);
+      if (path === "/v1/sessions/s-a1" || path === "/v1/sessions/s-b1") {
+        const detail = await response.json();
+        detail.messages.nextCursor = id === "s-a1" ? "80" : "40";
+        return Response.json(detail);
+      }
+      return response;
+    };
+
+    await wait(() => document.getElementById("pair-code")?.value === window.__code);
+    document.querySelector('.pair button[type="submit"]').click();
+    await wait(() => view() === "home");
+    location.hash = "#/s/s-a1";
+    await wait(() => view() === "chat:s-a1" && older());
+    older().click();
+    await wait(() => pages.has("s-a1"));
+    location.hash = "#/s/s-b1";
+    await wait(() => view() === "chat:s-b1" && older());
+    pages.get("s-a1").finish("Older message from A", "70");
+    await refresh();
+    const showedA = messages().includes("Older message from A");
+
+    older().click();
+    await wait(() => pages.has("s-b1"));
+    await refresh();
+    pages.get("s-b1").finish("Older message from B", null);
+    await wait(() => messages().includes("Older message from B"));
+    return JSON.stringify({ showedA, cursor: pages.get("s-b1").cursor, hasMore: Boolean(older()) });
+  })()`;
+  const { result } = await runPhone(t, script, { scan: true });
+  assert.deepEqual(result, { showedA: false, cursor: "40", hasMore: false });
+});
+
 const scanJourney = String.raw`(async () => {
   const field = () => document.getElementById("pair-code");
   async function wait(check) {
