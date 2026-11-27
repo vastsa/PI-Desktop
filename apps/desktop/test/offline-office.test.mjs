@@ -6,7 +6,12 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 
 import bundleOfflineOffice from "../../../scripts/bundle-offline-office.mjs";
+import { verifyPdfSkillRecipes } from "../../../scripts/e2e/pdf-skill-recipes.mjs";
 
+const pdfDistribution = {
+  name: "pypdf", version: "7.1.1", url: "https://example.test/pypdf.whl",
+  sha256: "a".repeat(64), license: "BSD-3-Clause",
+};
 const site = "python/lib/python3.12/site-packages";
 const nativePackages = Object.entries({
   "libreoffice-core": "7.1.8.1-3.el8_10.alma.1",
@@ -64,11 +69,12 @@ async function withRuntime(run, { wordOnly = false } = {}) {
       };
       for (const [name, path] of Object.entries(modules)) {
         await put(`${site}/${path}${path.endsWith(".py") ? "" : "/__init__.py"}`);
-        await put(`${site}/${name}-1.0.0.dist-info/LICENSE.txt`);
-        pythonVersions.push([name, "1.0.0"]);
+        const version = name === "pypdf" ? pdfDistribution.version : "1.0.0";
+        await put(`${site}/${name}-${version}.dist-info/LICENSE.txt`, name === "pypdf" ? "PDF distribution license.\n" : "");
+        pythonVersions.push([name, version]);
       }
       await put(`${site}/google/_upb/_message.abi3.so`);
-      await put("metadata/python-dependencies.json", JSON.stringify({ packages: pythonVersions.map(([name, version]) => ({ name, version })) }));
+      await put("metadata/python-dependencies.json", JSON.stringify({ packages: pythonVersions.map(([name, version]) => name === "pypdf" ? pdfDistribution : { name, version }) }));
       await put("metadata/native-office/sources.json", JSON.stringify({ packages: nativePackages }));
       for (const { name } of nativePackages) {
         await put("metadata/native-office/licenses/" + name + "/LICENSE", "Renderer license notice.\n");
@@ -118,7 +124,7 @@ test("the Kylin package installs only the runtime and a disabled extension witho
     assert.ok(files.includes("node/lib/node_modules/docx/package.json"));
     for (const name of ["node/lib/node_modules/pptxgenjs/package.json", "bin/soffice", "bin/pdftoppm",
       `${site}/markitdown/__init__.py`, `${site}/PIL/__init__.py`, `${site}/typing_extensions.py`,
-      `${site}/pypdf/__init__.py`, `${site}/pypdf-1.0.0.dist-info/LICENSE.txt`,
+      `${site}/pypdf/__init__.py`, `${site}/pypdf-7.1.1.dist-info/LICENSE.txt`,
       "libreoffice/program/libwriterfilterlo.so", "libreoffice/program/libsclo.so"]) {
       assert.ok(files.includes(name), `${name} was not packaged`);
     }
@@ -197,4 +203,51 @@ test("the Kylin package rejects a runtime without the Calc export dependencies",
     await rm(join(runtime, "libreoffice/program/libforuilo.so"));
     await assert.rejects(bundle(), /libforuilo\.so/);
   });
+});
+
+test("the Kylin package rejects pypdf without a wheel source and digest", { skip: process.platform === "win32" }, async () => {
+  await withRuntime(async ({ put, bundle, runtime }) => {
+    const path = "metadata/python-dependencies.json";
+    const manifest = JSON.parse(await readFile(join(runtime, path), "utf8"));
+    const pdf = manifest.packages.find(({ name }) => name === "pypdf");
+    for (const field of ["url", "sha256"]) {
+      const value = pdf[field];
+      delete pdf[field];
+      await put(path, JSON.stringify(manifest));
+      await assert.rejects(bundle(), /pypdf.*wheel provenance/);
+      pdf[field] = value;
+      await rm(join(runtime, "../app"), { recursive: true, force: true });
+    }
+  });
+});
+
+test("the Kylin package rejects a blank pypdf license", { skip: process.platform === "win32" }, async () => {
+  await withRuntime(async ({ put, bundle }) => {
+    await put(`${site}/pypdf-7.1.1.dist-info/LICENSE.txt`, " \n");
+    await assert.rejects(bundle(), /license is missing or blank: pypdf/);
+  });
+});
+
+const pdfRecipes = `
+\`\`\`python
+import pypdf
+pdf = pypdf.PdfReader("document.pdf")
+content = "".join(page.extract_text() for page in pdf.pages)
+\`\`\`
+
+\`\`\`python
+import pypdf
+writer = pypdf.PdfWriter()
+for file in ["second.pdf", "first.pdf"]:
+    for page in pypdf.PdfReader(file).pages:
+        writer.add_page(page)
+with open("merged.pdf", "wb") as handle:
+    writer.write(handle)
+\`\`\`
+`;
+
+test("PDF acceptance requires both recipes in the loaded Skill", () => {
+  verifyPdfSkillRecipes(pdfRecipes);
+  assert.throws(() => verifyPdfSkillRecipes(pdfRecipes.replace("page.extract_text()", "str(page)")), /text extraction recipe/);
+  assert.throws(() => verifyPdfSkillRecipes(pdfRecipes.replace("writer.add_page(page)", "pass")), /ordered merge recipe/);
 });

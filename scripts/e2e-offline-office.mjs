@@ -9,6 +9,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { bindingForCustomModel } from "../packages/shared/dist/model-catalog.js";
 import { IPC } from "../packages/shared/dist/protocol.js";
+import { verifyPdfSkillRecipes } from "./e2e/pdf-skill-recipes.mjs";
 import { waitFor } from "./e2e/wait.mjs";
 
 const appBin = process.env.PI_CODE_E2E_APP_BIN;
@@ -101,7 +102,8 @@ const provider = createServer(async (req, res) => {
     const tool = steps[results.length];
     if (steps[0]?.name === "Skill" && results.length) {
       assert.ok(results[0].includes(`Location: ${join(skillPath, "SKILL.md")}`), results[0]);
-      assert.match(results[0], pdf ? /import pypdf\b/ : /scripts\/office\/unpack\.py/);
+      if (pdf) verifyPdfSkillRecipes(results[0]);
+      else assert.match(results[0], /scripts\/office\/unpack\.py/);
     }
     if (tool) assert.ok(tools.includes(tool.name), `Missing ${tool.name}`);
     const delta = tool ? { role: "assistant", tool_calls: [{

@@ -90,10 +90,11 @@
   SP1 with a clean profile, loopback-only networking, no CheeseAgent, and
   the standalone, unmodified user `pdf` Skill.
 - **Steps**: Enable Office Runtime and run `e2e-offline-office.mjs --pdf`
-  with a loopback model. Reject a Bash write, load the PDF Skill, extract
-  text and merge two PDFs in reverse input filename order with approved
-  Bash calls. Export independent DOCX, PPTX and XLSX inputs with the
-  packaged LibreOffice, and read each PDF back in the local Agent session.
+  with a loopback model. Reject a Bash write, load the PDF Skill, and verify
+  it documents both pypdf recipes. Extract text and merge two PDFs in reverse
+  input filename order with approved Bash calls. Export independent DOCX,
+  PPTX and XLSX inputs with the packaged LibreOffice, and read each PDF
+  back in the local Agent session.
 - **Expected**: A rejected call produces no files. The extracted text,
   exact merged page order and expected Chinese text from all three
   exported PDFs are readable. Files with Chinese names and spaces work,

@@ -142,9 +142,12 @@ or is stopped.
 Stage the approved ARM64 Office Runtime 1.0.2 Python, Python dependencies,
 and Node layers on a case-sensitive Linux filesystem, preserving relative
 links. Overlay the locked docx 9.16.0 production package tree under
-`node/lib/node_modules`; see the PowerPoint staging inputs below for the
-combined Node lock. Place the original runtime provenance at
-`metadata/runtime-source.json`. Packaging selects the interpreters, Python
+`node/lib/node_modules`. Before building, stage the
+[PowerPoint inputs](#self-installed-powerpoint-skill) for the combined Node lock,
+Impress and Poppler. Also stage `pypdf`, Writer and Calc as described under
+[PDF and Office export](#self-installed-pdf-skill-and-office-export). The same
+DEB requires all these inputs for every scenario. Place the original runtime
+provenance at `metadata/runtime-source.json`. Packaging selects the interpreters, Python
 standard library, and the approved Office and PDF runtime packages and licenses.
 It does not ship Skill launchers, templates, WX archives, or unrelated
 language packages. This Word
@@ -226,7 +229,8 @@ Stage the headless Impress payload and its libraries, plus only the
 `pdftoppm` executable and its libraries from Poppler. Each native RPM represented
 in the payload needs its version, exact source RPM reference, and readable
 license notices. The package check requires entries for `libreoffice-core`,
-`libreoffice-impress`, `poppler`, and `poppler-utils`.
+`libreoffice-impress`, `poppler`, and `poppler-utils`, plus the Writer and Calc
+components listed under [PDF and Office export](#self-installed-pdf-skill-and-office-export).
 
 Use an ARM64 renderer build that fits the target's glibc 2.31 and is approved
 for redistribution. The earlier LibreOffice 6.4 runtime does not qualify.
@@ -261,9 +265,10 @@ new output directory and leave the input files in place.
 
 In the staged Python 3.12 runtime, include the `pypdf` 7.1.1 distribution
 (BSD-3-Clause) and its license notice. Record the wheel source, version and
-digest in `metadata/python-dependencies.json`. Add the headless Writer and
-Calc filters and their required libraries and registry data from the same
-AlmaLinux build as Impress. Keep `libforuilo.so`: Calc links to it even
+digest in `metadata/python-dependencies.json` (`url` and `sha256`). The package
+check requires both fields and a nonblank license notice. Add the headless
+Writer and Calc filters and their required libraries and registry data from
+the same AlmaLinux build as Impress. Keep `libforuilo.so`: Calc links to it even
 when exporting without a display. Include the `libreoffice-writer` and
 `libreoffice-calc` entries with their source RPM and notices in
 `metadata/native-office/sources.json`. Reuse existing system fonts; the
@@ -279,11 +284,12 @@ PI_CODE_E2E_PDF_SKILL=/absolute/path/to/original/pdf \
   node scripts/e2e-offline-office.mjs --pdf
 ```
 
-The scenario loads the actual user Skill, denies one Bash write, and then
-uses the normal per-call approval flow to extract and merge PDFs and read
-back the resulting page order. It independently creates the DOCX, PPTX and
-XLSX inputs before the export turn; no other Office issue's output is
-required. Check all three PDFs for their expected text and confirm that
+The scenario denies one Bash write and loads the actual user Skill. It checks
+that the loaded Skill documents both the pypdf text extraction and ordered merge
+recipes in Python examples before approving Bash. The fixture runs those API
+operations with its own inputs and reads back the resulting page order. It
+creates the DOCX, PPTX and XLSX inputs before the export turn, independently
+of the other Office issues. Check all three PDFs for their expected text and confirm that
 the Chinese and space-containing sources and the installed Skill are intact.
 This qualifies the original PDF sample's plain-text and merge recipes, and
 the separate LibreOffice export route. The Excel sample documents formula

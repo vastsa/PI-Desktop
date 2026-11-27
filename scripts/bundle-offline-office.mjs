@@ -77,19 +77,34 @@ async function lockedNodePackages(runtime) {
 async function pythonRuntimeFiles(runtime) {
   const { packages } = await readJson(runtime, "metadata/python-dependencies.json");
   if (!Array.isArray(packages)) throw new Error("Missing Python dependency sources in Office Runtime.");
-  const versions = new Map(packages.map(({ name, version }) => [name.replaceAll("-", "_"), version]));
+  const dependencies = new Map(packages.map((dependency) => [dependency.name.replaceAll("-", "_"), dependency]));
   const entries = await readdir(join(runtime, site));
   const files = [];
   for (const [pkg, modules] of Object.entries(pythonPackages)) {
     const distributions = entries.filter((entry) => entry.startsWith(pkg + "-") && entry.endsWith(".dist-info"));
     if (distributions.length !== 1) throw new Error(`Expected one installed Office Runtime distribution: ${pkg}`);
     const [distribution] = distributions;
-    if (!versions.has(pkg) || distribution !== `${pkg}-${versions.get(pkg)}.dist-info`) {
+    const dependency = dependencies.get(pkg);
+    if (!dependency || distribution !== `${pkg}-${dependency.version}.dist-info`) {
       throw new Error(`Office Runtime Python version mismatch: ${pkg}`);
     }
     const notices = await readdir(join(runtime, site, distribution), { recursive: true });
-    if (!notices.some((name) => license.test(name.split(sep).at(-1)))) {
+    const matchingNotices = notices.filter((name) => license.test(basename(name)));
+    if (!matchingNotices.length) {
       throw new Error(`Office Runtime license is missing: ${pkg}`);
+    }
+    if (pkg === "pypdf") {
+      const { url, sha256 } = dependency;
+      const source = typeof url === "string" ? URL.parse(url) : null;
+      if (source?.protocol !== "https:" || source.username || source.password ||
+          typeof sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(sha256)) {
+        throw new Error("Missing or invalid pypdf wheel provenance in Office Runtime.");
+      }
+      const texts = await Promise.all(matchingNotices.map(async (name) => {
+        const path = join(runtime, site, distribution, name);
+        return (await stat(path)).isFile() && (await readFile(path, "utf8")).trim();
+      }));
+      if (!texts.some(Boolean)) throw new Error("Office Runtime license is missing or blank: pypdf");
     }
     files.push(distribution, ...modules, ...entries.filter((entry) => entry === pkg + ".libs"));
   }
