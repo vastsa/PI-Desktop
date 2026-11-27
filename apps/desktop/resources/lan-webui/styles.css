@@ -1540,6 +1540,124 @@ main > button.fab:active:not(:disabled) {
   text-align: center;
 }
 
+/* ---------- larger screens ----------
+   The page is built phone-first. On a tablet or desktop browser the content
+   keeps a readable column while the header and composer dock span the whole
+   window, lists use the extra width, and a mouse gets denser targets. */
+@media (pointer: fine) {
+  :root {
+    /* Touch keeps 44px (spec W07); a mouse is precise enough for 36px. */
+    --tap: 36px;
+  }
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--ds-text-primary) 22%, transparent) transparent;
+  }
+  .row-main {
+    min-height: 52px;
+  }
+  /* Secondary row actions appear with the row they belong to. */
+  @media (hover: hover) {
+    .row-more {
+      opacity: 0;
+    }
+    .row:hover .row-more,
+    .row:focus-within .row-more {
+      opacity: 1;
+    }
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --pad-left: max(32px, env(safe-area-inset-left));
+    --pad-right: max(32px, env(safe-area-inset-right));
+  }
+  main {
+    max-width: 880px;
+  }
+  main[data-view^="chat"] {
+    max-width: 820px;
+  }
+  /* Full-bleed bars, content aligned to the column. */
+  .header,
+  .chat-dock {
+    margin-inline: calc(50% - 50vw);
+    padding-inline: calc(50vw - 50% + 8px);
+  }
+  .chat-dock {
+    padding-inline: calc(50vw - 50%);
+  }
+  .header {
+    min-height: calc(60px + env(safe-area-inset-top));
+  }
+  .header.root {
+    min-height: calc(72px + env(safe-area-inset-top));
+  }
+  .header.root h1 {
+    font-size: 28px;
+  }
+  .toolbar {
+    padding: 8px 0 16px;
+  }
+  .search input {
+    max-width: 420px;
+  }
+  .messages {
+    gap: 20px;
+    padding: 24px 0 32px;
+  }
+  .msg.user {
+    max-width: min(70%, 560px);
+  }
+  /* The new-conversation capsule sits at the column's right edge. */
+  main > button.fab {
+    right: max(24px, calc(50vw - 440px + 32px));
+    bottom: 28px;
+    left: auto;
+    margin: 0;
+  }
+  .toast:not([hidden]) {
+    bottom: 32px;
+  }
+  .empty {
+    padding: 96px 16px;
+  }
+  /* Action sheets become compact centred dialogs without a drag handle. */
+  .sheet-panel {
+    max-width: 400px;
+    padding: 6px 8px 8px;
+    animation: dialog-in var(--motion-duration-normal) var(--motion-ease-out);
+  }
+  .model-picker[open] {
+    animation: dialog-in var(--motion-duration-normal) var(--motion-ease-out);
+  }
+  .sheet-panel::before,
+  .model-picker-body::before {
+    display: none;
+  }
+  .sheet-actions > button {
+    min-height: 44px;
+  }
+  /* Pairing reads as a card centred in the window. */
+  .pair {
+    max-width: 440px;
+    margin: auto;
+    padding: 40px;
+    border-radius: var(--radius-2xl);
+    background: var(--ds-tile);
+  }
+}
+
+@media (min-width: 1024px) {
+  /* Projects fill two columns; recent conversations stay a single list. */
+  #section-projects .list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 8px;
+  }
+}
+
 /* ---------- loading skeleton ---------- */
 .skeleton {
   display: block;
@@ -1622,6 +1740,12 @@ main:is(.enter-push, .enter-pop) > :is(.header, .chat-dock, .fab) {
   from {
     opacity: 0;
     translate: -24px 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
   }
 }
 @keyframes sheet-in {
