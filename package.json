@@ -120,6 +120,7 @@
     "test:e2e:remote-file-manager": "node scripts/e2e-remote-file-manager.mjs",
     "test:e2e:remote-mvp": "node scripts/e2e-remote-mvp.mjs",
     "test:e2e:remote-mvp-ui": "node scripts/e2e-remote-mvp-ui.mjs",
+    "test:e2e:lan-webui": "node --test apps/desktop/test/lan-webui-browser-user-path.e2e.mjs",
     "test:e2e:shortcut-settings": "node scripts/test-shortcut-settings.mjs",
     "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs",
     "test:e2e:overlay-selection": "node scripts/test-overlay-selection.mjs",

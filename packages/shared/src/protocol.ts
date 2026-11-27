@@ -205,6 +205,7 @@ export const IPC = {
     settingsSet: "pi-desktop/settings/set",
     sidebarPreferencesGet: "pi-desktop/sidebar/preferences/get",
     sidebarPreferencesSet: "pi-desktop/sidebar/preferences/set",
+    lanWebUiAdmin: "pi-desktop/lan-webui/admin",
     configSyncGetState: "pi-desktop/configSync/getState",
     backgroundTasksList: "pi-desktop/backgroundTasks/list",
     backgroundTasksOutput: "pi-desktop/backgroundTasks/output",
@@ -507,6 +508,9 @@ export const IPC = {
     nativeMenuAction: "pi-desktop/menu/nativeAction",
   },
   event: {
+    lanWebUiCatalogChanged: "pi-desktop/lan-webui/catalogChanged",
+    /** LAN WebUI listener, pairing or device list changed; refetch the admin view. */
+    lanWebUiChanged: "pi-desktop/lan-webui/changed",
     pluginChanged: "pi-desktop/event/pluginChanged",
     /** Progress of an install or update, while it is still running. */
     pluginInstallProgress: "pi-desktop/plugin/event/installProgress",

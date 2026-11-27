@@ -192,6 +192,11 @@ jobs:
       - name: Run provider optional client certificate E2E
         run: xvfb-run --auto-servernum pnpm test:e2e:provider-client-certificate
 
+      - name: Run LAN WebUI browser E2E
+        env:
+          PI_SCRATCH_DIR: ${{ runner.temp }}
+        run: xvfb-run --auto-servernum pnpm test:e2e:lan-webui
+
       - name: Run image model settings Electron tests
         run: |
           xvfb-run --auto-servernum node --test apps/desktop/test/image-generation-row-empty-state.test.mjs
