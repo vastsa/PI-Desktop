@@ -54,6 +54,7 @@
     const range = keep && typeof active.selectionStart === "number" ? [active.selectionStart, active.selectionEnd] : null;
     app.replaceChildren(...nodes.filter(Boolean));
     app.dataset.view = view;
+    if (!same && view !== "loading") enterPage();
     const next = keep ? document.getElementById(keep) : null;
     if (next) {
       next.focus({ preventScroll: true });
@@ -67,6 +68,21 @@
     }
     return !same;
   }
+  /** A new page slides in from the side it was reached from; refreshes never move. */
+  let direction = "push";
+  function enterPage() {
+    app.classList.remove("enter-push", "enter-pop");
+    void app.offsetWidth;
+    app.classList.add(`enter-${direction}`);
+  }
+  app.addEventListener("animationend", (event) => {
+    if (event.animationName.startsWith("page-")) app.classList.remove("enter-push", "enter-pop");
+  });
+  // Safari only paints :active feedback once the page listens for touches.
+  document.addEventListener("touchstart", () => {}, { passive: true });
+  // The sticky header gains its hairline only once content scrolls beneath it.
+  const syncScrolled = () => document.documentElement.classList.toggle("scrolled", window.scrollY > 2);
+  window.addEventListener("scroll", syncScrolled, { passive: true });
   let toastTimer = null;
   function notify(message, duration = 4000) {
     toast.textContent = message;
@@ -211,6 +227,7 @@
     }
     state.scroll.set(routeKey(new URL(event.oldURL).hash), window.scrollY);
     const restoreScroll = !state.forward;
+    direction = state.forward ? "push" : "pop";
     state.forward = false;
     state.route = parseRoute();
     render({ restoreScroll });
@@ -288,6 +305,28 @@
     sheetReturn = null;
   }
   sheet.addEventListener("click", (event) => { if (event.target === sheet) closeSheet(); });
+  // Pull the sheet down from its top to dismiss it, like a native action sheet.
+  const sheetPanel = sheet.querySelector(".sheet-panel");
+  let drag = null;
+  sheetPanel.addEventListener("touchstart", (event) => {
+    drag = sheetPanel.scrollTop <= 0 && event.touches.length === 1 ? { y: event.touches[0].clientY, dy: 0 } : null;
+  }, { passive: true });
+  sheetPanel.addEventListener("touchmove", (event) => {
+    if (!drag) return;
+    drag.dy = Math.max(0, event.touches[0].clientY - drag.y);
+    sheetPanel.style.transition = "none";
+    sheetPanel.style.translate = `0 ${drag.dy}px`;
+  }, { passive: true });
+  const endDrag = () => {
+    if (!drag) return;
+    const dismiss = drag.dy > 72;
+    drag = null;
+    sheetPanel.style.transition = "";
+    sheetPanel.style.translate = "";
+    if (dismiss) closeSheet();
+  };
+  sheetPanel.addEventListener("touchend", endDrag);
+  sheetPanel.addEventListener("touchcancel", endDrag);
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !sheet.hidden) closeSheet(); });
 
   function organize(kind, item, patch) {
@@ -827,6 +866,12 @@
     if (!state.me) return;
     const token = ++state.renderToken;
     const route = state.route;
+    // A slow first load shows the page's shape instead of a blank screen.
+    const key = route.view === "home" ? `home${route.archived ? ":archived" : ""}`
+      : route.view === "sessions" ? `sessions:${route.projectId}${route.archived ? ":archived" : ""}` : `chat:${route.sessionId}`;
+    const skeletonTimer = options.refresh || app.dataset.view === key ? null : setTimeout(() => {
+      if (token === state.renderToken) show("loading", skeleton(route));
+    }, 160);
     try {
       let changed;
       if (route.view === "home") changed = await renderHome(token, route.archived);
@@ -847,7 +892,23 @@
         return;
       }
       fail(error);
+    } finally {
+      clearTimeout(skeletonTimer);
     }
+  }
+
+  function skeleton(route) {
+    const bar = (cls) => el("span", { class: `skeleton ${cls}` });
+    const body = route.view === "chat"
+      ? el("div", { class: "messages skeleton-chat" }, [bar("bubble user"), bar("line wide"), bar("line"), bar("line short"), bar("bubble user narrow"), bar("line wide"), bar("line")])
+      : el("ul", { class: "list skeleton-list" }, Array.from({ length: 6 }, () => el("li", { class: "skeleton-row" }, [bar("title"), bar("meta")])));
+    return el("div", { class: "skeleton-page", "aria-busy": "true", "aria-label": t("loading") }, [
+      el("div", { class: "header" + (route.view === "home" ? " root" : "") }, [
+        route.view === "home" ? null : el("button", { type: "button", class: "icon-btn", "aria-label": t("back"), onclick: () => back("#/projects") }, icon("back")),
+        el("div", { class: "header-title" }, bar("heading")),
+      ]),
+      body,
+    ]);
   }
 
   // ---------- pairing ----------

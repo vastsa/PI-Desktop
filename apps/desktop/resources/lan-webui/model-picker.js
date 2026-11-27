@@ -29,7 +29,7 @@
         type: "button", class: "icon-btn", "aria-label": t("cancel"), onclick: () => dismiss(true),
       }, icon("close"));
       const search = el("input", {
-        type: "search", placeholder: t("searchModels"), "aria-label": t("searchModels"), autocomplete: "off", enterkeyhint: "search",
+        class: "model-search", type: "search", placeholder: t("searchModels"), "aria-label": t("searchModels"), autocomplete: "off", enterkeyhint: "search",
       });
       const status = el("p", { class: "model-picker-status", role: "status" });
       const retry = el("button", { type: "button", class: "secondary", text: t("retry"), onclick: () => void reload() });
