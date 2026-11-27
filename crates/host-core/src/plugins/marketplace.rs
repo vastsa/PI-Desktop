@@ -93,18 +93,6 @@ impl PluginManager {
         self.market_channel == MarketChannel::Official && market_source_env_override().is_none()
     }
 
-    /// Make the install that is about to run cancellable.
-    ///
-    /// The token is held here rather than passed around, because the cancel
-    /// action arrives as its own RPC while the install is still running.
-    pub(crate) fn set_install_cancel(&mut self, token: Option<CancelToken>) {
-        match &token {
-            Some(value) => super::progress::arm_active_cancel(value),
-            None => super::progress::disarm_active_cancel(),
-        }
-        self.install_cancel = token;
-    }
-
     pub(crate) fn market_cache_meta_path(&self) -> PathBuf {
         self.data_dir.join("plugins/market/cache-meta.json")
     }
