@@ -429,7 +429,12 @@ to later refresh and inference; the vendor picker does not collect them.
   invalid modes or levels return
   `INVALID_PARAMS`; mode is `plan | goal | agent` and changing any session
   configuration is allowed only while idle and without a pending/queued/running
-  Plan or Goal record
+  Plan or Goal record. An internal model-only caller may pass
+  `expectedAgentModel: { projectPath, providerId, modelId }` (all three keys
+  required, with `null` for unset values). The Host checks that the session is
+  a local, non-scheduled Agent session matching these values under the same
+  lock as the write. A mismatch is `CONFLICT`; guarded requests cannot also
+  update its mode, permissions, thinking level, or fast mode.
 - `session.moveProject({ sessionId, projectPath })` moves an idle session to a
   project and returns `{ session }` carrying the canonical project path. It
   upserts the project row and updates only `sessions.project_id` and

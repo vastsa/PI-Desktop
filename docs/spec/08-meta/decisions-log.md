@@ -5426,3 +5426,24 @@ See ADR 0344.
 - Enable only generated session titles on first use. Keep next-message
   suggestions, prompt enhancement, and AI memory opt-in. Preserve explicit
   settings and keep the deterministic fallback and manual-title protections.
+
+## 2026-11-26 — LAN WebUI project access follows device confirmation (D686)
+
+- A locally confirmed device can view all eligible current and future local
+  projects. Remove the project checklist, keeping one-time pairing and local
+  confirmation, the separate Temporary, Chat and Organize grants, and device
+  revocation. See [LAN WebUI project access](../../adr/lan-webui-project-access.md).
+
+## 2026-11-26 — LAN WebUI pairs directly with a one-time code (D687)
+
+- A valid code issues the device session immediately. All paired devices can
+  use the supported local project and temporary-conversation operations, with
+  no separate grant switches. The existing local Agent safety rules and
+  device revocation remain. See [Code pairing](../../adr/lan-webui-code-pairing.md).
+
+## 2026-11-26 — LAN WebUI restores the opted-in listener and paired devices (D688)
+
+- Restart on the exact saved binding and accept unexpired browser cookies from
+  the same pairing. Keep only device metadata and cookie verifiers on Desktop.
+  Explicit disable or revocation persists; first launch still starts off. See
+  the [code pairing amendment](../../adr/lan-webui-code-pairing.md#amendment-remember-pairing-across-desktop-launches-d688).
