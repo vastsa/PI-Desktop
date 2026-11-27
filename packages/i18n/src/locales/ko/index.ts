@@ -2518,7 +2518,15 @@ sklm: {
   palette: {
   },
   search: {
-    placeholder: "제목 및 메시지 검색…",
+    filesNeedChat: "먼저 대화를 열어야 파일 뷰에서 프로젝트 파일을 볼 수 있습니다.",
+    filesSummary: "{{count}}개 결과 · {{files}}개 파일",
+    caseSensitive: "대/소문자 구분",
+    tabSessions: "대화",
+    tabFiles: "파일",
+    filesEmpty: "일치하는 파일 내용이 없습니다",
+    filesNoProject: "파일 내용을 검색하려면 프로젝트를 여세요",
+    placeholder: "대화 검색 — Tab으로 파일 전환…",
+    placeholderFiles: "프로젝트 파일 검색 — Tab으로 대화 전환…",
     metadataMatch: "제목 / 프로젝트",
     messageMatches: "메시지 {{count}}개 일치",
     user: "사용자",

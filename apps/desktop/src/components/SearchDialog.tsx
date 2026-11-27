@@ -10,6 +10,8 @@ import { searchSettings, type SettingsSearchHit } from "../lib/settings-search";
 import { useSessionSearch, useSessionSearchState } from "../hooks/use-session-search";
 import { SearchHighlight } from "./SearchHighlight";
 import { SearchSessionResults, type SearchRow } from "./SearchSessionResults";
+import { ProjectFileSearchResults, type ProjectFileRow } from "./ProjectFileSearchResults";
+import { useOpenChatFileRef } from "../hooks/use-preview-target";
 import type { SessionSummary, CommandItem } from "@pi-desktop/shared";
 import type { SessionMeta } from "../lib/sidebar-preferences";
 import {
@@ -97,6 +99,47 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     selectionRequest.current += 1;
   }, [open, query]);
   const [active, setActive] = useState(0);
+  // The dialog has two sources: conversation messages (existing behaviour) and
+  // project file contents, which searches through host-core (#2584 follow-up).
+  const [searchTab, setSearchTab] = useState<"sessions" | "files">("sessions");
+  const [fileRows, setFileRows] = useState<ProjectFileRow[]>([]);
+  // Literal case-insensitive matching is the default; the toggle opts in.
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [fileStatus, setFileStatus] = useState<"idle" | "loading" | "error">("idle");
+  const fileRoot = workspace?.path ?? "";
+  // Files-tab rows open in the bundled file view at the matched line, the same
+  // completion chat file references use (ADR 0262).
+  const openFileRef = useOpenChatFileRef();
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
+  useEffect(() => {
+    if (!open || searchTab !== "files") return;
+    const trimmed = query.trim();
+    if (trimmed.length < 2 || !fileRoot) {
+      setFileRows([]);
+      setFileStatus("idle");
+      return;
+    }
+    let cancelled = false;
+    setFileStatus("loading");
+    const timer = window.setTimeout(() => {
+      api
+        .searchProjectText({ root: fileRoot, query: trimmed, caseSensitive })
+        .then((result) => {
+          if (cancelled) return;
+          setFileRows(result.matches);
+          setFileStatus("idle");
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setFileRows([]);
+          setFileStatus("error");
+        });
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, searchTab, query, fileRoot, caseSensitive]);
   const [commandResult, setCommandResult] = useState<{
     query: string;
     hits: CommandItem[];
@@ -229,11 +272,14 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const pageBase = moreIndex + (query.trim() && search.nextOffset !== null ? 1 : 0);
   const settingsBase = pageBase + pageHits.length;
   const commandsBase = settingsBase + settingsHits.length;
-  const optionCount = commandsBase + commandHits.length;
+  // The Files tab owns its own listbox, so keyboard indices must address the
+  // file rows instead of the session rows that stay mounted but hidden.
+  const optionCount =
+    searchTab === "files" ? fileRows.length : commandsBase + commandHits.length;
 
   useEffect(() => {
     setActive(0);
-  }, [query]);
+  }, [query, searchTab]);
 
   useEffect(() => {
     setActive((value) => Math.min(value, optionCount - 1));
@@ -301,7 +347,35 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     }
   };
 
+  /** Tab moves focus, so the dialog switches source itself and keeps focus. */
+  const switchTab = (next: "sessions" | "files") => {
+    if (next === searchTab) return;
+    if (next === "files" && !fileRoot) return;
+    setSearchTab(next);
+    setActive(0);
+  };
+
+  const openFileRow = (row: ProjectFileRow) => {
+    const position = { line: row.line, column: row.column };
+    // Chat file references resolve through the active session. A project with no
+    // conversation yet has nothing to resolve against, so the row still opens
+    // the file view directly instead of silently doing nothing.
+    if (activeSessionId) {
+      openFileRef(row.path, undefined, undefined, position);
+    } else {
+      // The work panel is session-scoped, so there is no file view to open yet.
+      showToast(t("search.filesNeedChat"), { variant: "error" });
+    }
+    onClose();
+  };
+
   const runActive = () => {
+    if (searchTab === "files") {
+      const row = fileRows[active];
+      if (!row) return;
+      openFileRow(row);
+      return;
+    }
     if (active === 0) return void run(null);
     for (const row of rows) {
       if (active === row.optionIndex) return void run(row);
@@ -348,7 +422,9 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             aria-controls="global-search-results"
             aria-activedescendant={`global-search-option-${active}`}
             aria-label={t("nav.search")}
-            placeholder={t("search.placeholder")}
+            placeholder={t(
+              searchTab === "files" ? "search.placeholderFiles" : "search.placeholder",
+            )}
             value={query}
             maxLength={500}
             autoFocus
@@ -370,19 +446,81 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                 event.preventDefault();
                 setActive((value) => Math.max(value - 1, 0));
               }
+              if (event.key === "Tab") {
+                event.preventDefault();
+                switchTab(searchTab === "sessions" ? "files" : "sessions");
+              }
               if (event.key === "Enter") {
                 event.preventDefault();
                 runActive();
               }
             }}
           />
+          <div className="search-tabs" role="tablist" aria-label={t("nav.search")}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={searchTab === "sessions"}
+              className={`search-tab ${searchTab === "sessions" ? "active" : ""}`}
+              onClick={() => {
+                setSearchTab("sessions");
+                setActive(0);
+              }}
+            >
+              {t("search.tabSessions")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={searchTab === "files"}
+              className={`search-tab ${searchTab === "files" ? "active" : ""}`}
+              disabled={!fileRoot}
+              title={fileRoot ? fileRoot : t("search.filesNoProject")}
+              onClick={() => {
+                setSearchTab("files");
+                setActive(0);
+              }}
+            >
+              {t("search.tabFiles")}
+            </button>
+          </div>
         </div>
         <div
           id="global-search-results"
-          className="search-results"
+          className={`search-results${searchTab === "files" ? " is-files-tab" : ""}`}
           role="listbox"
           aria-label={t("nav.search")}
         >
+          {searchTab === "files" ? (
+            <>
+              <ProjectFileSearchResults
+                rows={fileRows}
+                query={query}
+                active={active}
+                baseIndex={0}
+                caseSensitive={caseSensitive}
+                onToggleCase={() => {
+                  setCaseSensitive((value) => !value);
+                  setActive(0);
+                }}
+                onActivate={setActive}
+                onSelect={openFileRow}
+              />
+              {fileStatus === "loading" ? (
+                <div className="search-empty" role="status">
+                  {t("search.loading")}
+                </div>
+              ) : null}
+              {fileStatus === "error" ? (
+                <div className="search-empty" role="alert">
+                  {t("search.failed")}
+                </div>
+              ) : null}
+              {fileStatus === "idle" && query.trim().length >= 2 && fileRows.length === 0 ? (
+                <div className="search-empty">{t("search.filesEmpty")}</div>
+              ) : null}
+            </>
+          ) : null}
           <button
             id="global-search-option-0"
             type="button"

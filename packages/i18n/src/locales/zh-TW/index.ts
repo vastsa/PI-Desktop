@@ -2497,7 +2497,15 @@ sklm: {
   palette: {
   },
   search: {
-    placeholder: "搜尋標題和訊息…",
+    filesNeedChat: "先開啟一個對話，才能在內建檔案檢視中查看專案檔案。",
+    filesSummary: "{{count}} 筆結果 · {{files}} 個檔案",
+    caseSensitive: "區分大小寫",
+    tabSessions: "對話",
+    tabFiles: "檔案",
+    filesEmpty: "找不到符合的檔案內容",
+    filesNoProject: "開啟專案後可搜尋檔案內容",
+    placeholder: "搜尋對話，Tab 切換到檔案…",
+    placeholderFiles: "搜尋專案檔案內容，Tab 切換回對話…",
     metadataMatch: "標題 / 專案",
     messageMatches: "{{count}} 則訊息符合",
     user: "使用者",

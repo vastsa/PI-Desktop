@@ -1209,3 +1209,57 @@
   outline: 1px dashed var(--ds-border-strong);
   outline-offset: -2px;
 }
+
+/* Global search: source tabs (conversations / project files). */
+.search-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-hover);
+  flex: 0 0 auto;
+}
+
+.search-tab {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.search-tab:hover:not(:disabled):not(.active) {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-secondary);
+}
+
+/* The selected source must be unmistakable: filled pill, bright label, semibold. */
+.search-tab.active {
+  background: var(--ds-bg-active);
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.search-tab:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 1px;
+}
+
+.search-tab:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The Files tab reuses the listbox: session rows stay mounted but hidden so
+   keyboard indices only ever address rows the user can see. */
+.search-results.is-files-tab > *:not([data-search-group="files"]):not(.search-empty) {
+  display: none;
+}
+
+.search-group-hint {
+  color: var(--text-muted);
+}

@@ -70,10 +70,61 @@
 }
 
 .search-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 10px 10px 4px;
   color: var(--ds-text-muted);
   font-size: var(--text-2xs);
   font-weight: var(--font-weight-medium);
+}
+
+/* The Files header follows the search field directly, so it needs far less
+   air than a conversation group that opens a new section. */
+.search-group[data-search-group="files"] > .search-group-label {
+  padding-top: 2px;
+}
+
+.search-group-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Result count: enough to orient, quieter than the rows themselves. */
+.search-group-summary {
+  color: var(--ds-text-faint);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-normal);
+}
+
+/* Case-sensitivity switch, sitting at the right end of the Files group header. */
+.search-case-toggle {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ds-text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.search-case-toggle:hover {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-secondary);
+}
+
+.search-case-toggle.active {
+  background: var(--ds-bg-active);
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.search-case-toggle:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 1px;
 }
 
 .search-item {
@@ -110,6 +161,51 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* File rows stack the path over the matched line. Side by side, a long path
+   and a long snippet read as one run of text and the two cannot be told apart. */
+.search-item-file {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* The path is metadata: small, mono, muted. The matched line is the content:
+   larger, brighter. Weight, size, and family differ so the two never blur. */
+.search-item-file .search-item-title {
+  width: 100%;
+  flex: 0 0 auto;
+  color: var(--ds-text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-xs);
+  letter-spacing: normal;
+}
+
+.search-item-file .search-item-path {
+  color: var(--ds-text-faint);
+}
+
+.search-item-file .search-item-snippet {
+  width: 100%;
+  overflow: hidden;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md-plus);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-item-file.active .search-item-snippet {
+  color: var(--ds-text-primary);
+}
+
+/* File rows get a touch more emphasis than the conversation rows: a soft chip
+   behind the matched text, so the hit is findable at a glance. */
+.search-item-file .search-hit {
+  margin: 0 -2px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-bg-active);
+  padding: 0 2px;
 }
 
 /* Match emphasis inherits the row surface — no highlighter background. */

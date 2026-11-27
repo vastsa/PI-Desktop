@@ -2497,7 +2497,15 @@ sklm: {
   palette: {
   },
   search: {
-    placeholder: "搜索标题和消息…",
+    filesNeedChat: "先打开一个对话，才能在内置文件视图中查看项目文件。",
+    filesSummary: "{{count}} 条结果 · {{files}} 个文件",
+    caseSensitive: "区分大小写",
+    tabSessions: "对话",
+    tabFiles: "文件",
+    filesEmpty: "未找到匹配的文件内容",
+    filesNoProject: "打开项目后可搜索文件内容",
+    placeholder: "搜索对话，Tab 切换到文件…",
+    placeholderFiles: "搜索项目文件内容，Tab 切换回对话…",
     metadataMatch: "标题 / 项目",
     messageMatches: "{{count}} 条消息命中",
     user: "用户",

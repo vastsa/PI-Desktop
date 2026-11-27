@@ -2468,7 +2468,15 @@ export const ptBR = {
   palette: {
   },
   search: {
-    placeholder: "Pesquisar títulos e mensagens…",
+    filesNeedChat: "Abra uma conversa primeiro para ver arquivos do projeto no visualizador.",
+    filesSummary: "{{count}} resultados · {{files}} arquivos",
+    caseSensitive: "Diferenciar maiúsculas",
+    tabSessions: "Conversas",
+    tabFiles: "Arquivos",
+    filesEmpty: "Nenhum conteúdo de arquivo correspondente",
+    filesNoProject: "Abra um projeto para pesquisar nos arquivos",
+    placeholder: "Buscar conversas — Tab alterna para arquivos…",
+    placeholderFiles: "Buscar nos arquivos do projeto — Tab alterna para conversas…",
     metadataMatch: "Título / projeto",
     messageMatches: "{{count}} mensagens correspondentes",
     user: "Você",

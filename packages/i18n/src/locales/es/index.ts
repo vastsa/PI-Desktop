@@ -2502,7 +2502,15 @@ sklm: {
   "palette": {
   },
   "search": {
-    placeholder: "Buscar títulos y mensajes…",
+    filesNeedChat: "Abre un chat primero para ver archivos del proyecto en el visor.",
+    filesSummary: "{{count}} resultados · {{files}} archivos",
+    caseSensitive: "Distinguir mayúsculas",
+    tabSessions: "Chats",
+    tabFiles: "Archivos",
+    filesEmpty: "Ningún contenido de archivo coincide",
+    filesNoProject: "Abre un proyecto para buscar en sus archivos",
+    placeholder: "Buscar chats — Tab cambia a archivos…",
+    placeholderFiles: "Buscar en archivos del proyecto — Tab cambia a chats…",
     metadataMatch: "Título / proyecto",
     messageMatches: "{{count}} mensajes coincidentes",
     user: "Tú",
