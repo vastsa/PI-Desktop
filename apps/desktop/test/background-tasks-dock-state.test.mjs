@@ -21,8 +21,8 @@ const {
   selectTab,
   sessionDockState,
   sidesFor,
-  tasksPanelVisible,
   toggleCollapsed,
+  visibleDockTab,
 } = await import("../src/features/chat/background-tasks/dock-state.ts");
 
 const SESSION = "session-1";
@@ -106,17 +106,19 @@ test("one populated side renders alone, so the tab list is not rendered", () => 
   assert.equal(sides.hasTodo && sides.hasTasks, false);
 });
 
-test("the tasks panel is on screen only when expanded and selected", () => {
-  // This decides whether a preview can be on screen at all: the pin on a
-  // row being read lives only while this holds (#2634).
-  const sides = { hasTodo: true, hasTasks: true, runningTasks: 1, inProgressTodos: 1 };
-  const open = { ...EMPTY_SESSION_DOCK, collapsed: false };
-  assert.equal(tasksPanelVisible(open, sides), true);
-  // A collapsed container shows no panel at all.
-  assert.equal(tasksPanelVisible(EMPTY_SESSION_DOCK, sides), false);
-  // The todo panel on screen is not the tasks panel either.
-  const onTodo = { ...open, chosenTab: "todo" };
-  assert.equal(tasksPanelVisible(onTodo, sides), false);
+test("a row being read keeps the tasks panel on screen", () => {
+  // Without this guard the auto tab rule switches to Todo when the last
+  // running task ends, taking the panel — and the row being read — away
+  // mid-read (#2634).
+  const sides = { hasTodo: true, hasTasks: true, runningTasks: 0, inProgressTodos: 1 };
+  const auto = { ...EMPTY_SESSION_DOCK, collapsed: false };
+  assert.equal(resolveDockTabFor(auto, sides), "todo");
+  assert.equal(visibleDockTab(auto, sides, true), "tasks");
+  // Not reading: the auto rule decides as before.
+  assert.equal(visibleDockTab(auto, sides, false), "todo");
+  // A user tab choice still decides — reading never overrides Todo.
+  const onTodo = { ...auto, chosenTab: "todo" };
+  assert.equal(resolveDockTabFor(onTodo, sides), "todo");
 });
 
 test("sides describe the rows as the tab rule sees them", () => {

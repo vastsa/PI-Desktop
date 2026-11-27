@@ -7,12 +7,11 @@ import {
   type DockViewState,
   badgeLabel,
   pruneDockView,
-  resolveDockTabFor,
   selectTab,
   sessionDockState,
   sidesFor,
-  tasksPanelVisible,
   toggleCollapsed,
+  visibleDockTab,
 } from "./dock-state";
 import type { SessionTodo } from "@pi-desktop/shared";
 
@@ -222,24 +221,27 @@ export function useBackgroundTasks(
   // The tab and badge rules see the rows the container can render, so a task
   // that already left it cannot decide which panel is on screen.
   const sides = sidesFor(visibleTasks, todos);
-  const activeTab: DockTab = resolveDockTabFor(dock, sides);
-  // The tasks panel on screen is the one place a preview is visible; anywhere
-  // else — collapsed, or the Todo tab — the read is over (#2634).
-  const reading = tasksPanelVisible(dock, sides);
+  // Whether the output preview is on screen: expanded, container open, and
+  // the user has not chosen the Todo tab. The auto tab rule never takes the
+  // panel away from an open preview, so a read cannot be cut short by the
+  // last running task ending (#2634).
+  const reading = expandedId !== null && !dock.collapsed && dock.chosenTab !== "todo";
+  const activeTab: DockTab = visibleDockTab(dock, sides, reading);
   // The badge mirrors the session's live work: it rises when a task starts and
   // falls as tasks end, and no view action can change it (#2632).
   const badge = sides.runningTasks;
 
-  // The pin on a row being read lives only while its preview is on screen:
-  // once the panel hides — collapse, or a switch to Todo — the preview
-  // closes, so a finished row cannot reappear later with no output on screen
-  // (#2634). While the panel stays on screen, the row persists until the
-  // reader closes it. `expandedId` is a dependency so a pin written while the
-  // panel is hidden (the hidden panel is still keyboard-focusable) is cleared
-  // too.
+  // The pin on a row being read ends when its preview leaves the screen —
+  // collapse, or a switch to Todo — so a finished row cannot reappear later
+  // with no output on screen (#2634). A running task keeps its preview across
+  // the switch: the row itself is live work and stays, so coming back to the
+  // tasks tab picks up the same read; if the task ends while hidden, the pin
+  // goes with it.
   useEffect(() => {
-    if (!reading) setExpandedId(null);
-  }, [reading, expandedId]);
+    if (expandedId === null || reading) return;
+    const pinnedTask = sessionTasks.find((task) => task.id === expandedId);
+    if (pinnedTask?.state !== "running") setExpandedId(null);
+  }, [reading, expandedId, sessionTasks]);
 
   // A preview belongs to the session it was opened in; a session switch
   // closes it.

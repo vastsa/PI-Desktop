@@ -694,10 +694,13 @@ Host execution baseline:
 - A finished background task leaves the container as soon as its end state
   arrives: the badge falls and the row goes, with no post-exit grace window.
   Only the row whose output preview is open stays on screen, so a log being read
-  cannot vanish underneath it — and the preview pin lives only while the tasks
-  panel is on screen: collapsing the container or switching to Todo closes the
-  preview, so a finished row cannot reappear later with no output on screen
-  (#2632, #2634). A task that had already finished when the renderer first
+  cannot vanish underneath it — and the auto tab rule never switches the panel
+  away from an open read (#2632, #2634). The preview pin ends when its preview
+  leaves the screen — collapse, or a switch to Todo — unless the task still
+  runs: a running task's preview survives the switch, so coming back to the
+  tasks tab picks up the same read; a task that ends while hidden takes its
+  pin with it, so a finished row cannot reappear later with no output on
+  screen. A task that had already finished when the renderer first
   loaded is registry history and never appears.
 - **Removal is a view action with a live-task guard.** Only a terminal task
   (`exited`, `failed`, `stopped`) can be removed — in practice the expanded row

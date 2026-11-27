@@ -134,15 +134,20 @@ export function resolveDockTabFor(state: DockSessionState, sides: DockSides): Do
 }
 
 /**
- * Whether the tasks panel is the one on screen. A collapsed container shows no
- * panel at all, so it never counts as looking at the tasks.
+ * The tab actually on screen.
  *
- * The hook keeps the output-preview pin alive only while this holds: a row
- * being read stays only while its preview is actually on screen, so collapsing
- * the container or switching to Todo ends the read (#2632, #2634).
+ * A row being read keeps the tasks panel on screen: the auto tab rule does not
+ * switch to Todo underneath an open preview, so the last running task ending
+ * mid-read does not pull the panel away. A user tab choice still decides —
+ * choosing Todo is what ends a read (#2634).
  */
-export function tasksPanelVisible(state: DockSessionState, sides: DockSides): boolean {
-  return !state.collapsed && resolveDockTabFor(state, sides) === "tasks";
+export function visibleDockTab(
+  state: DockSessionState,
+  sides: DockSides,
+  reading: boolean,
+): DockTab {
+  if (reading) return "tasks";
+  return resolveDockTabFor(state, sides);
 }
 
 /**

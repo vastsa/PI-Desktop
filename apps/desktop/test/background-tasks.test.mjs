@@ -155,11 +155,16 @@ test("the container shows only live work: a finished row leaves as soon as it en
   assert.match(visibility, /task\.continuation === "pending"/);
   assert.match(visibility, /task\.id === pinnedId/);
   assert.match(controller, /selectVisibleTasks\(sessionTasks, expandedId\)/);
-  // The pin on a row being read lives only while its preview is on screen:
-  // collapse or a switch to Todo closes the preview, so the row cannot
-  // reappear later with no output on screen (#2634).
-  assert.match(controller, /const reading = tasksPanelVisible\(dock, sides\)/);
-  assert.match(controller, /if \(!reading\) setExpandedId\(null\)/);
+  // The pin on a row being read ends when its preview leaves the screen —
+  // collapse, or a switch to Todo — unless the task still runs, whose
+  // preview survives the switch and picks up the same read on return
+  // (#2634).
+  assert.match(controller, /const reading = expandedId !== null && !dock\.collapsed && dock\.chosenTab !== "todo"/);
+  assert.match(controller, /if \(expandedId === null \|\| reading\) return;/);
+  assert.match(controller, /if \(pinnedTask\?\.state !== "running"\) setExpandedId\(null\)/);
+  // The effect re-runs on every session task snapshot: that is what closes
+  // the pin when a running task ends while its panel is hidden.
+  assert.match(controller, /\}, \[reading, expandedId, sessionTasks\]\)/);
   // A session switch closes the preview too.
   assert.match(controller, /useEffect\(\(\) => \{\n    setExpandedId\(null\);\n  \}, \[sessionId\]\)/);
   // Removal is refused for a live task in the state layer, not just by hiding
@@ -179,7 +184,10 @@ test("the container filters to the active session and badges its running work", 
   assert.match(controller, /const badge = sides\.runningTasks/);
   // Both sides and the panel rule come from dock-state, so the render rule,
   // the badge rule, and the preview rule share one tab decision.
-  assert.match(controller, /import \{[\s\S]*?sidesFor,[\s\S]*?tasksPanelVisible,[\s\S]*?\} from "\.\/dock-state"/);
+  assert.match(controller, /import \{[\s\S]*?sidesFor,[\s\S]*?visibleDockTab,[\s\S]*?\} from "\.\/dock-state"/);
+  // A row being read keeps the tasks panel on screen: the auto tab rule does
+  // not switch to Todo underneath an open preview (#2634).
+  assert.match(controller, /visibleDockTab\(dock, sides, reading\)/);
 });
 
 test("deleting a session signals its tasks from the shared cleanup path only", () => {

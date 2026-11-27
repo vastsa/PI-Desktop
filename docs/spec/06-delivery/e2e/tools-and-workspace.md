@@ -1272,9 +1272,11 @@ journeys cover successful reads, saves and directory browsing.
   command above the output, preserving whitespace and wrapping to fit even
   before the task produces any output.
   An ended task's row leaves the bar as soon as its end state arrives — only
-  the row whose output preview is open stays, and only while the tasks panel
-  is on screen (collapsing the container or switching to Todo closes the
-  preview, so the row cannot reappear later) — and the tab badge falls with
+  the row whose output preview is open stays (the auto tab rule never switches
+  the panel away from an open read), and the pin ends when its preview leaves
+  the screen — collapse, or a switch to Todo — unless the task still runs: a
+  running task's preview survives the switch, while a task that ends while
+  hidden takes its row with it — and the tab badge falls with
   the running count, so finished commands do not accumulate above the
   composer (#2632, #2634).
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` (§5),
