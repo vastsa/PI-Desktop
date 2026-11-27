@@ -34,8 +34,10 @@ const appBin = process.env.PI_CODE_E2E_APP_BIN;
 const sampleVariable = `PI_CODE_E2E_${scenarioName.toUpperCase()}_SKILL`;
 const sample = process.env[sampleVariable];
 assert.ok(appBin && sample, `Set PI_CODE_E2E_APP_BIN and ${sampleVariable} to the installed binary and original ${skillName} Skill directory.`);
-assert.ok(skillName === "docx" || (!process.argv.includes("--seed-legacy") && !process.env.PI_CODE_E2E_UPGRADE_STATE),
-  "Use the Word scenario for legacy upgrade verification.");
+const seedFlags = ["--seed-0.23.0", "--seed-legacy"].filter((flag) => process.argv.includes(flag));
+assert.ok(seedFlags.length <= 1, "Select one Office upgrade source.");
+assert.ok(skillName === "docx" || (!seedFlags.length && !process.env.PI_CODE_E2E_UPGRADE_STATE),
+  "Use the Word scenario for upgrade verification.");
 assert.equal(process.platform + "/" + process.arch, "linux/arm64");
 assert.ok(Object.values(networkInterfaces()).flat().every((address) => address.internal),
   "Run in an isolated network namespace with only loopback enabled.");
@@ -201,8 +203,8 @@ async function stop() {
   try { await exited; } finally { clearTimeout(force); }
 }
 
-async function restart({ evaluate, invoke }) {
-  const quit = async () => {
+async function quit({ evaluate, invoke }) {
+  const confirmQuit = async () => {
     await invoke(IPC.invoke.appQuit);
     await waitFor(() => evaluate(`(() => {
       const dialog = document.querySelector('[role="dialog"][aria-labelledby="lifecycle-confirmation-title"]');
@@ -213,10 +215,14 @@ async function restart({ evaluate, invoke }) {
   };
   const [[code]] = await Promise.all([
     once(desktop, "exit", { signal: AbortSignal.timeout(20_000) }),
-    quit(),
+    confirmQuit(),
   ]);
   assert.equal(code, 0, "Pie Code should exit normally before restart");
   connected.close();
+}
+
+async function restart(app) {
+  await quit(app);
   return boot();
 }
 
@@ -314,7 +320,7 @@ async function newProjectSession({ evaluate, invoke }, path) {
 
 const legacyId = "pie.offline-office";
 const runtimeId = "pie.office-runtime";
-const legacyTitle = "Office upgrade fixture";
+const upgradePrompt = "Keep this completed conversation through the Office Runtime upgrade.";
 const upgradeState = process.env.PI_CODE_E2E_UPGRADE_STATE;
 
 async function installLinkedSkill() {
@@ -332,25 +338,42 @@ async function installWxSkill() {
   return skillPath;
 }
 
-async function seedLegacy() {
+async function seedUpgrade(legacy) {
   assert.ok(upgradeState, "Set PI_CODE_E2E_UPGRADE_STATE to an empty test directory.");
-  await installLinkedSkill();
-  const app = await boot();
-  await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
-  const { plugin } = await app.invoke(IPC.invoke.pluginSetScope, {
-    id: legacyId, scope: { mode: "projects", projects: [workspace] },
-  });
-  assert.equal(plugin?.scope.mode, "projects");
-  await app.invoke(IPC.invoke.pluginEnable, legacyId);
-  const { plugins } = await app.invoke(IPC.invoke.pluginList);
-  assert.equal(plugins.find((plugin) => plugin.id === legacyId)?.enabled, true);
-  await app.invoke(IPC.invoke.sessionCreate, { title: legacyTitle, mode: "agent" });
-  await stop();
   await mkdir(upgradeState);
+  await installLinkedSkill();
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const app = await boot();
+  const version = legacy ? "0.23.1" : "0.23.0";
+  assert.equal((await app.invoke(IPC.invoke.appGetVersion)).version, version);
+  await app.invoke(IPC.invoke.settingsSet, { theme: "dark", language: "en", defaultPermissionMode: "ask" });
+  const oldProject = legacy ? join(upgradeState, "selected-project") : undefined;
+  if (legacy) {
+    await mkdir(oldProject);
+    await app.invoke(IPC.invoke.pluginSetScope, {
+      id: legacyId, scope: { mode: "projects", projects: [oldProject] },
+    });
+    await app.invoke(IPC.invoke.pluginEnable, legacyId);
+  }
+  const { plugins } = await app.invoke(IPC.invoke.pluginList);
+  const previous = plugins.find((plugin) => plugin.id === legacyId);
+  assert.ok(!plugins.some((plugin) => plugin.id === runtimeId));
+  if (legacy) {
+    assert.equal(previous?.enabled, true);
+    assert.deepEqual(previous.scope, { mode: "projects", projects: [oldProject] });
+  } else {
+    assert.equal(previous, undefined);
+  }
+  await discoverSkill(app);
+  const { sessionId } = await runTurn(app, await connectFixtureModel(app), upgradePrompt, [], { projectPath: oldProject });
+  const fixture = { sessionId, reply: completionMarker(), oldProject };
+  await quit(app);
   for (const name of preserved) {
     await cp(join(root, name), join(upgradeState, name), { recursive: true, verbatimSymlinks: true });
   }
-  console.log("PASS: legacy installation saved an enabled project scope, session and user Skill.");
+  await writeFile(join(upgradeState, "fixture.json"), JSON.stringify(fixture));
+  console.log(`PASS: ${version} saved settings, a completed conversation, and the user Skill${legacy ? " with the legacy extension enabled for a project" : ""}.`);
 }
 
 function stdout(result) {
@@ -819,6 +842,9 @@ print(json.dumps([book.sheetnames, book["销售"]["B3"].value, book["销售"]["B
 
 async function verifyWord() {
   await mkdir(workspace);
+  const upgradeFixture = upgradeState
+    ? JSON.parse(await readFile(join(upgradeState, "fixture.json"), "utf8"))
+    : undefined;
   if (upgradeState) {
     for (const name of preserved) {
       await cp(join(upgradeState, name), join(root, name), { recursive: true, verbatimSymlinks: true });
@@ -859,10 +885,15 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
   };
   assert.equal((await row())?.bundled, true);
   assert.equal((await row())?.enabled, false);
-  assert.equal((await row())?.scope.mode, "global");
-  if (upgradeState) {
-    const { sessions } = await app.invoke(IPC.invoke.sessionList);
-    assert.ok(sessions.some((session) => session.title === legacyTitle));
+  assert.deepEqual((await row())?.scope, { mode: "global", projects: [] });
+  if (upgradeFixture) {
+    assert.equal((await app.invoke(IPC.invoke.appGetVersion)).version, "0.23.1");
+    assert.equal((await app.invoke(IPC.invoke.settingsGet)).theme, "dark");
+    const { session } = await app.invoke(IPC.invoke.sessionGet, upgradeFixture.sessionId);
+    assert.equal(session.projectPath ?? undefined, upgradeFixture.oldProject);
+    assert.ok(session.messages.some((message) => message.role === "user" && message.content === upgradePrompt));
+    assert.ok(session.messages.some((message) => message.role === "assistant" &&
+      message.status === "complete" && message.content === upgradeFixture.reply));
   }
   await app.invoke(IPC.invoke.settingsSet, { language: "en", defaultPermissionMode: "ask" });
   await discoverSkill(app);
@@ -887,6 +918,10 @@ Packer.toBuffer(doc).then((buf) => fs.writeFileSync(process.argv[2], buf, { flag
     const baseline = await readBash(path);
     assert.ok(!baseline.includes(runtime));
     off.set(path, baseline);
+  }
+  if (upgradeFixture?.oldProject) {
+    await access(upgradeFixture.oldProject);
+    assert.ok(!(await readBash(upgradeFixture.oldProject)).includes(runtime));
   }
   await selectOffice(app, "global");
   const on = await readBash(undefined);
@@ -959,11 +994,11 @@ print(json.dumps(["".join(t.text or "" for t in p.findall(".//w:t", ns)) for p i
     join(skillPath, "SKILL.md"));
   assert.equal(await readlink(skillPath), skillLink);
   assert.deepEqual(await snapshot(skillSource), skillFiles);
-  console.log(`PASS: ${upgradeState ? "legacy upgrade" : "clean installation"}, global and project-scoped Bash, selected scope after restart, separate terminal, permission denial and linked docx Skill in the selected project, Chinese DOCX readback and source preservation, disablement before and after restart.`);
+  console.log(`PASS: ${upgradeState ? "upgrade with preserved settings, conversation and user Skill" : "clean installation"}, global and project-scoped Bash, selected scope after restart, separate terminal, permission denial and linked docx Skill in the selected project, Chinese DOCX readback and source preservation, disablement before and after restart.`);
 }
 
 try {
-  if (process.argv.includes("--seed-legacy")) await seedLegacy();
+  if (seedFlags.length) await seedUpgrade(seedFlags[0] === "--seed-legacy");
   else await runScenario();
 } catch (error) {
   console.error(log.slice(-9000));

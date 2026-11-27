@@ -187,12 +187,16 @@ and unbound chats load the Skill and run Bash in the same turn. Their
 as do the system terminal's. The denial and Word workflow run in the selected
 project. After disabling
 the runtime, the scenario checks Bash in the existing session and then in a new
-session in the same project after another restart. For an upgrade test,
-run the same command against an installed legacy candidate with
-`--seed-legacy` and `PI_CODE_E2E_UPGRADE_STATE` pointing to a new disposable
-directory. Upgrade the installation, keep the same environment variable,
-and run without `--seed-legacy` to verify the old session and user Skill
-survive and the old activation state does not enable the new runtime.
+session in the same project after another restart. For upgrades, use two
+separate disposable installations with the same original docx Skill. Run the
+same command with `--seed-0.23.0` against the published 0.23.0 DEB and with
+`--seed-legacy` against the old 0.23.1 DEB containing Offline Office. For each
+run, set `PI_CODE_E2E_UPGRADE_STATE` to a new disposable directory. The legacy
+seed enables the old extension for one project. Install the final DEB over
+each source and run without a seed flag, keeping the corresponding state
+directory. Verify the saved theme, completed conversation and user Skill
+survive. The legacy extension is gone and Office Runtime starts off with
+its default scope.
 
 Run the separate loopback remote-workspace fixture after `pnpm build:js`, using
 the inspected package's resources and its matching Host binary:
@@ -382,3 +386,48 @@ Expand the same DEB and inspect its resources and `app.asar` contents,
 including nested archives, for WX launchers, `wx-doc-format`,
 `wx_template.docx`, and the WX wheel archive.
 Record their absence alongside the package's runtime and license checks.
+
+## Issue #22: 0.23.1 qualification — 2026-11-27
+
+Build commit and maintenance base: `3a6bc1f35790b278aee228204e420b4ab06f888e`
+(`origin/pie-code`). The ARM64 Debian build used Electron 43.6.0 and a
+Debian 11 Host toolchain. This change adds acceptance checks and leaves
+the packaged application sources unchanged.
+
+- Package: `pie-code_0.23.1_arm64.deb`, 305,255,816 bytes
+  (76,043,636 bytes smaller than the 381,299,452-byte reference).
+- SHA-256: `ae9605579a88faa6f54d8602512c9ff5b700dd0fa5f36c0780bebfe978301300`.
+  This matches the DEB used for the clean install and both upgrades.
+- Office harness base: the same maintenance commit. Script blobs:
+  `b7b40874030b3facc33bdc5812a9d94ee951af03` for the clean install and
+  `e36919a441979a0dc39ec4efa8a5fe639a438a25` for the final upgrade reruns.
+- Upgrade source SHA-256: published 0.23.0
+  `4078e13c28d90123e65440a6ae2808c1d839391297328d26f60721e9ff7e4fbb`;
+  legacy 0.23.1 `3770cc9f977d7e33c0b8b3b067ccc0368d80fd6333ffb74ea07a0c95f48d3e44`.
+- Target: UTM Kylin Desktop V10 SP1 (2403), build 20240407/54202,
+  ARM64, glibc 2.31 and system Python 3.8.10. Installs used disposable
+  package databases and read-only application directories during tests.
+  No additional operating-system packages were installed. The network
+  namespace had only loopback, and no CheeseAgent was available.
+
+| Check | Outcome |
+| --- | --- |
+| Package inspection | Passed. Checked the actual DEB, `app.asar`, and the nested dateutil time-zone archive. The package carries the disabled Office Runtime extension without contributed Skills, old launchers, templates, or the WX offline archive. Verified 523 ARM64 ELF files at glibc 2.31 or below; optional microphone add-ons are excluded from that count. |
+| Office Skills | Passed. All five original Skills ran independently through local Agent sessions with the usual Bash denial and approval flow. Readback covered editable DOCX and PPTX, thumbnails, XLSX formula caches of 250 and 260, ordered PDF merge and all three Office exports, and WX conversion audits and independent review. Inputs and supplied Skill files were preserved. |
+| Runtime scope and network | Passed. Verified default off, Everywhere including an unbound session, selected projects and switching, restart, disablement, and matching terminal environment. System Python, glibc, and system-shell PATH matched before and after. The Word process tree made only loopback requests; the checker rejected a separate non-loopback negative control. The remote Bash scope fixture passed in an isolated Debian 11 ARM64 container using this DEB's Host and resources. |
+| Upgrades | Passed from the published 0.23.0 and a legacy 0.23.1 candidate enabled for a project. Both retained the theme, completed conversation and original user Skill. The old extension was absent and the new runtime started disabled with an empty project list. Bash in the still-existing old project could not see the runtime. |
+| User plugins | Passed. Saved a setting from the plugin's configuration sheet, changed and reloaded the development source, and removed the plugin without deleting its source. The native file picker accepted versions 1.0.0 and 1.0.1 of the same local plugin ID; the replacement kept the selected project and stayed enabled. Uninstall removed the installed package from the plugin list. |
+
+JavaScript: 9,659 passed, 37 skipped, no failures. Host: 1,329 passed,
+one ignored, no failures. Desktop typecheck and lint passed. A pristine
+Kylin OS image, physical hardware, the native UKUI launcher, optional
+microphone add-ons, and live intranet endpoints were not tested.
+
+The Office payload uses AlmaLinux LibreOffice 7.1.8.1
+(`7.1.8.1-3.el8_10.alma.1`) and Poppler 20.11.0
+(`20.11.0-14.el8_10`), with packaged notices and source references. The
+only Office font is OpenSymbol from that LibreOffice build. KaTeX fonts
+remain part of the desktop renderer. The DEB does not include LibreOffice
+6.4 or the separate CheeseAgent fonts layer. Release handoff still requires
+verification and provision of the complete corresponding source set and
+confirmation of redistribution coverage for the staged runtime and fonts.
