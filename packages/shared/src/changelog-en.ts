@@ -8,6 +8,7 @@ export const enEntries: ChangelogEntry[] = [
       "On Kylin ARM64, install your Word Skill in Agent → Skills and enable Office Runtime in Extensions to create, read, and edit copies of Word documents offline.",
       "On Kylin ARM64, your own PowerPoint Skill can now extract text, render thumbnails, create editable presentations, and save edits to a copy offline with Office Runtime.",
       "On Kylin ARM64, use your own Excel Skill with Office Runtime to analyze, create, save copies of, and recalculate workbooks offline.",
+      "On Kylin ARM64, use your own PDF Skill to extract text and merge PDFs offline. Office Runtime can also export Word, PowerPoint, and Excel files to PDF.",
     ],
   },
   {

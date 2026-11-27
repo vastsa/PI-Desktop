@@ -8,6 +8,7 @@ export const trEntries: ChangelogEntry[] = [
       "Kylin ARM64 üzerinde kendi Word becerinizi Ajan → Skills bölümüne yükleyin ve Uzantılar bölümünde Office çalışma ortamını açın. Word belgelerini çevrimdışı okuyabilir, oluşturabilir ve kopyalarını düzenleyebilirsiniz.",
       "Kylin ARM64 üzerinde Office çalışma ortamıyla kendi PowerPoint beceriniz çevrimdışı metin çıkarabilir, küçük resim oluşturabilir, düzenlenebilir sunumlar hazırlayabilir ve değişiklikleri bir kopyaya kaydedebilir.",
       "Kylin ARM64’te Office Çalışma Zamanı ile kendi Excel Skill’inizi kullanarak çalışma kitaplarını çevrimdışı analiz edin, oluşturun, kopya olarak kaydedin ve yeniden hesaplayın.",
+      "Kylin ARM64 üzerinde kendi PDF becerinizle çevrimdışı metin çıkarabilir ve PDF dosyalarını birleştirebilirsiniz. Office çalışma ortamı Word, PowerPoint ve Excel dosyalarını da PDF olarak dışa aktarabilir.",
     ],
   },
   {

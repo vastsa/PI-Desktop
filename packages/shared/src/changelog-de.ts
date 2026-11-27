@@ -8,6 +8,7 @@ export const deEntries: ChangelogEntry[] = [
       "Installiere unter Kylin ARM64 deinen eigenen Word-Skill unter Agent → Skills und aktiviere die Office-Laufzeit in den Erweiterungen. So kannst du Word-Dokumente offline lesen, erstellen und Kopien bearbeiten.",
       "Unter Kylin ARM64 kann dein eigener PowerPoint-Skill mit der Office-Laufzeit offline Text extrahieren, Miniaturansichten rendern, bearbeitbare Präsentationen erstellen und Änderungen als Kopie speichern.",
       "Unter Kylin ARM64 können Sie mit Ihrem eigenen Excel-Skill und der Office-Laufzeit Arbeitsmappen offline auswerten, erstellen, als Kopie speichern und neu berechnen.",
+      "Unter Kylin ARM64 kann dein eigener PDF-Skill offline Text aus PDFs extrahieren und Dateien zusammenführen. Die Office-Laufzeit exportiert auch Word-, PowerPoint- und Excel-Dateien als PDF.",
     ],
   },
   {

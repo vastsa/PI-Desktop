@@ -12,14 +12,15 @@ const runtimeCommands = ["bin/soffice", "bin/pdftoppm", "bin/python", "bin/offic
 const executables = ["node/bin/node", "python/bin/python3.12"];
 const nativeMetadata = "metadata/native-office";
 const nativeRuntime = ["libreoffice", "poppler", nativeMetadata];
-const requiredNativePackages = ["libreoffice-calc", "libreoffice-core", "libreoffice-impress", "poppler", "poppler-utils"];
+const requiredNativePackages = ["libreoffice-core", "libreoffice-writer", "libreoffice-impress",
+  "libreoffice-calc", "poppler", "poppler-utils"];
 const metadata = ["metadata/runtime-source.json", "metadata/package-lock.json", "metadata/python-dependencies.json"];
 const pythonPackages = {
   beautifulsoup4: ["bs4"], certifi: ["certifi"], charset_normalizer: ["charset_normalizer"],
   click: ["click"], defusedxml: ["defusedxml"], et_xmlfile: ["et_xmlfile"], flatbuffers: ["flatbuffers"], idna: ["idna"],
   lxml: ["lxml"], magika: ["magika"], markdownify: ["markdownify"], markitdown: ["markitdown"],
   numpy: ["numpy"], onnxruntime: ["onnxruntime"], openpyxl: ["openpyxl"], packaging: ["packaging"], pandas: ["pandas"], pillow: ["PIL"],
-  protobuf: ["google/protobuf", "google/_upb"], python_dateutil: ["dateutil"], python_dotenv: ["dotenv"], python_pptx: ["pptx"],
+  protobuf: ["google/protobuf", "google/_upb"], pypdf: ["pypdf"], python_dateutil: ["dateutil"], python_dotenv: ["dotenv"], python_pptx: ["pptx"],
   requests: ["requests"], six: ["six.py"], soupsieve: ["soupsieve"],
   typing_extensions: ["typing_extensions.py"], urllib3: ["urllib3"], xlsxwriter: ["xlsxwriter"],
 };
@@ -78,19 +79,34 @@ async function lockedNodePackages(runtime) {
 async function pythonRuntimeFiles(runtime) {
   const { packages } = await readJson(runtime, "metadata/python-dependencies.json");
   if (!Array.isArray(packages)) throw new Error("Missing Python dependency sources in Office Runtime.");
-  const versions = new Map(packages.map(({ name, version }) => [name.replaceAll("-", "_"), version]));
+  const dependencies = new Map(packages.map((dependency) => [dependency.name.replaceAll("-", "_"), dependency]));
   const entries = await readdir(join(runtime, site));
   const files = [];
   for (const [pkg, modules] of Object.entries(pythonPackages)) {
     const distributions = entries.filter((entry) => entry.startsWith(pkg + "-") && entry.endsWith(".dist-info"));
     if (distributions.length !== 1) throw new Error(`Expected one installed Office Runtime distribution: ${pkg}`);
     const [distribution] = distributions;
-    if (!versions.has(pkg) || distribution !== `${pkg}-${versions.get(pkg)}.dist-info`) {
+    const dependency = dependencies.get(pkg);
+    if (!dependency || distribution !== `${pkg}-${dependency.version}.dist-info`) {
       throw new Error(`Office Runtime Python version mismatch: ${pkg}`);
     }
     const notices = await readdir(join(runtime, site, distribution), { recursive: true });
-    if (!notices.some((name) => license.test(name.split(sep).at(-1)))) {
+    const matchingNotices = notices.filter((name) => license.test(basename(name)));
+    if (!matchingNotices.length) {
       throw new Error(`Office Runtime license is missing: ${pkg}`);
+    }
+    if (pkg === "pypdf") {
+      const { url, sha256 } = dependency;
+      const source = typeof url === "string" ? URL.parse(url) : null;
+      if (source?.protocol !== "https:" || source.username || source.password ||
+          typeof sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(sha256)) {
+        throw new Error("Missing or invalid pypdf wheel provenance in Office Runtime.");
+      }
+      const texts = await Promise.all(matchingNotices.map(async (name) => {
+        const path = join(runtime, site, distribution, name);
+        return (await stat(path)).isFile() && (await readFile(path, "utf8")).trim();
+      }));
+      if (!texts.some(Boolean)) throw new Error("Office Runtime license is missing or blank: pypdf");
     }
     files.push(distribution, ...modules, ...entries.filter((entry) => entry === pkg + ".libs"));
   }
@@ -134,8 +150,10 @@ export async function verifyOfflineOfficeRuntime(runtime) {
     await access(join(runtime, executable), constants.X_OK);
   }
   for (const name of [...metadata, "node/LICENSE", stdlib + "/LICENSE.txt", ...nativeRuntime,
-    "libreoffice/program/libsclo.so", "libreoffice/presets/basic/script.xlc",
-    "libreoffice/presets/basic/Standard/script.xlb", ...await pythonRuntimeFiles(runtime)]) {
+    "libreoffice/program/libwriterfilterlo.so", "libreoffice/share/registry/writer.xcd",
+    "libreoffice/program/libsclo.so", "libreoffice/program/libforuilo.so", "libreoffice/share/registry/calc.xcd",
+    "libreoffice/presets/basic/script.xlc", "libreoffice/presets/basic/Standard/script.xlb",
+    ...await pythonRuntimeFiles(runtime)]) {
     await access(join(runtime, name), constants.R_OK);
   }
   await lockedNodePackages(runtime);
@@ -167,7 +185,7 @@ Promise.all([Packer.toBuffer(new Document({ sections: [] })), pptx.write({ outpu
 `], {
       ...opts, cwd: runtime, env: { ...process.env, NODE_OPTIONS: "", NODE_PATH: join(runtime, "node/lib/node_modules") },
     });
-    execFileSync(python, ["-I", "-B", "-c", "import defusedxml.minidom, lxml.etree, openpyxl, pandas, PIL.Image, pptx; from markitdown import MarkItDown; MarkItDown()"], opts);
+    execFileSync(python, ["-I", "-B", "-c", "import defusedxml.minidom, lxml.etree, openpyxl, pandas, PIL.Image, pptx; from markitdown import MarkItDown; from pypdf import PdfReader, PdfWriter; MarkItDown()"], opts);
     const profiles = mkdtempSync(join(tmpdir(), "pie-office-inspection-"));
     try {
       execFileSync(join(runtime, "bin/soffice"), ["--headless", "--version"], {

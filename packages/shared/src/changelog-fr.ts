@@ -8,6 +8,7 @@ export const frEntries: ChangelogEntry[] = [
       "Sous Kylin ARM64, installez votre propre compétence Word dans Agent → Skills et activez le moteur Office dans Extensions pour lire, créer et modifier des copies de documents hors ligne.",
       "Sous Kylin ARM64, avec le moteur Office, votre compétence PowerPoint peut extraire du texte, générer des miniatures, créer des présentations modifiables et enregistrer une copie hors ligne.",
       "Sur Kylin ARM64, utilisez votre propre Skill Excel avec l’environnement Office pour analyser, créer, enregistrer des copies et recalculer des classeurs hors ligne.",
+      "Sous Kylin ARM64, votre compétence PDF peut extraire du texte et fusionner des fichiers hors ligne. Le moteur Office exporte aussi les fichiers Word, PowerPoint et Excel en PDF.",
     ],
   },
   {
