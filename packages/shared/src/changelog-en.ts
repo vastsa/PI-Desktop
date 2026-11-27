@@ -5,6 +5,7 @@ export const enEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Pair a phone, tablet, or computer on the same local network to continue Desktop chats, browse projects, and switch session models in a browser.",
       "Open File Manager once to add its tab to other sessions in the same project. Closing it or opening the dock only affects the current session.",
       "Composer line breaks no longer add phantom lines or characters, and undo restores a deleted empty last line.",
       "Skills selected from the / menu appear as individual chips in the composer.",
