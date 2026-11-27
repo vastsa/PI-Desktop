@@ -397,7 +397,7 @@ test("badge source has no image.resize and imports the Canvas renderer", () => {
   assert.match(source, /buildTaskbarUnreadOverlayPng/);
 });
 
-test("D295 inbox still counts failures only while shell uses full unreadCount", () => {
+test("D689 inbox counts every unread row the shell badge counts", () => {
   const rows = [
     {
       id: "c1",
@@ -429,9 +429,11 @@ test("D295 inbox still counts failures only while shell uses full unreadCount", 
   ];
   assert.deepEqual(
     inboxNotifications(rows).map((row) => row.id),
-    ["f1"],
+    // Unread first, failures before routine completions (D689): no row is
+    // dropped, so the bell can always point at the shell badge's count.
+    ["f1", "c2", "c1"],
   );
-  assert.equal(inboxUnreadCount(rows), 1);
+  assert.equal(inboxUnreadCount(rows), 3);
   // Shell badge path reads host unreadCount (completed + failed) — 3 here.
   assert.equal(rows.filter((row) => row.readAt == null).length, 3);
 });

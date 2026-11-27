@@ -3160,6 +3160,7 @@ sklm: {
     failedTitle: "{{sessionTitle}} 需要处理",
     failedBody: "该对话未能顺利完成。",
     failedBodyWithCode: "该对话因错误 {{code}} 停止。",
+    scheduledRunSource: "定时任务运行",
     askTitle: "有问题需要你回答",
     askBody: "{{question}}",
     askBodyFallback: "任务需要您的回答以继续执行。",

@@ -3132,6 +3132,7 @@ export const ptBR = {
     failedTitle: "{{sessionTitle}} precisa de atenção",
     failedBody: "A conversa não foi concluída com sucesso.",
     failedBodyWithCode: "A conversa foi interrompida com o código de erro {{code}}.",
+    scheduledRunSource: "Execução de tarefa agendada",
     askTitle: "Uma pergunta precisa da sua resposta",
     askBody: "{{question}}",
     askBodyFallback: "A tarefa requer sua resposta para prosseguir.",

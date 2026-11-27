@@ -528,10 +528,16 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 #### Popover behavior
 
-- The list shows `task.failed` rows only and the bell badge counts only
-  unread failures. `task.completed` rows are still persisted and still drive
-  the sidebar outcome badge and the native notification, but the inbox hides
-  them so failures are not buried under routine completions (D295).
+- The list shows every durable `task.failed` and `task.completed` row and the
+  bell badge counts the unread rows it shows, so it matches the OS shell badge
+  that counts all unread task notifications. Ordering keeps a failure from
+  being buried under routine completions instead of hiding completions
+  (D689, superseding the D295 hide): unread first, then failures, then newest
+  first.
+- A row whose session is a scheduled-task run opens the Scheduled page, where
+  that task's run history reads the transcript in place, because the session
+  list never lists an automation transcript; the row also names that origin.
+  Every other row activates its bound project/session.
 - Bell click toggles the non-modal popover; a second click, Escape, or outside
   press closes it. Escape restores focus to the bell.
 - Opening preserves the most recently selected `All` / `Unread` filter for the

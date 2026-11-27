@@ -1270,6 +1270,12 @@
   -webkit-line-clamp: 2;
 }
 
+.notification-item-source {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
+}
+
 .notification-time {
   flex: 0 0 auto;
   padding-right: 8px;

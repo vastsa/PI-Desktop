@@ -371,8 +371,8 @@
   delayed `notification.changed` payload for a cleared/read durable id and a
   duplicate payload for an id that is already present. 13) On Windows, create
   one unread successful outcome while the bell has no failure rows. Open the
-  empty bell popover, use Mark all read, then create another success and use
-  Clear. 14) Create enough unread outcomes for a two-digit count and inspect
+  bell popover, confirm that successful row is listed, use Mark all read, then
+  create another success and use Clear. 14) Create enough unread outcomes for a two-digit count and inspect
   the taskbar overlay before and after marking all outcomes read.
 - **Expected**: A's visible-current completion creates no row or terminal
   sidebar mark. Restoring/focusing the app with A already visible clears A's
@@ -395,8 +395,10 @@
   duplicate, delayed, and historical rows do not replay it. On Windows, the
   taskbar overlay is a smooth black circular badge with a centered white system-font numeral. Its visual weight matches common
   Windows taskbar badges for both single- and two-digit counts. A success-only
-  outcome increments the taskbar badge without adding a bell row or bell
-  count; both toolbar actions remain enabled when relevant and clear the
+  outcome increments the taskbar badge and now also adds its bell row and bell
+  count (D689), so both badges agree; a row whose session is a scheduled-task
+  run opens the Scheduled page instead of a session. Both toolbar actions
+  remain enabled when relevant and clear the
   taskbar badge. The badge also clears when no unread outcomes remain. The
   underlying taskbar button keeps the
   PI-Desktop `P` icon and PI-Desktop name while the overlay is present.

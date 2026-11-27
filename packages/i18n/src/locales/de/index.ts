@@ -3162,6 +3162,7 @@ sklm: {
     "failedTitle": "{{sessionTitle}} benötigt Aufmerksamkeit",
     "failedBody": "Der Chat wurde nicht erfolgreich beendet.",
     "failedBodyWithCode": "Der Chat wurde mit dem Fehler {{code}} beendet.",
+    "scheduledRunSource": "Ausführung eines geplanten Tasks",
     "askTitle": "Eine Frage braucht Ihre Antwort",
     "askBody": "{{question}}",
     "askBodyFallback": "Die Aufgabe erfordert Ihre Antwort, um fortzufahren.",

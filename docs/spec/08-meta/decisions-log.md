@@ -5447,3 +5447,19 @@ See ADR 0344.
   the same pairing. Keep only device metadata and cookie verifiers on Desktop.
   Explicit disable or revocation persists; first launch still starts off. See
   the [code pairing amendment](../../adr/lan-webui-code-pairing.md#amendment-remember-pairing-across-desktop-launches-d688).
+
+## 2026-11-27 — Inbox lists every outcome so both badges are locatable (D689)
+
+- The OS shell badge counts every unread durable row (`task.completed` +
+  `task.failed`), so an icon that shows a number the bell hides leaves the
+  user with a count and no row to open. The inbox now lists every durable row
+  and keeps D295's intent by ordering instead of filtering: unread first, then
+  failures, then newest first. The bell badge counts the rows it shows, so in
+  normal use the two badges display the same number.
+- A scheduled-task run owns its transcript and the session list never lists
+  it, so its row marks itself read and opens the Scheduled page, where that
+  task's run history reads the transcript in place. The row also names that
+  origin (`notifications.scheduledRunSource`); every other row keeps the
+  ordinary session activation.
+- No host, storage, protocol, or `unreadNotificationCount` watermark change.
+  Supersedes only the "hide successful completions" clause of D295.

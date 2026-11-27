@@ -14,6 +14,7 @@ import { useAppStore } from "../stores/app-store";
 import {
   inboxNotifications,
   inboxUnreadCount,
+  notificationTarget,
 } from "../lib/notification-inbox";
 import {
   IconBell,
@@ -67,8 +68,9 @@ export function NotificationCenter({
 }) {
   const { t, i18n } = useTranslation();
   const storedNotifications = useAppStore((state) => state.notifications);
-  // Successful completions are hidden here; they still drive the sidebar
-  // outcome badge and native notifications from the unfiltered store.
+  // Every durable outcome is listed here (D689); the ordering alone keeps a
+  // failure above routine completions, and the bell badge then counts the same
+  // unread rows the shell badge does.
   const notifications = useMemo(
     () => inboxNotifications(storedNotifications),
     [storedNotifications],
@@ -84,6 +86,11 @@ export function NotificationCenter({
   );
   const clearNotifications = useAppStore((state) => state.clearNotifications);
   const openNotification = useAppStore((state) => state.openNotification);
+  const markNotificationRead = useAppStore(
+    (state) => state.markNotificationRead,
+  );
+  const sessions = useAppStore((state) => state.sessions);
+  const setPage = useAppStore((state) => state.setPage);
   const showToast = useAppStore((state) => state.showToast);
 
   const [open, setOpen] = useState(false);
@@ -212,6 +219,13 @@ export function NotificationCenter({
   const activateNotification = async (notification: AppNotification) => {
     closePopover();
     try {
+      if (notificationTarget(notification, sessions) === "scheduled") {
+        /* The session list never shows an automation transcript, so the row
+         * answers where it came from by opening the Scheduled page instead. */
+        await markNotificationRead(notification.id);
+        setPage("scheduled");
+        return;
+      }
       await openNotification(notification.id);
     } catch {
       showToast(t("notifications.actionFailed"), { variant: "error" });
@@ -313,6 +327,8 @@ export function NotificationCenter({
             <ul className="notification-list">
               {visibleNotifications.map((notification) => {
                 const failed = notification.kind === "task.failed";
+                const scheduled =
+                  notificationTarget(notification, sessions) === "scheduled";
                 const sessionTitle = notification.sessionTitle || t("chat.untitledTask");
                 const title = t(
                   failed
@@ -349,6 +365,11 @@ export function NotificationCenter({
                       <span className="notification-copy">
                         <span className="notification-item-title">{title}</span>
                         <span className="notification-item-body">{body}</span>
+                        {scheduled ? (
+                          <span className="notification-item-source">
+                            {t("notifications.scheduledRunSource")}
+                          </span>
+                        ) : null}
                       </span>
                       <time
                         className="notification-time"

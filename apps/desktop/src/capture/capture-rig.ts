@@ -1060,7 +1060,7 @@ export function installCaptureRig(): CaptureRig {
         "修复 host-core 启动失败并补充错误恢复测试",
         "同步代码",
       ];
-      // The inbox lists failures only, so every fixture row is a failure.
+      // Seed failure rows: the attention state is what a capture shows.
       const notifications = Array.from({ length: count }, (_, index) => ({
         id: `capture-notification-${index}`,
         kind: "task.failed" as const,

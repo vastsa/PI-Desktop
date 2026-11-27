@@ -3201,6 +3201,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     failedTitle: "{{sessionTitle}} 확인 필요",
     failedBody: "채팅이 정상적으로 완료되지 않았습니다.",
     failedBodyWithCode: "채팅이 오류 {{code}}과(와) 함께 중지되었습니다.",
+    scheduledRunSource: "예약 작업 실행",
     askTitle: "답변이 필요한 질문이 있습니다",
     askBody: "{{question}}",
     askBodyFallback: "작업을 계속하려면 응답이 필요합니다.",

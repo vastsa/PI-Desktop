@@ -487,7 +487,7 @@ shared capability contract:
 | Model menu | Composer-right model × reasoning chip | configured provider/model choices + settings entry (D091) |
 | Settings dialog | sidebar footer Settings, `Mod+,`, deep links | modal over the current page; waits behind the startup guide and announcement ([06-settings-ia](06-settings-ia.md) §1) |
 | Startup guide / announcement | first launch (once) or Settings → About / first launch of a release with an enabled announcement (once) | [05-onboarding](05-onboarding.md) §3–§5 |
-| Notification inbox | none (entry removed, issue #2431) | All/Unread views, task failure rows only (successful completions are hidden, D295), mark-all-read and clear actions (D130/D117) |
+| Notification inbox | none (entry removed, issue #2431) | All/Unread views, every durable task row (unread first, failures before completions, D689), mark-all-read and clear actions (D130/D117) |
 | Toasts | events (plugin toast, backend restored, copy) | top-center of the live main-content safe area; viewport fallback; 4s default, 8s for errors |
 | Project switcher | empty-home underlined project name | sidebar open projects + search + clone git project + open project |
 
@@ -560,11 +560,15 @@ shared capability contract:
 - Completed/failed turn not already visible → host-core appends one durable
   inbox row. A result shown in the visible, focused current chat and every
   `aborted` turn append none. Background sessions and any turn finishing while
-  the window is unfocused still append. The (currently unmounted) notification inbox lists only
-  `task.failed` rows and its badge counts only unread failures; successful
-  completions stay in the durable record for the sidebar outcome badge and
-  native notification but never appear in the inbox (D295). Selecting a row
-  marks it read and activates its bound project/session.
+  the window is unfocused still append. The (currently unmounted) notification inbox lists every
+  `task.failed` and `task.completed` row, ordered unread first, then failures
+  before routine completions, then newest first, and its badge counts the unread
+  rows it shows — the same set the OS shell badge counts (D689, superseding the
+  D295 hide that left the shell badge showing counts the app could not locate).
+  Selecting a row marks it read and activates its bound project/session; a
+  scheduled-task run's row instead opens the Scheduled page, where that task's
+  run history reads its transcript in place, since the session list never lists
+  an automation transcript.
   Electron additionally presents a native task notification only when the
   app window is unfocused, and clicking it focuses the window before activating
   the same session (D117). Interactive ask/permission/plan prompts use their
