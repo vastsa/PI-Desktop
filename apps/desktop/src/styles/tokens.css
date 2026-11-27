@@ -105,6 +105,9 @@
   --ds-accent-soft: var(--gray-300);
   /* Focus rings / resize affordances. Tied to the accent so themes stay monochrome. */
   --ds-focus: var(--ds-accent);
+  /* Cameras need the same dark modules on a light background in both themes. */
+  --ds-qr-background: var(--gray-0);
+  --ds-qr-foreground: var(--gray-1000);
   /* Settings fields and shared inset searches keep their built-in tones. */
   --ds-settings-field-bg: #212121;
   --ds-settings-nav-active: color-mix(in oklab, var(--gray-0) 10%, transparent);

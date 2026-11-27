@@ -4428,6 +4428,7 @@ mod tests {
         std::fs::write(dir.path().join(".env"), "SECRET_TOKEN=needle\n").unwrap();
         std::fs::write(dir.path().join(".env.example"), "SECRET_TOKEN=needle\n").unwrap();
         std::fs::write(dir.path().join("server.pem"), "needle\n").unwrap();
+        std::fs::write(dir.path().join(".npmrc"), "//registry/:_authToken=needle\n").unwrap();
         std::fs::write(dir.path().join("notes.txt"), "needle\n").unwrap();
 
         let read = execute_tool(
@@ -4461,6 +4462,17 @@ mod tests {
             external.error_code.as_deref(),
             Some("WORKSPACE_PATH_DENIED")
         );
+
+        let npmrc = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": ".npmrc" }),
+            5_000,
+        )
+        .await;
+        assert!(!npmrc.ok);
+        assert_eq!(npmrc.error_code.as_deref(), Some("WORKSPACE_PATH_DENIED"));
 
         let example = execute_tool(
             Some(dir.path()),
@@ -4496,6 +4508,7 @@ mod tests {
         assert!(shown.contains(".env.example"), "{shown}");
         assert!(!shown.contains("\".env\""), "{shown}");
         assert!(!shown.contains("server.pem"), "{shown}");
+        assert!(!shown.contains(".npmrc"), "{shown}");
 
         let glob = execute_tool(
             Some(dir.path()),
@@ -4509,6 +4522,7 @@ mod tests {
         assert!(shown.contains("notes.txt"), "{shown}");
         assert!(!shown.contains("server.pem"), "{shown}");
         assert!(!shown.contains("\".env\""), "{shown}");
+        assert!(!shown.contains(".npmrc"), "{shown}");
     }
 
     #[tokio::test]

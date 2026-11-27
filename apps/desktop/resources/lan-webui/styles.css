@@ -1,0 +1,2046 @@
+/*
+  LAN WebUI — the phone companion page.
+
+  The visual system mirrors the Desktop renderer (apps/desktop/src/styles/
+  tokens.css, docs/spec/04-ux/07-ui-design-system.md): a neutral monochrome
+  palette with an inverted-ink accent, divider-free tonal tiles for in-flow
+  structure, a hairline stroke plus shadow only on floating layers, Lucide
+  icons, and the shared radius / type / motion ramps. The page is served on its
+  own (CSP `style-src 'self'`), so the subset of tokens it needs is copied here
+  under the same names; keep the values in step with tokens.css.
+
+  Phone deviations from the Desktop density (spec W07): a 16px reading size for
+  answers, rows and fields (iOS does not zoom a 16px field on focus), a 44 × 44
+  CSS px target behind every action even where the visible shape is smaller,
+  large list titles that hand over to a compact bar title on scroll, and
+  action sheets that rise from the bottom edge. Every text column aligns to
+  one gutter; icon buttons sit optically on it.
+
+  Dark is the default, light follows the system preference — the same outcome
+  as Desktop's "system" theme.
+*/
+
+:root {
+  color-scheme: dark;
+  --ds-bg-primary: #181818;
+  --ds-bg-elevated-opaque: #282828;
+  --ds-bg-composer: color-mix(in oklab, #212121 96%, transparent);
+  --ds-bg-hover: color-mix(in oklab, #ffffff 6%, transparent);
+  --ds-bg-active: color-mix(in oklab, #ffffff 10%, transparent);
+  --ds-text-primary: #ffffff;
+  --ds-text-secondary: color-mix(in oklab, #ffffff 70%, transparent);
+  --ds-text-muted: color-mix(in oklab, #ffffff 52%, transparent);
+  --ds-text-faint: color-mix(in oklab, #ffffff 38%, transparent);
+  --ds-tile: color-mix(in oklab, #ffffff 3.5%, transparent);
+  --ds-tile-hover: color-mix(in oklab, #ffffff 6%, transparent);
+  --ds-tile-deep: color-mix(in oklab, #ffffff 8%, transparent);
+  --ds-accent: #ffffff;
+  --ds-accent-hover: #ededed;
+  --ds-on-accent: #181818;
+  --ds-field-inset-bg: color-mix(in oklab, #ffffff 5%, transparent);
+  --ds-field-inset-focus-bg: color-mix(in oklab, #ffffff 7%, transparent);
+  --ds-placeholder-ink: color-mix(in oklab, #ffffff 42%, transparent);
+  --ds-tool-row-bg: var(--ds-tile);
+  --ds-stop-bg: color-mix(in oklab, #ffffff 16%, transparent);
+  --ds-send-disabled-bg: color-mix(in oklab, #ffffff 18%, transparent);
+  --ds-send-disabled-fg: color-mix(in oklab, #181818 70%, transparent);
+  --ds-scrim: color-mix(in oklab, #000000 45%, transparent);
+  --ds-header-bg: color-mix(in oklab, #181818 84%, transparent);
+  --ds-hairline: color-mix(in oklab, #ffffff 10%, transparent);
+  --ds-grabber: color-mix(in oklab, #ffffff 22%, transparent);
+  --ds-success: #40c977;
+  --ds-warning: #ff8549;
+  --ds-error: #ff6764;
+  --ds-purple: #c27aff;
+  /* One-dark-pro / one-light plates: the same code-card pair as Desktop. */
+  --ds-code-bg: #282c34;
+  --ds-code-ink: #abb2bf;
+  --ds-code-head-bg: color-mix(in oklab, #ffffff 4%, transparent);
+  --ds-inline-code-bg: color-mix(in oklab, #ffffff 8%, transparent);
+  --ds-elevation-stroke: 0 0 0 0.5px color-mix(in oklab, #ffffff 12%, transparent);
+  --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --ds-shadow-float: 0 2px 8px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.4);
+  --ds-shadow-fab: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ds-shadow-composer: 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
+  /* Composer focus deepens the lift; the shell never gains a stroke (D297). */
+  --ds-shadow-composer-focus: 0 7px 24px color-mix(in oklab, #ffffff 9%, transparent);
+  /* On charcoal a faint edge separates the pill from the page. */
+  --ds-composer-edge: 0 0 0 0.5px color-mix(in oklab, #ffffff 9%, transparent);
+
+  --radius-3xs: 4px;
+  --radius-2xs: 6px;
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-md-plus: 14px;
+  --radius-lg: 16px;
+  --radius-lg-plus: 18px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+  --radius-round: 50%;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs-plus: 11.5px;
+  --text-sm: 12px;
+  --text-sm-plus: 12.5px;
+  --text-md: 13px;
+  --text-md-plus: 13.5px;
+  --text-base: 14px;
+  --text-base-plus: 15px;
+  --text-lg: 16px;
+  --text-lg-plus: 18px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-strong: 560;
+  --font-weight-semibold: 600;
+  --leading-heading: 1.15;
+  --leading-tight: 1.25;
+  --leading-compact: 1.3;
+  --leading-normal: 1.4;
+  --leading-body: 1.45;
+  --leading-relaxed: 1.5;
+  --leading-chat: 1.55;
+  --leading-prose: 1.6;
+  --tracking-tighter: -0.03em;
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+  --tracking-wide: 0.02em;
+  /* The one wide tracking: six pairing digits read as separate glyphs. */
+  --tracking-code: 0.3em;
+
+  --motion-duration-fast: 150ms;
+  --motion-duration-normal: 200ms;
+  --motion-duration-slow: 300ms;
+  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  --tap: 44px;
+  --gutter: 16px;
+  --pad-left: max(var(--gutter), env(safe-area-inset-left));
+  --pad-right: max(var(--gutter), env(safe-area-inset-right));
+  /* Icon buttons carry 12px of air around a 20px glyph; this pulls the glyph
+     back onto the text gutter. */
+  --optical: 12px;
+  --bar: 52px;
+  --bar-large: 48px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --ds-bg-primary: #ffffff;
+    --ds-bg-elevated-opaque: #ffffff;
+    --ds-bg-composer: #ffffff;
+    --ds-bg-hover: color-mix(in oklab, #1a1c1f 5%, transparent);
+    --ds-bg-active: color-mix(in oklab, #1a1c1f 8%, transparent);
+    --ds-text-primary: #1a1c1f;
+    --ds-text-secondary: color-mix(in oklab, #1a1c1f 74%, transparent);
+    --ds-text-muted: #5d5d5d;
+    --ds-text-faint: #8e8e90;
+    --ds-tile: color-mix(in oklab, #1a1c1f 3.5%, transparent);
+    --ds-tile-hover: color-mix(in oklab, #1a1c1f 6%, transparent);
+    --ds-tile-deep: color-mix(in oklab, #1a1c1f 8%, transparent);
+    --ds-accent: #1a1c1f;
+    --ds-accent-hover: #303030;
+    --ds-on-accent: #ffffff;
+    --ds-field-inset-bg: #f3f3f3;
+    --ds-field-inset-focus-bg: #ffffff;
+    --ds-placeholder-ink: #8e8e90;
+    --ds-tool-row-bg: color-mix(in oklab, #1a1c1f 3.5%, transparent);
+    --ds-stop-bg: color-mix(in oklab, #1a1c1f 10%, transparent);
+    --ds-send-disabled-bg: #8e8e90;
+    --ds-send-disabled-fg: #ffffff;
+    --ds-scrim: color-mix(in oklab, #1a1c1f 28%, transparent);
+    --ds-header-bg: color-mix(in oklab, #ffffff 84%, transparent);
+    --ds-hairline: color-mix(in oklab, #1a1c1f 10%, transparent);
+    --ds-grabber: color-mix(in oklab, #1a1c1f 18%, transparent);
+    --ds-success: #00a240;
+    --ds-warning: #e25507;
+    --ds-error: #e02e2a;
+    --ds-purple: #7c3aed;
+    --ds-code-bg: #fafafa;
+    --ds-code-ink: #383a42;
+    --ds-code-head-bg: color-mix(in oklab, #1a1c1f 3.5%, transparent);
+    --ds-inline-code-bg: color-mix(in oklab, #1a1c1f 6%, transparent);
+    --ds-elevation-stroke: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 12%, transparent);
+    --ds-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.12);
+    --ds-shadow-float: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.1);
+    --ds-shadow-fab: 0 1px 2px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.16);
+    --ds-shadow-composer-focus: 0 7px 24px color-mix(in oklab, #1a1c1f 9%, transparent);
+    --ds-composer-edge: 0 0 0 0.5px color-mix(in oklab, #1a1c1f 8%, transparent);
+  }
+}
+
+/* ---------- base ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+/* Component display rules must never resurrect a hidden element. */
+[hidden] {
+  display: none !important;
+}
+.copy-buffer {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+  opacity: 0;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  background: var(--ds-bg-primary);
+  caret-color: var(--ds-text-primary);
+  accent-color: var(--ds-accent);
+  /* Focused or revealed content never hides under the sticky bar. */
+  scroll-padding-top: calc(var(--bar) + env(safe-area-inset-top) + 8px);
+  -webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+body {
+  overflow-x: hidden;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  line-height: var(--leading-body);
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+main {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 720px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 0 var(--pad-right) 0 var(--pad-left);
+}
+h1,
+h2,
+p {
+  margin: 0;
+}
+::selection {
+  background: color-mix(in oklab, var(--ds-text-primary) 18%, transparent);
+  color: var(--ds-text-primary);
+}
+:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ds-accent) 80%, transparent);
+  outline-offset: 2px;
+}
+/* Fields carry their own focus treatment; titles take focus for screen readers only. */
+[tabindex="-1"]:focus,
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Chrome is not selectable; transcript text, fields and toasts are. */
+.header,
+.large-title,
+.toolbar,
+.row,
+button,
+summary,
+.sheet,
+.notice,
+.status-pill,
+.section-label {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.msg,
+.toast,
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Icons are decoration: a tap always lands on the control that owns them.
+   Smaller glyphs get a heavier stroke so every size reads at ~1.4px. */
+.icon {
+  flex: none;
+  pointer-events: none;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.icon.sm {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+.icon.xs {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.25;
+}
+.icon.lg {
+  width: 36px;
+  height: 36px;
+  stroke-width: 1.35;
+}
+
+/* ---------- controls ---------- */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  margin: 0;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-base-plus);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  transition:
+    background-color var(--motion-duration-normal) var(--motion-ease-out),
+    color var(--motion-duration-normal) var(--motion-ease-out),
+    opacity var(--motion-duration-normal) var(--motion-ease-out),
+    scale var(--motion-duration-normal) var(--motion-ease-out),
+    box-shadow var(--motion-duration-normal) var(--motion-ease-out);
+}
+/* A press answers at once; the release eases back. */
+button:active:not(:disabled) {
+  background-color: var(--ds-bg-active);
+  transition-duration: 60ms;
+}
+:is(.icon-btn, .primary, .secondary, .link, .model-trigger, .load-older):active:not(:disabled) {
+  scale: 0.96;
+}
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    background-color: var(--ds-bg-hover);
+  }
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+button.primary {
+  background-color: var(--ds-accent);
+  color: var(--ds-on-accent);
+  font-weight: var(--font-weight-semibold);
+}
+@media (hover: hover) {
+  button.primary:hover:not(:disabled) {
+    background-color: var(--ds-accent-hover);
+  }
+}
+button.primary:active:not(:disabled) {
+  background-color: var(--ds-accent-hover);
+}
+button.secondary {
+  background-color: var(--ds-tile-hover);
+  color: var(--ds-text-primary);
+}
+button.danger {
+  color: var(--ds-error);
+}
+button.link {
+  color: var(--ds-text-secondary);
+  font-weight: var(--font-weight-normal);
+}
+button.icon-btn {
+  width: var(--tap);
+  padding: 0;
+  border-radius: var(--radius-round);
+  color: var(--ds-text-secondary);
+}
+
+input,
+textarea {
+  width: 100%;
+  min-height: var(--tap);
+  margin: 0;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--ds-field-inset-bg);
+  color: var(--ds-text-primary);
+  font: inherit;
+  font-size: var(--text-lg);
+  line-height: var(--leading-body);
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    background-color var(--motion-duration-normal) var(--motion-ease-out),
+    box-shadow var(--motion-duration-normal) var(--motion-ease-out);
+}
+input:focus,
+textarea:focus {
+  background: var(--ds-field-inset-focus-bg);
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--ds-accent) 28%, transparent);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--ds-placeholder-ink);
+  opacity: 1;
+}
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+label {
+  display: block;
+  margin: 20px 0 8px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ---------- bar ---------- */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: calc(var(--bar) + env(safe-area-inset-top));
+  margin: 0 calc(-1 * var(--pad-right)) 0 calc(-1 * var(--pad-left));
+  padding: env(safe-area-inset-top) calc(var(--pad-right) - var(--optical)) 0 calc(var(--pad-left) - var(--optical));
+  background: var(--ds-header-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  transition: box-shadow var(--motion-duration-normal) var(--motion-ease-out);
+}
+/* The hairline appears only once something scrolls beneath the bar. */
+.scrolled .header:not(.large),
+.collapsed .header.large {
+  box-shadow: 0 0.5px 0 var(--ds-hairline);
+}
+.header-title {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 4px;
+}
+.header > .back + .header-title {
+  padding-left: 0;
+}
+.header h1 {
+  overflow: hidden;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.header-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm-plus);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+}
+/* The model label gives way first; the status entry keeps its text. */
+.header-sub .meta-item {
+  min-width: 0;
+}
+.header-sub .meta-item:has(.dot) {
+  flex: none;
+}
+.header-sub .scope {
+  flex: none;
+  max-width: 55%;
+}
+.header-sub .meta-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* List pages: a slimmer bar whose compact title waits for the large one. */
+.header.large {
+  min-height: calc(var(--bar-large) + env(safe-area-inset-top));
+}
+.header-spacer {
+  flex: 1;
+}
+.header-compact {
+  position: absolute;
+  right: 60px;
+  bottom: 0;
+  left: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--bar-large);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-snug);
+  opacity: 0;
+  translate: 0 3px;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-duration-normal) var(--motion-ease-out),
+    translate var(--motion-duration-normal) var(--motion-ease-out);
+}
+.header-compact > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collapsed .header-compact {
+  opacity: 1;
+  translate: 0 0;
+}
+.large-title {
+  padding: 2px 0 16px;
+}
+.large-title h1 {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-tight);
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.large-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-md-plus);
+}
+
+/* ---------- search ---------- */
+.toolbar {
+  padding: 0 0 22px;
+}
+.search {
+  position: relative;
+}
+.search > .icon {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  translate: 0 -50%;
+  color: var(--ds-text-muted);
+}
+.search input {
+  padding: 0 44px 0 38px;
+  background: var(--ds-field-inset-bg);
+}
+.search-clear {
+  position: absolute;
+  top: 0;
+  right: 0;
+  color: var(--ds-text-muted);
+  animation: fade-in var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+/* ---------- lists ---------- */
+.section + .section {
+  margin-top: 26px;
+}
+.section-label {
+  margin-bottom: 6px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-normal);
+}
+/* Rows bleed 8px into the gutter so their text lines up with the titles above
+   while the pressed tile still has room to breathe. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -8px;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  transition: background-color var(--motion-duration-slow) var(--motion-ease-out);
+}
+.row:has(> .row-main:active) {
+  background-color: var(--ds-bg-active);
+  transition-duration: 0s;
+}
+@media (hover: hover) {
+  .row:hover {
+    background-color: var(--ds-bg-hover);
+  }
+}
+.row-main {
+  flex: 1;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 10px 4px 10px 8px;
+  border-radius: inherit;
+  text-align: left;
+  font-size: inherit;
+  font-weight: var(--font-weight-normal);
+}
+.row-main:active:not(:disabled),
+.row-main:hover:not(:disabled) {
+  background-color: transparent;
+}
+.row-main:focus-visible {
+  outline-offset: -2px;
+}
+.row-icon {
+  display: inline-flex;
+  color: var(--ds-text-secondary);
+}
+.row-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-time {
+  flex: none;
+  color: var(--ds-text-muted);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+.row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+.row-more {
+  flex: none;
+  color: var(--ds-text-muted);
+}
+/* On two-line rows the menu sits on the title line, beside the time. */
+.row:has(.row-meta) > .row-more {
+  align-self: flex-start;
+  margin-top: -2px;
+}
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.meta-item .icon {
+  color: var(--ds-text-faint);
+}
+.hint {
+  padding: 6px 0 2px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-md-plus);
+}
+
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-round);
+  background: var(--ds-text-muted);
+}
+/* Two breaths, then steady: the colour and the text carry the state. */
+.dot.running {
+  background: var(--ds-warning);
+  animation: breathe 1.6s ease-in-out 2;
+}
+.dot.waiting {
+  background: var(--ds-purple);
+}
+.dot.offline {
+  background: var(--ds-warning);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 72px 24px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-base-plus);
+  text-align: center;
+  text-wrap: balance;
+}
+.empty .icon {
+  color: var(--ds-text-faint);
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+  padding: 28px 0 8px;
+}
+.footer-link {
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 52px;
+  margin: 0 -8px;
+  padding: 0 12px 0 8px;
+  border-radius: var(--radius-md);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-normal);
+}
+.footer-link .icon:first-child {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.75;
+}
+.footer-link .icon:last-child {
+  margin-left: auto;
+  color: var(--ds-text-faint);
+}
+.device {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 32px;
+}
+.device-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm-plus);
+}
+.device-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.device .signout {
+  color: var(--ds-text-muted);
+  font-size: var(--text-md-plus);
+}
+
+/* New conversation: a capsule within thumb reach (spec W07). The list fades
+   out beneath it instead of colliding with it. */
+main > button.fab {
+  position: fixed;
+  z-index: 3;
+  right: 0;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  left: 0;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  min-height: 48px;
+  margin: 0 auto;
+  padding: 0 22px 0 18px;
+  border-radius: var(--radius-full);
+  box-shadow: var(--ds-shadow-fab);
+  font-size: var(--text-base-plus);
+  letter-spacing: var(--tracking-snug);
+}
+main:has(> .fab)::after {
+  content: "";
+  position: fixed;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: calc(84px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--ds-bg-primary) 30%, color-mix(in oklab, var(--ds-bg-primary) 0%, transparent));
+  pointer-events: none;
+}
+.fab-spacer {
+  flex: none;
+  height: calc(84px + env(safe-area-inset-bottom));
+}
+
+/* ---------- conversation ---------- */
+.messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 0 28px;
+}
+/* A new exchange gets more air than the parts of one answer. */
+.messages > .msg.user:not(:first-child) {
+  margin-top: 12px;
+}
+/* A 34px capsule inside a 44px target: the transparent border is the margin. */
+.load-older {
+  align-self: center;
+  padding: 0 14px;
+  border: 5px solid transparent;
+  border-radius: var(--radius-full);
+  background-color: var(--ds-tile-hover);
+  background-clip: padding-box;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+}
+.msg {
+  min-width: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-prose);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.msg.user {
+  align-self: flex-end;
+  max-width: min(84%, 560px);
+  padding: 9px 15px 10px;
+  border-radius: var(--radius-lg-plus);
+  border-bottom-right-radius: var(--radius-xs);
+  background: var(--ds-tile-deep);
+  line-height: var(--leading-chat);
+}
+.msg.user.pending {
+  opacity: 0.55;
+}
+.msg.assistant {
+  align-self: stretch;
+}
+.msg.tool {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--ds-tool-row-bg);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md-plus);
+  line-height: var(--leading-normal);
+  white-space: normal;
+}
+.msg.tool .icon {
+  color: var(--ds-text-muted);
+}
+.msg.tool > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Content that arrives while the reader watches settles in; nothing else moves. */
+.messages > .enter {
+  animation: rise-in var(--motion-duration-normal) var(--motion-ease-out) both;
+}
+/* The streaming caret describes work in flight, so it may keep animating. */
+.msg.live > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+.msg.live > :is(ul, ol):last-child > li:last-child > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.45em;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.5;
+  animation: caret 1s steps(2, jump-none) infinite;
+}
+
+/* ---------- answer markdown ---------- */
+.msg.md {
+  white-space: normal;
+}
+.md > :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, .code-block, .table-wrap):first-of-type {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0.75em 0;
+  text-wrap: pretty;
+}
+.md :is(h1, h2, h3, h4, h5, h6) {
+  margin: 1.4em 0 0.5em;
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-snug);
+  text-wrap: balance;
+}
+.md h1 {
+  font-size: 1.375em;
+  letter-spacing: var(--tracking-tight);
+}
+.md h2 {
+  font-size: 1.25em;
+}
+.md h3 {
+  font-size: 1.125em;
+}
+.md h4 {
+  font-size: 1em;
+}
+.md :is(h5, h6) {
+  color: var(--ds-text-secondary);
+  font-size: 0.9375em;
+}
+.md :is(ul, ol) {
+  margin: 0.75em 0;
+  padding-left: 1.375em;
+}
+.md li {
+  margin: 0.3em 0;
+  padding-left: 0.2em;
+}
+.md li > p {
+  margin: 0.2em 0;
+}
+.md li::marker {
+  color: var(--ds-text-muted);
+}
+.md ol > li::marker {
+  font-variant-numeric: tabular-nums;
+}
+/* A quiet rail, no fill: the Desktop prose quote. */
+.md blockquote {
+  margin: 0.9em 0;
+  padding: 0.1em 0 0.1em 0.9em;
+  box-shadow: inset 2px 0 0 var(--ds-tile-deep);
+  color: var(--ds-text-secondary);
+}
+.md blockquote > :first-child {
+  margin-top: 0;
+}
+.md blockquote > :last-child {
+  margin-bottom: 0;
+}
+/* A thematic break is pure space: no line is drawn (D297). */
+.md hr {
+  height: 0;
+  margin: 1.5em 0;
+  border: 0;
+}
+.md strong {
+  font-weight: var(--font-weight-semibold);
+}
+.md del {
+  color: var(--ds-text-muted);
+}
+.md a {
+  color: var(--ds-text-primary);
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in oklab, var(--ds-text-primary) 30%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--motion-duration-fast) var(--motion-ease-out);
+}
+.md a:active,
+.md a:hover {
+  text-decoration-color: currentColor;
+}
+.md code {
+  padding: 0.12em 0.38em;
+  border-radius: var(--radius-3xs);
+  background: var(--ds-inline-code-bg);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  font-variant-ligatures: none;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.md-image {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 9px;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md);
+  vertical-align: baseline;
+}
+.code-block {
+  margin: 1em 0;
+  overflow: hidden;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-code-bg);
+  color: var(--ds-code-ink);
+}
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  padding-left: 14px;
+  background: var(--ds-code-head-bg);
+}
+.code-lang {
+  color: color-mix(in oklab, var(--ds-code-ink) 72%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-plus);
+  letter-spacing: var(--tracking-wide);
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* A 44px target inside a 36px band: the negative margin keeps the band slim. */
+.code-copy {
+  margin: -4px 0;
+  color: color-mix(in oklab, var(--ds-code-ink) 72%, transparent);
+}
+.code-block pre {
+  margin: 0;
+  padding: 12px 14px 14px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: var(--leading-prose);
+  tab-size: 2;
+  white-space: pre;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.code-block pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+.code-block pre::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar {
+  display: none;
+}
+.table-wrap {
+  margin: 1em 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
+}
+.md table {
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+.md :is(th, td) {
+  padding: 9px 14px;
+  text-align: left;
+  vertical-align: top;
+}
+.md th {
+  background: var(--ds-tile-deep);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+.md tbody tr:nth-child(even) td {
+  background: var(--ds-tile);
+}
+.md .align-center {
+  text-align: center;
+}
+.md .align-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- transcript extras ---------- */
+.steps {
+  align-self: flex-start;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  background: var(--ds-tool-row-bg);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md-plus);
+}
+/* A 36px summary with a 44px target. */
+.steps summary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px 0 12px;
+  border-radius: inherit;
+  list-style: none;
+  cursor: pointer;
+  transition: background-color var(--motion-duration-normal) var(--motion-ease-out);
+}
+.steps summary::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.steps summary::-webkit-details-marker {
+  display: none;
+}
+.steps summary:active {
+  background-color: var(--ds-bg-active);
+  transition-duration: 60ms;
+}
+@media (hover: hover) {
+  .steps summary:hover {
+    background-color: var(--ds-bg-hover);
+  }
+}
+.steps summary .icon {
+  color: var(--ds-text-muted);
+}
+.steps summary > .icon:last-child {
+  transition: rotate var(--motion-duration-normal) var(--motion-ease-out);
+}
+.steps[open] summary > .icon:last-child {
+  rotate: 90deg;
+}
+.steps-count {
+  flex: none;
+  color: var(--ds-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+.steps-names {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ds-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.steps-list {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0 8px;
+}
+.steps[open] .steps-list {
+  animation: fade-in var(--motion-duration-normal) var(--motion-ease-out);
+}
+.steps-list .msg.tool {
+  min-height: 30px;
+  padding: 4px 12px;
+  background: transparent;
+}
+.msg-actions {
+  display: flex;
+  margin: -12px 0 0 calc(-1 * var(--optical));
+}
+.msg-actions .icon-btn {
+  color: var(--ds-text-muted);
+}
+.icon-btn.copied {
+  color: var(--ds-success);
+}
+/* Work in flight: a sweep of light across the label, as Desktop's Thinking. */
+.working {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  font-size: var(--text-base-plus);
+}
+.shimmer {
+  color: transparent;
+  background-image: linear-gradient(90deg, var(--ds-text-muted) 0%, var(--ds-text-muted) 35%, var(--ds-text-primary) 50%, var(--ds-text-muted) 65%, var(--ds-text-muted) 100%);
+  background-size: 280% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-sweep 1.2s linear infinite;
+}
+.chat-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 56px 24px;
+  text-align: center;
+}
+.chat-empty .icon {
+  margin-bottom: 10px;
+  color: var(--ds-text-faint);
+}
+.chat-empty-title {
+  font-size: var(--text-lg-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-snug);
+  text-wrap: balance;
+}
+.chat-empty-sub {
+  color: var(--ds-text-muted);
+  font-size: var(--text-md-plus);
+}
+.jump {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  translate: -50% -4px;
+  background-color: var(--ds-bg-elevated-opaque);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-elevation-stroke), var(--ds-shadow-float);
+}
+@media (hover: hover) {
+  button.jump:hover:not(:disabled) {
+    background-color: var(--ds-bg-elevated-opaque);
+  }
+}
+
+/* The dock fades the transcript out above the composer; taps on the faded
+   strip reach the transcript beneath. */
+.chat-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 calc(-1 * var(--pad-right)) 0 calc(-1 * var(--pad-left));
+  padding: 24px var(--pad-right) max(10px, env(safe-area-inset-bottom)) var(--pad-left);
+  background: linear-gradient(to top, var(--ds-bg-primary) calc(100% - 32px), color-mix(in oklab, var(--ds-bg-primary) 0%, transparent));
+  pointer-events: none;
+}
+.chat-dock > * {
+  pointer-events: auto;
+}
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 6px 6px 6px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-elevation-stroke);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+.notice-text {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+}
+.notice .icon {
+  color: var(--ds-text-muted);
+}
+/* A 36px button inside a 44px target: the transparent border is the margin. */
+.notice button {
+  flex: none;
+  padding: 0 14px;
+  border: 4px solid transparent;
+  border-radius: var(--radius-md-plus);
+  background-clip: padding-box;
+  font-size: var(--text-md-plus);
+}
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-elevation-stroke);
+}
+.queue-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 0;
+}
+.queue-label {
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+.queue-body {
+  overflow: hidden;
+  font-size: var(--text-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-item .icon-btn {
+  color: var(--ds-text-muted);
+}
+
+/* The composer is one floating pill; it lifts by shadow, never a stroke. */
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px 4px 4px 16px;
+  border-radius: var(--radius-xl);
+  background: var(--ds-bg-composer);
+  box-shadow: var(--ds-composer-edge), var(--ds-shadow-composer);
+  transition: box-shadow var(--motion-duration-normal) var(--motion-ease-out);
+}
+.composer:focus-within {
+  box-shadow: var(--ds-composer-edge), var(--ds-shadow-composer-focus);
+}
+.composer textarea {
+  flex: 1;
+  min-height: var(--tap);
+  /* The transcript stays visible above the keyboard while a long prompt grows. */
+  max-height: min(40dvh, 240px);
+  padding: 11px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 0;
+  background: transparent;
+  line-height: var(--leading-body);
+  resize: none;
+  scrollbar-width: thin;
+}
+.composer textarea:focus {
+  background: transparent;
+  box-shadow: none;
+}
+.composer textarea::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer .actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+/* 44px targets around 36px discs: the background paints the content box. */
+.composer .send,
+.composer .stop {
+  width: var(--tap);
+  padding: 4px;
+  border-radius: var(--radius-round);
+  background-clip: content-box;
+}
+.composer .send .icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.25;
+}
+.composer .send:disabled {
+  opacity: 1;
+  background-color: var(--ds-send-disabled-bg);
+  color: var(--ds-send-disabled-fg);
+}
+.composer .stop {
+  background-color: var(--ds-stop-bg);
+  color: var(--ds-text-primary);
+}
+.composer .stop .icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+  stroke: none;
+}
+/* With a model chooser the prompt gets the full width and the controls a row. */
+.composer.has-model-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  row-gap: 0;
+  padding: 4px 4px 4px 6px;
+}
+.composer.has-model-picker textarea {
+  grid-column: 1 / -1;
+  padding: 10px 10px 2px;
+}
+.model-trigger {
+  justify-self: start;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 8px 0 10px;
+  border-radius: var(--radius-full);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md-plus);
+}
+.model-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-trigger .icon {
+  rotate: 90deg;
+  color: var(--ds-text-muted);
+}
+
+/* ---------- floating layers ---------- */
+.status-pill {
+  position: fixed;
+  z-index: 8;
+  top: calc(60px + env(safe-area-inset-top));
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0 auto;
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-elevation-stroke), var(--ds-shadow-float);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-md-plus);
+  pointer-events: none;
+  animation: drop-in var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* Floating layers leave as they came; [hidden] keeps them out of hit tests
+   while they fade. Browsers without discrete transitions close instantly. */
+/* A toast sits just above whatever holds the bottom edge: the composer dock
+   (measured into --dock) or the New conversation capsule. */
+.toast {
+  position: fixed;
+  z-index: 7;
+  right: 0;
+  bottom: max(calc(var(--dock, 0px) - 12px), calc(76px + env(safe-area-inset-bottom)));
+  left: 0;
+  width: max-content;
+  max-width: min(440px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 11px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-elevation-stroke), var(--ds-shadow-float);
+  color: var(--ds-text-primary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  text-align: center;
+  text-wrap: pretty;
+  animation: rise-in var(--motion-duration-normal) var(--motion-ease-out);
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-in);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-in),
+    translate var(--motion-duration-fast) var(--motion-ease-in),
+    display var(--motion-duration-fast) allow-discrete;
+}
+.toast[hidden] {
+  opacity: 0;
+  translate: 0 6px;
+  pointer-events: none;
+}
+
+.sheet {
+  position: fixed;
+  z-index: 6;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 8px max(8px, env(safe-area-inset-bottom));
+  background: var(--ds-scrim);
+  animation: fade-in var(--motion-duration-normal) var(--motion-ease-out);
+  transition: opacity var(--motion-duration-normal) var(--motion-ease-in);
+  transition:
+    opacity var(--motion-duration-normal) var(--motion-ease-in),
+    display var(--motion-duration-normal) allow-discrete;
+}
+.sheet[hidden] {
+  opacity: 0;
+  pointer-events: none;
+}
+/* A detached card: concentric with its 16px actions across 8px of padding. */
+.sheet-panel {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  max-height: 82dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 8px;
+  border-radius: var(--radius-2xl);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-elevation-stroke), var(--ds-shadow-dialog);
+  /* Floating surfaces enter with a fade and at most 8px of travel (design
+     system 8.4 / 8.7), so every action is where it will stay from the first
+     frame. A pull-down follows the finger instead. */
+  animation: surface-in var(--motion-duration-normal) var(--motion-ease-out);
+  transition: translate var(--motion-duration-normal) var(--motion-ease-out);
+}
+.sheet[hidden] .sheet-panel {
+  translate: 0 8px;
+  transition-timing-function: var(--motion-ease-in);
+}
+/* The grabber says the sheet can be pulled down. */
+.sheet-panel::before {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 5px;
+  margin: 8px auto 0;
+  border-radius: var(--radius-full);
+  background: var(--ds-grabber);
+}
+.sheet-title {
+  display: -webkit-box;
+  overflow: hidden;
+  padding: 10px 16px 10px;
+  color: var(--ds-text-muted);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-normal);
+  text-align: center;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.sheet-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sheet-actions > button {
+  justify-content: flex-start;
+  gap: 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-normal);
+}
+.sheet-actions > button .icon {
+  color: var(--ds-text-secondary);
+}
+.sheet-actions > button.danger .icon {
+  color: currentColor;
+}
+.sheet-actions > button.cancel {
+  justify-content: center;
+  margin-top: 6px;
+  background-color: var(--ds-tile-hover);
+  font-weight: var(--font-weight-medium);
+}
+.sheet-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 4px 0;
+}
+.sheet-form input {
+  min-height: 50px;
+}
+.sheet-buttons {
+  display: flex;
+  gap: 8px;
+}
+.sheet-buttons > button {
+  flex: 1;
+  min-height: 50px;
+  border-radius: var(--radius-lg);
+}
+
+.model-picker {
+  position: fixed;
+  inset: auto 8px max(8px, env(safe-area-inset-bottom));
+  width: auto;
+  max-width: 520px;
+  max-height: min(560px, 82dvh);
+  margin: 0 auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-2xl);
+  background: var(--ds-bg-elevated-opaque);
+  box-shadow: var(--ds-elevation-stroke), var(--ds-shadow-dialog);
+  color: var(--ds-text-primary);
+}
+.model-picker[open] {
+  animation: surface-in var(--motion-duration-normal) var(--motion-ease-out);
+}
+.model-picker::backdrop {
+  background: var(--ds-scrim);
+  animation: fade-in var(--motion-duration-normal) var(--motion-ease-out);
+}
+.model-picker-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: inherit;
+  padding: 6px 8px 8px;
+}
+.model-picker-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 10px;
+}
+.model-picker-header h2 {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-snug);
+}
+.model-search {
+  flex: none;
+}
+.model-picker-status {
+  padding: 8px 10px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-base);
+}
+.model-options {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+.model-options button {
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  text-align: start;
+  font-weight: var(--font-weight-normal);
+}
+.model-options button[aria-current="true"] {
+  background: var(--ds-tile-hover);
+}
+.model-options .icon {
+  color: var(--ds-text-primary);
+}
+.model-option-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.model-option-name {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+.model-option-provider {
+  color: var(--ds-text-muted);
+  font-size: var(--text-md);
+}
+
+/* ---------- pairing ---------- */
+.pair {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 400px;
+  margin: auto;
+  padding: calc(40px + env(safe-area-inset-top)) 0 calc(32px + env(safe-area-inset-bottom));
+}
+.pair > .icon.lg {
+  align-self: center;
+  margin-bottom: 22px;
+  color: var(--ds-text-secondary);
+}
+.pair h1 {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-tight);
+  text-align: center;
+  text-wrap: balance;
+}
+.pair-hint {
+  max-width: 22em;
+  margin: 12px auto 16px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-base-plus);
+  line-height: var(--leading-relaxed);
+  text-align: center;
+  text-wrap: balance;
+}
+/* The indent balances the tracking after the last digit, so the code centres. */
+.pair .code {
+  min-height: 64px;
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-code);
+  text-align: center;
+  text-indent: var(--tracking-code);
+}
+.pair .code::placeholder {
+  color: var(--ds-text-faint);
+  opacity: 0.6;
+}
+.pair #pair-label {
+  min-height: 50px;
+}
+.pair button[type="submit"] {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 28px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-lg);
+}
+.pair button[type="submit"]:active:not(:disabled) {
+  scale: 0.985;
+}
+.pair-status {
+  min-height: 1.5em;
+  margin-top: 14px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  text-align: center;
+  text-wrap: pretty;
+}
+
+/* ---------- loading ---------- */
+/* Static shapes of the coming page; they fade in, they never shimmer. */
+.skeleton-page {
+  animation: fade-in var(--motion-duration-slow) var(--motion-ease-out);
+}
+.skeleton {
+  display: block;
+  border-radius: var(--radius-xs);
+  background: var(--ds-tile-hover);
+}
+.skeleton.heading {
+  width: 44%;
+  height: 15px;
+}
+.skeleton.sub {
+  width: 28%;
+  height: 11px;
+  margin-top: 6px;
+}
+.skeleton.title-lg {
+  width: 52%;
+  height: 28px;
+}
+.skeleton.field {
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--ds-field-inset-bg);
+}
+.skeleton-list {
+  gap: 4px;
+  padding-top: 32px;
+}
+.skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 8px;
+}
+.skeleton.title {
+  width: 64%;
+  height: 14px;
+}
+.skeleton.meta {
+  width: 32%;
+  height: 11px;
+}
+.skeleton-row:nth-child(3n + 2) .skeleton.title {
+  width: 48%;
+}
+.skeleton-row:nth-child(3n) .skeleton.title {
+  width: 56%;
+}
+.skeleton-chat {
+  gap: 12px;
+}
+.skeleton.bubble {
+  align-self: flex-end;
+  width: 58%;
+  height: 42px;
+  border-radius: var(--radius-lg-plus);
+  border-bottom-right-radius: var(--radius-xs);
+}
+.skeleton.bubble.narrow {
+  width: 38%;
+}
+.skeleton.line {
+  width: 74%;
+  height: 13px;
+}
+.skeleton.line.wide {
+  width: 94%;
+}
+.skeleton.line.short {
+  width: 42%;
+}
+
+/* ---------- page transitions ----------
+   A page reached forward slides in by 8px; going back only fades, so a
+   browser swipe-back that already moved the page does not move it twice. */
+main.enter-push > :not(.header, .chat-dock, .fab) {
+  animation: page-push var(--motion-duration-normal) var(--motion-ease-out);
+}
+main.enter-pop > :not(.header, .chat-dock, .fab) {
+  animation: page-pop var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+/* ---------- larger screens ----------
+   On a tablet or desktop browser the content keeps a readable column while
+   the bar and the composer dock span the window. Targets stay at 44px. */
+@media (hover: hover) and (pointer: fine) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--ds-text-primary) 22%, transparent) transparent;
+  }
+  /* Secondary row actions appear with the row they belong to. */
+  .row-more {
+    opacity: 0;
+  }
+  .row:hover .row-more,
+  .row:focus-within .row-more {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 28px;
+  }
+  main {
+    max-width: 780px;
+  }
+  .header,
+  .chat-dock {
+    margin-inline: calc(50% - 50vw);
+  }
+  .header {
+    padding-inline: calc(50vw - 50% - var(--optical));
+  }
+  .chat-dock {
+    padding-inline: calc(50vw - 50%);
+  }
+  .large-title {
+    padding-top: 12px;
+  }
+  .search {
+    max-width: 440px;
+  }
+  .messages {
+    gap: 20px;
+    padding: 24px 0 36px;
+  }
+  .msg.user {
+    max-width: min(72%, 560px);
+  }
+  /* New conversation joins the bar at the column's right edge: a 36px
+     capsule inside a 44px target. */
+  main > button.fab {
+    top: calc(2px + env(safe-area-inset-top));
+    right: max(calc(var(--pad-right) - 4px), calc(50vw - 390px + var(--gutter) - 4px));
+    bottom: auto;
+    left: auto;
+    z-index: 4;
+    min-height: var(--tap);
+    margin: 0;
+    padding: 0 16px 0 13px;
+    border: 4px solid transparent;
+    background-clip: padding-box;
+    box-shadow: none;
+    font-size: var(--text-md-plus);
+  }
+  main > button.fab .icon {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2;
+  }
+  main:has(> .fab)::after {
+    display: none;
+  }
+  .fab-spacer {
+    height: 24px;
+  }
+  .header-compact {
+    right: auto;
+    left: 50%;
+    width: min(360px, 36vw);
+    transform: translateX(-50%);
+  }
+  .toast {
+    bottom: max(calc(var(--dock, 0px) - 12px), 32px);
+  }
+  .empty {
+    padding: 112px 24px;
+  }
+  /* Sheets become compact centred dialogs; there is nothing to pull. */
+  .sheet {
+    align-items: center;
+    padding: 24px;
+  }
+  .sheet-panel {
+    max-width: 380px;
+    padding-top: 6px;
+  }
+  .sheet-panel::before {
+    display: none;
+  }
+  .sheet-actions > button {
+    min-height: 48px;
+  }
+  .model-picker {
+    inset: 0;
+    margin: auto;
+    width: min(460px, calc(100% - 48px));
+    height: max-content;
+  }
+  /* Pairing reads as a card centred in the window. */
+  .pair {
+    max-width: 440px;
+    padding: 44px 40px 36px;
+    border-radius: var(--radius-2xl);
+    background: var(--ds-tile);
+  }
+}
+
+@media (min-width: 1024px) {
+  /* Projects fill two columns; recent conversations stay one list. */
+  #section-projects .list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 8px;
+  }
+}
+
+/* ---------- motion ---------- */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+@keyframes page-push {
+  from {
+    opacity: 0;
+    translate: 8px 0;
+  }
+}
+@keyframes page-pop {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes surface-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+    scale: 0.985;
+  }
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes shimmer-sweep {
+  to {
+    background-position: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .shimmer {
+    background: none;
+    color: var(--ds-text-secondary);
+    -webkit-text-fill-color: currentColor;
+  }
+}
