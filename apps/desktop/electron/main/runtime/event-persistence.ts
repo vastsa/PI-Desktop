@@ -64,6 +64,7 @@ export function createEventPersistence({
 }: EventPersistenceDependencies): {
   subagentTagged: (message: UiMessage, envelope: AgentEventEnvelope) => UiMessage;
   persistAgentEvent: (envelope: AgentEventEnvelope) => UiMessage | undefined;
+  persistInterruptionMessage: (sessionId: string, turnId: string, message: UiMessage) => Promise<void>;
   beginTranscriptRewrite: (sessionId: string) => {
     commit: () => void;
     rollback: () => void;
@@ -83,6 +84,28 @@ export function createEventPersistence({
     while (pendingWrites.size > 0) {
       await Promise.allSettled([...pendingWrites]);
     }
+  }
+
+  async function persistInterruptionMessage(sessionId: string, turnId: string, message: UiMessage): Promise<void> {
+    inflightSnapshots.delete(sessionId);
+    completionNoticeTurns.delete(turnId);
+    const host = runtimeState.host;
+    if (host?.isAvailable()) {
+      try {
+        // A queued prompt appends directly to the Host, so the crash card
+        // needs its own acknowledgement before turn finalization releases it.
+        await host.call("session.appendMessage", { sessionId, turnId, message });
+        return;
+      } catch (error) {
+        logger.app("persistence", "warn", "interruption message append failed", {
+          sessionId, data: String(error),
+        });
+      }
+    }
+    await persistenceOutbox.enqueue({
+      key: `message:${sessionId}:${message.id}`,
+      sessionId, turnId, message,
+    }, () => runtimeState.host);
   }
 
   function beginTranscriptRewrite(sessionId: string) {
@@ -449,5 +472,5 @@ function persistAgentEvent(envelope: AgentEventEnvelope): UiMessage | undefined 
     return message;
   }
 }
-  return { subagentTagged, persistAgentEvent, beginTranscriptRewrite, flush };
+  return { subagentTagged, persistAgentEvent, persistInterruptionMessage, beginTranscriptRewrite, flush };
 }
