@@ -289,6 +289,13 @@ export function createHttpTransportWithLegacyFallback(
   streamable: McpTransport,
 ): McpTransport {
   let active: McpTransport | null = null;
+  // The fallback transport while its endpoint event is still in flight. The
+  // wrapper is reachable from McpServerClient.close() during that window
+  // (handshake assigns `this.transport` before the initialize exchange), so
+  // close() must be able to shut it down instead of leaving the opening
+  // stream with no owner.
+  let pending: LegacySseTransport | null = null;
+  let closed = false;
   return {
     send: async (message, timeoutMs = options.timeoutMs, signal) => {
       if (active) return active.send(message, timeoutMs, signal);
@@ -305,6 +312,7 @@ export function createHttpTransportWithLegacyFallback(
             if (!silenced) handlers.onClose(reason);
           },
         });
+        pending = legacy;
         try {
           await legacy.connect(timeoutMs, signal);
         } catch (legacyError) {
@@ -313,12 +321,25 @@ export function createHttpTransportWithLegacyFallback(
           // its streamable status is the more useful report. Once the stream
           // is open, the legacy failure is the real one.
           throw legacy.streamOpened() ? legacyError : error;
+        } finally {
+          pending = null;
+        }
+        if (closed) {
+          // close() ran while the endpoint event was in flight and the
+          // stream still opened afterwards: dispose it here, or the
+          // socket and the server-side session leak for the app's
+          // lifetime while `active` stays null.
+          legacy.close();
+          throw mcpError("UNAVAILABLE", "mcp session closed");
         }
         silenced = false;
         active = legacy;
         await legacy.send(message, timeoutMs, signal);
       }
     },
-    close: () => (active ?? streamable).close(),
+    close: () => {
+      closed = true;
+      (active ?? pending ?? streamable).close();
+    },
   };
 }
