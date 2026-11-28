@@ -2005,6 +2005,35 @@
   line-height: inherit;
 }
 
+.user-text-disclosure {
+  --user-message-preview-height: 6lh;
+}
+
+.user-text-preview {
+  position: relative;
+}
+
+.user-text-preview-limit {
+  position: absolute;
+  inset-block-start: 0;
+  block-size: var(--user-message-preview-height);
+  inline-size: 0;
+  pointer-events: none;
+}
+
+.user-text-disclosure[data-collapsed="true"] .user-text-preview {
+  max-block-size: var(--user-message-preview-height);
+  overflow: clip;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1lh), transparent);
+}
+
+.user-text-toggle {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  margin: 2px auto 0;
+}
+
 /* #2388: inline chips and links inside a message are isolated runs — the
    surrounding RTL/LTR punctuation must not migrate across them. */
 .message-user-text .chat-command-chip,

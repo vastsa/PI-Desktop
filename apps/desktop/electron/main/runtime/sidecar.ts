@@ -7,6 +7,7 @@ import {
   classifySidecarCrash,
   sidecarCrashErrorCode,
 } from "@pi-desktop/agent-runtime";
+import { publishLanAgentEvent } from "../lan-webui/agent-tap";
 import {
   assertBuiltinSkillEnabled,
   loadBuiltinSkillBody,
@@ -129,6 +130,7 @@ export function createSidecarRuntime({
     if (isStaleTerminalEvent(envelope)) return;
     runtimeState.agentHostBridge?.ingest(envelope);
     sendToRenderer(IPC.event.agentMessage, envelope);
+    publishLanAgentEvent(envelope);
   };
   const activeToolCalls = new Map<
     string,

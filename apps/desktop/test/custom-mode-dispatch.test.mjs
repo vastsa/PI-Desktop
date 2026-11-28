@@ -6,12 +6,25 @@ register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
 const { registerAgentIpc } = await import("../electron/main/ipc/agent-ipc.ts");
 const { modeAfterPlanningUpdate } = await import("../src/stores/helpers/planning-projection.ts");
 const { IPC } = await import("@pi-desktop/shared");
+const { parseModeBundle, readModeBundleReferences } = await import("../../../packages/agent-runtime/src/mode-definitions-bundle.ts");
+const { parseModeLaunchParams, parseModePromptTurn } = await import("../../../packages/agent-runtime/src/modes/mode-params.ts");
 
-async function promptFixture({ unavailable = false, prepared } = {}) {
+function yamlMode(staged = false) {
+  const document = readModeBundleReferences("name: review\npermission: contract\npromptFile: prompt.md\n" +
+    (staged ? "stages:\n  work: {}\n" : ""));
+  assert.equal(document.ok, true);
+  const parsed = parseModeBundle({
+    ...document, prompt: { path: "prompt.md", text: "Review the changes." }, subagents: [], source: "user",
+  });
+  assert.equal(parsed.ok, true);
+  return parsed.definition;
+}
+
+async function promptFixture({ unavailable = false, prepared, yamlDefinition } = {}) {
   const handlers = new Map();
   const prompts = [];
   const finished = [];
-  const definition = {
+  const definition = yamlDefinition ?? {
     version: 1, id: "review", label: "Review", description: "", source: "user",
     permission: "contract", prompt: "Review without changing files.",
     returnTo: "agent", artifacts: [], stages: [],
@@ -30,6 +43,7 @@ async function promptFixture({ unavailable = false, prepared } = {}) {
     setProjectInstructionRoot() {},
     async call(method, params) {
       assert.equal(method, "agent.prompt");
+      if (yamlDefinition) parseModePromptTurn(params.modeTurn, parseModeLaunchParams(params));
       prompts.push(params);
       return { accepted: true, turnId: "turn" };
     },
@@ -43,10 +57,11 @@ async function promptFixture({ unavailable = false, prepared } = {}) {
         return definition;
       },
       prepareTurn: async () => prepared,
+      abandonTurn: async () => {},
     },
     getHost: () => host, getSidecar: () => sidecar, getAgentHostBridge: () => null,
     logger: { app() {} }, persistenceOutbox: {}, dataDir: "/unused-no-attachments",
-    activeTurns: new Map(), activeTurnUsages: new Map(),
+    activeTurns: new Map(), activeTurnUsages: new Map(), completionNoticeTurns: new Set(),
     approvedExecutionIdsBySession: new Map(), claimedExecutionSessions: new Map(),
     recordTurnStart() {}, acquireSessionOperation: async () => () => {},
     resolveAgentRuntimeLaunch: async () => ({
@@ -68,6 +83,27 @@ test("a simple custom mode reaches the sidecar with its instructions and policy"
   assert.equal(prompts.length, 1);
   assert.deepEqual(prompts[0].modeDefinition, definition);
   assert.equal(prompts[0].modeTurn, undefined);
+});
+
+test("sending in a YAML mode keeps its instructions and policy at the sidecar boundary", async () => {
+  const { bundle, ...expected } = yamlMode();
+  const { prompt, prompts, definition } = await promptFixture({ yamlDefinition: { ...expected, bundle } });
+  assert.deepEqual(await prompt(), { accepted: true, turnId: "turn" });
+  assert.deepEqual(prompts[0].modeDefinition, expected);
+  assert.deepEqual(definition.bundle, bundle);
+});
+
+test("sending in a staged YAML mode keeps the saved stage and its turn", async () => {
+  const definition = yamlMode(true);
+  const { bundle, ...expected } = definition;
+  const modeTurn = {
+    runId: "run", stageId: "work", origin: "user", enteredStage: true, input: "Inspect the changes.", artifactPaths: {},
+  };
+  const { prompt, prompts } = await promptFixture({ yamlDefinition: yamlMode(), prepared: { definition, modeTurn } });
+  assert.deepEqual(await prompt(), { accepted: true, turnId: "turn" });
+  assert.deepEqual(prompts[0].modeDefinition, expected);
+  assert.deepEqual(prompts[0].modeTurn, modeTurn);
+  assert.deepEqual(definition.bundle, bundle);
 });
 
 test("an unavailable mode closes admission without persisting a message or calling the sidecar", async () => {

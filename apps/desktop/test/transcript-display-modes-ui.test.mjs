@@ -6,7 +6,7 @@ import { loadStyles } from "./helpers/styles.mjs";
 
 const activityGroupSource = await readTranscriptModule("ActivityGroup.tsx");
 const activityItemsSource = await readTranscriptModule("ActivityItems.tsx");
-const assistantTurnSource = await readTranscriptModule("AssistantTurn.tsx");
+const assistantTurnSource = await readTranscriptModule("AssistantTurnBody.tsx");
 const thinkingRowSource = await readTranscriptModule("shared.tsx");
 const shimmerSource = await readFile(
   new URL("../src/features/chat/transcript/TextShimmer.tsx", import.meta.url),

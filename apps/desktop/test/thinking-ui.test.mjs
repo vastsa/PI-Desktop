@@ -285,7 +285,7 @@ test("tool and search rows stay collapsed while reasoning follows its own switch
   assert.match(transcriptDisclosureSource, /const setManualOpen = useCallback/);
   assert.match(
     transcriptSource,
-    /const automaticallyOpen = activityGroupStartsOpen\(\{\s*turnActive,\s*groupActive: live,\s*collapseSettled: collapseSettledGroups,\s*\}\);/,
+    /const automaticallyOpen = activityGroupStartsOpen\(\{\s*groupActive: live \|\| runningOperation,\s*collapseSettled: collapseSettledGroups,\s*\}\);/,
   );
   assert.match(
     transcriptSource,

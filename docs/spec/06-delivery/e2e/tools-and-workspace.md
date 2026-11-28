@@ -1271,8 +1271,14 @@ journeys cover successful reads, saves and directory browsing.
   The task header stays on one line. The expanded row shows the complete
   command above the output, preserving whitespace and wrapping to fit even
   before the task produces any output.
-  An ended task keeps its row only for a short grace window and can be closed
-  from the bar, so finished commands do not accumulate above the composer.
+  An ended task's row leaves the bar as soon as its end state arrives — only
+  the row whose output preview is open stays (the auto tab rule never switches
+  the panel away from an open read), and the pin ends when its preview leaves
+  the screen — collapse, or a switch to Todo — unless the task still runs: a
+  running task's preview survives the switch, while a task that ends while
+  hidden takes its row with it — and the tab badge falls with
+  the running count, so finished commands do not accumulate above the
+  composer (#2632, #2634).
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` (§5),
   `03-runtime/06-host-rpc-protocol.md` (§4)
 - **Acceptance criterion**: C, E, F
@@ -1285,9 +1291,9 @@ journeys cover successful reads, saves and directory browsing.
   and 390px widths. Host tests cover exit-before-drain and shutdown under output
   lock contention. The full agent-to-Desktop journey and an 83-minute paced
   100,000-line soak remain manual; the automated volume test is accelerated.
-  Renderer visibility (grace window, close action, pinned output preview) is
-  covered by `apps/desktop/test/background-tasks-bar-visibility.test.mjs` with a
-  controlled clock; the multi-second hand-off itself is not timed in Electron.)
+  Renderer visibility (live rows, close action, pinned output preview) is
+  covered by `apps/desktop/test/background-tasks-bar-visibility.test.mjs`; the
+  multi-second hand-off itself is not timed in Electron.)
 
 ## E2E-REVIEW-append-state: Rolling back a historical tool card does not rewrite its session
 
@@ -2188,10 +2194,10 @@ are withdrawn with ADR 0165.
 ## E2E-234: Workspace security denylist and ignore layers
 
 - **Preconditions**: A project containing `.env`, `.env.example`,
-  `server.pem`, `keys/id_rsa`, `notes.txt`, `node_modules/pkg/index.js`,
-  `generated/out.txt`, `debug.log`, and a root `.pi-desktopignore` with
-  `generated/`. Every file contains the word `needle`. The session is Agent
-  in `auto` permission mode.
+  `server.pem`, `.npmrc`, `keys/id_rsa`, `notes.txt`,
+  `node_modules/pkg/index.js`, `generated/out.txt`, `debug.log`, and a root
+  `.pi-desktopignore` with `generated/`. Every file contains the word `needle`.
+  The session is Agent in `auto` permission mode.
 - **Steps**: 1) Ask for `Read` of `.env`, then of `.env.example`. 2) Ask for
   `Write` to `keys/id_rsa`. 3) Run an unscoped `Grep` and `Glob` for `needle`.
   4) Run `Grep` with `path: node_modules/pkg` and with `path: generated`.
@@ -2200,9 +2206,9 @@ are withdrawn with ADR 0165.
 - **Expected**: Steps 1 and 2 fail with `WORKSPACE_PATH_DENIED`, the
   `.env.example` read succeeds, and no `keys/id_rsa` file is created. The
   unscoped search lists `notes.txt` and `.env.example` only: `.env`,
-  `server.pem`, `node_modules`, `generated`, and `debug.log` are absent. The
-  explicit-path searches return one hit each. The in-process walker and the
-  `rg` fast path produce the same file set.
+  `server.pem`, `.npmrc`, `node_modules`, `generated`, and `debug.log` are
+  absent. The explicit-path searches return one hit each. The in-process
+  walker and the `rg` fast path produce the same file set.
 - **Specs linked**: `03-runtime/15-workspace-ignore-rules.md`,
   `03-runtime/08-error-codes.md` §3.3, D032
 - **Acceptance**: B (workspace tools), Security

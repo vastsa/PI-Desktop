@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { useDisclosureAnchorNotifier } from "../../../lib/disclosure-anchor-context";
-import { sessionReadingState, type TranscriptDisclosureChoice } from "../../../lib/transcript-reading-position";
+import { transcriptDisclosureChoices, type TranscriptDisclosureChoice } from "../../../lib/transcript-reading-position";
 import { ScopeContext, type DisclosureScopeValue } from "./disclosure-scope";
 
 type Choice = TranscriptDisclosureChoice;
@@ -56,9 +56,13 @@ const ChoicesContext = createContext<DisclosureChoices | null>(null);
 export type { DisclosureScopeValue } from "./disclosure-scope";
 
 /** Explicit choices survive pane eviction, but never persist to the host. */
-export function TranscriptDisclosureProvider({ children, sessionId }: { children: ReactNode; sessionId?: string }) {
+export function TranscriptDisclosureProvider({ children, sessionId, delegationId }: {
+  children: ReactNode;
+  sessionId?: string;
+  delegationId?: string;
+}) {
   const [choices] = useState(() => new DisclosureChoices(
-    sessionId ? sessionReadingState(sessionId).disclosures : undefined,
+    sessionId ? transcriptDisclosureChoices(sessionId, delegationId) : undefined,
   ));
   return <ChoicesContext.Provider value={choices}>{children}</ChoicesContext.Provider>;
 }

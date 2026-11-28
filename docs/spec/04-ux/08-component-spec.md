@@ -1012,21 +1012,18 @@ thinking never creates an empty wrapper. All three modes render exactly one
 top-level process disclosure and change neither what a tool received nor what is
 stored.
 
-Every group of a turn stays open while that turn is active, whether or not it
-still owns the live execution segment, so work never folds away mid-run. Once the
-turn settles both nested levels fold: expanding a completed turn lists what the
-agent did instead of a wall of rows, and two opt-out switches carry the reader's
-choice. `Auto-fold finished groups` (`autoCollapseSettledGroups`, on by default)
-folds settled groups whatever their size; turned off it leaves every settled
-group open, because the four-item tier is retired. `Auto-fold finished thinking`
+`Auto-fold finished groups` (`autoCollapseSettledGroups`, on by default) folds
+an untouched group when it is no longer current and has no live work, even while
+its turn continues. The current group and groups with running tools, searches,
+or delegations stay open by default. Turning the switch off leaves finished
+groups open regardless of size. `Auto-fold finished thinking`
 (`autoCollapseThinking`, on by default) keeps only reasoning the live turn is
 still streaming expanded. Each switch is a sub-row of the setting that gates it
 (`Show thinking`, and a non-flat `Transcript display`), it disappears with that
 parent, and hiding it never rewrites the stored value. A group does not inherit
-open state from the reasoning it contains: the group and its Thinking rows each
-answer to their own switch, so closing a group hides expanded reasoning inside
-it. Explicit user choices remain authoritative, and a running turn - or a group
-that still owns a running tool or delegation - never folds. The group header
+open state from its reasoning: folding a group hides expanded reasoning inside
+it. Explicit user choices remain authoritative, and focus or text selection
+in the group temporarily defers automatic folding. The group header
 states what the group did: the actions it contains, joined with the locale's own
 list wording and capped at three with "and more", followed by the call count as
 its own non-truncating token (`搜索并读取文件 · 12 次操作`). Reasoning is named in
@@ -2087,6 +2084,11 @@ Single message render — either user (plaintext) or assistant (markdown streami
   background or outer border. Its Sparkles/chevron trigger uses secondary text,
   and the expanded markdown is indented by a subtle theme-token left rule. It
   is never concatenated into answer markdown.
+ - Long user messages default to a six-line preview, measured at the rendered
+   width and font. The preview fades at the bottom and has a centered text
+   button with a chevron to show or hide the full message. Six or fewer lines
+   have no button. The choice is renderer-local; search reveals a matching
+   message, and copying and editing still use the complete original text.
 - Hover actions: quiet icon-only action chips under the bubble — Copy on idle
   assistant turns; Fork and Regenerate on completed assistant turns; Edit and
   Delete on user turns. A streaming assistant turn omits its Copy action until
@@ -2669,7 +2671,7 @@ twice.
 | State | Header treatment | Expanded content |
 |---|---|---|
 | Running | Progressive action with readable text and a pulsing marker; a `run` row also shows its spinner and pulses the status dot beside `Working…` | The active multi-item group opens; no tool/search payload opens itself, except the display mode's Thinking default; live thinking follows its own indicator/disclosure policy |
-| Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown; small groups and Task topology groups stay open, large untouched ordinary groups close, and manual group and item choices are retained |
+| Success | Past-tense action + result chips; no green success badge, except a `run` row's dot and `Done` | Result blocks, then arguments if not already shown; group folding follows the settings and live activity rules above, and manual group and item choices are retained |
 | Error | Past-tense action + compact danger status; details remain collapsed by default and open only on user request. A `run` row is in this state whenever its command exited nonzero, whatever the call reported (D227) | Error note first, then arguments |
 | Denied | Muted `Denied` status; payload remains closed until requested | Permission result when available |
 
@@ -2831,14 +2833,21 @@ as a conversation:
 └──────────────────────────────────────────────┘
 ```
 
-- The tab is a message list, not a card: every `Task` call of the resume
-  chain renders its `task` argument as a user row (the main transcript's user
-  bubble), and the delegate's thinking, tool, and answer rows under that call
-  render with the same message-list language, so a follow-up prompt reads as
-  the next user turn.
-- The composer at the foot is a disabled two-row textarea whose placeholder
-  says subagents are driven by the main agent and cannot take input; the tab
-  is display-only and has no send path.
+- Every `Task` call in the resume chain starts its own turn: the task prompt
+  is a user bubble, followed by the shared assistant process and answer.
+  Settings → Conversation controls the same three layouts, thinking visibility,
+  and automatic folding as in MainChat. A turn has at most one outer process,
+  activity groups where the selected layout allows them, and individual tool
+  and thinking details. The final answer stays outside the process. Search
+  reveals the matching levels; manual choices are scoped to each tab and session.
+   Task bubbles and assistant replies reflow within the available panel width
+   when resized or maximized. Short Task bubbles stay compact; longer Task
+   prompts use the same six-line preview as user messages.
+- The footer reuses the main composer shell with a localized read-only notice.
+  The latest Task’s recorded model and thinking level are passive labels,
+  omitted when unknown. There is no editor, send path, composer slot, or mode,
+  permission, or model picker. A running delegate can still be stopped without
+  stopping the parent or any other delegate.
 - Tab labels carry the agent name captured when the tab opened, with a
   strip-order `#n` suffix when the same name occurs more than once; a
   localization fallback covers a delegate with no name.
@@ -3776,8 +3785,8 @@ Anatomy:
   not support Desktop-managed MCP selections. Existing command aliases win
   collisions. See `docs/adr/composer-mcp-invocations.md`.
 - Active Skill commands use `/skill:<id>` for builtin, plugin, and user Skills.
-  Completion inserts this explicit prefix; sending resolves it to the unchanged
-  Skill ID. Unprefixed names are not Skill aliases; existing app commands and
+  Completion displays the Skill as a chip; sending resolves its explicit slash
+  token to the unchanged Skill ID. Unprefixed names are not Skill aliases; existing app commands and
   prompt templates keep their names. Saved Skill mentions remain unchanged.
 - A whitespace-delimited `/` later in the draft offers active Skills only.
   Completion replaces only the token under the cursor, so several Skills and
@@ -3820,7 +3829,9 @@ Anatomy:
   each mention. Skill and agent mentions combine; a leading template or app
   command is not rewritten. Stop restores the typed `command`, never the
   rewritten `content`.
-- Accepting commands and directories inserts text (`/name ` / `@dir/`);
+- Accepting a Skill inserts an atomic inline chip with its catalog title and an
+  editable space for arguments; it serializes to `/skill:<id>`, not a file.
+  Accepting other commands and directories inserts text (`/name ` / `@dir/`);
   accepting a completed file inserts the inline chip rather than deleting the
   trigger. Immediately
   before dispatch, ordinary references serialize in stable order after the
@@ -4811,17 +4822,20 @@ as well as its DOM, so submission and draft caching retain the path. Deleted
 reference history is local to the current draft/workspace and is cleared on send;
 pasting a private-use character alone must not restore an attachment. The input owns and disposes the native event listeners.
 
-An empty last line keeps its own caret. Chromium gives a line that holds nothing a
-box but no caret box, so a caret left after the final line break resolves to the
-line above and types the next keystroke there. A trailing break adds the box but
-also a second caret position below it, which reads as one line too many; the
-editor therefore paints a zero-width space on that line, places an end-of-draft
-caret on the character when the draft ends in a newline, and re-syncs it after
-every commit. Every read, index and caret path strips the character — Chromium can
-merge it into the neighbouring text node — so the draft string, its indices and
-the caret's position in it are unchanged, and the marker is removed as soon as
-the line holds text. A middle empty line needs none: the break that ends it
-already gives it a caret box.
+An empty last line keeps its own caret. Chromium drops the last break of a block:
+a draft that ends in a newline paints no line of its own, and a caret left there
+resolves to the line above and types the next keystroke there. The editor paints a
+placeholder break — `<br data-composer-tail>` — after that newline, and every read,
+index and caret path counts it as zero characters. The placeholder carries no
+text, so it cannot be selected, copied or typed, never merges into a neighbouring
+text node, and the draft string and its indices are unchanged; the end-of-draft
+caret sits before the placeholder, on the empty line, and the placeholder is
+inert after ordinary text. A terminal placeholder can remain as the browser's
+undo anchor: undoing Backspace restores both the empty line and its caret.
+At the draft end a single native edit inserts the real break and the layout
+placeholder, so undo and redo cover both. Elsewhere Shift+Enter stays native;
+plain Enter in multiline mode uses the same native line-break command instead
+of introducing block wrappers with different caret offsets.
 
 ### Dialog long-text containment
 
