@@ -11,6 +11,7 @@ export type TranscriptDisclosureChoice = { open: boolean; revealRequest?: number
 type ReadingState = {
   position?: TranscriptReadingPosition;
   disclosures: Map<string, TranscriptDisclosureChoice>;
+  delegationDisclosures?: Map<string, Map<string, TranscriptDisclosureChoice>>;
 };
 
 // Renderer-lifetime bookmarks, independent of the bounded DOM and message caches.
@@ -23,6 +24,18 @@ export function sessionReadingState(sessionId: string): ReadingState {
     readingStates.set(sessionId, state);
   }
   return state;
+}
+
+export function transcriptDisclosureChoices(sessionId: string, delegationId?: string) {
+  const state = sessionReadingState(sessionId);
+  if (delegationId === undefined) return state.disclosures;
+  const tabs = state.delegationDisclosures ??= new Map();
+  let choices = tabs.get(delegationId);
+  if (!choices) {
+    choices = new Map();
+    tabs.set(delegationId, choices);
+  }
+  return choices;
 }
 export function getTranscriptReadingPosition(sessionId: string | undefined) {
   return sessionId ? readingStates.get(sessionId)?.position : undefined;

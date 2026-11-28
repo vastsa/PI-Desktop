@@ -4,6 +4,7 @@ import type {
   SessionThinkingLevel,
 } from "@pi-desktop/shared";
 import {
+  isChatProviderReady,
   imageGenerationBindings,
   initialThinkingLevelForBinding,
   initialThinkingLevelForUnmatchedModel,
@@ -135,11 +136,7 @@ export function useComposerModelMenu({
   const modelGroups = useMemo(
     () =>
       providers
-        .filter(
-          (candidate) =>
-            candidate.enabled &&
-            (candidate.hasSecret || candidate.authKind === "none"),
-        )
+        .filter(isChatProviderReady)
         .map((candidate) => {
           const models = composerModelsForProvider(
             candidate,
@@ -256,7 +253,7 @@ export function useComposerModelMenu({
   useEffect(() => {
     if (!open) return;
     for (const candidate of providers) {
-      if (candidate.enabled && (candidate.hasSecret || candidate.authKind === "none")) {
+      if (isChatProviderReady(candidate)) {
         void loadProviderModels(candidate.id);
       }
     }
