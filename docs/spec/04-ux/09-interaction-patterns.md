@@ -1389,6 +1389,10 @@ Running turns and pending approvals continue to gate the controls.
   retain their existing behavior.
 - Transcript prose, rendered Markdown, code blocks, and tool input/output
   remain text-selectable for inspection and copying.
+- On macOS the main window forwards the first mouse press when it becomes
+  active, so a drag starting in transcript text can select it immediately.
+  This applies across the main window's web contents, including links and
+  controls, which continue to use their normal click handlers.
 - Interactive controls nested inside selectable content remain
   non-selectable and must keep their click and keyboard behavior.
 - Selection rules must not disable `focus-visible` feedback or native window

@@ -240,6 +240,8 @@ export async function createWindow({
       ? {
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
+          // Deliver the press that activates the window so a text drag can start.
+          acceptFirstMouse: true,
           // The default opaque surface avoids continuous WindowServer
           // recomposition while the Electron window is visible (issue #1064).
           // `settings.macosWindowTranslucency` opts back into the vibrancy

@@ -76,6 +76,7 @@ text here.
 | D021 | First-run onboarding | **Inline checklist (not modal wizard)** |
 | D022 | Local telemetry | **Local logs only in MVP (no remote telemetry)** |
 | D664 | Sidebar running activity defaults | **When unset, the master and Count badge resolve on while Activity rail resolves off. Explicit saved values remain authoritative. The master continues gating both affordances; turning it off does not rewrite either child preference. No schema or migration change.** |
+| D686 | macOS main window first mouse press | **Enable Electron's `acceptFirstMouse` on the macOS main window so the first drag can select text while activating the window. Links and controls also receive the initial click. See `04-ux/09-interaction-patterns.md` and E2E-045.** |
 
 
 ## C. Provider & model coverage decisions (0.3.4)
@@ -5420,6 +5421,18 @@ See ADR 0344.
   keyboard, drag and accessibility, and the column geometry contract of D458
   holds: pill, label and native stop share one center for every stop count.
 - Escape clears a typed search first; a second Escape closes the menu.
+
+## 2026-11-26 — macOS main window first mouse press (D686)
+
+- A press in an inactive macOS main window first activated the window, and the
+  web contents never received it, so a drag over transcript text selected
+  nothing until the reader pressed a second time.
+- The main window now sets `acceptFirstMouse: true`, so the press that
+  activates the window also reaches the page and the drag selects immediately.
+- Links and controls inside the window receive that same first press and keep
+  their normal click handlers. No other platform, window, or protocol change.
+- Behavior is specified in `04-ux/09-interaction-patterns.md` and covered by
+  E2E-045.
 
 ## Bundled Official Enhancements defaults
 
