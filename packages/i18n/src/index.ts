@@ -16,6 +16,8 @@ export { ko } from "./locales/ko/index.js";
 export { default as koDefault } from "./locales/ko/index.js";
 export { ptBR } from "./locales/pt-BR/index.js";
 export { default as ptBRDefault } from "./locales/pt-BR/index.js";
+export { ru } from "./locales/ru/index.js";
+export { default as ruDefault } from "./locales/ru/index.js";
 
 export * from "./locale-info.js";
 
@@ -28,7 +30,7 @@ import { fr } from "./locales/fr/index.js";
 import { de } from "./locales/de/index.js";
 import { ko } from "./locales/ko/index.js";
 import { ptBR } from "./locales/pt-BR/index.js";
-
+import { ru } from "./locales/ru/index.js";
 import type { AppLocale } from "./locale-info.js";
 
 export const catalogs: Record<AppLocale, EnglishCatalog> = {
@@ -41,4 +43,5 @@ export const catalogs: Record<AppLocale, EnglishCatalog> = {
   fr,
   ko,
   "pt-BR": ptBR,
+  ru,
 };

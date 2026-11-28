@@ -3451,6 +3451,10 @@ importConfirm: "Imported extensions run inside the agent process with the same a
 
 type DeepStringify<T> = {
   [K in keyof T]: T[K] extends string ? string : DeepStringify<T[K]>;
+} & {
+  // Translated catalogs may add the plural categories their CLDR rules need
+  // (ru: `_few`, `_many`); English itself never ships them.
+  [K in `${string}_few` | `${string}_many` | `${string}_zero`]: string;
 };
 
 export type EnglishCatalog = DeepStringify<typeof en>;

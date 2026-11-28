@@ -32,5 +32,6 @@ export function resolveChangelogLocale(
   if (value === "fr" || value.startsWith("fr-")) return "fr";
   if (value === "ko" || value.startsWith("ko-")) return "ko";
   if (value === "pt" || value.startsWith("pt-")) return "pt-BR";
+  if (value === "ru" || value.startsWith("ru-")) return "ru";
   return "en";
 }

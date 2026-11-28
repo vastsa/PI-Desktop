@@ -5,7 +5,9 @@
     "packages/agent-runtime/src/native-pi-session.ts": "Native Pi discovery, immutable projection, guarded continuation, and fork publication share one sidecar-private source boundary; split by lifecycle once the native adapter contract stabilises without widening path ownership.",
     "packages/shared/src/changelog-en.ts": "Declarative English release-note catalog kept as one independently loaded locale chunk; changelog data is exempt from the ordinary source-module size budget.",
     "packages/shared/src/changelog-zh-CN.ts": "Declarative Simplified Chinese release-note catalog kept as one independently loaded locale chunk; changelog data is exempt from the ordinary source-module size budget.",
-    "packages/shared/src/changelog-zh-TW.ts": "Declarative Traditional Chinese release-note catalog kept as one independently loaded locale chunk; changelog data is exempt from the ordinary source-module size budget."
+    "packages/shared/src/changelog-zh-TW.ts": "Declarative Traditional Chinese release-note catalog kept as one independently loaded locale chunk; changelog data is exempt from the ordinary source-module size budget.",
+    "packages/shared/src/changelog-ru.ts": "Declarative Russian release-note catalog kept as one independently loaded locale chunk; changelog data is exempt from the ordinary source-module size budget.",
+    "packages/i18n/src/locales/ru/index.ts": "Declarative Russian UI string catalog kept as one independently loaded locale chunk matching the existing per-locale catalog layout; localization data is exempt from the ordinary source-module size budget."
   },
   "rust": {
     "crates/host-core/src/rpc/mod.rs": "Legacy RPC dispatch module; its extraction is outside this refactor scope.",
