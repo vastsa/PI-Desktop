@@ -211,7 +211,11 @@ function finishTurn(
     options.createNotification ??
     (!wasPlanSubmission && shouldCreateTaskNotification(id));
   const recoverInflight = options.recoverInflight === true;
-  const interruptionError = options.interruptionError;
+  // A user Stop locked before the crash owns the outcome: the turn ends as an
+  // ordinary abort, without a crash card or a crash code in Agent Host.
+  const interruptionError = peekAbortReason(id, turnId) === undefined
+    ? options.interruptionError
+    : undefined;
   const ownsLiveTurn = () => !isQuitting() && isActiveTurn(id, turnId);
 
   const runFinalization = async (): Promise<void> => {
@@ -262,6 +266,7 @@ function finishTurn(
         const message: UiMessage = {
           id: randomUUID(),
           role: "assistant",
+          turnId,
           content: "",
           createdAt: new Date(ts).toISOString(),
           status: "error",

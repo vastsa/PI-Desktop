@@ -254,6 +254,7 @@ for (const errorCode of ["AGENT_SIDECAR_CRASHED", "AGENT_SIDECAR_OOM"]) {
     ]);
     assert.equal(f.rendererEvents[0].event.message.id, "partial");
     assert.equal(f.rendererEvents[1].event.message.error.code, errorCode);
+    assert.equal(f.rendererEvents[1].event.message.turnId, FIRST_TURN);
     assert.deepEqual(f.appends[0].message, f.rendererEvents[1].event.message);
     assert.deepEqual(f.outboxWrites, []);
     assert.deepEqual(f.rendererEvents[2].event.error, error);
@@ -264,6 +265,27 @@ for (const errorCode of ["AGENT_SIDECAR_CRASHED", "AGENT_SIDECAR_OOM"]) {
     assert.deepEqual(f.prompts.map(({ content }) => content), ["follow-up"]);
   });
 }
+
+test("a sidecar crash after the user pressed Stop settles as a plain abort", { timeout: 5_000 }, async () => {
+  const f = fixture();
+  await f.bridge.queue.push({ sessionId: SESSION, content: "follow-up" });
+  f.bridge.markAborting(SESSION);
+  f.coordination.lockAbortReason(SESSION, FIRST_TURN);
+  const error = { code: "AGENT_SIDECAR_CRASHED", message: "Agent sidecar exited unexpectedly" };
+  const pending = f.finishTurn(SESSION, "aborted", error.code, {
+    turnId: FIRST_TURN, recoverInflight: true, interruptionError: error,
+  });
+  await setImmediate();
+  f.writes[0].resolve({ ok: true });
+  await pending;
+  await setImmediate();
+  assert.deepEqual(f.appends, [], "no crash card is persisted");
+  assert.equal(f.rendererEvents.some(({ event }) => event.type === "error"), false);
+  const interrupted = f.bridge.agentHost.getTurn(FIRST_TURN);
+  assert.equal(interrupted.status, "interrupted");
+  assert.notEqual(interrupted.error?.code, error.code);
+  assert.deepEqual(f.prompts.map(({ content }) => content), ["follow-up"]);
+});
 
 test("a crashed turn does not publish recovered rows after its session moved on", async () => {
   const f = fixture();
