@@ -2503,7 +2503,15 @@ sklm: {
   "palette": {
   },
   "search": {
-    placeholder: "Rechercher titres et messages…",
+    filesNeedChat: "Ouvrez d'abord une conversation pour consulter les fichiers dans la vue fichiers.",
+    filesSummary: "{{count}} résultats · {{files}} fichiers",
+    caseSensitive: "Sensible à la casse",
+    tabSessions: "Conversations",
+    tabFiles: "Fichiers",
+    filesEmpty: "Aucun contenu de fichier correspondant",
+    filesNoProject: "Ouvrez un projet pour rechercher dans ses fichiers",
+    placeholder: "Rechercher des conversations — Tab passe aux fichiers…",
+    placeholderFiles: "Rechercher dans les fichiers — Tab passe aux conversations…",
     metadataMatch: "Titre / projet",
     messageMatches: "{{count}} messages correspondants",
     user: "Vous",

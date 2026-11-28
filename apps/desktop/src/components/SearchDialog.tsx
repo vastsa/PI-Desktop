@@ -1,5 +1,5 @@
 import { OverlayBackdrop } from "./ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { listableSessions } from "../lib/session-origin";
@@ -10,6 +10,8 @@ import { searchSettings, type SettingsSearchHit } from "../lib/settings-search";
 import { useSessionSearch, useSessionSearchState } from "../hooks/use-session-search";
 import { SearchHighlight } from "./SearchHighlight";
 import { SearchSessionResults, type SearchRow } from "./SearchSessionResults";
+import { ProjectFileSearchResults, type ProjectFileRow } from "./ProjectFileSearchResults";
+import { useOpenChatFileRef } from "../hooks/use-preview-target";
 import type { SessionSummary, CommandItem } from "@pi-desktop/shared";
 import type { SessionMeta } from "../lib/sidebar-preferences";
 import {
@@ -20,6 +22,9 @@ import {
   IconSettings,
   IconSliders,
 } from "./icons";
+
+/** Hits fetched per Files-tab page; the host serves any offset from one scan. */
+const FILE_PAGE_SIZE = 200;
 
 /** Navigable pages surfaced by the global search alongside sessions. */
 const PAGE_ENTRIES = [
@@ -97,6 +102,120 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     selectionRequest.current += 1;
   }, [open, query]);
   const [active, setActive] = useState(0);
+  // The dialog has two sources: conversation messages (existing behaviour) and
+  // project file contents, which searches through host-core (#2584 follow-up).
+  const [searchTab, setSearchTab] = useState<"sessions" | "files">("sessions");
+  // One slot per hit; slots arrive page by page, so a query with 200k hits is
+  // still a flat, indexable list for the virtual window below.
+  const [fileRows, setFileRows] = useState<(ProjectFileRow | null)[]>([]);
+  const [fileFileCount, setFileFileCount] = useState(0);
+  // Literal case-insensitive matching is the default; the toggle opts in.
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [fileStatus, setFileStatus] = useState<"idle" | "loading" | "error">("idle");
+  const fileRoot = workspace?.path ?? "";
+  // Files-tab rows open in the bundled file view at the matched line, the same
+  // completion chat file references use (ADR 0262).
+  const openFileRef = useOpenChatFileRef();
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
+  // Host scans once and serves any offset, so paging asks for the page a visible
+  // row belongs to instead of receiving the whole hit set in one frame.
+  const fileGeneration = useRef(0);
+  const filePagesRef = useRef(new Set<number>());
+  const fileQueryRef = useRef("");
+  useEffect(() => {
+    if (!open || searchTab !== "files") return;
+    const trimmed = query.trim();
+    // A new query invalidates every page requested for the previous one.
+    const generation = ++fileGeneration.current;
+    filePagesRef.current = new Set();
+    fileQueryRef.current = trimmed;
+    if (trimmed.length < 2 || !fileRoot) {
+      setFileRows([]);
+      setFileFileCount(0);
+      setFileStatus("idle");
+      return;
+    }
+    setFileRows([]);
+    setFileFileCount(0);
+    setFileStatus("loading");
+    const timer = window.setTimeout(() => {
+      // Claim page 0 up front so the virtual window cannot request it twice
+      // while the first page is still in flight.
+      filePagesRef.current.add(0);
+      api
+        .searchProjectText({
+          root: fileRoot,
+          query: trimmed,
+          caseSensitive,
+          offset: 0,
+          limit: FILE_PAGE_SIZE,
+        })
+        .then((result) => {
+          if (generation !== fileGeneration.current) return;
+          const rows: (ProjectFileRow | null)[] = new Array(result.total).fill(null);
+          result.matches.forEach((row, index) => {
+            rows[index] = row;
+          });
+          setFileRows(rows);
+          setFileFileCount(result.fileCount);
+          setFileStatus("idle");
+        })
+        .catch(() => {
+          if (generation !== fileGeneration.current) return;
+          filePagesRef.current.delete(0);
+          setFileRows([]);
+          setFileFileCount(0);
+          setFileStatus("error");
+        });
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [open, searchTab, query, fileRoot, caseSensitive]);
+
+  /** Loads every page overlapping `[start, end)` that the dialog does not hold. */
+  const ensureFileRange = useCallback(
+    (start: number, end: number) => {
+      const trimmed = fileQueryRef.current;
+      if (!trimmed || !fileRoot) return;
+      const generation = fileGeneration.current;
+      const firstPage = Math.floor(start / FILE_PAGE_SIZE);
+      const lastPage = Math.floor((Math.max(end, start + 1) - 1) / FILE_PAGE_SIZE);
+      for (let page = firstPage; page <= lastPage; page += 1) {
+        if (filePagesRef.current.has(page)) continue;
+        filePagesRef.current.add(page);
+        const offset = page * FILE_PAGE_SIZE;
+        api
+          .searchProjectText({
+            root: fileRoot,
+            query: trimmed,
+            caseSensitive,
+            offset,
+            limit: FILE_PAGE_SIZE,
+          })
+          .then((result) => {
+            if (generation !== fileGeneration.current) return;
+            setFileFileCount(result.fileCount);
+            setFileRows((previous) => {
+              // The result set changed under us: drop this page rather than
+              // write rows at offsets that now mean something else.
+              if (previous.length !== result.total) return previous;
+              const next = previous.slice();
+              result.matches.forEach((row, index) => {
+                const at = offset + index;
+                if (at < next.length) next[at] = row;
+              });
+              return next;
+            });
+          })
+          .catch(() => {
+            if (generation !== fileGeneration.current) return;
+            filePagesRef.current.delete(page);
+          });
+      }
+    },
+    [fileRoot, caseSensitive],
+  );
   const [commandResult, setCommandResult] = useState<{
     query: string;
     hits: CommandItem[];
@@ -229,22 +348,27 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const pageBase = moreIndex + (query.trim() && search.nextOffset !== null ? 1 : 0);
   const settingsBase = pageBase + pageHits.length;
   const commandsBase = settingsBase + settingsHits.length;
-  const optionCount = commandsBase + commandHits.length;
+  // The Files tab owns its own listbox, so keyboard indices must address the
+  // file rows instead of the session rows that stay mounted but hidden.
+  const optionCount =
+    searchTab === "files" ? fileRows.length : commandsBase + commandHits.length;
 
   useEffect(() => {
     setActive(0);
-  }, [query]);
+  }, [query, searchTab]);
 
   useEffect(() => {
     setActive((value) => Math.min(value, optionCount - 1));
   }, [optionCount]);
 
   useEffect(() => {
-    if (!open) return;
+    // The Files list scrolls its own virtual window, so it keeps the active row
+    // in view itself; this only serves the shared session/page/settings list.
+    if (!open || searchTab === "files") return;
     document
       .getElementById(`global-search-option-${active}`)
       ?.scrollIntoView({ block: "nearest" });
-  }, [active, open]);
+  }, [active, open, searchTab]);
 
   if (!open) return null;
 
@@ -301,7 +425,39 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     }
   };
 
+  /** Tab moves focus, so the dialog switches source itself and keeps focus. */
+  const switchTab = (next: "sessions" | "files") => {
+    if (next === searchTab) return;
+    if (next === "files" && !fileRoot) return;
+    setSearchTab(next);
+    setActive(0);
+  };
+
+  const openFileRow = (row: ProjectFileRow) => {
+    const position = { line: row.line, column: row.column };
+    // Chat file references resolve through the active session. A project with no
+    // conversation yet has nothing to resolve against, so the row still opens
+    // the file view directly instead of silently doing nothing.
+    if (activeSessionId) {
+      openFileRef(row.path, undefined, undefined, position);
+    } else {
+      // The work panel is session-scoped, so there is no file view to open yet.
+      showToast(t("search.filesNeedChat"), { variant: "error" });
+    }
+    onClose();
+  };
+
   const runActive = () => {
+    if (searchTab === "files") {
+      const row = fileRows[active];
+      // A row outside the loaded pages opens once its page lands.
+      if (!row) {
+        ensureFileRange(active, active + 1);
+        return;
+      }
+      openFileRow(row);
+      return;
+    }
     if (active === 0) return void run(null);
     for (const row of rows) {
       if (active === row.optionIndex) return void run(row);
@@ -348,7 +504,9 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             aria-controls="global-search-results"
             aria-activedescendant={`global-search-option-${active}`}
             aria-label={t("nav.search")}
-            placeholder={t("search.placeholder")}
+            placeholder={t(
+              searchTab === "files" ? "search.placeholderFiles" : "search.placeholder",
+            )}
             value={query}
             maxLength={500}
             autoFocus
@@ -370,19 +528,82 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                 event.preventDefault();
                 setActive((value) => Math.max(value - 1, 0));
               }
+              if (event.key === "Tab") {
+                event.preventDefault();
+                switchTab(searchTab === "sessions" ? "files" : "sessions");
+              }
               if (event.key === "Enter") {
                 event.preventDefault();
                 runActive();
               }
             }}
           />
+          <div className="search-tabs" role="tablist" aria-label={t("nav.search")}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={searchTab === "sessions"}
+              className={`search-tab ${searchTab === "sessions" ? "active" : ""}`}
+              onClick={() => {
+                setSearchTab("sessions");
+                setActive(0);
+              }}
+            >
+              {t("search.tabSessions")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={searchTab === "files"}
+              className={`search-tab ${searchTab === "files" ? "active" : ""}`}
+              disabled={!fileRoot}
+              title={fileRoot ? fileRoot : t("search.filesNoProject")}
+              onClick={() => {
+                setSearchTab("files");
+                setActive(0);
+              }}
+            >
+              {t("search.tabFiles")}
+            </button>
+          </div>
         </div>
         <div
           id="global-search-results"
-          className="search-results"
+          className={`search-results${searchTab === "files" ? " is-files-tab" : ""}`}
           role="listbox"
           aria-label={t("nav.search")}
         >
+          {searchTab === "files" ? (
+            <>
+              <ProjectFileSearchResults
+                rows={fileRows}
+                fileCount={fileFileCount}
+                query={query}
+                active={active}
+                caseSensitive={caseSensitive}
+                onToggleCase={() => {
+                  setCaseSensitive((value) => !value);
+                  setActive(0);
+                }}
+                onActivate={setActive}
+                onSelect={openFileRow}
+                onEnsureRange={ensureFileRange}
+              />
+              {fileStatus === "loading" ? (
+                <div className="search-empty" role="status">
+                  {t("search.loading")}
+                </div>
+              ) : null}
+              {fileStatus === "error" ? (
+                <div className="search-empty" role="alert">
+                  {t("search.failed")}
+                </div>
+              ) : null}
+              {fileStatus === "idle" && query.trim().length >= 2 && fileRows.length === 0 ? (
+                <div className="search-empty">{t("search.filesEmpty")}</div>
+              ) : null}
+            </>
+          ) : null}
           <button
             id="global-search-option-0"
             type="button"

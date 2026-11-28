@@ -2503,7 +2503,15 @@ sklm: {
   "palette": {
   },
   "search": {
-    placeholder: "Titel und Nachrichten suchen…",
+    filesNeedChat: "Öffne zuerst einen Chat, um Projektdateien in der Dateiansicht zu lesen.",
+    filesSummary: "{{count}} Treffer · {{files}} Dateien",
+    caseSensitive: "Groß-/Kleinschreibung beachten",
+    tabSessions: "Chats",
+    tabFiles: "Dateien",
+    filesEmpty: "Kein passender Dateiinhalt",
+    filesNoProject: "Projekt öffnen, um dessen Dateien zu durchsuchen",
+    placeholder: "Chats durchsuchen – Tab wechselt zu Dateien…",
+    placeholderFiles: "Projektdateien durchsuchen – Tab wechselt zu Chats…",
     metadataMatch: "Titel / Projekt",
     messageMatches: "{{count}} Nachrichtentreffer",
     user: "Du",

@@ -9,6 +9,7 @@ mod data_relocation;
 mod db;
 mod file_batches;
 mod file_resources;
+mod file_search;
 mod keyboard;
 mod mcp_servers;
 mod mode_runs;

@@ -852,6 +852,25 @@ export const api = {
     }).then((result) => ({ ...result, session: normalizeSessionDetail(result.session)! })),
   searchSessions: (query: string, offset = 0) =>
     invoke<SessionSearchPage>(IPC.invoke.sessionSearch, { query, offset }),
+  searchProjectText: (input: {
+    root: string;
+    query: string;
+    caseSensitive?: boolean;
+    offset?: number;
+    limit?: number;
+  }) =>
+    invoke<{
+      engine: string;
+      matches: { path: string; line: number; column: number; text: string }[];
+      /** Every match in the project; `matches` is one page of them. */
+      total: number;
+      fileCount: number;
+      offset: number;
+      nextOffset: number | null;
+      scannedFiles: number;
+      elapsedMs: number;
+      cached: boolean;
+    }>(IPC.invoke.filesSearchText, input),
   getSearchContext: (request: SessionSearchContextRequest) =>
     invoke<SessionSearchContext>(IPC.invoke.sessionSearchContext, request),
   getSession: (id: string, options?: SessionHistoryReadOptions) =>

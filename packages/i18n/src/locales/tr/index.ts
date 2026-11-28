@@ -2513,7 +2513,15 @@ sklm: {
   palette: {
   },
   search: {
-    placeholder: "Başlık ve mesaj ara…",
+    filesNeedChat: "Proje dosyalarını dosya görünümünde açmak için önce bir sohbet açın.",
+    filesSummary: "{{count}} sonuç · {{files}} dosya",
+    caseSensitive: "Büyük/küçük harfe duyarlı",
+    tabSessions: "Sohbetler",
+    tabFiles: "Dosyalar",
+    filesEmpty: "Eşleşen dosya içeriği yok",
+    filesNoProject: "Dosyalarında arama yapmak için bir proje açın",
+    placeholder: "Sohbetlerde ara — Tab dosyalara geçer…",
+    placeholderFiles: "Proje dosyalarında ara — Tab sohbetlere geçer…",
     metadataMatch: "Başlık / proje",
     messageMatches: "{{count}} mesaj eşleşmesi",
     user: "Siz",
