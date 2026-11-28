@@ -14,7 +14,13 @@ import { readFile } from "node:fs/promises";
  * when the paragraph was Arabic-only. #2389 already set dir from majority
  * script and used text-align:start on user bubbles, but Markdown blocks only
  * set dir. This renders the production Markdown pipeline and checks that
- * Arabic blocks also get logical alignment, including headings.
+ * Arabic blocks also get logical alignment, including headings, and that
+ * list containers get the same majority-script dir so logical padding can
+ * follow. Inherited physical alignment and list gutter geometry are
+ * exercised in the Chromium probe (scripts/e2e/bidi-direction.tsx): a
+ * Windows-only default was not independently reproduced, so that probe
+ * uses an ancestor `text-align: left`, which is the inheritance path the
+ * reviewer confirmed.
  */
 test("Arabic Markdown blocks get dir=rtl and text-align:start", async () => {
   const styles = await readFile(
@@ -80,8 +86,14 @@ test("Arabic Markdown blocks get dir=rtl and text-align:start", async () => {
     const quote = render("> اقتباس عربي");
     assert.ok(hasDir(quote, "blockquote", "rtl") && start(quote), quote);
 
-    const list = render("- عنصر قائمة عربي");
-    assert.ok(hasDir(list, "li", "rtl") && start(list), list);
+    const list = render("- عنصر قائمة عربي\n- عنصر ثان");
+    assert.ok(hasDir(list, "ul", "rtl") && hasDir(list, "li", "rtl") && start(list), list);
+
+    const englishList = render("- First item\n- Second item");
+    assert.ok(hasDir(englishList, "ul", "ltr") && hasDir(englishList, "li", "ltr"), englishList);
+
+    const englishOrdered = render("1. First item\n2. Second item");
+    assert.ok(hasDir(englishOrdered, "ol", "ltr") && hasDir(englishOrdered, "li", "ltr"), englishOrdered);
 
     const english = render("Just an English paragraph.");
     assert.ok(hasDir(english, "p", "ltr") && start(english), english);

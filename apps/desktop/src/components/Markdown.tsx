@@ -858,7 +858,9 @@ function textOfChildren(node: unknown): string {
 // #2635: `text-align: start` follows the element's dir. A physical
 // `text-align: left` inherited from an ancestor (or a platform default)
 // would keep an Arabic-only reply left-aligned even when dir=rtl is set.
-// User message paragraphs already use this logical alignment.
+// User message paragraphs already use this logical alignment. Lists also
+// set dir on the ul/ol container so padding-inline-start follows the
+// list's majority script; item-only dir leaves the gutter on the LTR side.
 function bidiDirAndStyle(children: ReactNode, style?: CSSProperties) {
   return {
     dir: directionAttr(textOfChildren(children)),
@@ -866,7 +868,7 @@ function bidiDirAndStyle(children: ReactNode, style?: CSSProperties) {
   };
 }
 
-type BidiTag = "p" | "li" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "blockquote";
+type BidiTag = "p" | "li" | "ul" | "ol" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "blockquote";
 
 function makeBidi<T extends BidiTag>(tag: T) {
   function BidiElement({
@@ -887,6 +889,8 @@ function makeBidi<T extends BidiTag>(tag: T) {
 
 const BidiParagraph = makeBidi("p");
 const BidiListItem = makeBidi("li");
+const BidiList = makeBidi("ul");
+const BidiOrderedList = makeBidi("ol");
 const BidiHeading1 = makeBidi("h1");
 const BidiHeading2 = makeBidi("h2");
 const BidiHeading3 = makeBidi("h3");
@@ -905,6 +909,8 @@ const markdownComponents: Components = {
   table: Table,
   p: BidiParagraph,
   li: BidiListItem,
+  ul: BidiList,
+  ol: BidiOrderedList,
   h1: BidiHeading1,
   h2: BidiHeading2,
   h3: BidiHeading3,
