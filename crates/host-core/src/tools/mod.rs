@@ -32,6 +32,7 @@ mod grep_rg;
 pub mod hashline;
 pub mod ignore_rules;
 mod image_dimensions;
+mod malformed_path;
 #[cfg(any(unix, test))]
 mod process_group;
 pub mod shell;
@@ -1606,82 +1607,6 @@ fn read_image_block(
     }))
 }
 
-/// Reject malformed tool paths before resolution. Some models emit paths with
-/// trailing conversational junk ("src/pages/Wizard.tsx imma?") or surrounding
-/// whitespace (#2552); resolving those fails with an opaque IO error that
-/// invites blind retries. Answer instead with the intended path.
-///
-/// A path with internal whitespace is only rejected when it cannot exist but
-/// its first whitespace-delimited segment does — "my project/notes.txt" is a
-/// legal path and stays untouched. The same holds for punctuation-only suffixes
-/// such as "src/pages/Wizard.tsx:{" (#2552): a prefix cut at the junk boundary
-/// that exists while the full path does not is reported as malformed.
-///
-/// A literal path that names an existing file (even one with a leading or
-/// trailing space) is always allowed. `creation` marks Write-style calls where
-/// a non-existent path is the normal way to create a new file, so the
-/// prefix-based heuristic must not fire there.
-fn malformed_tool_path(root: &Path, path: &str, creation: bool) -> Option<(String, String)> {
-    // A literal path — including one with leading/trailing spaces — is legal
-    // whenever it names something that actually exists.
-    if exists_within(root, path) {
-        return None;
-    }
-    let trimmed = path.trim();
-    if trimmed != path {
-        // Surrounding whitespace is recoverable junk only when the trimmed
-        // path points at something real; otherwise the literal path is just a
-        // (missing) file with whitespace in its name.
-        if trimmed.is_empty() || !exists_within(root, trimmed) {
-            return None;
-        }
-        return Some((
-            "INVALID_ARGUMENT".into(),
-            format!(
-                "path has surrounding whitespace; re-issue the tool call with the bare path, e.g. {}",
-                serde_json::to_string(trimmed).unwrap_or_default()
-            ),
-        ));
-    }
-    if creation || !path.chars().any(|c| c.is_whitespace() || c == ':') {
-        return None;
-    }
-    for head in junk_prefixes(path) {
-        if !head.is_empty() && exists_within(root, head) {
-            return Some((
-                "INVALID_ARGUMENT".into(),
-                format!(
-                    "path looks malformed: {path:?} does not exist but {head:?} does; re-issue the tool call with only the file path"
-                ),
-            ));
-        }
-    }
-    None
-}
-
-/// Existence probe for suggested-path heuristics. Canonicalizes and requires
-/// the result to stay inside `root`, so `..` or symlink escapes never leak
-/// information from outside the workspace and never suggest a denied path.
-fn exists_within(root: &Path, rel: &str) -> bool {
-    let Ok(root_canonical) = crate::workspace::simple_canonicalize(root) else {
-        return false;
-    };
-    let candidate = root.join(rel);
-    match crate::workspace::simple_canonicalize(&candidate) {
-        Ok(canonical) => canonical.starts_with(&root_canonical) && canonical.exists(),
-        Err(_) => false,
-    }
-}
-
-/// Prefixes of `path` cut at each whitespace or `:` character: the candidate
-/// "clean path" a model may have appended junk to.
-fn junk_prefixes(path: &str) -> Vec<&str> {
-    path.char_indices()
-        .filter(|&(_, c)| c.is_whitespace() || c == ':')
-        .map(|(i, _)| &path[..i])
-        .collect()
-}
-
 fn tool_read(
     workspace: Option<&Path>,
     roots: &ContainedRoots,
@@ -1694,7 +1619,7 @@ fn tool_read(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ("INVALID_ARGUMENT".into(), "path required".into()))?;
-    if let Some((code, message)) = malformed_tool_path(root, path, false) {
+    if let Some((code, message)) = malformed_path::malformed_tool_path(root, path, false) {
         return Err((code, message));
     }
     let (resolved, root_kind) =
@@ -1884,7 +1809,7 @@ fn tool_write(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
-    if let Some((code, message)) = malformed_tool_path(root, path, true) {
+    if let Some((code, message)) = malformed_path::malformed_tool_path(root, path, true) {
         return Err(hashline::ToolError::new(code, message));
     }
     let content = args
@@ -2020,7 +1945,9 @@ fn tool_edit(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
-    if let Some((code, message)) = malformed_tool_path(root, path, false) {
+    if let Some((code, message)) =
+        malformed_path::malformed_tool_path_in_scope(root, path, false, scope)
+    {
         return Err(hashline::ToolError::new(code, message));
     }
     let (resolved, root_kind) =
@@ -6340,144 +6267,5 @@ mod tests {
             msg.contains("no-such-file.txt"),
             "diagnostic should name the path: {msg}"
         );
-    }
-
-    #[tokio::test]
-    async fn malformed_tool_paths_get_a_recoverable_diagnostic() {
-        let ws = tempfile::tempdir().unwrap();
-        std::fs::write(ws.path().join("Wizard.tsx"), "hi\n").unwrap();
-
-        // Trailing conversational junk after the path (#2552): the tool names
-        // the intended file instead of failing with an opaque IO error.
-        let result = execute_tool(
-            Some(ws.path()),
-            None,
-            "Edit",
-            &serde_json::json!({
-                "path": "Wizard.tsx imma?",
-                "tag": "abcd",
-                "ops": "..."
-            }),
-            5_000,
-        )
-        .await;
-        assert!(!result.ok);
-        assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
-        let msg = result.content["error"].as_str().unwrap_or_default();
-        assert!(
-            msg.contains("\"Wizard.tsx\""),
-            "diagnostic should point at the intended path: {msg}"
-        );
-
-        // Surrounding whitespace is rejected before any resolution.
-        let result = execute_tool(
-            Some(ws.path()),
-            None,
-            "Read",
-            &serde_json::json!({ "path": " Wizard.tsx " }),
-            5_000,
-        )
-        .await;
-        assert!(!result.ok);
-        assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
-
-        // A legitimate path with internal whitespace still works.
-        let spaced = ws.path().join("my notes.txt");
-        std::fs::write(&spaced, "body\n").unwrap();
-        let result = execute_tool(
-            Some(ws.path()),
-            None,
-            "Read",
-            &serde_json::json!({ "path": "my notes.txt" }),
-            5_000,
-        )
-        .await;
-        assert!(result.ok, "spaced path must be accepted: {result:?}");
-    }
-
-    #[tokio::test]
-    async fn spaced_filenames_and_punctuation_suffixes_stay_correct() {
-        let ws = tempfile::tempdir().unwrap();
-        std::fs::create_dir(ws.path().join("notes")).unwrap();
-
-        // Write creating a new file next to a same-named directory must keep
-        // working: a non-existent path is the normal shape of a creation call.
-        let result = execute_tool(
-            Some(ws.path()),
-            None,
-            "Write",
-            &serde_json::json!({ "path": "notes draft.md", "content": "draft\n" }),
-            5_000,
-        )
-        .await;
-        assert!(
-            result.ok,
-            "Write to a spaced filename must not be rejected: {result:?}"
-        );
-        assert!(ws.path().join("notes draft.md").is_file());
-
-        // Reading a file whose literal name starts with a space still works.
-        std::fs::write(ws.path().join(" leading space.md"), "body\n").unwrap();
-        let result = execute_tool(
-            Some(ws.path()),
-            None,
-            "Read",
-            &serde_json::json!({ "path": " leading space.md" }),
-            5_000,
-        )
-        .await;
-        assert!(
-            result.ok,
-            "literal leading-space filename must read fine: {result:?}"
-        );
-
-        // Punctuation-only junk suffix (#2552): the full path does not exist
-        // but the prefix before the junk does, so it gets the diagnostic
-        // instead of an opaque IO error.
-        std::fs::create_dir_all(ws.path().join("src/pages")).unwrap();
-        std::fs::write(ws.path().join("src/pages/Wizard.tsx"), "hi\n").unwrap();
-        let result = execute_tool(
-            Some(ws.path()),
-            None,
-            "Read",
-            &serde_json::json!({ "path": "src/pages/Wizard.tsx:{" }),
-            5_000,
-        )
-        .await;
-        assert!(!result.ok);
-        assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
-        let msg = result.content["error"].as_str().unwrap_or_default();
-        assert!(
-            msg.contains("\"src/pages/Wizard.tsx\""),
-            "diagnostic should name the intended path: {msg}"
-        );
-
-        // Malformed Edit tags from #2552 stay blocked, now with the received
-        // tag echoed for diagnosability.
-        for tag in ["9DA2 nope?", "410F:{"] {
-            let result = execute_tool(
-                Some(ws.path()),
-                None,
-                "Edit",
-                &serde_json::json!({
-                    "path": "src/pages/Wizard.tsx",
-                    "tag": tag,
-                    "ops": "..."
-                }),
-                5_000,
-            )
-            .await;
-            assert!(!result.ok);
-            assert_eq!(
-                result.error_code.as_deref(),
-                Some("EDIT_TAG_REQUIRED"),
-                "malformed tag {tag:?} must not pass"
-            );
-            let msg = result.content["error"].as_str().unwrap_or_default();
-            assert!(
-                msg.contains(tag),
-                "diagnostic should echo the malformed tag: {msg}"
-            );
-        }
     }
 }
