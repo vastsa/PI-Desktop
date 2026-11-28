@@ -122,21 +122,31 @@ impl CancelToken {
     }
 }
 
-/// Slot the cancel RPC flips without taking the AppState lock.
+/// An install that can be cancelled without taking the AppState lock.
 ///
 /// `market.install` holds that lock for the whole download, so a cancel that
 /// waited on it would only run after the install finished. The token is an
-/// `Arc`, so this is a second handle to the same flag.
-static ACTIVE_CANCEL: OnceLock<Mutex<Option<CancelToken>>> = OnceLock::new();
+/// `Arc`, so this is a second handle to the same flag. Keep the plugin ID here
+/// too so a stale or unrelated cancel request cannot stop another install.
+#[derive(Clone)]
+struct ActiveInstallCancel {
+    plugin_id: String,
+    token: CancelToken,
+}
 
-fn active_cancel_slot() -> &'static Mutex<Option<CancelToken>> {
+static ACTIVE_CANCEL: OnceLock<Mutex<Option<ActiveInstallCancel>>> = OnceLock::new();
+
+fn active_cancel_slot() -> &'static Mutex<Option<ActiveInstallCancel>> {
     ACTIVE_CANCEL.get_or_init(|| Mutex::new(None))
 }
 
-pub(crate) fn arm_active_cancel(token: &CancelToken) {
+pub(crate) fn arm_active_cancel(plugin_id: &str, token: &CancelToken) {
     *active_cancel_slot()
         .lock()
-        .unwrap_or_else(|e| e.into_inner()) = Some(token.clone());
+        .unwrap_or_else(|e| e.into_inner()) = Some(ActiveInstallCancel {
+        plugin_id: plugin_id.to_string(),
+        token: token.clone(),
+    });
 }
 
 pub(crate) fn disarm_active_cancel() {
@@ -145,17 +155,19 @@ pub(crate) fn disarm_active_cancel() {
         .unwrap_or_else(|e| e.into_inner()) = None;
 }
 
-/// Flip the running install's cancel flag. Does not take AppState.
-pub(crate) fn cancel_active_install() -> bool {
+/// Flip the matching running install's cancel flag without taking AppState.
+/// Returns `None` when no install is active and `Some(false)` for a mismatch.
+pub(crate) fn cancel_active_install(plugin_id: &str) -> Option<bool> {
     let guard = active_cancel_slot()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     match guard.as_ref() {
-        Some(token) => {
-            token.cancel();
-            true
+        Some(active) if active.plugin_id == plugin_id => {
+            active.token.cancel();
+            Some(true)
         }
-        None => false,
+        Some(_) => Some(false),
+        None => None,
     }
 }
 
@@ -319,14 +331,16 @@ mod tests {
     }
 
     #[test]
-    fn cancel_active_install_flips_the_armed_token() {
+    fn cancel_active_install_matches_plugin_id() {
         disarm_active_cancel();
-        assert!(!cancel_active_install(), "nothing is running");
+        assert_eq!(cancel_active_install("plugin-a"), None);
         let token = CancelToken::default();
-        arm_active_cancel(&token);
-        assert!(cancel_active_install());
+        arm_active_cancel("plugin-a", &token);
+        assert_eq!(cancel_active_install("plugin-b"), Some(false));
+        assert!(!token.is_cancelled());
+        assert_eq!(cancel_active_install("plugin-a"), Some(true));
         assert!(token.is_cancelled());
         disarm_active_cancel();
-        assert!(!cancel_active_install());
+        assert_eq!(cancel_active_install("plugin-a"), None);
     }
 }

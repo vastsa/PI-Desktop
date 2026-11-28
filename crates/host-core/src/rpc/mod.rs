@@ -1998,6 +1998,31 @@ async fn handle_request(
     params: Value,
     tx: mpsc::UnboundedSender<String>,
 ) -> Result<Value, JsonRpcError> {
+    if method == "market.cancelInstall" {
+        let id = params
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
+        match state.try_lock() {
+            Ok(st) => {
+                if !st.handshook {
+                    return Err(rpc_err(1001, "handshake required", "UNAUTHORIZED"));
+                }
+                if st.shutting_down {
+                    return Err(rpc_err(1001, "host is shutting down", "HOST_SHUTTING_DOWN"));
+                }
+                let cancelled =
+                    crate::plugins::progress::cancel_active_install(id).unwrap_or(false);
+                return Ok(json!({ "cancelled": cancelled, "id": id }));
+            }
+            Err(_) => {
+                if let Some(cancelled) = crate::plugins::progress::cancel_active_install(id) {
+                    return Ok(json!({ "cancelled": cancelled, "id": id }));
+                }
+            }
+        }
+    }
+
     if method != "app.handshake" {
         let st = state.lock().await;
         if !st.handshook {
@@ -5954,7 +5979,6 @@ async fn handle_request(
             let cancel = crate::plugins::CancelToken::default();
             // Armed outside AppState: cancelInstall must flip this flag while
             // install still holds the state lock for the download.
-            crate::plugins::progress::arm_active_cancel(&cancel);
             let mut observer = RpcInstallObserver {
                 tx: tx.clone(),
                 cancel: cancel.clone(),
@@ -5962,7 +5986,9 @@ async fn handle_request(
                 last_phase: None,
             };
             let mut st = state.lock().await;
-            st.plugins.set_install_cancel(Some(cancel));
+            // Arm only after acquiring AppState so concurrent installs cannot
+            // replace each other's active cancellation target.
+            st.plugins.set_install_cancel(id, Some(cancel));
             let outcome = st.plugins.install_from_market_observed(
                 id,
                 version,
@@ -5974,7 +6000,7 @@ async fn handle_request(
             // Whatever happened, nothing is cancellable any more: a token left
             // in place would answer the next cancel for an install that is
             // already over.
-            st.plugins.set_install_cancel(None);
+            st.plugins.set_install_cancel(id, None);
             let result = outcome.map_err(plugin_err)?;
             Ok(json!({ "result": result }))
         }
@@ -5983,9 +6009,9 @@ async fn handle_request(
                 .get("id")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "id required", "INVALID_PARAMS"))?;
-            // Do not take AppState: the install holds that lock while bytes
-            // arrive, and waiting on it would make cancel a no-op.
-            let cancelled = crate::plugins::progress::cancel_active_install();
+            // The common handshake check above already had a chance to
+            // short-circuit a request while AppState was held by an install.
+            let cancelled = crate::plugins::progress::cancel_active_install(id).unwrap_or(false);
             Ok(json!({ "cancelled": cancelled, "id": id }))
         }
         "market.checkUpdates" => {
@@ -6086,6 +6112,51 @@ mod tests {
     use crate::sessions;
     use crate::state::AppState;
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn market_cancel_install_does_not_wait_for_app_state_or_cancel_other_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = AppState::open(dir.path()).unwrap();
+        app.handshook = true;
+        let state = Arc::new(Mutex::new(app));
+        let guard = state.lock().await;
+        let cancel = crate::plugins::CancelToken::default();
+        crate::plugins::progress::arm_active_cancel("plugin-a", &cancel);
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mismatch = tokio::time::timeout(
+            Duration::from_millis(100),
+            handle_request(
+                state.clone(),
+                "market.cancelInstall",
+                json!({ "id": "plugin-b" }),
+                tx.clone(),
+            ),
+        )
+        .await
+        .expect("mismatched cancellation should not wait for AppState")
+        .unwrap();
+        assert_eq!(mismatch["cancelled"], false);
+        assert!(!cancel.is_cancelled());
+
+        let matched = tokio::time::timeout(
+            Duration::from_millis(100),
+            handle_request(
+                state.clone(),
+                "market.cancelInstall",
+                json!({ "id": "plugin-a" }),
+                tx,
+            ),
+        )
+        .await
+        .expect("matching cancellation should not wait for AppState")
+        .unwrap();
+        assert_eq!(matched["cancelled"], true);
+        assert!(cancel.is_cancelled());
+
+        crate::plugins::progress::disarm_active_cancel();
+        drop(guard);
+    }
 
     #[tokio::test]
     async fn bounded_history_mutation_rpcs_return_only_mutation_metadata() {
