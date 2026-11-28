@@ -381,6 +381,22 @@
   color: var(--ds-warning);
 }
 
+/* A run the reader has not opened yet: the same pale/red unread language as the
+   sidebar rows, and gone once the conversation is opened (which reads it). */
+.scheduled-run-unread {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--ds-success);
+  opacity: 0.55;
+}
+
+.scheduled-run-unread.is-failed {
+  background: var(--ds-error);
+  opacity: 1;
+}
+
 .scheduled-run-body {
   display: flex;
   min-width: 0;

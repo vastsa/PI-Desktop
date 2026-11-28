@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ScheduledTask } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
@@ -9,6 +9,7 @@ import { ScheduledTaskDetail } from "../features/scheduled/ScheduledTaskDetail";
 import { ScheduledTaskRail } from "../features/scheduled/ScheduledTaskRail";
 import { useScheduledWorkspace } from "../features/scheduled/use-scheduled-workspace";
 import { rememberScheduledReturn } from "../features/scheduled/scheduled-return";
+import { scheduledUnread } from "../lib/sidebar-unread";
 import "../features/scheduled/scheduled-workspace.css";
 
 /**
@@ -24,6 +25,14 @@ export function ScheduledPage() {
   const setPage = useAppStore((s) => s.setPage);
   const currentWorkspacePath = useAppStore((s) => s.workspace?.path ?? "");
   const providers = useAppStore((s) => s.providers);
+  const sessions = useAppStore((s) => s.sessions);
+  const notifications = useAppStore((s) => s.notifications);
+  // A run's own status is history; the unread marker is whether the reader has
+  // still not seen that result, read from the same notifications as the badge.
+  const unreadOutcomes = useMemo(
+    () => scheduledUnread(sessions, notifications).outcomes,
+    [sessions, notifications],
+  );
   const [editor, setEditor] = useState<ScheduledTask | "new" | null>(null);
   const workspace = useScheduledWorkspace((message) => showToast(message, { variant: "error" }));
   const locale = i18n.resolvedLanguage ?? i18n.language;
@@ -142,6 +151,7 @@ export function ScheduledPage() {
                 busy={busy}
                 now={now}
                 locale={locale}
+                unreadOutcomes={unreadOutcomes}
                 onSelectRun={workspace.selectRun}
                 onOpenSession={(sessionId, runId) => void openSession(sessionId, runId)}
                 onRunNow={() => void workspace.runTaskNow(selectedTask.id)}

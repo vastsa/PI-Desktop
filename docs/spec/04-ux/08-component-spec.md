@@ -541,6 +541,8 @@ visually distinct from list content.
 | Session in progress | Orange breathing dot; static under reduced motion |
 | Session completed | Green check mark from the latest unread task notification when the row is not selected |
 | Session failed | Red circled alert mark from the latest unread task notification when the row is not selected |
+| Hidden project results | A project whose folded or collapsed rows hold an unread result shows one dot beside the project name: pale `--ds-success` for completed, `--ds-error` for failed. Its label and tooltip carry the count, and pinned rows are always rendered, so they never contribute |
+| Scheduled unread count | The Scheduled primary row prints the count of unread results owned by scheduled runs; those transcripts are entered from its page and never listed here |
 | Hover row | Project headers and all conversation rows share one full-row `--ds-bg-hover` surface, radius and transition; selected conversation fill takes precedence |
 | Project session metadata | When Session time is enabled, the trailing slot shows the last-reply date at rest and replaces it with session actions on hover or keyboard focus, without a divider. Dates within seven calendar days are relative; older dates show localized month and day without a year |
 | Current workspace | Project header shows the workspace dot, never a persistent selection fill; topbar follows that workspace; composer exposes no workspace identity |
@@ -1581,7 +1583,9 @@ A scheduled-task run's transcript is never part of this list: the run owns its
 session (`task_runs.session_id`), the host reports that ownership as
 `scheduledRun` on every session summary, and the Scheduled route is its entry
 point. Global session search hides the same rows. Deleting the task releases the
-transcript back into the ordinary lists (issue #1291).
+transcript back into the ordinary lists (issue #1291). Because this list cannot
+show those rows at all, their unread results are reported by the Scheduled
+primary row and by the run's own history row instead of widening the list.
 
 ### 6.2 Anatomy
 
@@ -1721,7 +1725,10 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   `updatedAt` first. A project conversation therefore appears both in Recent
   and in its project group, so it stays visible while that project is folded;
   a temporary conversation appears only in Recent. Recent opens with seven
-  rows; a trailing Load more button appends ten more per click. With Projects
+  rows; a trailing Load more button appends ten more per click. A folded row's
+  unread result is not lost: the project header carries the dot and count for
+  anything Load more or a collapsed group is not rendering, and pinned rows are
+  always rendered so they never contribute. With Projects
   shown, Recent sessions can grow to 291px, and both Recent and Pinned sessions
   shrink into independently scrolling lists when the sidebar runs out of room.
   The Projects list uses the remaining height and reserves room for a project
@@ -4655,6 +4662,7 @@ TASKS (2)                     │ Nightly dependency check   [Enabled] [Run now]
 | Completed run | Success glyph, status, moment and duration |
 | Failed run | Error glyph and the stable error code beside the moment |
 | Running run | No duration yet; the status reads as running |
+| Unread run | The row shows the same pale/red unread dot as a session row, until opening its conversation reads the notification |
 | Empty history | The history card states the task has no runs |
 | No transcript | The run content card states the run stored no transcript |
 | Read failure | The card reports the failure instead of showing an empty pane |
@@ -4686,6 +4694,10 @@ TASKS (2)                     │ Nightly dependency check   [Enabled] [Run now]
   labelled with the route and, when the row's own origin is known, the task it
   belongs to; returning restores that task and that run, and steps back through
   the navigation history when this route is directly behind the conversation.
+- A run whose result is still unread carries the sidebar's unread dot. Opening
+  its conversation is also what reads it: selection acknowledges the session's
+  outcome and marks every unread notification for that session read, which drops
+  the dot here, the Scheduled row's count, and the application badge together.
 - Above 900px the task column sticks below the titlebar band; below it the
   column stacks above the page.
 - Motion: colour and chevron transitions only, disabled under

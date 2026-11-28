@@ -46,6 +46,7 @@ import {
   selectRecentSessions,
 } from "../lib/sidebar-recent-sessions";
 import { listableSessions } from "../lib/session-origin";
+import { hiddenUnreadState } from "../lib/sidebar-unread";
 import {
   composerDropItems,
   hasComposerFileDrag,
@@ -2265,6 +2266,16 @@ export function Sidebar({
       sessionsExpanded,
     );
 
+    // A collapsed group renders nothing, so its folded slice hides nothing
+    // extra: the whole non-pinned history is out of sight either way.
+    const hiddenUnread = hiddenUnreadState(
+      collapsedProject ? history : history.slice(visibleSessions.length),
+      sessionOutcomes,
+    );
+    const hiddenUnreadLabel = hiddenUnread
+      ? t("nav.hiddenUnreadSessions", { count: hiddenUnread.count })
+      : "";
+
     // The live counts cover every session in the group, including pinned and
     // folded ones, because the header answers for the whole project.
     const runSummary = summarizeProjectRuns(
@@ -2401,6 +2412,16 @@ export function Sidebar({
             {showRunCount ? <ProjectRunCount summary={runSummary} /> : null}
             {entry.active ? <span className="sidebar-project-active-dot" aria-label={t("project.active", { defaultValue: "Active" })} /> : null}
           </TooltipButton>
+          {hiddenUnread ? (
+            // Sits outside the title button: the button's accessible name is
+            // the project name alone, so an indicator inside it is silent.
+            <span
+              className={`sidebar-project-unread ${hiddenUnread.failed ? "is-failed" : "is-completed"}`}
+              role="img"
+              aria-label={hiddenUnreadLabel}
+              title={hiddenUnreadLabel}
+            />
+          ) : null}
           <span id={`${projectId}-path-description`} className="sr-only">
             {entry.displayPath ?? entry.path}
             {". "}

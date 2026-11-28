@@ -305,6 +305,8 @@ export const fr = {
     "timeGroupOlder14d": "Précédent 14 jours",
     "timeGroupArchived": "Plus ancien",
     "loadMoreCount": "Charger {{count}} plus…",
+    "hiddenUnreadSessions": "{{count}} non lus dans les sessions repliées",
+    "scheduledUnread": "{{count}} résultats planifiés non lus",
     "hoverCardSpace": "Espace de travail",
     "hoverCardUpdatedAt": "{{when}} mis à jour",
     "hoverCardTemporarySpace": "Temporaire",

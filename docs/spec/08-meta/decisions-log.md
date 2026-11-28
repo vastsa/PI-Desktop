@@ -5447,3 +5447,17 @@ See ADR 0344.
   the same pairing. Keep only device metadata and cookie verifiers on Desktop.
   Explicit disable or revocation persists; first launch still starts off. See
   the [code pairing amendment](../../adr/lan-webui-code-pairing.md#amendment-remember-pairing-across-desktop-launches-d688).
+
+## 2026-11-28 — Hidden conversations report unread through their parent surface (D689)
+
+- Sessions a list cannot render — the rows folded behind Load more, a collapsed
+  project group, and scheduled-run transcripts the session lists keep out
+  (issue #1291) — stay out of those lists. Their unread results are carried by
+  the surface that owns them instead: a dot on the project header, the count on
+  the Scheduled primary row, and a dot on the run in the Scheduled page's
+  history.
+- The marks keep the settled-row vocabulary (`--ds-success` pale for a
+  completed result, `--ds-error` for a failed one) and state their count in the
+  label, so the application badge counts the same results the UI can now point
+  at. No color token, host/RPC/persistence change, and no change to the #1291
+  filtering rule.

@@ -305,6 +305,8 @@ export const de = {
     "timeGroupOlder14d": "Vorherige 14 Tage",
     "timeGroupArchived": "Älter",
     "loadMoreCount": "{{count}} mehr laden…",
+    "hiddenUnreadSessions": "{{count}} ungelesen in den eingeklappten Sitzungen",
+    "scheduledUnread": "{{count}} ungelesene geplante Ergebnisse",
     "hoverCardSpace": "Arbeitsbereich",
     "hoverCardUpdatedAt": "Aktualisiert {{when}}",
     "hoverCardTemporarySpace": "Temporär",

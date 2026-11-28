@@ -455,6 +455,24 @@
   color: var(--ds-accent);
 }
 
+/* A project whose unseen results are folded away or behind a collapsed group.
+   Same pale/red language as the session rows' settled chips, so "unread" reads
+   the same everywhere in the sidebar. */
+.sidebar-project-unread {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-right: 2px;
+  border-radius: var(--radius-full);
+  background: var(--ds-success);
+  opacity: 0.55;
+}
+
+.sidebar-project-unread.is-failed {
+  background: var(--ds-error);
+  opacity: 1;
+}
+
 .sidebar-menu-wrap {
   position: relative;
   display: inline-flex;

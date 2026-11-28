@@ -246,6 +246,22 @@
   white-space: nowrap;
 }
 
+/* Unread results waiting on a destination: the count the app badge includes but
+   the session lists never show (#1291 keeps automation transcripts out). */
+.sidebar-primary-count {
+  flex: 0 0 auto;
+  min-width: 16px;
+  margin-left: auto;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--ds-bg-active);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-3xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-none);
+  text-align: center;
+}
+
 .composer-toolbar .icon-btn {
   height: 28px;
   min-width: 28px;

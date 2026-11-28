@@ -33,7 +33,9 @@ destination, chat as the home surface, tools and permissions inline.
   **Sessions** section with new-session and sort actions, retained open-project
   groups under a following **Projects** section with a persistent new-project
   action. Above the lists, three labelled primary rows: **New task**,
-  **Scheduled** (hidden while scheduled tasks are disabled) and **Plugin
+  **Scheduled** (hidden while scheduled tasks are disabled; it prints the
+  count of unread results owned by scheduled runs, because those transcripts
+  are entered from its page and never listed below) and **Plugin
   market** (opens the Extensions page on its Market tab; activating it again
   while Extensions is active performs one Back step). The footer holds only a
   labelled **Settings** entry (opens the Settings dialog) on the left and the
@@ -266,6 +268,14 @@ destination, chat as the home surface, tools and permissions inline.
   migration is required.
   Motion is decoration only: `prefers-reduced-motion` keeps both static
   shapes legible with the animation removed.
+- **Hidden unread results**: the header also answers for results the group is
+  not rendering — sessions folded behind Load more and, while the group is
+  collapsed, every non-pinned row. One dot sits beside the project name: red
+  `--ds-error` when any hidden result failed, the pale `--ds-success` of a
+  settled completed row otherwise, with the count in its label and tooltip. It
+  disappears as soon as nothing hidden is unread or the rows are revealed.
+  Pinned rows are always rendered and never contribute; opening a hidden
+  conversation reads its outcome like any other row's badge.
 - **Project actions**: open folder reveals the primary project directory; Edit
   project changes the host-owned logical group name and adjusts eligible
   non-primary roots (keeping renderer metadata in sync); pin/unpin changes

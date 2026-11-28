@@ -14,6 +14,7 @@ import {
 import { resolveSelectedRun, runDurationMs } from "./scheduled-runs";
 import { cadenceHasClock, cadenceLabel, CADENCE_I18N_KEYS, RUN_STATUS_I18N_KEYS } from "./scheduled-labels";
 import { ScheduledRunHistory } from "./ScheduledRunHistory";
+import type { SidebarSessionOutcome } from "../../lib/sidebar-session-status";
 import { ScheduledRunTranscript } from "./ScheduledRunTranscript";
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -41,6 +42,7 @@ export function ScheduledTaskDetail({
   busy,
   now,
   locale,
+  unreadOutcomes,
   onSelectRun,
   onOpenSession,
   onRunNow,
@@ -59,6 +61,8 @@ export function ScheduledTaskDetail({
   busy: boolean;
   now: number;
   locale: string;
+  /** Unread result per session id; passed down so a run row can mark it. */
+  unreadOutcomes?: Readonly<Record<string, SidebarSessionOutcome | undefined>>;
   onSelectRun: (runId: string) => void;
   onOpenSession: (sessionId: string, runId: string) => void;
   onRunNow: () => void;
@@ -182,6 +186,7 @@ export function ScheduledTaskDetail({
         selectedRunId={selectedRun?.id ?? null}
         busy={busy}
         locale={locale}
+        unreadOutcomes={unreadOutcomes}
         onSelectRun={onSelectRun}
         onOpenSession={onOpenSession}
       />

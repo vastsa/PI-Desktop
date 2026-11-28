@@ -314,6 +314,8 @@ export const tr = {
     timeGroupOlder14d: "Önceki 14 gün",
     timeGroupArchived: "Daha eski",
     loadMoreCount: "{{count}} tane daha yükle…",
+    hiddenUnreadSessions: "Katlanmış oturumlarda {{count}} okunmamış",
+    scheduledUnread: "{{count}} okunmamış zamanlanmış sonuç",
     hoverCardSpace: "Çalışma alanı",
     hoverCardUpdatedAt: "Güncellendi {{when}}",
     hoverCardTemporarySpace: "Geçici",

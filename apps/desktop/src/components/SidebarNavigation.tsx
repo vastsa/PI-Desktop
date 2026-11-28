@@ -1,7 +1,9 @@
 import { sidebarModuleVisible } from "@pi-desktop/shared";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useUpdateState } from "../hooks/use-update-state";
 import { api } from "../lib/api";
+import { scheduledUnread } from "../lib/sidebar-unread";
 import { usePluginBrowseState } from "../features/plugins/browse-state";
 import { useAppStore } from "../stores/app-store";
 import { IconClock, IconNewSession, IconPlug, IconSettings } from "./icons";
@@ -33,6 +35,17 @@ export function SidebarPrimaryNav({
   const showScheduled =
     scheduledTasksEnabled && sidebarModuleVisible(modules, "scheduled");
   const showPluginMarket = sidebarModuleVisible(modules, "pluginMarket");
+  const sessions = useAppStore((s) => s.sessions);
+  const notifications = useAppStore((s) => s.notifications);
+  // Scheduled transcripts never reach the session lists (#1291), so their
+  // unread results are only countable here.
+  const scheduledUnreadCount = useMemo(
+    () => (showScheduled ? scheduledUnread(sessions, notifications).count : 0),
+    [showScheduled, sessions, notifications],
+  );
+  const scheduledUnreadLabel = t("nav.scheduledUnread", {
+    count: scheduledUnreadCount,
+  });
   const openPluginMarket = () => {
     usePluginBrowseState.getState().setTab("market");
     setPage("plugins");
@@ -69,6 +82,11 @@ export function SidebarPrimaryNav({
         >
           <IconClock size={15} aria-hidden />
           <span className="sidebar-primary-label">{t("scheduled.title")}</span>
+          {scheduledUnreadCount > 0 ? (
+            <span className="sidebar-primary-count" title={scheduledUnreadLabel}>
+              {scheduledUnreadCount}
+            </span>
+          ) : null}
         </button>
       )}
       {showPluginMarket && (

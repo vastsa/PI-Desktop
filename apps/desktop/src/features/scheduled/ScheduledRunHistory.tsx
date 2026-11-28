@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { ScheduledTaskRun } from "@pi-desktop/shared";
 import { TooltipButton, cx } from "../../components/ui";
+import type { SidebarSessionOutcome } from "../../lib/sidebar-session-status";
 import {
   IconChevronDown,
   IconCircleAlert,
@@ -35,6 +36,7 @@ export function ScheduledRunHistory({
   selectedRunId,
   busy,
   locale,
+  unreadOutcomes = {},
   onSelectRun,
   onOpenSession,
 }: {
@@ -44,6 +46,8 @@ export function ScheduledRunHistory({
   selectedRunId: string | null;
   busy: boolean;
   locale: string;
+  /** Unread result per session id, so a run row can mark what still needs a look. */
+  unreadOutcomes?: Readonly<Record<string, SidebarSessionOutcome | undefined>>;
   onSelectRun: (runId: string) => void;
   onOpenSession: (sessionId: string, runId: string) => void;
 }) {
@@ -68,6 +72,10 @@ export function ScheduledRunHistory({
               const selected = run.id === selectedRunId;
               const duration = runDurationMs(run);
               const sessionId = run.sessionId;
+              const unread = sessionId ? unreadOutcomes[sessionId] : undefined;
+              const unreadLabel = unread
+                ? t(unread === "failed" ? "nav.sessionFailed" : "nav.sessionCompleted")
+                : "";
               const meta = [
                 formatMoment(run.startedAt, locale),
                 duration === null ? "" : formatDuration(duration),
@@ -94,6 +102,14 @@ export function ScheduledRunHistory({
                       aria-hidden
                     />
                   </button>
+                  {unread ? (
+                    <span
+                      className={cx("scheduled-run-unread", unread === "failed" ? "is-failed" : "is-completed")}
+                      role="img"
+                      aria-label={unreadLabel}
+                      title={unreadLabel}
+                    />
+                  ) : null}
                   {sessionId && (
                     <TooltipButton
                       tooltip={t("scheduled.openResult")}
