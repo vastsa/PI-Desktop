@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const LOCALE_IDS = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr", "pt-BR"];
+const LOCALE_IDS = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr", "pt-BR", "ru"];
 
 /** The label every locale arms its delete item with. */
 const CONFIRM_LABELS = {
@@ -19,6 +19,7 @@ const CONFIRM_LABELS = {
   ko: "삭제할까요?",
   tr: "Silinsin mi?",
   "pt-BR": "Excluir?",
+  ru: "Удалить?",
 };
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");

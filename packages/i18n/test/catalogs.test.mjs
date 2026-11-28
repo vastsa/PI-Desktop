@@ -247,17 +247,20 @@ test("locale resolution maps variants onto shipped catalogs and falls back to En
   assert.equal(resolveLocale("pt-BR"), "pt-BR");
   assert.equal(resolveLocale("pt_BR"), "pt-BR");
   assert.equal(resolveLocale("pt-PT"), "pt-BR");
+  assert.equal(resolveLocale("ru"), "ru");
+  assert.equal(resolveLocale("ru-RU"), "ru");
+  assert.equal(resolveLocale("ru_RU"), "ru");
   assert.equal(resolveLocale(), "en");
 });
 
 test("the locale registry lists English first, then other locales by English name", () => {
   assert.deepEqual(
     supportedLocales.map((locale) => locale.id),
-    ["en", "zh-CN", "zh-TW", "de", "es", "tr", "fr", "ko", "pt-BR"],
+    ["en", "zh-CN", "zh-TW", "de", "es", "tr", "fr", "ko", "pt-BR", "ru"],
   );
   assert.deepEqual(
     listedLocales().map((locale) => locale.id),
-    ["en", "zh-CN", "zh-TW", "fr", "de", "ko", "pt-BR", "es", "tr"],
+    ["en", "zh-CN", "zh-TW", "fr", "de", "ko", "pt-BR", "ru", "es", "tr"],
   );
   assert.equal(localeInfoNative("de"), "Deutsch");
   assert.equal(localeInfoNative("es"), "Español");
@@ -265,6 +268,7 @@ test("the locale registry lists English first, then other locales by English nam
   assert.equal(localeInfoNative("tr"), "Türkçe");
   assert.equal(localeInfoNative("ko"), "한국어");
   assert.equal(localeInfoNative("pt-BR"), "Português (Brasil)");
+  assert.equal(localeInfoNative("ru"), "Русский");
   assert.equal(english["settings.languageSearchPlaceholder"], "Search languages…");
   assert.equal(english["settings.themeSearchPlaceholder"], "Search themes…");
   assert.equal(english["settings.languageAutoDesc"], "Currently {{state}}");
@@ -293,6 +297,12 @@ test("the locale registry lists English first, then other locales by English nam
   assert.equal(brazilian["nav.projects"], "Projetos");
   assert.equal(brazilian["nav.temporarySessions"], "Conversas temporárias");
   assert.notEqual(brazilian["app.tagline"], english["app.tagline"]);
+  const russian = flattenCatalog(catalogs.ru);
+  assert.equal(russian["settings.language"], "Язык");
+  assert.equal(russian["settings.languageAuto"], "Как в системе");
+  assert.equal(russian["nav.projects"], "Проекты");
+  assert.equal(russian["nav.temporarySessions"], "Временные чаты");
+  assert.notEqual(russian["app.tagline"], english["app.tagline"]);
 });
 
 function localeInfoNative(id) {

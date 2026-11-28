@@ -74,7 +74,7 @@ test("market strings exist in en and zh-CN", () => {
 });
 
 test("every shipped locale carries the MCP market recovery strings", async () => {
-  const ids = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr", "pt-BR"];
+  const ids = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr", "pt-BR", "ru"];
   for (const id of ids) {
     const locale = await read(`../../../packages/i18n/src/locales/${id}/index.ts`);
     assert.match(locale, /remotePartial: "/, `${id} remotePartial`);
