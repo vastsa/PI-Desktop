@@ -116,9 +116,10 @@ function createFileOperations(): FileOperations {
 /**
  * Spellings of `path` kept on a stored `Read` / `Write` / `Edit` call.
  *
- * `path` plus `PATH_ARG_ALIASES` from runtime.ts, in that map's order (D273 /
- * issue #454). This module cannot import the map: runtime.ts already imports
- * the planner. `normalizeToolParams` folds an alias only when the call
+ * `path` plus `PATH_ARG_ALIASES` from tool-param-aliases.ts, in that map's
+ * order (D273 / issue #454). Transcripts recorded before #2552 may carry
+ * differing spellings that ran with `path`; current calls with differing
+ * spellings fail before execution. `normalizeToolParams` folds an alias only when the call
  * executes, and the runtime defines no `prepareArguments`, so the assistant
  * message still carries the spelling the model sent.
  */
