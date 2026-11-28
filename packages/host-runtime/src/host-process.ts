@@ -1,3 +1,4 @@
+import { constants } from "node:buffer";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
@@ -139,9 +140,10 @@ export class HostProcess {
       if (this.exitObserved) this.cleanupProcessListeners();
     });
 
-    this.stdoutReader = readNdjsonLines(this.child.stdout, (line) =>
-      this.onLine(line),
-    );
+    this.stdoutReader = readNdjsonLines(this.child.stdout, (line) => this.onLine(line), {
+      maxFrameLength: constants.MAX_STRING_LENGTH,
+      onOversizedFrame: (prefix) => this.onOversizedFrame(prefix),
+    });
   }
 
   private closeTransport(error: Error) {
@@ -218,6 +220,24 @@ export class HostProcess {
     if (this.closed) return () => undefined;
     this.exitHandlers.add(handler);
     return () => this.exitHandlers.delete(handler);
+  }
+
+  private onOversizedFrame(prefix: string) {
+    // host-core serializes JsonRpcResponse with jsonrpc and id before the
+    // result/error. Match only that header, never an id nested in a payload.
+    const id = /^\{\s*"jsonrpc"\s*:\s*"2\.0"\s*,\s*"id"\s*:\s*"([0-9a-f-]{36})"\s*,/.exec(prefix)?.[1];
+    const pending = id === undefined ? undefined : this.pending.get(id);
+    if (id === undefined || !pending) {
+      console.warn("[RPC] Dropped oversized host-process NDJSON frame");
+      return;
+    }
+    this.pending.delete(id);
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.reject(Object.assign(new Error("Local host response exceeds the transport frame limit"), {
+      code: 1002,
+      errorCode: ErrorCodes.LIMIT_EXCEEDED,
+      data: { scope: "host-response", errorCode: ErrorCodes.LIMIT_EXCEEDED },
+    }));
   }
 
   private onLine(line: string) {

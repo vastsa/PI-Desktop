@@ -115,6 +115,36 @@ describe("readNdjsonLines", () => {
     expect(input.listenerCount("close")).toBe(0);
   });
 
+  it("drains an oversized frame and delivers valid frames on the same stream", () => {
+    const input = new FakeNdjsonInput();
+    const lines: string[] = [];
+    const oversized: string[] = [];
+    readNdjsonLines(input, (line) => lines.push(line), {
+      maxFrameLength: 8,
+      onOversizedFrame: (prefix) => oversized.push(prefix),
+    });
+    input.write("exactly8\n123");
+    input.write("456789");
+    input.write(" discarded\nok\nlast");
+    input.finish();
+    expect(lines).toEqual(["exactly8", "ok", "last"]);
+    expect(oversized).toEqual(["123456789"]);
+  });
+
+  it("bounds the retained oversized prefix and drains an unterminated frame", () => {
+    const input = new FakeNdjsonInput();
+    const lines: string[] = [];
+    const oversized: string[] = [];
+    readNdjsonLines(input, (line) => lines.push(line), {
+      maxFrameLength: 256,
+      onOversizedFrame: (prefix) => oversized.push(prefix),
+    });
+    input.write("a".repeat(32));
+    input.finish("b".repeat(2048));
+    expect(lines).toEqual([]);
+    expect(oversized).toEqual(["a".repeat(32) + "b".repeat(224)]);
+  });
+
   it("discards a partial frame and detaches when the stream is destroyed", () => {
     const input = new FakeNdjsonInput();
     const lines: string[] = [];

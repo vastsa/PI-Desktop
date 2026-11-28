@@ -52,6 +52,9 @@ MVP transport decision (**D001**):
 - Invalid JSON frames produce a diagnostic containing only the byte length,
   never payload text, before being discarded. Later complete frames remain
   readable. Existing session text is not rewritten or migrated.
+- The Node host client drains responses beyond its maximum string length
+  without concatenating or logging the payload. A matching response rejects
+  only its own request as `LIMIT_EXCEEDED`; later frames remain readable.
 - Encoding: UTF-8
 - Request/response: JSON-RPC 2.0 style
 
