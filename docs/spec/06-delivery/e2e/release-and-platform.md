@@ -1184,6 +1184,25 @@
 - **Milestone:** M6+.
 - **Status:** Automated; run against the task/PR integration candidate.
 
+## E2E-RPC-oversized-response-keeps-connection-readable
+
+- **Preconditions:** A task candidate with an isolated Host profile and two
+  persisted sessions. One full `session.get` reply exceeds Node's maximum
+  string length; the other reply fits. No provider credentials are required.
+- **Steps:** Request the oversized history through the Node Host client. On
+  the same connection, also issue a `session.get` for the other session and a
+  `app.handshake`. Do not restart the Host or retry the oversized request.
+- **Expected:** Only the oversized call rejects with `LIMIT_EXCEEDED`. The
+  connection drains that reply through LF without logging its payload, and the
+  normal history read and handshake complete without timing out. The oversized
+  history itself is not returned or modified.
+- **Specs:** `03-runtime/06-host-rpc-protocol.md` §2.
+- **Acceptance:** A (runtime), C (sessions), Quality (no crash).
+- **Milestone:** M6+.
+- **Status:** Manual Host RPC scenario; automated transport coverage in
+  `packages/host-runtime/src/host-response-limit.test.ts` and framing coverage
+  in `packages/shared/src/ndjson.test.ts`.
+
 ## E2E-RUNTIME-unique-tool-call-ids-per-request
 
 - **Preconditions:** A session transcript that carries the same tool call twice
