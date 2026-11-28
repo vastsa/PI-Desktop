@@ -1238,9 +1238,10 @@ another session never covers it or moves focus; returning to the originating
   `plans.pending` can rehydrate a still-pending row. The approval card does not
   expose a validity/deadline concept.
 Mode/provider/model/permission/shell configuration and new prompts remain
-disabled while an active `pending` approval or turn exists. During pending
-approval the existing draft remains in the textarea but is read-only; only
-Approve and Reject remain enabled on the approval surface. Reject, expiry, or
+disabled while an active `pending` approval or turn exists. During local Plan
+approval, the composer accepts revision instructions. Sending them rejects the
+current proposal before starting another planning turn in that session.
+Approve and Reject remain available on the approval card. Reject, expiry, or
 interruption re-enables them; terminal proposal snapshots do not keep the gate
 closed. The renderer retains the latest checkpoint/execution status per session
 only for its current lifetime, so rejected, expired, interrupted, approved,

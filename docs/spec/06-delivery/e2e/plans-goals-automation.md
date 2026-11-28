@@ -229,8 +229,14 @@ being fetched on every subsequent poll.
   the execution permission. Reject sends no mode and preserves it.
   Rejection is terminal for the first row, leaves durable mode Plan, and returns
   live state to editable planning. The later prompt/resubmission creates a
-  second complete Markdown snapshot and a different `.pi/plan/*.md` artifact;
-  the first artifact bytes remain unchanged. Approving the second proposal with
+  second complete Markdown snapshot and a different `.pi/plan/*.md` artifact.
+  Also exercise that sequence by typing a revision in the pending Plan composer
+  and sending it. With a long localized action label, verify the toolbar keeps
+  its controls on one line at 450–768 px and the compact send button retains
+  its accessible name. Typing leaves the first proposal pending. Sending rejects it
+  and delivers the revision once to the same Plan session. The revised proposal
+  awaits approval with the Session's original permission. The first artifact
+  retains its original bytes. Approving the second proposal with
   the Session's Auto mode still changes the same Agent to Agent and queues execution.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`,
   `03-runtime/02-agent-runtime.md`, `03-runtime/04-data-storage.md`,

@@ -8,6 +8,8 @@ import {
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { slotSsr } from "./helpers/slot-ssr.mjs";
+import { composerToolbar } from "./helpers/composer-toolbar.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -47,6 +49,15 @@ const [
 
 const queuedPromptsLib = await read("../src/lib/queued-prompts.ts");
 
+test("an empty pending Plan keeps Stop available while the original turn finishes", async t => {
+  const toolbar = await composerToolbar(t, await slotSsr(t), {
+    mode: "plan", revisingPlan: true, runActive: true, sendBlocked: true, stopAllowed: true,
+  });
+  const html = toolbar();
+  assert.match(html, /<button[^>]*class="stop-btn"[^>]*>/);
+  assert.doesNotMatch(html, /<button[^>]*class="stop-btn"[^>]*disabled|data-testid="send-plan-revision"/);
+});
+
 test("composer send/stop button follows draft content and the visible session's run state", () => {
   const composerRight = toolbar.match(/<div className="composer-right">[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
   // Plan mode widens the running condition: `runActive` folds an in-flight
@@ -54,7 +65,7 @@ test("composer send/stop button follows draft content and the visible session's 
   // switches to Stop only when that session is running and the draft is empty.
   const submitSlot =
     composerRight.match(
-      /\{runActive && !hasDraftContent \? \([\s\S]*?\) : \([\s\S]*?\)\}/,
+      /runActive && !hasDraftContent \? \([\s\S]*?\) : \([\s\S]*?\)\}/,
     )?.[0] ?? "";
   assert.ok(submitSlot.length > 0, "single submit slot implementation not found");
   assert.match(submitSlot, /className="stop-btn"/);
@@ -91,7 +102,7 @@ test("composer send/stop button follows draft content and the visible session's 
     /className="stop-btn"[\s\S]*?\) : null\}[\s\S]*?className="send-btn"/,
     "Stop must not render beside an always-present Send button",
   );
-  assert.match(composer, /const inputBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
+  assert.match(composer, /const inputBlocked = approvalBlocksInput \|\| pasting \|\| nativeInputBlocked;/);
   assert.match(composer, /const controlsBlocked = approvalPending \|\| nativeSession \|\| !sessionAllows\(capabilitySession, "canConfigureModel"\);/);
   assert.match(composer, /contentEditable=\{!inputBlocked\}/);
   assert.match(composer, /disabled=\{controlsBlocked\}/);
