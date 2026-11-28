@@ -14,6 +14,7 @@ import { LanWebUiSection } from "../../lan-webui/LanWebUiSection";
 import { CloseBehaviorSection } from "../developer-sections";
 import { SettingsCard, SettingsRow } from "../primitives";
 import { StorageSettingsSection } from "../StorageSettingsSection";
+import { BrowserCookiesSection } from "../BrowserCookiesSection";
 
 export function SystemSettings({
   settings,
@@ -32,6 +33,8 @@ export function SystemSettings({
       <LanWebUiSection />
 
       <StorageSettingsSection />
+
+      <BrowserCookiesSection />
 
       <SettingsCard title={t("settings.power")}>
         <SettingsRow
