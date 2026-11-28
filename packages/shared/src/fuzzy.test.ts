@@ -118,3 +118,19 @@ describe("selectBestMatches", () => {
     );
   });
 });
+
+describe("fuzzy highlight offsets", () => {
+  it("keeps highlight ranges on the original path when lowercasing changes length", () => {
+    // "İ" (U+0130) lowercases to two UTF-16 code units, shifting every offset after it.
+    const path = "İzmir/notes.md";
+    const match = fuzzyMatchPath("notes", path);
+    expect(match?.ranges).toEqual([[6, 11]]);
+    const [start, end] = match!.ranges[0]!;
+    expect(path.slice(start, end)).toBe("notes");
+  });
+
+  it("keeps command highlight ranges on the original text when lowercasing changes length", () => {
+    const text = "İfoo-bar";
+    expect(fuzzyMatchCommand("bar", text)?.ranges).toEqual([[5, 8]]);
+  });
+});
