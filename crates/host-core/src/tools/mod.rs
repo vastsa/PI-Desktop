@@ -1619,9 +1619,16 @@ fn tool_read(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ("INVALID_ARGUMENT".into(), "path required".into()))?;
-    if let Some((code, message)) = malformed_path::malformed_tool_path(path, false, |candidate| {
-        tool_path_is_allowed_existing(root, roots, candidate, allow_external_paths, None)
-    }) {
+    if let Some((code, message)) = malformed_path::malformed_tool_path(
+        path,
+        false,
+        |candidate| {
+            tool_path_is_allowed_existing(root, roots, candidate, allow_external_paths, None, false)
+        },
+        |candidate| {
+            tool_path_is_allowed_existing(root, roots, candidate, allow_external_paths, None, true)
+        },
+    ) {
         return Err((code, message));
     }
     let (resolved, root_kind) =
@@ -1761,14 +1768,16 @@ fn tool_read(
 /// Resolve once with the usual permission policy, then check the exact path
 /// the mutator will use (including Edit's parsed move destination).
 /// Whether `input` is authorized by the same resolver the tool will use, and
-/// currently exists. Used only when the malformed-path heuristic might emit
-/// a suggestion, so ordinary paths never pay this preflight.
+/// currently exists. `regular_file` requires a regular file (used for retry
+/// suggestions). Used only when the malformed-path heuristic might emit a
+/// suggestion, so ordinary paths never pay this preflight.
 fn tool_path_is_allowed_existing(
     root: &Path,
     roots: &ContainedRoots,
     input: &str,
     allow_external_paths: bool,
     scope: Option<&write_scope::BoundWriteScope>,
+    regular_file: bool,
 ) -> bool {
     let resolved = if scope.is_some() {
         resolve_mutation_path(root, roots, input, allow_external_paths, scope)
@@ -1780,7 +1789,13 @@ fn tool_path_is_allowed_existing(
             .map(|(path, _)| path)
     };
     match resolved {
-        Some(resolved) if !ignore_rules::is_sensitive_path(&resolved) => resolved.exists(),
+        Some(resolved) if !ignore_rules::is_sensitive_path(&resolved) => {
+            if regular_file {
+                resolved.is_file()
+            } else {
+                resolved.exists()
+            }
+        }
         _ => false,
     }
 }
@@ -1836,7 +1851,9 @@ fn tool_write(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
-    if let Some((code, message)) = malformed_path::malformed_tool_path(path, true, |_| false) {
+    if let Some((code, message)) =
+        malformed_path::malformed_tool_path(path, true, |_| false, |_| false)
+    {
         return Err(hashline::ToolError::new(code, message));
     }
     let content = args
@@ -1972,9 +1989,23 @@ fn tool_edit(
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| hashline::ToolError::new("INVALID_ARGUMENT", "path required"))?;
-    if let Some((code, message)) = malformed_path::malformed_tool_path(path, false, |candidate| {
-        tool_path_is_allowed_existing(root, roots, candidate, allow_external_paths, scope)
-    }) {
+    if let Some((code, message)) = malformed_path::malformed_tool_path(
+        path,
+        false,
+        |candidate| {
+            tool_path_is_allowed_existing(
+                root,
+                roots,
+                candidate,
+                allow_external_paths,
+                scope,
+                false,
+            )
+        },
+        |candidate| {
+            tool_path_is_allowed_existing(root, roots, candidate, allow_external_paths, scope, true)
+        },
+    ) {
         return Err(hashline::ToolError::new(code, message));
     }
     let (resolved, root_kind) =

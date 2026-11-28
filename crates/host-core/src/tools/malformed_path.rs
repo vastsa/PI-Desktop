@@ -16,17 +16,21 @@
 /// Write (`creation`) is left alone: a path that does not exist is the normal
 /// shape of a create call, including names with surrounding whitespace.
 ///
-/// `allowed_existing` is called only when a hint might be emitted. A literal
-/// path that already names an existing, allowed file is never rejected —
-/// even when the name has leading or trailing spaces. Surrounding whitespace
-/// is only treated as recoverable junk when the trimmed form is allowed and
-/// the literal path is not. Prefix cuts at whitespace or `:` (except a
-/// Windows drive-letter colon) are only used when the remainder looks like
-/// junk (`imma?`, `:{`), not like a missing filename (`foo bar.ts`).
+/// `existing_literal` and `existing_retry_file` are called only when a hint
+/// might be emitted. A literal path that already names an existing, allowed
+/// path (file or directory) is never rejected — even when the name has
+/// leading or trailing spaces. Retry suggestions name only regular files, so
+/// `Read("notes extra?")` does not tell the caller to retry Read on a
+/// `notes` directory. Surrounding whitespace is only treated as recoverable
+/// junk when the trimmed form is an allowed regular file and the literal
+/// path is not. Prefix cuts at whitespace or `:` (except a Windows
+/// drive-letter colon) are only used when the remainder looks like junk
+/// (`imma?`, `:{`), not like a missing filename (`foo bar.ts`).
 pub(crate) fn malformed_tool_path(
     path: &str,
     creation: bool,
-    allowed_existing: impl Fn(&str) -> bool,
+    existing_literal: impl Fn(&str) -> bool,
+    existing_retry_file: impl Fn(&str) -> bool,
 ) -> Option<(String, String)> {
     if creation {
         return None;
@@ -41,14 +45,14 @@ pub(crate) fn malformed_tool_path(
     }
     // A literal path — including one with leading/trailing spaces — is legal
     // whenever it names something that actually exists and is allowed.
-    if allowed_existing(path) {
+    if existing_literal(path) {
         return None;
     }
     if surrounding {
         // Surrounding whitespace is recoverable junk only when the trimmed
-        // path is allowed; otherwise the literal path is just a (missing)
-        // file with whitespace in its name.
-        if trimmed.is_empty() || !allowed_existing(trimmed) {
+        // path is an allowed regular file; otherwise the literal path is
+        // just a (missing) file with whitespace in its name.
+        if trimmed.is_empty() || !existing_retry_file(trimmed) {
             return None;
         }
         return Some((
@@ -60,7 +64,7 @@ pub(crate) fn malformed_tool_path(
         ));
     }
     for head in junk_heads {
-        if !allowed_existing(head) {
+        if !existing_retry_file(head) {
             continue;
         }
         return Some((
@@ -349,9 +353,12 @@ mod tests {
         // A Windows absolute path must not treat the drive letter as a junk
         // prefix, even when a workspace entry is named `C`.
         assert_eq!(
-            malformed_tool_path(r"C:\ext\a.txt", false, |_| unreachable!(
-                "ordinary path must not preflight"
-            )),
+            malformed_tool_path(
+                r"C:\ext\a.txt",
+                false,
+                |_| unreachable!("ordinary path must not preflight"),
+                |_| unreachable!("ordinary path must not preflight"),
+            ),
             None
         );
         let result = execute_tool(
@@ -377,21 +384,27 @@ mod tests {
             probes.set(probes.get() + 1);
             true
         };
-        assert_eq!(malformed_tool_path("src/main.rs", false, probe), None);
+        assert_eq!(
+            malformed_tool_path("src/main.rs", false, probe, probe),
+            None
+        );
         assert_eq!(
             probes.get(),
             0,
             "ordinary paths must not consult authorization or existence"
         );
-        assert_eq!(malformed_tool_path("foo bar.ts", false, probe), None);
+        assert_eq!(malformed_tool_path("foo bar.ts", false, probe, probe), None);
         assert_eq!(
             probes.get(),
             0,
             "a missing spaced filename is not a junk suffix"
         );
-        assert_eq!(malformed_tool_path(r"C:\ext\a.txt", false, probe), None);
+        assert_eq!(
+            malformed_tool_path(r"C:\ext\a.txt", false, probe, probe),
+            None
+        );
         assert_eq!(probes.get(), 0, "a drive-letter path must not preflight");
-        assert_eq!(malformed_tool_path("src/main.rs", true, probe), None);
+        assert_eq!(malformed_tool_path("src/main.rs", true, probe, probe), None);
         assert_eq!(probes.get(), 0, "Write must not preflight");
     }
 
@@ -463,6 +476,81 @@ mod tests {
             !msg.contains("does not exist but")
                 && !msg.to_ascii_lowercase().contains("surrounding whitespace"),
             "must not hint that the sensitive path exists: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_hints_name_only_regular_files() {
+        let ws = tempfile::tempdir().unwrap();
+        std::fs::create_dir(ws.path().join("notes")).unwrap();
+        std::fs::write(ws.path().join("sample.rs"), "fn main() {}\n").unwrap();
+
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "sample.rs extra?" }),
+            5_000,
+        )
+        .await;
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
+        let msg = result.content["error"].as_str().unwrap_or_default();
+        assert!(
+            msg.contains("\"sample.rs\""),
+            "file retry target must be suggested: {msg}"
+        );
+
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "sample.rs" }),
+            5_000,
+        )
+        .await;
+        assert!(
+            result.ok,
+            "retrying the suggested file path must succeed: {result:?}"
+        );
+
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "notes extra?" }),
+            5_000,
+        )
+        .await;
+        assert!(!result.ok);
+        assert_ne!(
+            result.error_code.as_deref(),
+            Some("INVALID_ARGUMENT"),
+            "must not suggest retrying Read/Edit on a directory: {result:?}"
+        );
+        let msg = result.content["error"].as_str().unwrap_or_default();
+        assert!(
+            !msg.contains("\"notes\"")
+                && !msg.contains("does not exist but")
+                && !msg.to_ascii_lowercase().contains("surrounding whitespace"),
+            "must not name the directory as a retry target: {msg}"
+        );
+
+        // Literal directory paths keep the existing directory diagnostic.
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "notes" }),
+            5_000,
+        )
+        .await;
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
+        assert_eq!(
+            result.content.get("suggestedTool").and_then(|v| v.as_str()),
+            Some("Glob"),
+            "literal directory Read must still suggest Glob: {result:?}"
         );
     }
 }
