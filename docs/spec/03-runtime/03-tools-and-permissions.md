@@ -302,8 +302,10 @@ before the host sees the call (D273):
 | `Glob` / `Grep` | `pattern` | `query` |
 
 Both spellings are optional in the schema and the runtime requires exactly one;
-a call naming neither fails with `INVALID_ARGUMENT`. When a call carries both,
-the canonical name wins. `Bash.timeout` accepts up to 100000000 in the schema so a
+a call naming neither fails with `INVALID_ARGUMENT`. Several spellings with the
+same value count as one argument. Spellings with different values fail with
+`INVALID_ARGUMENT` before execution, and the message quotes every value, so
+the runtime never silently picks one (D690). `Bash.timeout` accepts up to 100000000 in the schema so a
 millisecond value validates: a value above the honoured 21,600-second ceiling
 is read as milliseconds and converted to seconds, then clamped to 21,600
 seconds (D273 / D329). In-range values, including 600 and 1800, are seconds.

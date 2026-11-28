@@ -466,6 +466,7 @@ section mirrors only marketplace/catalog items still blocking nothing.
 | D166 | Settings directory split into AI and Shortcuts destinations | **The Settings rail grows from five to seven destinations in order: Basics (`SlidersHorizontal`), 全局 AI/AI (`Sparkles`, new), Shortcuts (`Keyboard`, new), Model configuration (`Bot`), Import (`Download`), Project archive (`Archive`), Info (`Info`). Permissions and Context management move from Basics to the new AI destination; Keyboard shortcuts moves from Basics to the new Shortcuts destination; Developer moves from Basics to Info. Basics keeps only Appearance and Defaults. This supersedes the five-destination count/order of D133 and the five-icon set of D143 (adding `Sparkles` and `Keyboard`) without changing any setting's semantics, the full-page shell, or rail metrics.** | Basics accumulated six unrelated cards, burying global AI behavior (permission mode, context compaction) and shortcut configuration alongside look-and-feel; splitting them gives each concern a scannable home while keeping provider/connection config separate in Model configuration. |
 | D684 | One settings destination owns one subject | **Amend D143 / D166 / D678: the Settings rail is fifteen single-subject destinations in four clusters, retiring `general` and `ai` into Appearance, Conversation, Behavior, and System.** | Two destinations had become mixed landing places. See ADR 0345. |
 | D685 | Composer model picker: text rail and segmented reasoning | **Amend D458: the reasoning control in the combined Composer model menu is a segmented track with a raised pill under the selected level, placed in the menu footer, instead of a rail with track dots. The native range input, its column geometry, latest-wins commits and keyboard ownership are unchanged. The model list uses a text-only source rail with one sliding marker; Escape clears a typed search before closing the menu. Renderer only. See `04-ux/08-component-spec.md` and E2E-050.** | The dot rail and colored source tiles read heavy next to compact model rows; a segmented pill and a text rail match the rest of the menu chrome. |
+| D690 | Differing spellings of one tool argument are rejected | **Amend D273: when a `Read`/`Write`/`Edit`/`BrowserPreview`/`Glob`/`Grep` call names one argument under several accepted spellings with different values, the runtime fails it with `INVALID_ARGUMENT` before execution and quotes every value; identical values still fold to one. The canonical name no longer silently wins. Runtime only: no IPC, storage, host-protocol, or schema change.** | Issue #2552: calls stored `path` with conversational junk (`Wizard.tsx here?`, `Wizard.tsx:{`) beside a clean `file_path`. Canonical-wins ran the junk path every time, and host-core never saw the clean value. Picking either spelling is a guess; naming both lets the next call send one. |
 
 ## R. Decision rules going forward
 
@@ -5447,3 +5448,15 @@ See ADR 0344.
   the same pairing. Keep only device metadata and cookie verifiers on Desktop.
   Explicit disable or revocation persists; first launch still starts off. See
   the [code pairing amendment](../../adr/lan-webui-code-pairing.md#amendment-remember-pairing-across-desktop-launches-d688).
+
+## 2026-11-28 — Differing spellings of one tool argument are rejected (D690)
+
+- D273 let the canonical name win when a call carried both `path` and an
+  alias. Issue #2552 showed the cost: stored calls had junk in `path`
+  (`Wizard.tsx here?`, `Wizard.tsx:{`) and the clean value in `file_path`,
+  so every retry ran the junk path.
+- The runtime now rejects differing values for one argument before the
+  write lock and the host call, with an `INVALID_ARGUMENT` message that quotes
+  every spelling and asks for `path` alone. Identical values still fold.
+- Transcripts recorded earlier keep their meaning: the compaction file-op
+  collector still reads `path` first, which is how those calls ran.

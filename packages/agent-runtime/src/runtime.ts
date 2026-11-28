@@ -345,6 +345,11 @@ import {
 
 import { rebuildNodeNetworkTransport } from "./node-proxy.js";
 import {
+  rejectConflictingAliasedParams,
+  requireAliasedParams,
+  TOOL_PARAM_ALIASES,
+} from "./tool-param-aliases.js";
+import {
   createProviderTransportHealth,
   explainsProviderFetchFailure,
   withProviderFetchFailure,
@@ -1400,32 +1405,6 @@ const MAX_COMMAND_TIMEOUT_SECONDS = 21_600;
  * clamps to {@link MAX_COMMAND_TIMEOUT_SECONDS} (D273 / D329).
  */
 const MAX_ACCEPTED_COMMAND_TIMEOUT = 100_000_000;
-/**
- * Argument names models reach for instead of ours, mapped to the canonical
- * name. Every strong model has `file_path`/`query` burned in from pretraining
- * and sends them regardless of what the schema says, so the schema accepts both
- * spellings and {@link normalizeToolParams} folds the alias away before the
- * host sees the call (D273). Weaker models — issue #454 pinned longcat 2.0 —
- * reach for `filepath` / `filename` / `filePath` / `file` instead; folding
- * those the same way rescues the turn before the model gives up on the tool
- * and silently falls back to Bash.
- */
-const PATH_ARG_ALIASES = {
-  file_path: "path",
-  filepath: "path",
-  filePath: "path",
-  filename: "path",
-  fileName: "path",
-  file: "path",
-} as const;
-const TOOL_PARAM_ALIASES: Record<string, Record<string, string>> = {
-  Read: { ...PATH_ARG_ALIASES },
-  Write: { ...PATH_ARG_ALIASES },
-  Edit: { ...PATH_ARG_ALIASES },
-  BrowserPreview: { ...PATH_ARG_ALIASES },
-  Glob: { query: "pattern" },
-  Grep: { query: "pattern" },
-};
 const TOOL_OUTPUT_UPDATE_THROTTLE_MS = 100;
 const READ_ONLY_CORE_TOOLS = new Set(["Read", "Glob", "Grep"]);
 /**
@@ -1522,38 +1501,6 @@ function aliasParam(canonical: string) {
 }
 
 /**
- * Fails a call that named neither the canonical argument nor its alias. Without
- * this the now-optional canonical argument would reach the host as `undefined`
- * and surface as a confusing host-side error instead of a schema one.
- */
-function requireAliasedParams(toolName: string, params: unknown): void {
-  const aliases = TOOL_PARAM_ALIASES[toolName];
-  if (!aliases || !isRecord(params)) return;
-  for (const canonical of new Set(Object.values(aliases))) {
-    if (params[canonical] !== undefined) continue;
-    // A weaker model that keeps hitting this error gives up on the tool and
-    // silently switches to Bash (issue #454). Naming the accepted spellings and
-    // showing a minimal example lets the next call self-correct instead of the
-    // whole turn falling back to shell.
-    const acceptedAliases = Object.keys(aliases).filter(
-      (alias) => aliases[alias] === canonical,
-    );
-    const aliasHint =
-      acceptedAliases.length > 0
-        ? ` (the alias${acceptedAliases.length > 1 ? "es" : ""} ${acceptedAliases
-            .map((name) => `\`${name}\``)
-            .join(", ")} ${acceptedAliases.length > 1 ? "are" : "is"} also accepted)`
-        : "";
-    throw Object.assign(
-      new Error(
-        `Invalid arguments for ${toolName}: \`${canonical}\` is required${aliasHint}. Example: {"${canonical}": "..."}.`,
-      ),
-      { errorCode: "INVALID_ARGUMENT" },
-    );
-  }
-}
-
-/**
  * Folds aliased argument names onto the canonical ones and reads a Bash
  * `timeout` that arrived in milliseconds as seconds (D273). Both rewrites are
  * silent: the call succeeds as the model intended rather than costing a turn on
@@ -1577,8 +1524,9 @@ function normalizeToolParams(toolName: string, params: unknown): unknown {
   const next = { ...params };
   for (const alias of aliased) {
     const canonical = aliases![alias];
-    // The canonical spelling wins if a call carries both; either way the alias
-    // is dropped so the host and the transcript never see it.
+    // Differing spellings were rejected by rejectConflictingAliasedParams
+    // before execution; either way the alias is dropped so the host and the
+    // transcript never see it.
     if (next[canonical] === undefined) next[canonical] = next[alias];
     delete next[alias];
   }
@@ -4188,6 +4136,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         execute: async (toolCallId, rawParams, signal, onUpdate) => {
           const prepared = typeof rawParams === "object" && rawParams !== null
             && this.preparedPathToolArgs.has(rawParams);
+          // A prepared call was already checked by preparePathToolCall.
+          if (!prepared) rejectConflictingAliasedParams(toolName, rawParams);
           const params = prepared
             ? this.preparedPathToolArgs.get(rawParams as object)
             : normalizeToolParams(toolName, rawParams);
@@ -6897,6 +6847,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       await this.waitForBatchWritableDelegations(context.toolCall.id);
     }
     if (!PATH_SCOPED_INSTRUCTION_TOOLS.has(name)) return;
+    rejectConflictingAliasedParams(name, context.args);
     const params = normalizeToolParams(name, context.args);
     requireAliasedParams(name, params);
     await this.loadPathInstructions(name, params, apply);

@@ -3126,12 +3126,55 @@ describe("DesktopAgentRuntime configuration matching", () => {
       args: { pattern: "foo", path: "src" },
     });
 
-    // The canonical name wins when a call somehow carries both.
-    await tool("Read").execute("read-both", {
-      path: "src/canonical.ts",
-      file_path: "src/alias.ts",
+    // Both spellings with the same value are one argument.
+    await tool("Read").execute("read-both-same", {
+      path: "src/same.ts",
+      file_path: "src/same.ts",
     });
-    expect(lastExecute()).toMatchObject({ args: { path: "src/canonical.ts" } });
+    expect(lastExecute()).toMatchObject({ args: { path: "src/same.ts" } });
+    const executesBeforeConflicts = host.call.mock.calls.filter(
+      (call: unknown[]) => call[0] === "tools.execute",
+    ).length;
+
+    // Differing spellings are rejected instead of silently running one of
+    // them (#2552): the stored calls carried junk in `path` and the clean
+    // value in `file_path`.
+    await expect(
+      tool("Read").execute("read-conflict", {
+        path: "src/pages/Wizard.tsx here?",
+        file_path: "src/pages/Wizard.tsx",
+      }),
+    ).rejects.toMatchObject({
+      errorCode: "INVALID_ARGUMENT",
+      message: expect.stringContaining(
+        '`path` = "src/pages/Wizard.tsx here?", `file_path` = "src/pages/Wizard.tsx"',
+      ),
+    });
+    await expect(
+      tool("Edit").execute("edit-conflict", {
+        path: "src/pages/Wizard.tsx:{",
+        file_path: "src/pages/Wizard.tsx",
+        tag: "9DA2",
+        ops: "PUT 1.=1:\n+x",
+      }),
+    ).rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
+    // Two aliases without the canonical spelling conflict the same way.
+    await expect(
+      tool("Write").execute("write-alias-conflict", {
+        file_path: "a.ts",
+        filePath: "b.ts",
+        content: "x",
+      }),
+    ).rejects.toMatchObject({
+      errorCode: "INVALID_ARGUMENT",
+      message: expect.stringContaining("Send only `path`"),
+    });
+    await expect(
+      tool("Grep").execute("grep-conflict", { pattern: "foo", query: "bar" }),
+    ).rejects.toMatchObject({ errorCode: "INVALID_ARGUMENT" });
+    expect(
+      host.call.mock.calls.filter((call: unknown[]) => call[0] === "tools.execute"),
+    ).toHaveLength(executesBeforeConflicts);
 
     // Extra path spellings weaker models reach for (issue #454): every one of
     // these folds onto `path` so the model does not silently fall back to Bash
