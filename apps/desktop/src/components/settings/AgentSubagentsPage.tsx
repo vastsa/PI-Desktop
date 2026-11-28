@@ -345,7 +345,13 @@ export function AgentSubagentsPage() {
         name={name}
         off={!subagent.enabled}
         menuOpen={menuFor === subagent.id}
-        badges={<span className="agent-capability-badge">{t("settings.globalOnly")}</span>}
+        badges={
+          <span className="agent-capability-badge">
+            {subagent.scope?.mode === "projects"
+              ? t("extensions.scope.projectCount", { count: subagent.scope.projects.length })
+              : t("extensions.scope.global")}
+          </span>
+        }
         description={subagent.description || t("settings.noCapabilityDescription")}
         meta={
           subagent.tools?.length ? (
@@ -433,7 +439,7 @@ export function AgentSubagentsPage() {
             {showOwnedGroup ? (
               <>
                 <CapabilityGroupHeader
-                  label={t("settings.globalLevel")}
+                  label={t("extensions.subagents.sourceCustom")}
                   path={GLOBAL_SUBAGENTS_PATH}
                   count={visibleOwned.length}
                 />
@@ -455,7 +461,10 @@ export function AgentSubagentsPage() {
       {editor ? (
         <SubagentEditorSheet
           draft={editor.draft}
-          setDraft={(draft) => setEditor((current) => (current ? { ...current, draft } : current))}
+          setDraft={(next) => setEditor((current) => current ? {
+            ...current,
+            draft: typeof next === "function" ? next(current.draft) : next,
+          } : current)}
           editing={editor.editing}
           initialPresetId={editor.presetId}
           saving={saving}

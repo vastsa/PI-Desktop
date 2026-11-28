@@ -66,6 +66,16 @@ fn required_resource(bundle: &PendingBundle, entity: &PortableEntity) -> Result<
     String::from_utf8(bytes.clone()).context("portable resource is not UTF-8")
 }
 
+/// Project scope names folders on the device that set it, so a synced payload
+/// never supplies one: an update keeps this device's scope and a new
+/// definition starts global.
+fn subagent_input(payload: &Value) -> Result<crate::user_subagents::UserSubagentInput> {
+    let mut input: crate::user_subagents::UserSubagentInput =
+        serde_json::from_value(payload.clone())?;
+    input.scope = None;
+    Ok(input)
+}
+
 fn require_provider_reference(st: &AppState, value: &Value, context: &str) -> Result<()> {
     let Some(provider_id) = value.get("providerId").and_then(Value::as_str) else {
         return Ok(());
@@ -310,8 +320,7 @@ fn apply_entity(
         return Ok(());
     }
     if entity.domain == domains::DOMAIN_SUBAGENTS {
-        let mut input: crate::user_subagents::UserSubagentInput =
-            serde_json::from_value(entity.payload.clone())?;
+        let mut input = subagent_input(&entity.payload)?;
         if !entity.deleted {
             input.body = Some(required_resource(bundle, entity)?);
         }
@@ -772,4 +781,21 @@ pub(crate) fn recover_import_journal(
         .or_else(|| base.clone())
         .unwrap_or_else(empty_manifest);
     apply_bundle_locked(st, config, key, base.as_ref(), &local_before, bundle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn synced_subagent_scope_is_never_applied() {
+        let input = subagent_input(&json!({
+            "id": "reviewer",
+            "name": "reviewer",
+            "scope": { "mode": "projects", "projects": ["/other-device/project"] },
+        }))
+        .unwrap();
+        assert_eq!(input.id.as_deref(), Some("reviewer"));
+        assert!(input.scope.is_none());
+    }
 }

@@ -660,3 +660,105 @@ async fn legacy_project_config_and_pending_approval_do_not_block_sync() -> Resul
     assert!(device.lock().await.db.list_projects()?.is_empty());
     Ok(())
 }
+
+async fn configure_subagent_device(
+    data_dir: &Path,
+    endpoint: &str,
+) -> Result<Arc<Mutex<AppState>>> {
+    let state = Arc::new(Mutex::new(AppState::open(data_dir)?));
+    configure(
+        state.clone(),
+        json!({
+            "endpoint": endpoint,
+            "region": "us-east-1",
+            "bucket": "fixture-bucket",
+            "accessKeyId": "fixture-access",
+            "secretAccessKey": "fixture-secret",
+            "prefix": "config-sync-test",
+            "deviceLabel": "test-device",
+            "backupPassword": "portable-backup-password",
+            "pathStyle": true,
+            "mode": "sync",
+            "categories": { "subagents": true },
+            "includeSecrets": false,
+            "automaticSync": false,
+        }),
+    )
+    .await?;
+    Ok(state)
+}
+
+fn subagent_scope(state: &mut AppState, id: &str) -> Result<crate::activation::ActivationScope> {
+    state
+        .user_subagents
+        .list()?
+        .into_iter()
+        .find(|record| record.id == id)
+        .map(|record| record.scope)
+        .ok_or_else(|| anyhow!("missing subagent {id}"))
+}
+
+#[tokio::test]
+async fn subagent_project_scope_stays_on_its_device() -> Result<()> {
+    use crate::activation::{ActivationMode, ActivationScope};
+    use crate::user_subagents::UserSubagentInput;
+    if run_in_isolated_process(
+        "config_sync::engine::s3_tests::subagent_project_scope_stays_on_its_device",
+    )? {
+        return Ok(());
+    }
+    let fixture = fixture(false).await;
+    let directory_a = tempfile::tempdir()?;
+    let directory_b = tempfile::tempdir()?;
+    let device_a = configure_subagent_device(directory_a.path(), &fixture.endpoint).await?;
+    let device_b = configure_subagent_device(directory_b.path(), &fixture.endpoint).await?;
+    let only_a = ActivationScope {
+        mode: ActivationMode::Projects,
+        projects: vec!["/device-a/project".into()],
+    }
+    .normalized();
+    let only_b = ActivationScope {
+        mode: ActivationMode::Projects,
+        projects: vec!["/device-b/project".into()],
+    }
+    .normalized();
+    // The isolated process gives both devices one definitions directory, so B
+    // sees A's document at once; only scope state lives in each data directory.
+    device_a
+        .lock()
+        .await
+        .user_subagents
+        .create(UserSubagentInput {
+            name: Some("scoped-reviewer".into()),
+            description: Some("Review".into()),
+            body: Some("Review only.".into()),
+            scope: Some(only_a.clone()),
+            ..Default::default()
+        })?;
+    let (tx, _rx) = mpsc::unbounded_channel();
+    sync_now(device_a.clone(), tx.clone()).await?;
+    let received = sync_now(device_b.clone(), tx.clone()).await?;
+    assert!(pending_approvals(&received).is_empty(), "{received}");
+    assert_eq!(
+        subagent_scope(&mut *device_b.lock().await, "scoped-reviewer")?,
+        ActivationScope::default()
+    );
+    device_b
+        .lock()
+        .await
+        .user_subagents
+        .set_scope("scoped-reviewer", only_b.clone())?;
+    let published = sync_now(device_b.clone(), tx.clone()).await?;
+    assert!(pending_approvals(&published).is_empty(), "{published}");
+    let received = sync_now(device_a.clone(), tx.clone()).await?;
+    assert!(pending_approvals(&received).is_empty(), "{received}");
+    assert_eq!(
+        subagent_scope(&mut *device_a.lock().await, "scoped-reviewer")?,
+        only_a
+    );
+    assert_eq!(
+        subagent_scope(&mut *device_b.lock().await, "scoped-reviewer")?,
+        only_b
+    );
+    Ok(())
+}

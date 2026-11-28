@@ -1160,12 +1160,13 @@
       defaults (`explorer`, `code-reviewer`, `test-runner`, `fixer`,
       `ui-designer`) even when the user directory is empty, each with a
       Built-in badge, its tool grant, and an enablement switch, but no reveal
-      or delete. Confirm the Global group header carries the global level label
-      and item count, that create/edit/delete/reveal all work from the page
+      or delete. Confirm the Custom group header carries the Custom source
+      label, the `~/.agents/subagents` path, and item count, that
+      create/edit/delete/reveal all work from the page
       for user-owned rows, that leaving the output limit empty writes a
       definition with no `maxTokens`, and that an empty user
       directory still resolves `settings.subagentsEmpty` to localized
-      empty-state copy under the Global group rather than displaying a raw
+      empty-state copy under the Custom group rather than displaying a raw
       translation key. Open New subagent and confirm the
       Model field is a select of the same configured, runnable models as the
       Composer, grouped by provider, with an inherit-session option, not a

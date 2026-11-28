@@ -275,9 +275,10 @@ fn capture_subagents(
         let resource_id = object_id(key, &bytes);
         resources.entry(resource_id.clone()).or_insert(bytes);
         let mut payload = serde_json::to_value(&record)?;
+        // Project scope names folders on this device, so it stays here.
         strip_keys(
             &mut payload,
-            &["path", "sizeBytes", "createdAt", "updatedAt"],
+            &["path", "scope", "sizeBytes", "createdAt", "updatedAt"],
         );
         if let Some(object) = payload.as_object_mut() {
             object.insert(
