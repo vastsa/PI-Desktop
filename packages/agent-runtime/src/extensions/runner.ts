@@ -159,6 +159,8 @@ export interface TrustedExtensionBridge {
   setActiveTools(names: string[]): void;
   getSessionName(): string | undefined;
   setSessionName(name: string, signal?: AbortSignal): void | Promise<void>;
+  /** Provider telemetry only: empty object = watching without a measurement, undefined = detach. */
+  setProviderContext?(spec: TrustedExtensionSpec, reading: unknown): void;
   sendUserMessage(
     content: string | unknown[],
     options?: { deliverAs?: "steer" | "followUp" },
@@ -746,6 +748,11 @@ export class TrustedExtensionRunner {
         });
         return res.kind === "input" ? res.value : undefined;
       },
+      ...(this.bridge.setProviderContext ? {
+        setProviderContext: (reading?: unknown) => {
+          if (!signal.aborted && !this.disposed) this.bridge.setProviderContext?.(extension.spec, reading);
+        },
+      } : {}),
       setStatus: (key: string, text: string | undefined) => {
         void request({ kind: "setStatus", key: String(key), text: text ?? undefined }).catch((error: unknown) => {
           if (!signal.aborted) this.report(extension.spec.id, "handler_error", errorMessage(error), "ui.setStatus");
