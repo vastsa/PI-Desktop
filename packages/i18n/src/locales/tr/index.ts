@@ -862,6 +862,8 @@ export const tr = {
     planning: "Planlanıyor",
     approvalRegion: "Plan onayı",
     readyAnnouncement: "Plan hazır. Çalışma panelinde açık.",
+    revisionPrompt: "Neyi değiştirmek istersiniz?",
+    sendRevision: "Değişiklik isteğini gönder",
     chooseApprovalMode: "Onay kipini seçin",
     ask: "Sor",
     acceptEdits: "Düzenlemeleri kabul et",

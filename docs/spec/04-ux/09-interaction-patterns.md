@@ -136,8 +136,8 @@ recency only breaks ties between equally relevant matches.
 - Frameless minimize, maximize/restore, and close controls remain outside the
   drag region. Maximize state is queried on mount and updated from native
   maximize/unmaximize events. Fullscreen enter/exit also rechecks native
-  maximize state after the transition settles, so macOS caption dragging and
-  the restore affordance reflect the actual window state.
+  maximize state after the transition settles so the restore affordance
+  reflects the actual window state.
 - Windows/Linux explicit minimize actions use native minimize and keep the
   taskbar entry. On Windows, clicking the focused window's taskbar button also
   uses native minimize and keeps the taskbar entry; clicking it again
@@ -1238,9 +1238,10 @@ another session never covers it or moves focus; returning to the originating
   `plans.pending` can rehydrate a still-pending row. The approval card does not
   expose a validity/deadline concept.
 Mode/provider/model/permission/shell configuration and new prompts remain
-disabled while an active `pending` approval or turn exists. During pending
-approval the existing draft remains in the textarea but is read-only; only
-Approve and Reject remain enabled on the approval surface. Reject, expiry, or
+disabled while an active `pending` approval or turn exists. During local Plan
+approval, the composer accepts revision instructions. Sending them rejects the
+current proposal before starting another planning turn in that session.
+Approve and Reject remain available on the approval card. Reject, expiry, or
 interruption re-enables them; terminal proposal snapshots do not keep the gate
 closed. The renderer retains the latest checkpoint/execution status per session
 only for its current lifetime, so rejected, expired, interrupted, approved,
@@ -2044,12 +2045,10 @@ This does not prevent state changes — it makes them instant.
 - On Windows a maximized main window rejects manual edge resizing and retains
   native drag-to-restore. AppKit owns edge resizing and Zoom/Restore on macOS.
   Both use the same cancellable resize event, so cancelling it would also block
-  restoration of the window's original frame. The macOS shell temporarily disables
-  CSS caption dragging and handles caption double-click as Restore; normal
-  windows retain native double-click behavior. The inherited `--window-drag-region`
-  marker distinguishes caption text from explicit no-drag controls. Do not use
-  `setMovable(false)`: it prevents native double-click restore in parts of the
-  inset titlebar. Native zoom/green controls, fullscreen, and programmatic bounds
+  restoration of the window's original frame. A zoomed, non-fullscreen macOS
+  window keeps its native caption regions for dragging within and between
+  displays. Titlebar buttons remain clickable and caption double-click follows
+  the system preference. Native zoom/green controls, fullscreen, and programmatic bounds
   remain enabled. Linux retains compositor-owned maximized geometry and
   drag-to-restore.
 - A settled cross-display move refreshes the native minimum without enlarging a

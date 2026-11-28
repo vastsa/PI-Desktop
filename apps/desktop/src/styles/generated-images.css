@@ -106,7 +106,6 @@
   overflow: hidden;
   background: var(--ds-bg-primary);
   color: var(--ds-text-primary);
-  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
 }
 .generated-image-viewer[open] { display: flex; flex-direction: column; }

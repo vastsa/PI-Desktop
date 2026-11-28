@@ -2,7 +2,9 @@ import type {
   GlobalPermissionMode,
   PlanProposal,
   PlanningStateEvent,
+  SessionSummary,
 } from "@pi-desktop/shared";
+import { isRemoteSession, sessionAllows } from "./remote-session-safety";
 
 /** Fail closed when no effective session permission is available. */
 export const PLAN_APPROVAL_DEFAULT_MODE: GlobalPermissionMode = "ask";
@@ -31,6 +33,18 @@ export function isActivePlanExecution(
     proposal?.executionState === "queued" ||
     proposal?.executionState === "running"
   );
+}
+
+export function pendingRevisionPlan(
+  session: SessionSummary | undefined,
+  checkpoint: PlanProposal | undefined,
+  pending: PlanProposal | undefined,
+): PlanProposal | undefined {
+  if (session?.mode !== "plan" || session.source === "pi-native" ||
+      isRemoteSession(session) || !sessionAllows(session, "canPrompt")) return;
+  if (checkpoint?.status !== "pending" || checkpoint.kind === "goal" ||
+      checkpoint.sessionId !== session.id) return;
+  return pending?.status === "pending" && pending.id === checkpoint.id ? checkpoint : undefined;
 }
 
 export function planCheckpointStatus(

@@ -1,6 +1,7 @@
 import { useChatSessionCapability } from "../hooks/use-chat-session-capability";
 import {
   createContext,
+  createElement,
   Fragment,
   isValidElement,
   memo,
@@ -832,18 +833,6 @@ function VideoBlock({
   );
 }
 
-const markdownComponents: Components = {
-  pre: PreBlock,
-  code: InlineCode,
-  a: Anchor,
-  img: MarkdownImage,
-  audio: AudioBlock,
-  video: VideoBlock,
-  table: Table,
-  p: BidiParagraph,
-  li: BidiListItem,
-};
-
 // #2388: mixed RTL/LTR paragraphs must not take their base direction from the
 // first strong character alone. Each block paragraph picks its direction from
 // the whole text (majority strong script), so a Persian paragraph that opens
@@ -866,13 +855,71 @@ function textOfChildren(node: unknown): string {
   return "";
 }
 
-function BidiParagraph({ children, ...rest }: ComponentProps<"p">) {
-  return <p {...rest} dir={directionAttr(textOfChildren(children))}>{children}</p>;
+// #2635: `text-align: start` follows the element's dir. A physical
+// `text-align: left` inherited from an ancestor (or a platform default)
+// would keep an Arabic-only reply left-aligned even when dir=rtl is set.
+// User message paragraphs already use this logical alignment. Lists also
+// set dir on the ul/ol container so padding-inline-start follows the
+// list's majority script; item-only dir leaves the gutter on the LTR side.
+function bidiDirAndStyle(children: ReactNode, style?: CSSProperties) {
+  return {
+    dir: directionAttr(textOfChildren(children)),
+    style: { ...style, textAlign: "start" as const },
+  };
 }
 
-function BidiListItem({ children, ...rest }: ComponentProps<"li">) {
-  return <li {...rest} dir={directionAttr(textOfChildren(children))}>{children}</li>;
+type BidiTag = "p" | "li" | "ul" | "ol" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "blockquote";
+
+function makeBidi<T extends BidiTag>(tag: T) {
+  function BidiElement({
+    children,
+    style,
+    node: _node,
+    ...rest
+  }: ComponentProps<T> & { node?: unknown }) {
+    return createElement(
+      tag,
+      { ...rest, ...bidiDirAndStyle(children, style) },
+      children,
+    );
+  }
+  BidiElement.displayName = `Bidi(${tag})`;
+  return BidiElement;
 }
+
+const BidiParagraph = makeBidi("p");
+const BidiListItem = makeBidi("li");
+const BidiList = makeBidi("ul");
+const BidiOrderedList = makeBidi("ol");
+const BidiHeading1 = makeBidi("h1");
+const BidiHeading2 = makeBidi("h2");
+const BidiHeading3 = makeBidi("h3");
+const BidiHeading4 = makeBidi("h4");
+const BidiHeading5 = makeBidi("h5");
+const BidiHeading6 = makeBidi("h6");
+const BidiBlockquote = makeBidi("blockquote");
+
+const markdownComponents: Components = {
+  pre: PreBlock,
+  code: InlineCode,
+  a: Anchor,
+  img: MarkdownImage,
+  audio: AudioBlock,
+  video: VideoBlock,
+  table: Table,
+  p: BidiParagraph,
+  li: BidiListItem,
+  ul: BidiList,
+  ol: BidiOrderedList,
+  h1: BidiHeading1,
+  h2: BidiHeading2,
+  h3: BidiHeading3,
+  h4: BidiHeading4,
+  h5: BidiHeading5,
+  h6: BidiHeading6,
+  blockquote: BidiBlockquote,
+};
+
 
 // The grammar the block splitter parses with, plus the renderer-only rewrite
 // of local image paths. `remarkLocalImagePaths` transforms URLs and moves no

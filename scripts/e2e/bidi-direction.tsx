@@ -26,7 +26,7 @@ export async function bidiDirectionProbe(i18n: ReturnType<typeof createInstance>
   const sessionId = "bidi-direction-probe";
   const messages = [
     message("bidi-user", "user", "hello English paragraph 123!\n\nپژگچ این پاراگراف فارسی است ؟"),
-    message("bidi-assistant", "assistant", "English **paragraph** 123!\n\nپژگچ **پاسخ** فارسی ؟ ؛\n\n- English item\n- پژگچ فارسی"),
+    message("bidi-assistant", "assistant", "English **paragraph** 123!\n\nپژگچ **پاسخ** فارسی ؟ ؛\n\n- English item\n- پژگچ فارسی\n\n# عنوان عربي\n\n- عنصر واحد\n- عنصر اثنان\n\n1. First item\n2. Second item"),
   ];
   try {
     useAppStore.setState({ activeSessionId: sessionId, page: "chat" });
@@ -107,13 +107,76 @@ export async function bidiDirectionProbe(i18n: ReturnType<typeof createInstance>
     const rtlBubble = bubble.querySelector<HTMLElement>('span[dir="rtl"]');
     assert(rtlBubble && getComputedStyle(rtlBubble).direction === "rtl", "bubble RTL paragraph has no RTL layout");
     assert(glyph(rtlBubble, "؟") < glyph(rtlBubble, "پ"), "bubble punctuation order is wrong");
-    const listDirections = [...host.querySelectorAll<HTMLElement>(".prose-chat li")].map(item => item.dir);
-    assert(listDirections.join(",") === "ltr,rtl", `Markdown list directions: ${listDirections}`);
+    const lists = [...host.querySelectorAll<HTMLElement>(".prose-chat ul, .prose-chat ol")];
+    const mixedList = lists.find((list) => /English item/.test(list.textContent ?? "") && /پژگچ/.test(list.textContent ?? ""));
+    const arabicList = lists.find((list) => list.tagName === "UL" && /عنصر واحد/.test(list.textContent ?? "") && !/First item/.test(list.textContent ?? ""));
+    const latinList = lists.find((list) => list.tagName === "OL" && /First item/.test(list.textContent ?? ""));
+    const mixedDirs = [...(mixedList?.querySelectorAll<HTMLElement>(":scope > li") ?? [])].map((item) => item.dir);
+    assert(mixedDirs.join(",") === "ltr,rtl", `Markdown list directions: ${mixedDirs.join(",")}`);
     const emphasis = host.querySelector(".prose-chat strong");
     assert(emphasis && getComputedStyle(emphasis).unicodeBidi === "isolate", "inline Markdown is not isolated");
     assert(bubble.textContent === messages[0].content, "paragraph splitting changed user text");
     const rtlMarkdown = markdownParagraphs[1];
     assert(rtlMarkdown && glyph(rtlMarkdown, "؟") < glyph(rtlMarkdown, "پ"), "Markdown punctuation order is wrong");
+    const ltrMarkdown = markdownParagraphs[0];
+    // A Windows-only default was not independently reproduced. The confirmed
+    // inheritance path is an ancestor with a physical `text-align: left`.
+    const inheritHost = rtlMarkdown.closest<HTMLElement>(".prose-chat")?.parentElement ?? rtlMarkdown.parentElement;
+    assert(inheritHost, "Markdown ancestor for inherited alignment is missing");
+    inheritHost.style.textAlign = "left";
+    const rtlAlign = getComputedStyle(rtlMarkdown).textAlign;
+    assert(
+      rtlAlign === "start" || rtlAlign === "right",
+      `RTL Markdown paragraph text-align was ${rtlAlign} under inherited left`,
+    );
+    const rtlBox = rtlMarkdown.getBoundingClientRect();
+    assert(
+      glyph(rtlMarkdown, "پ") > rtlBox.left + rtlBox.width / 2,
+      "Arabic paragraph glyphs stayed on the left under inherited text-align:left",
+    );
+    const ltrBox = ltrMarkdown.getBoundingClientRect();
+    assert(
+      ltrMarkdown && glyph(ltrMarkdown, "E") < ltrBox.left + ltrBox.width / 2,
+      "English paragraph glyphs did not stay on the left under inherited text-align:left",
+    );
+    const rtlItem = [...host.querySelectorAll<HTMLElement>(".prose-chat li")]
+      .find((item) => item.dir === "rtl" && /پژگچ/.test(item.textContent ?? ""));
+    const itemAlign = rtlItem && getComputedStyle(rtlItem).textAlign;
+    assert(
+      itemAlign === "start" || itemAlign === "right",
+      `RTL Markdown list item text-align was ${itemAlign}`,
+    );
+    const heading = host.querySelector<HTMLElement>(".prose-chat h1");
+    assert(heading?.dir === "rtl", `Markdown heading dir was ${heading?.dir}`);
+    const headingAlign = heading && getComputedStyle(heading).textAlign;
+    assert(
+      headingAlign === "start" || headingAlign === "right",
+      `RTL Markdown heading text-align was ${headingAlign}`,
+    );
+    const padding = (element: HTMLElement) => {
+      const style = getComputedStyle(element);
+      return {
+        direction: style.direction,
+        paddingLeft: parseFloat(style.paddingLeft),
+        paddingRight: parseFloat(style.paddingRight),
+      };
+    };
+    assert(arabicList, "pure RTL list did not render");
+    assert(arabicList.dir === "rtl", `pure RTL list dir was ${arabicList.dir}`);
+    const rtlGutter = padding(arabicList);
+    assert(rtlGutter.direction === "rtl", `pure RTL list computed direction was ${rtlGutter.direction}`);
+    assert(
+      rtlGutter.paddingRight > 10 && rtlGutter.paddingRight > rtlGutter.paddingLeft + 8,
+      `pure RTL list gutter was padding-left ${rtlGutter.paddingLeft}px / padding-right ${rtlGutter.paddingRight}px`,
+    );
+    assert(latinList, "ordinary LTR list did not render");
+    assert(latinList.dir === "ltr", `ordinary LTR list dir was ${latinList.dir}`);
+    const ltrGutter = padding(latinList);
+    assert(ltrGutter.direction === "ltr", `ordinary LTR list computed direction was ${ltrGutter.direction}`);
+    assert(
+      ltrGutter.paddingLeft > 10 && ltrGutter.paddingLeft > ltrGutter.paddingRight + 8,
+      `ordinary LTR list gutter was padding-left ${ltrGutter.paddingLeft}px / padding-right ${ltrGutter.paddingRight}px`,
+    );
     assert(
       getComputedStyle(editor).unicodeBidi === "plaintext",
       `composer unicode-bidi was ${getComputedStyle(editor).unicodeBidi}`,

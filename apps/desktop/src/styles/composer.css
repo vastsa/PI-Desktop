@@ -454,6 +454,33 @@
   min-height: 28px;
 }
 
+.btn.composer-plan-revision {
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.composer-plan-revision svg {
+  display: none;
+  flex: none;
+}
+
+@container composer-stack (max-width: 640px) {
+  .btn.composer-plan-revision {
+    width: 28px;
+    padding: 0;
+  }
+
+  .composer-plan-revision span {
+    display: none;
+  }
+
+  .composer-plan-revision svg {
+    display: block;
+  }
+}
+
 .icon-btn {
   display: inline-flex;
   height: 28px;

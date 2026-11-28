@@ -853,6 +853,8 @@ export const fr = {
     "planning": "Planification",
     "approvalRegion": "Approbation du plan",
     "readyAnnouncement": "Plan prêt. Le plan est ouvert dans le panneau de travail.",
+    "revisionPrompt": "Que souhaitez-vous modifier ?",
+    "sendRevision": "Envoyer la demande",
     "chooseApprovalMode": "Choisissez le mode d'approbation",
     "ask": "Demander",
     "acceptEdits": "Accepter les modifications",

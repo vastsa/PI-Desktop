@@ -55,6 +55,20 @@
   margin: 0.65em 0;
 }
 
+/* #2635: logical alignment follows each block's dir so Arabic replies
+   align to the right even if an ancestor used a physical `left`. */
+.prose-chat p,
+.prose-chat li,
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3,
+.prose-chat h4,
+.prose-chat h5,
+.prose-chat h6,
+.prose-chat blockquote {
+  text-align: start;
+}
+
 .prose-chat p + p {
   margin-top: 0.8em;
 }
@@ -93,7 +107,7 @@
 
 .prose-chat .footnotes ol {
   margin: 0.3em 0;
-  padding-left: 1.3em;
+  padding-inline-start: 1.3em;
 }
 
 .prose-chat .footnotes li {
@@ -170,7 +184,7 @@
 .prose-chat ul,
 .prose-chat ol {
   margin: 0.65em 0;
-  padding-left: 1.4em;
+  padding-inline-start: 1.4em;
 }
 
 .prose-chat ul {
@@ -184,7 +198,7 @@
 
 .prose-chat li {
   margin: 0.28em 0;
-  padding-left: 0.15em;
+  padding-inline-start: 0.15em;
 }
 
 .prose-chat li::marker {
@@ -206,7 +220,7 @@
 }
 
 .prose-chat .contains-task-list {
-  padding-left: 0.15em;
+  padding-inline-start: 0.15em;
   list-style: none;
 }
 
@@ -216,7 +230,7 @@
   align-items: flex-start;
   gap: 0.45em;
   margin: 0.28em 0;
-  padding-left: 0;
+  padding-inline-start: 0;
 }
 
 .prose-chat .task-list-item > input[type="checkbox"] {

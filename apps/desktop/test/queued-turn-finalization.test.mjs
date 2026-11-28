@@ -13,6 +13,7 @@ register(pathToFileURL(join(here, "helpers/ts-import-hooks.mjs")));
 // Exercise the real plan runtime, the real turn coordination state and the real
 // Agent Host bridge, without booting Electron or making a provider request.
 const { createPlanRuntime } = await import("../electron/main/runtime/plans.ts");
+const { createEventPersistence } = await import("../electron/main/runtime/event-persistence.ts");
 const { createSessionCoordination } = await import(
   "../electron/main/runtime/session-coordination.ts"
 );
@@ -40,6 +41,9 @@ function fixture({ onTurnEnded } = {}) {
   const prompts = [];
   const writes = [];
   const announcements = [];
+  const rendererEvents = [];
+  const appends = [];
+  const outboxWrites = [];
   let quitting = false;
 
   const coordination = createSessionCoordination({
@@ -49,6 +53,7 @@ function fixture({ onTurnEnded } = {}) {
   });
 
   const host = {
+    isAvailable: () => true,
     async call(method, params) {
       if (method === "session.get") {
         return { session: { id: params.id, permissionMode: "ask" } };
@@ -63,6 +68,11 @@ function fixture({ onTurnEnded } = {}) {
       if (method === "session.endTurn") {
         const write = deferred();
         writes.push({ ...write, turnId: params.turnId });
+        return write.promise;
+      }
+      if (method === "session.appendMessage") {
+        const write = deferred();
+        appends.push({ ...write, ...params });
         return write.promise;
       }
       if (method === "session.queuePrioritize") {
@@ -107,11 +117,26 @@ function fixture({ onTurnEnded } = {}) {
     },
   });
 
+  const runtimeState = { host, agentHostBridge: bridge };
+  const persistence = createEventPersistence({
+    runtimeState,
+    completionNoticeTurns: new Set(),
+    logger: { app() {} },
+    persistenceOutbox: {
+      enqueue(entry) {
+        const write = deferred();
+        outboxWrites.push({ ...write, entry });
+        return write.promise;
+      },
+    },
+  });
   const planRuntime = createPlanRuntime({
-    runtimeState: { host, agentHostBridge: bridge },
+    runtimeState,
     planState: { approvedExecutionDrain: null },
     logger: { app() {} },
-    sendToRenderer() {},
+    sendToRenderer(channel, envelope) {
+      if (channel === IPC.event.agentMessage) rendererEvents.push(envelope);
+    },
     coordination,
     scheduledRunsBySession: new Map(),
     activeToolCalls: new Map(),
@@ -125,7 +150,10 @@ function fixture({ onTurnEnded } = {}) {
     inFlightExecutionFinishes: new Set(),
     pendingExecutionFinishes: new Map(),
     announceTurnEnded: (payload) => announcements.push(payload),
-    emitAgentEvent() {},
+    emitAgentEvent(envelope) {
+      rendererEvents.push(envelope);
+    },
+    persistInterruptionMessage: persistence.persistInterruptionMessage,
     acquireSessionOperation: coordination.acquireSessionOperation,
     resolveAgentRuntimeLaunch: async () => {
       throw new Error("not used by this fixture");
@@ -182,6 +210,9 @@ function fixture({ onTurnEnded } = {}) {
     persistedQueue,
     prompts,
     announcements,
+    rendererEvents,
+    appends,
+    outboxWrites,
     writes,
     finish,
     finishTurn: planRuntime.finishTurn,
@@ -190,6 +221,129 @@ function fixture({ onTurnEnded } = {}) {
     },
   };
 }
+
+for (const errorCode of ["AGENT_SIDECAR_CRASHED", "AGENT_SIDECAR_OOM"]) {
+  test(`a crashed turn publishes its recovered reply and one ${errorCode} card before releasing the queue`, async () => {
+    const f = fixture();
+    await f.bridge.queue.push({ sessionId: SESSION, content: "follow-up" });
+    const error = { code: errorCode, message: "Agent sidecar exited unexpectedly" };
+    const options = { turnId: FIRST_TURN, recoverInflight: true, interruptionError: error };
+    const pending = f.finishTurn(SESSION, "aborted", errorCode, options);
+    assert.equal(f.finishTurn(SESSION, "aborted", errorCode, options), pending);
+    await setImmediate();
+    assert.deepEqual(f.rendererEvents, []);
+    assert.deepEqual(f.prompts, []);
+    f.writes[0].resolve({
+      ok: true,
+      recovered: {
+        id: "partial", role: "assistant", content: "Partial reply",
+        createdAt: "2026-11-25T00:00:00Z", status: "aborted",
+      },
+    });
+    await setImmediate();
+    assert.equal(f.appends.length, 1);
+    assert.equal(f.appends[0].turnId, FIRST_TURN);
+    assert.equal(f.appends[0].message.error.code, errorCode);
+    assert.deepEqual(f.rendererEvents.map(({ event }) => event.type), ["message_end"]);
+    assert.deepEqual(f.prompts, []);
+    f.appends[0].resolve({ ok: true });
+    await pending;
+    await setImmediate();
+    assert.deepEqual(f.rendererEvents.map(({ event }) => event.type), [
+      "message_end", "message_end", "error",
+    ]);
+    assert.equal(f.rendererEvents[0].event.message.id, "partial");
+    assert.equal(f.rendererEvents[1].event.message.error.code, errorCode);
+    assert.equal(f.rendererEvents[1].event.message.turnId, FIRST_TURN);
+    assert.deepEqual(f.appends[0].message, f.rendererEvents[1].event.message);
+    assert.deepEqual(f.outboxWrites, []);
+    assert.deepEqual(f.rendererEvents[2].event.error, error);
+    assert(f.rendererEvents.every(({ turnId }) => turnId === FIRST_TURN));
+    const interrupted = f.bridge.agentHost.getTurn(FIRST_TURN);
+    assert.equal(interrupted.status, "interrupted");
+    assert.equal(interrupted.error?.code, errorCode);
+    assert.deepEqual(f.prompts.map(({ content }) => content), ["follow-up"]);
+  });
+}
+
+test("a sidecar crash after the user pressed Stop settles as a plain abort", { timeout: 5_000 }, async () => {
+  const f = fixture();
+  await f.bridge.queue.push({ sessionId: SESSION, content: "follow-up" });
+  f.bridge.markAborting(SESSION);
+  f.coordination.lockAbortReason(SESSION, FIRST_TURN);
+  const error = { code: "AGENT_SIDECAR_CRASHED", message: "Agent sidecar exited unexpectedly" };
+  const pending = f.finishTurn(SESSION, "aborted", error.code, {
+    turnId: FIRST_TURN, recoverInflight: true, interruptionError: error,
+  });
+  await setImmediate();
+  f.writes[0].resolve({ ok: true });
+  await pending;
+  await setImmediate();
+  assert.deepEqual(f.appends, [], "no crash card is persisted");
+  assert.equal(f.rendererEvents.some(({ event }) => event.type === "error"), false);
+  const interrupted = f.bridge.agentHost.getTurn(FIRST_TURN);
+  assert.equal(interrupted.status, "interrupted");
+  assert.notEqual(interrupted.error?.code, error.code);
+  assert.deepEqual(f.prompts.map(({ content }) => content), ["follow-up"]);
+});
+
+test("a crashed turn does not publish recovered rows after its session moved on", async () => {
+  const f = fixture();
+  const error = { code: "AGENT_SIDECAR_CRASHED", message: "Agent sidecar exited unexpectedly" };
+  const pending = f.finishTurn(SESSION, "aborted", error.code, {
+    turnId: FIRST_TURN, recoverInflight: true, interruptionError: error,
+  });
+  await setImmediate();
+  f.activeTurns.set(SESSION, "successor");
+  f.writes[0].resolve({ ok: true, recovered: { id: "partial" } });
+  await pending;
+  assert.deepEqual(f.rendererEvents, []);
+  assert.deepEqual(f.appends, []);
+  assert.equal(f.activeTurns.get(SESSION), "successor");
+});
+
+test("a crash-card append finishing after ownership changes does not stop the successor", async () => {
+  const f = fixture();
+  const error = { code: "AGENT_SIDECAR_CRASHED", message: "Agent sidecar exited unexpectedly" };
+  const pending = f.finishTurn(SESSION, "aborted", error.code, {
+    turnId: FIRST_TURN, interruptionError: error,
+  });
+  await setImmediate();
+  f.writes[0].resolve({ ok: true });
+  await setImmediate();
+  assert.equal(f.appends[0].turnId, FIRST_TURN);
+  f.activeTurns.set(SESSION, "successor");
+  f.appends[0].resolve({ ok: true });
+  await pending;
+  assert.deepEqual(f.rendererEvents, []);
+  assert.equal(f.activeTurns.get(SESSION), "successor");
+});
+
+test("a failed crash-card append is spooled with its original turn before the queue resumes", async () => {
+  const f = fixture();
+  await f.bridge.queue.push({ sessionId: SESSION, content: "follow-up" });
+  const error = { code: "AGENT_SIDECAR_CRASHED", message: "Agent sidecar exited unexpectedly" };
+  const pending = f.finishTurn(SESSION, "aborted", error.code, {
+    turnId: FIRST_TURN, interruptionError: error,
+  });
+  await setImmediate();
+  f.writes[0].resolve({ ok: true });
+  await setImmediate();
+  f.appends[0].reject(new Error("host disconnected"));
+  await setImmediate();
+  assert.equal(f.outboxWrites.length, 1);
+  assert.deepEqual(f.outboxWrites[0].entry, {
+    key: `message:${SESSION}:${f.appends[0].message.id}`,
+    sessionId: SESSION,
+    turnId: FIRST_TURN,
+    message: f.appends[0].message,
+  });
+  assert.deepEqual(f.prompts, []);
+  f.outboxWrites[0].resolve();
+  await pending;
+  await setImmediate();
+  assert.deepEqual(f.prompts.map(({ content }) => content), ["follow-up"]);
+});
 
 for (const status of ["completed", "error", "aborted"]) {
   test(`queued prompts resume once, in FIFO order, after ${status} turn finalization`, async () => {

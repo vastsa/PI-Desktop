@@ -852,6 +852,8 @@ export const ptBR = {
     planning: "Planejando",
     approvalRegion: "Aprovação do plano",
     readyAnnouncement: "Plano pronto. O plano está aberto no Painel de Trabalho.",
+    revisionPrompt: "O que você gostaria de mudar?",
+    sendRevision: "Enviar pedido de alteração",
     chooseApprovalMode: "Escolha o modo de aprovação",
     ask: "Perguntar",
     acceptEdits: "Aceitar edições",
