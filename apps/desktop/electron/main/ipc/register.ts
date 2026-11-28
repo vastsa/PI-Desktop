@@ -71,6 +71,8 @@ export type RegisterIpcDependencies = {
   getBackendRouter?: () => BackendRouter | null;
   getNotificationViewingSessionId: () => string | null;
   setNotificationViewingSessionId: (sessionId: string | null) => void;
+  setCacheWarmingViewingSession: (sessionId: string | null) => void;
+  applyForegroundCacheWarming: (settings?: { foregroundCacheWarmingEnabled?: unknown } | null) => void;
   /** The session on screen, as the shell reported it (plugin `session:activated`). */
   setActivePluginSession: (
     next: { sessionId: string; projectPath: string | null } | null,
@@ -117,6 +119,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getBackendRouter,
     getNotificationViewingSessionId,
     setNotificationViewingSessionId,
+    setCacheWarmingViewingSession,
     setActivePluginSession,
     settleComposerSuggestion,
     getPluginLauncherWindow,
@@ -150,6 +153,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyDeveloperMode,
     applyPreventScreenSleep,
     applyKeepAwakeWhileRunning,
+    applyForegroundCacheWarming,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -287,7 +291,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getHost,
     getMainWindow,
     getViewingSessionId: getNotificationViewingSessionId,
-    setViewingSessionId: setNotificationViewingSessionId,
+    setViewingSessionId: (id, cacheWarming) => {
+      setNotificationViewingSessionId(id);
+      setCacheWarmingViewingSession(cacheWarming ? id : null);
+    },
     sendToRenderer,
   });
   registerSessionIpc({
@@ -323,6 +330,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     applyDeveloperMode,
     applyPreventScreenSleep,
     applyKeepAwakeWhileRunning,
+    applyForegroundCacheWarming,
     applyUpdatePreference: (preference) => updater.setPreference(preference),
     resolveEffectiveCommandShell,
     liveCallService,
@@ -336,8 +344,12 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     registrar,
     getHost,
   });
+  const invalidateCacheWarming = async () => {
+    await getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined);
+  };
   registerProviderIpc({
     registrar,
+    invalidateCacheWarming,
     getHost,
     modelsDevCatalog,
     vendorOAuth,
@@ -346,11 +358,15 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     listRuntimeProviders,
     enrichProviderList,
     bindingForModel,
-    onProviderInvalidated: (providerId) => liveCallService?.invalidateProvider(providerId),
+    onProviderInvalidated: async (providerId) => {
+      await getSidecar()?.call("agent.invalidateCacheWarming", { providerId }).catch(() => undefined);
+      await liveCallService?.invalidateProvider(providerId);
+    },
   });
   registerJevIpc({ registrar, logger });
   registerModesIpc({
     registrar,
+    invalidateCacheWarming,
     catalog: dependencies.modeServices.catalog,
     runs: dependencies.modeServices.runs,
     // Opening a mode's `skills/` folder is the only path this feature hands to
@@ -501,6 +517,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   registerMcpIpc({
     registrar,
     getHost,
+    invalidateCacheWarming,
     userMcp,
     oauth: mcpOAuth,
     currentWorkspacePath,
@@ -530,6 +547,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   registerAgentImportIpc({
     registrar,
     getHost,
+    invalidateCacheWarming,
     sendToRenderer,
     refreshUserMcp,
     currentWorkspacePath,

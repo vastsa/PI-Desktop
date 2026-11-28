@@ -64,6 +64,7 @@ export function useAppShellRuntime() {
   const bootstrap = useAppStore((s) => s.bootstrap);
   const ready = useAppStore((s) => s.ready);
   const page = useAppStore((s) => s.page);
+  const settingsOpen = useAppStore((s) => s.settingsOpen);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const acknowledgeSessionOutcome = useAppStore(
     (s) => s.acknowledgeSessionOutcome,
@@ -493,9 +494,9 @@ export function useAppShellRuntime() {
   useEffect(() => {
     const viewingSessionId = page === "chat" ? activeSessionId ?? null : null;
     void api
-      .setNotificationViewingSession(viewingSessionId)
+      .setNotificationViewingSession(viewingSessionId, !settingsOpen)
       .catch(() => undefined);
-  }, [activeSessionId, page]);
+  }, [activeSessionId, page, settingsOpen]);
 
   /**
    * The selected session is shell state, so the shell publishes it. Plugin

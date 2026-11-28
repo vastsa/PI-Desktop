@@ -8,6 +8,7 @@ import {
   createAssistantMessageEventStream,
   getCurrentTools,
   getCurrentSystemMessage,
+  getCacheWarmingRequestOptions,
   normalizeContext,
   toToolDeclaration,
   type AssistantMessage,
@@ -38,6 +39,7 @@ import { estimateOutputCapInputTokens, requestTranscript } from "./output-cap.js
 import { builtinModeDefinition } from "./mode-definitions.js";
 
 import { COMPACTION_SUMMARY_MAX_RETRIES } from "./compaction-summary-input.js";
+import { loadCustomSystemPrompt } from "./custom-system-prompt.js";
 import { loadInstructionChain, type ProjectInstructions } from "./project-instructions.js";
 import { classifyAgentError } from "./agent-errors.js";
 import {
@@ -48,6 +50,7 @@ import { getGlobalDispatcher } from "undici";
 import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
 import { resolveBatchExecutionMode } from "./tool-execution-policy.js";
 import { BatchPlanner } from "./batch-planner.js";
+import { buildProviderModel, createProviderModels } from "./provider-binding.js";
 import { DESKTOP_AGENT_IDENTITY } from "./agent-identity.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
@@ -198,6 +201,8 @@ function createRuntime(
     subagentProviders: Record<string, RuntimeProviderConfig>;
     subagentModelKeys: string[];
     pluginSkills: import("./plugin-skills-prompt.js").PluginSkillDef[];
+    trustedExtensions: ConstructorParameters<typeof DesktopAgentRuntime>[0]["trustedExtensions"];
+    readPluginModelContext: ConstructorParameters<typeof DesktopAgentRuntime>[0]["readPluginModelContext"];
     commandShell: CommandShellOption;
     jevApiKey: string;
     codemodeEnabled: boolean;
@@ -214,6 +219,7 @@ function createRuntime(
     codemodeEnabled: overrides.codemodeEnabled,
     turnId: overrides.turnId,
     provider: overrides.provider ?? provider,
+    readPluginModelContext: overrides.readPluginModelContext,
     commandShell: overrides.commandShell ?? commandShell,
     thinkingLevel: overrides.thinkingLevel ?? "medium",
     backgroundJobContinuationEnabled: overrides.backgroundJobContinuationEnabled,
@@ -234,6 +240,7 @@ function createRuntime(
     projectInstructions: overrides.projectInstructions,
     projectMemory: overrides.projectMemory,
     pluginSkills: overrides.pluginSkills,
+    trustedExtensions: overrides.trustedExtensions,
     onEvent: overrides.onEvent ?? vi.fn(),
   });
 }
@@ -808,6 +815,214 @@ function assistantMessage(overrides: {
     content: overrides.content,
   };
 }
+
+describe("foreground cache warming through the normal turn", () => {
+  it("sends the one-token cap over the OpenAI-compatible wire", async () => {
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response("bad request", { status: 400 });
+    });
+    const model = buildProviderModel(provider);
+    const models = createProviderModels(provider, model);
+    await models.streamSimple(model, normalizeContext({
+      messages: [{ role: "user", content: "Synthetic prompt", timestamp: 1 }],
+    }), getCacheWarmingRequestOptions({ fetch }, new AbortController().signal)).result();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].max_completion_tokens ?? requests[0].max_tokens).toBe(1);
+  });
+
+  it.each(["none", "observe", "replace", "copilot"])("preserves foreground replay limits with the %s extension fixture", async (hook) => {
+    const root = await mkdtemp(join(tmpdir(), "pi-cache-warming-extension-"));
+    const entry = join(root, "extension.mjs");
+    await writeFile(entry, `export default function (pi) {
+      pi.on("before_provider_headers", ({ headers }) => {
+        headers["x-cache-test"] = "retained";
+        headers["x-cache-route"] = "extension";
+      });
+      pi.on("before_provider_request", ({ payload }) => ${hook === "replace" ? "({ ...payload, max_tokens: 64 })" : "undefined"});
+    }`);
+    const wireFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response("synthetic wire response", { status: 400 }),
+    );
+    const onEvent = vi.fn();
+    const runtime = createRuntime({
+      thinkingLevel: "off", onEvent,
+      host: { call: vi.fn().mockResolvedValue({}) },
+      provider: { ...provider, ...(hook === "copilot" ? { vendorKey: "github-copilot" } : {}), headers: { "X-Cache-Route": "configured" } },
+      trustedExtensions: hook === "none" || hook === "copilot" ? [] : [{ id: entry, entry, root, label: "Cache warming", source: "plugin" }],
+    });
+    const { TrustedExtensionRunner } = await import("./extensions/runner.js");
+    const beforeRequest = vi.spyOn(TrustedExtensionRunner.prototype, "emitBeforeProviderRequest");
+    const models = (runtime as unknown as { models: Models }).models;
+    const actualStream = models.streamSimple.bind(models);
+    const payloads: unknown[] = [];
+    const stream = vi.spyOn(models, "streamSimple").mockImplementation((model, _context, options) => {
+      const result = assistantMessage({ content: [{ type: "text", text: "Synthetic answer" }] }) as AssistantMessage;
+      result.usage.input = 0;
+      result.usage.cacheRead = 2_048;
+      result.usage.totalTokens = 2_049;
+      const events = createAssistantMessageEventStream();
+      const payload = { max_tokens: options?.maxTokens };
+      void Promise.resolve(options?.onPayload?.(payload, model)).then((replacement) => {
+        payloads.push(replacement ?? payload);
+        events.push({ type: "start", partial: result });
+        events.push({ type: "done", reason: "stop", message: result });
+        events.end(result);
+      });
+      return events;
+    });
+    try {
+      await runtime.loadTrustedExtensions();
+      vi.useFakeTimers();
+      runtime.setCacheWarmingForeground(true);
+      await runtime.prompt("Synthetic prompt", "user-1", "turn-1");
+      expect(stream).toHaveBeenCalledTimes(1);
+      const hookCalls = hook === "none" || hook === "copilot" ? 0 : 1;
+      expect(beforeRequest).toHaveBeenCalledTimes(hookCalls);
+      onEvent.mockClear();
+      await vi.advanceTimersByTimeAsync(270_000);
+      expect(beforeRequest).toHaveBeenCalledTimes(hookCalls);
+      if (hook === "replace" || hook === "copilot") {
+        if (hook === "replace") expect(payloads[0]).toMatchObject({ max_tokens: 64 });
+        expect(stream).toHaveBeenCalledTimes(1);
+        expect(onEvent).not.toHaveBeenCalled();
+        return;
+      }
+      expect(stream).toHaveBeenCalledTimes(2);
+      expect(stream.mock.calls[1][1]).toEqual(stream.mock.calls[0][1]);
+      expect(stream.mock.calls[1][2]).toMatchObject({
+        maxTokens: 1, disableContinuation: true, maxRetries: 0,
+      });
+      expect(payloads[1]).toMatchObject({ max_tokens: 1, prompt_cache_key: "session-1" });
+      expect(stream.mock.calls[1][2]?.headers).toEqual(stream.mock.calls[0][2]?.headers);
+      if (hook === "observe") {
+        expect(stream.mock.calls[1][2]?.headers).toMatchObject({ "x-cache-test": "retained" });
+        for (const args of stream.mock.calls) await actualStream(...args).result();
+        expect(wireFetch).toHaveBeenCalledTimes(2);
+        for (const [, init] of wireFetch.mock.calls) {
+          const headers = new Headers(init?.headers);
+          expect(headers.get("x-cache-route")).toBe("configured");
+          expect(headers.get("x-cache-test")).toBe("retained");
+        }
+      }
+      expect(onEvent.mock.calls.map(([event]) => event)).toEqual([
+        expect.objectContaining({ turnId: "turn-1", event: expect.objectContaining({ type: "usage" }) }),
+      ]);
+      runtime.setCacheWarmingForeground(false);
+      if (hook === "none") runtime.invalidateCacheWarming("local");
+      runtime.setCacheWarmingForeground(true);
+      await vi.advanceTimersByTimeAsync(270_000);
+      expect(stream).toHaveBeenCalledTimes(2);
+    } finally {
+      await runtime.dispose();
+      vi.useRealTimers();
+      beforeRequest.mockRestore();
+      wireFetch.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["unchanged", "system prompt", "message", "tool order", "model", "endpoint", "plugin source", "instruction file", "nested instructions", "edited nested instructions", "selected during response", "validation timeout"])(
+    "rebuilds the foreground prefix locally before resuming with %s", async (change) => {
+      const projectPath = await mkdtemp(join(tmpdir(), "pi-cache-prefix-"));
+      const file = join(projectPath, "AGENTS.md");
+      await writeFile(file, "Original workspace instructions");
+      const nested = change === "nested instructions" || change === "edited nested instructions";
+      const nestedFile = join(projectPath, "nested", "AGENTS.md");
+      const selectedDuringResponse = change === "selected during response";
+      if (nested) {
+        await mkdir(join(projectPath, "nested"));
+        await writeFile(nestedFile, "Original nested instructions");
+      }
+      const runtime = createRuntime({
+        projectPath, thinkingLevel: "off",
+        ...(nested ? { host: { call: vi.fn().mockImplementation((method) => method === "project.instructions.resolve"
+          ? loadInstructionChain(projectPath, "nested/file.txt") : undefined) } } : {}),
+        projectInstructions: await loadInstructionChain(projectPath),
+        customSystemPrompt: await loadCustomSystemPrompt(projectPath),
+        readPluginModelContext: async () => ({ contributions: [], hasProviders: change === "plugin source" }),
+      });
+      const state = runtime as unknown as {
+        agent: Agent;
+        models: Models;
+        declaredTools(): AgentTool[];
+        setAgentSystemPrompt(prompt: string): void;
+        cacheWarmingInstructionSourcesMatch(): Promise<boolean>;
+        loadPathInstructions(toolName: string, args: unknown): Promise<void>;
+      };
+      const fileCheck = vi.spyOn(state, "cacheWarmingInstructionSourcesMatch");
+      vi.useFakeTimers();
+      if (change === "validation timeout") {
+        fileCheck.mockImplementationOnce(async () => {
+          await new Promise(resolve => setTimeout(resolve, 16_000));
+          return true;
+        });
+      }
+      const stream = vi.spyOn(state.models, "streamSimple").mockImplementation(() => {
+        const result = assistantMessage({ content: [{ type: "text", text: "Synthetic answer" }] }) as AssistantMessage;
+        result.usage.input = 0;
+        result.usage.cacheRead = 2_048;
+        result.usage.totalTokens = 2_049;
+        const events = createAssistantMessageEventStream();
+        const finish = () => {
+          events.push({ type: "start", partial: result });
+          events.push({ type: "done", reason: "stop", message: result });
+          events.end(result);
+        };
+        if (selectedDuringResponse) queueMicrotask(() => {
+          runtime.setCacheWarmingForeground(true);
+          finish();
+        });
+        else finish();
+        return events;
+      });
+      try {
+        if (nested) await state.loadPathInstructions("Read", { path: "nested/file.txt" });
+        runtime.setCacheWarmingEnabled(true);
+        runtime.setCacheWarmingForeground(!selectedDuringResponse);
+        await runtime.prompt({ text: "Synthetic prompt" }, "user-1", "turn-1");
+        expect(stream).toHaveBeenCalledTimes(1);
+        if (!selectedDuringResponse) runtime.setCacheWarmingForeground(false);
+        await vi.advanceTimersByTimeAsync(90_000);
+        if (change === "instruction file") await writeFile(file, "Updated workspace instructions");
+        if (change === "edited nested instructions") await writeFile(nestedFile, "Updated nested instructions");
+        if (change === "system prompt") state.setAgentSystemPrompt("Different system instructions");
+        if (change === "message") {
+          state.agent.state.messages = state.agent.state.messages.map(message =>
+            message.role === "user" ? { ...message, content: "Different prompt" } : message);
+        }
+        if (change === "tool order") {
+          const tools = state.declaredTools();
+          expect(tools.length).toBeGreaterThan(1);
+          vi.spyOn(state, "declaredTools").mockReturnValue([...tools].reverse());
+        }
+        if (change === "model" || change === "endpoint") {
+          const model = state.agent.state.model!;
+          state.agent.state.model = change === "model"
+            ? { ...model, id: "different-model" }
+            : { ...model, baseUrl: "https://changed.invalid/v1" };
+        }
+        runtime.setCacheWarmingForeground(true);
+        expect(stream).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(180_000);
+        if (change === "validation timeout") await vi.advanceTimersByTimeAsync(16_000);
+        const resumes = change === "unchanged" || change === "nested instructions" || selectedDuringResponse;
+        if (resumes || change === "instruction file" || change === "edited nested instructions" || change === "validation timeout") {
+          expect(fileCheck).toHaveBeenCalledOnce();
+          await fileCheck.mock.results[0].value;
+        } else {
+          expect(fileCheck).not.toHaveBeenCalled();
+        }
+        expect(stream).toHaveBeenCalledTimes(resumes ? 2 : 1);
+      } finally {
+        await runtime.dispose();
+        vi.useRealTimers();
+        await rm(projectPath, { recursive: true, force: true });
+      }
+    },
+  );
+});
 
 describe("parallel file batches", () => {
   it("owns the turn during capability negotiation and honors Stop before provider dispatch", async () => {
@@ -11135,6 +11350,69 @@ describe("DesktopAgentRuntime subagents", () => {
       await runtime.abort();
       await running;
       await runtime.dispose();
+      subagentRuns.deferred = false;
+    }
+  });
+
+  it.each(["explicit", "automatic"] as const)("keeps the parent cache warm offscreen during an %s subagent wait", async (kind) => {
+    subagentRuns.calls.length = 0;
+    subagentRuns.instances.length = 0;
+    subagentRuns.deferred = true;
+    subagentRuns.result = undefined;
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ subagents: [explorer], onEvent, thinkingLevel: "off" });
+    const models = (runtime as unknown as { models: Models }).models;
+    let normalRequests = 0;
+    const stream = vi.spyOn(models, "streamSimple").mockImplementation((_model, _context, options) => {
+      const refresh = options?.disableContinuation === true;
+      if (!refresh) normalRequests++;
+      const content = refresh
+        ? [{ type: "toolCall", id: "must-not-run", name: "Task", arguments: { agent: "explorer", task: "Do not run." } }]
+        : normalRequests === 1
+          ? [{ type: "toolCall", id: "delegate", name: "Task", arguments: { agent: "explorer", task: "Inspect the fixture." } }]
+          : normalRequests === 2 && kind === "explicit"
+            ? [{ type: "toolCall", id: "wait", name: "TaskWait", arguments: {} }]
+            : [{ type: "text", text: "Synthetic answer." }];
+      const stopReason = content[0].type === "toolCall" && !refresh ? "toolUse" : "stop";
+      const result = assistantMessage({ content, stopReason }) as AssistantMessage;
+      result.usage.cacheRead = 2_048;
+      const events = createAssistantMessageEventStream();
+      events.push({ type: "start", partial: result });
+      events.push({ type: "done", reason: stopReason, message: result });
+      events.end(result);
+      return events;
+    });
+    vi.useFakeTimers();
+    runtime.setCacheWarmingWaitAllowed(true);
+    runtime.setCacheWarmingForeground(true);
+    const running = runtime.prompt("Start the inspection.", "initial-user", "active-turn");
+    try {
+      await vi.waitFor(() => expect(runtime.getStatus().activity?.phase).toBe("waiting-subagents"));
+      const lastRequest = stream.mock.calls.at(-1);
+      const before = stream.mock.calls.length;
+      runtime.setCacheWarmingForeground(false);
+      onEvent.mockClear();
+      await vi.advanceTimersByTimeAsync(270_000);
+      await vi.waitFor(() => expect(stream).toHaveBeenCalledTimes(before + 1));
+      expect(stream.mock.calls.at(-1)?.[1]).toEqual(lastRequest?.[1]);
+      expect(stream.mock.calls.at(-1)?.[2]).toMatchObject({
+        maxTokens: 1, disableContinuation: true, maxRetries: 0,
+      });
+      expect(subagentRuns.calls).toHaveLength(1);
+      expect(onEvent.mock.calls.map(([event]) => event)).toEqual([
+        expect.objectContaining({ turnId: "active-turn", event: expect.objectContaining({ type: "usage" }) }),
+      ]);
+
+      subagentRuns.resolveRun?.({ agentName: "explorer", status: "completed", report: "Fixture inspected.", turns: 1, toolCalls: 0 });
+      await running;
+      const completed = stream.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(270_000);
+      expect(stream).toHaveBeenCalledTimes(completed);
+    } finally {
+      await runtime.abort();
+      await running;
+      await runtime.dispose();
+      vi.useRealTimers();
       subagentRuns.deferred = false;
     }
   });

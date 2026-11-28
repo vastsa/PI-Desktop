@@ -33,6 +33,7 @@ export type AgentImportIpcDependencies = {
   getHost: () => HostProcess | null;
   sendToRenderer: (channel: string, payload?: unknown) => void;
   refreshUserMcp?: (projectPath?: string | null) => Promise<unknown>;
+  invalidateCacheWarming?: () => Promise<void>;
   currentWorkspacePath?: () => string | null;
 };
 
@@ -159,6 +160,7 @@ export async function runSkillImport(
 export async function runMcpImport(
   hostCall: HostCall,
   payload: McpImportRunPayload,
+  invalidateCacheWarming?: () => Promise<void>,
 ): Promise<McpImportRunResult> {
   const level = payload.level ?? "global";
   const projectPath = level === "project" ? payload.projectPath : undefined;
@@ -183,6 +185,7 @@ export async function runMcpImport(
     };
     try {
       const res = await hostCall<{ server: unknown }>("mcp.upsert", { server });
+      await invalidateCacheWarming?.();
       if (item.disabled === true) {
         try {
           await hostCall("mcp.setEnabled", {
@@ -191,6 +194,7 @@ export async function runMcpImport(
             ...(projectPath ? { projectPath } : {}),
             enabled: false,
           });
+          await invalidateCacheWarming?.();
         } catch (error) {
           // Turning off failed after the server was written; report it as a
           // failure so the user is not left with an enabled server they did
@@ -246,6 +250,7 @@ export function registerAgentImportIpc({
   getHost,
   sendToRenderer,
   refreshUserMcp,
+  invalidateCacheWarming,
   currentWorkspacePath,
 }: AgentImportIpcDependencies): void {
   registrar.handle(
@@ -285,7 +290,7 @@ export function registerAgentImportIpc({
     const host = getHost();
     if (!host) throw new Error("host unavailable");
     const hostCall: HostCall = (method, params) => host.call(method, params);
-    const result = await runMcpImport(hostCall, payload);
+    const result = await runMcpImport(hostCall, payload, invalidateCacheWarming);
     if (result.imported.length) {
       if (refreshUserMcp && currentWorkspacePath) {
         await refreshUserMcp(currentWorkspacePath()).catch(() => undefined);

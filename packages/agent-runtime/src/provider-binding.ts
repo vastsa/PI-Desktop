@@ -33,6 +33,7 @@ import { GITHUB_COPILOT_MODELS } from "@earendil-works/pi-ai/providers/github-co
 import {
   OPENCODE_GO_API_STYLE,
   OPENCODE_GO_BASE_URL,
+  canonicalEndpointUrl,
   resolveApiStyle,
   normalizeApiStyle,
   resolveNativeWebSearch,
@@ -366,10 +367,15 @@ export function buildProviderModel(
         reasoning: provider.supportsReasoning,
         supportedThinkingLevels: provider.supportedThinkingLevels,
       };
-  const baseUrl = runtimeBaseUrlForApi(
-    binding.api,
-    providerRequestTransport(provider).baseUrl ?? binding.defaultBaseUrl,
-  );
+  const endpoint = providerRequestTransport(provider).baseUrl ?? binding.defaultBaseUrl;
+  const useAnthropicDefault = !endpoint.trim() && binding.api === "anthropic-messages" &&
+    provider.vendorKey?.trim().toLowerCase() === "anthropic";
+  const baseUrl = runtimeBaseUrlForApi(binding.api, useAnthropicDefault ? binding.defaultBaseUrl : endpoint);
+  const cacheBinding = catalog?.transcriptBinding;
+  const promptCache = catalogModel.promptCache && cacheBinding?.api === binding.api &&
+    cacheBinding.modelId === provider.modelId &&
+    canonicalEndpointUrl(cacheBinding.baseUrl).replace(/\/v1$/, "") === canonicalEndpointUrl(baseUrl).replace(/\/v1$/, "")
+    ? catalogModel.promptCache : undefined;
   const zhipuCompat = zhipuRequestCompat({
     vendorKey: provider.vendorKey,
     baseUrl,
@@ -454,6 +460,7 @@ export function buildProviderModel(
     api: binding.api,
     provider: provider.extensionAgentKey ? provider.id : (provider.vendorKey?.trim() || provider.id),
     baseUrl,
+    promptCache,
     webSearch:
       resolveNativeWebSearch({
         wireApi: binding.api,

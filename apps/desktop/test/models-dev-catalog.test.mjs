@@ -2149,3 +2149,26 @@ test("a canonical translation never displaces an id that already resolves", asyn
   });
   assert.equal(match?.modelId, "gemini-3-flash", "the served id keeps its own record");
 });
+
+
+test("Anthropic cache TTL survives default and explicit official routes but not proxies", async (t) => {
+  const catalog = await loadFixtureCatalog(t, catalogFixture);
+  const modelId = "claude-sonnet-4-6";
+  const vendorKey = "anthropic";
+  const apiStyle = "anthropic_messages";
+  const ttl = { short: 300, long: 3600 };
+  for (const [baseUrl, expected] of [
+    [undefined, ttl],
+    ["", ttl],
+    ["  ", ttl],
+    ["https://api.anthropic.com/v1", ttl],
+    ["https://proxy.invalid/v1", undefined],
+  ]) {
+    const modelConfig = catalogModelConfigFor(catalog, { modelId, baseUrl, vendorKey, apiStyle });
+    assert.deepEqual(modelConfig.promptCache, expected);
+    const runtimeModel = buildProviderModel({
+      id: "fixture", name: "Fixture", apiKey: "synthetic", vendorKey, apiStyle, modelId, baseUrl, modelConfig,
+    });
+    assert.deepEqual(runtimeModel.promptCache, expected, `configured endpoint: ${JSON.stringify(baseUrl)}`);
+  }
+});

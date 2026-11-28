@@ -8,6 +8,7 @@ import type { IpcRegistrar } from "./types";
 export type McpIpcDependencies = {
   registrar: IpcRegistrar;
   getHost: () => HostProcess | null;
+  invalidateCacheWarming?: () => Promise<void>;
   userMcp: UserMcpRuntime;
   oauth?: McpOAuthManager;
   currentWorkspacePath: () => string | null;
@@ -25,6 +26,7 @@ export type McpIpcDependencies = {
 export function registerMcpIpc({
   registrar,
   getHost,
+  invalidateCacheWarming,
   userMcp,
   oauth,
   currentWorkspacePath,
@@ -86,6 +88,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
   handle(IPC.invoke.mcpUpsert, async (server: McpServerInput) => {
     if (!host) throw new Error("host unavailable");
     const res = await host.call<{ server: McpServerRecord }>("mcp.upsert", { server });
+    await invalidateCacheWarming?.();
     await refreshAllWorkspaces();
     sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server?.id });
     if (res.server && res.server.enabled !== false) {
@@ -104,6 +107,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     async (payload: { id: string } & Partial<AgentCapabilityQuery>) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.remove", payload);
+      await invalidateCacheWarming?.();
       await oauth?.deleteOAuth(payload.id);
       await refreshAllWorkspaces();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
@@ -116,6 +120,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     async (payload: { id: string; enabled: boolean } & Partial<AgentCapabilityQuery>) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.setEnabled", payload);
+      await invalidateCacheWarming?.();
       await refreshAllWorkspaces();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return res;
@@ -127,6 +132,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     async (payload: { id: string; scope: ActivationScope }) => {
       if (!host) throw new Error("host unavailable");
       const res = await host.call("mcp.setScope", payload);
+      await invalidateCacheWarming?.();
       await refreshAllWorkspaces();
       sendToRenderer(IPC.event.pluginChanged,{ reason: "mcp", pluginId: payload.id });
       return res;
@@ -143,6 +149,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
   handle(IPC.invoke.mcpTransfer, async (payload: AgentCapabilityMove) => {
     if (!host) throw new Error("host unavailable");
     const res = await host.call<{ server: McpServerRecord }>("mcp.transfer", payload);
+    await invalidateCacheWarming?.();
     if (res.server?.id && payload.id && payload.id !== res.server.id) {
       await oauth?.transferOAuth(payload.id, res.server.id);
     }
@@ -213,6 +220,7 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
       try {
         const res = await host.call<{ server: McpServerRecord }>("mcp.upsert", { server });
         imported.push(res.server);
+        await invalidateCacheWarming?.();
       } catch (error) {
         failed.push({ id: server.id, reason: describeError(error) });
       }

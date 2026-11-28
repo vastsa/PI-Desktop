@@ -199,6 +199,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     keywordKeys: [
       "settings.sessionDefaults",
       "settings.execution",
+      "settings.foregroundCacheWarming",
+      "settings.foregroundCacheWarmingDesc",
       "settings.mode",
       "settings.modeDesc",
       "settings.permissions",

@@ -68,6 +68,7 @@ import { MainProcessState } from "./bootstrap/main-state";
 import { registerApplicationActivation } from "./bootstrap/app-activation";
 import { createHostRuntime } from "./runtime/host";
 import { createSidecarRuntime } from "./runtime/sidecar";
+import { createForegroundCacheWarming } from "./runtime/foreground-cache-warming";
 import { createComputerCursorOverlay } from "./computer-use/cursor-overlay";
 import { createEventPersistence } from "./runtime/event-persistence";
 import { createPlanRuntime } from "./runtime/plans";
@@ -119,6 +120,7 @@ const {
 const getHost = () => mainState.host;
 const getMainWindow = () => mainState.mainWindow;
 const getSidecar = () => mainState.sidecar;
+const foregroundCacheWarming = createForegroundCacheWarming({ getMainWindow, getSidecar });
 
 let applicationLifecycle: ReturnType<typeof createApplicationLifecycle> | null = null;
 let launcherRuntime: ReturnType<typeof createLauncher> | null = null;
@@ -319,6 +321,10 @@ const pluginServices = createPluginServices({
   pluginActiveInProject,
   getMainWindow,
   getHost,
+  invalidateCacheWarming: async (sessionId) => {
+    await getSidecar()?.call("agent.invalidateCacheWarming", sessionId ? { sessionId } : { all: true })
+      .catch(() => undefined);
+  },
   sendToRenderer,
   safeOpenExternal,
   stripWinLongPrefix,
@@ -490,6 +496,7 @@ function sendToRenderer(channel: string, payload: unknown) {
     applicationLifecycle?.applyNativeThemeSource({
       theme: applicationAppearanceState.appThemePreference,
     });
+    foregroundCacheWarming.notePluginChanged(payload);
   }
   if (!IPC_WHITELIST.has(channel)) return;
   const window = mainState.mainWindow;
@@ -659,6 +666,7 @@ const sessionCoordination = createSessionCoordination({
    * inferred from the previous turn's end.
    */
   onTurnStarted: (sessionId: string, turnId: string) => {
+    foregroundCacheWarming.noteTurnStarted(sessionId);
     pluginServices.pluginSession.noteTurnStarted(sessionId, turnId);
     // A new turn owns the composer now, so a suggestion about the previous one
     // stops being shown and stops being showable (ADR 0333).
@@ -896,7 +904,10 @@ runtimeLifecycle = createRuntimeLifecycle({
   logger,
   sendToRenderer,
   startHost,
-  startSidecar,
+  startSidecar: async () => {
+    await startSidecar();
+    foregroundCacheWarming.sync();
+  },
   drainApprovedPlanExecutions,
   applyNetworkProxyFromAppSettings,
   plugins,
@@ -994,6 +1005,7 @@ function registerIpc() {
     setNotificationViewingSessionId: (sessionId: string | null) => {
       mainState.notificationViewingSessionId = sessionId;
     },
+    setCacheWarmingViewingSession: foregroundCacheWarming.setViewingSession,
     /** The shell reports the session on screen; plugin surfaces read it. */
     setActivePluginSession: (next) => pluginServices.pluginSession.setActiveSession(next),
     /** The shell answers a composer suggestion through the same invoke list. */
@@ -1033,6 +1045,7 @@ function registerIpc() {
     applyDeveloperMode,
     applyPreventScreenSleep,
     applyKeepAwakeWhileRunning,
+    applyForegroundCacheWarming: foregroundCacheWarming.applySettings,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -1116,6 +1129,7 @@ app.on("browser-window-created", (_event, window) => {
     if (getMainWindow() !== window || liveLifecycleWindows.has(window)) return;
     liveLifecycleWindows.add(window);
     const contentsId = window.webContents.id;
+    foregroundCacheWarming.observeWindow(window);
     window.on("hide", () => {
       void liveCallService.endForWebContents(contentsId, "window-hidden");
     });
@@ -1131,6 +1145,7 @@ app.on("browser-window-created", (_event, window) => {
   });
 });
 void app.whenReady().then(() => {
+  foregroundCacheWarming.observePowerMonitor(powerMonitor);
   installLiveMicrophonePermissionHandlers({
     targetSession: session.defaultSession,
     getMainWindow,
@@ -1168,6 +1183,7 @@ registerApplicationStartup({
   applyMacosWindowTranslucency,
   applyPreventScreenSleep,
   applyKeepAwakeWhileRunning,
+  applyForegroundCacheWarming: foregroundCacheWarming.applySettings,
   applyPluginLauncherShortcut,
   applyToggleWindowShortcut,
   ensureWindow,

@@ -136,6 +136,9 @@ export function registerWorkspaceIpc({
       return fn(event, ...args);
     });
   };
+  const invalidateCacheWarming = async () => {
+    await getSidecar()?.call("agent.invalidateCacheWarming", { all: true }).catch(() => undefined);
+  };
   const assertMainWindowSender = registrar.assertMainWindowSender;
   registerSidebarPreferencesIpc({ registrar, dataDir });
   let composerPickerActive = false;
@@ -292,6 +295,7 @@ export function registerWorkspaceIpc({
         name,
         folders: safeFolders,
       });
+      await invalidateCacheWarming();
       void refreshProjectGroups(host);
       return created;
     },
@@ -323,6 +327,7 @@ export function registerWorkspaceIpc({
           folders,
           ...(primary ? { primary } : {}),
         });
+        await invalidateCacheWarming();
         void refreshProjectGroups(host);
         return result;
       }
@@ -351,6 +356,7 @@ export function registerWorkspaceIpc({
         folders: safeFolders,
         ...(safePrimary ? { primary: safePrimary } : {}),
       });
+      await invalidateCacheWarming();
       void refreshProjectGroups(host);
       return updated;
     },
@@ -367,6 +373,7 @@ export function registerWorkspaceIpc({
         });
       }
       const renamed = await host.call("project.group.rename", { groupId, name });
+      await invalidateCacheWarming();
       void refreshProjectGroups(host);
       return renamed;
     },
@@ -385,10 +392,9 @@ export function registerWorkspaceIpc({
       if (!groupId || !Array.isArray(input.entries)) {
         throw new Error("project group id and entries required");
       }
-      return host.call("project.group.memory.set", {
-        groupId,
-        entries: input.entries,
-      });
+      const result = await host.call("project.group.memory.set", { groupId, entries: input.entries });
+      await invalidateCacheWarming();
+      return result;
     },
   );
   handle(
@@ -407,7 +413,9 @@ export function registerWorkspaceIpc({
       const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
       const content = typeof input.content === "string" ? input.content : "";
       if (!groupId) throw new Error("project group id required");
-      return host.call("project.group.instructions.set", { groupId, content });
+      const result = await host.call("project.group.instructions.set", { groupId, content });
+      await invalidateCacheWarming();
+      return result;
     },
   );
   handle(IPC.invoke.projectOpenFolder, async (path: string) => {
@@ -567,14 +575,14 @@ export function registerWorkspaceIpc({
     } = {}) => {
       const projectPath = await managedProjectPath(input.projectPath);
       if (!host) throw new Error("host unavailable");
-      if (Array.isArray(input.entries)) {
-        return host.call("project.memory.set", {
-          path: projectPath,
-          entries: input.entries,
-        });
-      }
-      const content = typeof input.content === "string" ? input.content : "";
-      return host.call("project.memory.set", { path: projectPath, content });
+      const result = await host.call("project.memory.set", {
+        path: projectPath,
+        ...(Array.isArray(input.entries)
+          ? { entries: input.entries }
+          : { content: typeof input.content === "string" ? input.content : "" }),
+      });
+      await invalidateCacheWarming();
+      return result;
     },
   );
 

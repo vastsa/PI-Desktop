@@ -1236,6 +1236,16 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
+    if object
+        .get("foregroundCacheWarmingEnabled")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        return Err(rpc_err(
+            1002,
+            "foregroundCacheWarmingEnabled must be a boolean",
+            "INVALID_PARAMS",
+        ));
+    }
     if let Some(threshold_value) = object.get("largePasteThreshold") {
         let Some(threshold) = threshold_value.as_i64() else {
             return Err(rpc_err(
@@ -11673,6 +11683,20 @@ mod image_generation_settings_tests {
 #[cfg(test)]
 mod update_settings_tests {
     use super::*;
+
+    #[test]
+    fn foreground_cache_warming_settings_require_boolean() {
+        for value in [json!(null), json!("true"), json!(1), json!([]), json!({})] {
+            assert!(
+                validate_settings_value(&json!({"foregroundCacheWarmingEnabled": value})).is_err()
+            );
+        }
+        for enabled in [true, false] {
+            assert!(
+                validate_settings_value(&json!({"foregroundCacheWarmingEnabled": enabled})).is_ok()
+            );
+        }
+    }
 
     #[test]
     fn validates_update_preference_and_reminder_version() {

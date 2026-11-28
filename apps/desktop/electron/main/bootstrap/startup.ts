@@ -118,6 +118,7 @@ export type StartupDependencies = {
   ) => void;
   applyPreventScreenSleep: (settings?: { preventScreenSleep?: unknown } | null) => void;
   applyKeepAwakeWhileRunning: (settings?: { keepAwakeWhileRunning?: unknown } | null) => void;
+  applyForegroundCacheWarming: (settings?: { foregroundCacheWarmingEnabled?: unknown } | null) => void;
   applyPluginLauncherShortcut: (keybindings?: KeybindingOverrides) => void;
   applyToggleWindowShortcut: (keybindings?: KeybindingOverrides) => void;
   ensureWindow: () => Promise<boolean>;
@@ -179,6 +180,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       applyMacosWindowTranslucency,
       applyPreventScreenSleep,
       applyKeepAwakeWhileRunning,
+      applyForegroundCacheWarming,
       applyPluginLauncherShortcut,
       applyToggleWindowShortcut,
       ensureWindow,
@@ -357,12 +359,14 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
           startupAnimation?: unknown;
           preventScreenSleep?: unknown;
           keepAwakeWhileRunning?: unknown;
+          foregroundCacheWarmingEnabled?: unknown;
         } | null;
         applyApplicationMenuSettings(stored);
         applyDeveloperMode(stored);
         applyMacosWindowTranslucency(stored);
         applyPreventScreenSleep(stored);
         applyKeepAwakeWhileRunning(stored);
+        applyForegroundCacheWarming(stored);
         storedStartupAnimationSettings = stored;
         await applyNetworkProxyFromAppSettings(stored);
       } catch {

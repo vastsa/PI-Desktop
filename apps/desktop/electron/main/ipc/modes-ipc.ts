@@ -29,6 +29,7 @@ import type { ModeRunCoordinator } from "../runtime/mode-runs";
 import type { IpcRegistrar } from "./types";
 
 export type ModesIpcDependencies = {
+  invalidateCacheWarming?: () => Promise<void>;
   registrar: IpcRegistrar;
   catalog: ModeCatalogService;
   runs: ModeRunCoordinator;
@@ -164,7 +165,12 @@ function bundleSettingsArg(value: unknown): ModeBundleSettingsPatch {
   return patch;
 }
 
-export function registerModesIpc({ registrar, catalog, runs, openPath }: ModesIpcDependencies): void {
+export function registerModesIpc({ registrar, catalog, runs, openPath, invalidateCacheWarming }: ModesIpcDependencies): void {
+  async function writeMode<T>(write: Promise<T>): Promise<T> {
+    const result = await write;
+    await invalidateCacheWarming?.();
+    return result;
+  }
   registrar.handle(IPC.invoke.modesCatalog, async () => catalog.catalog());
   registrar.handle(IPC.invoke.modesRead, async (id: unknown) => catalog.read(modeIdArg(id)));
   registrar.handle(IPC.invoke.modesValidate, async (request: unknown) => {
@@ -173,9 +179,9 @@ export function registerModesIpc({ registrar, catalog, runs, openPath }: ModesIp
   });
   registrar.handle(IPC.invoke.modesWrite, async (request: unknown) => {
     const { id, source } = (request ?? {}) as Record<string, unknown>;
-    return catalog.write(modeIdArg(id), sourceArg(source));
+    return writeMode(catalog.write(modeIdArg(id), sourceArg(source)));
   });
-  registrar.handle(IPC.invoke.modesDelete, async (id: unknown) => catalog.remove(modeIdArg(id)));
+  registrar.handle(IPC.invoke.modesDelete, async (id: unknown) => writeMode(catalog.remove(modeIdArg(id))));
 
   registrar.handle(IPC.invoke.modesRunGet, async (sessionId: unknown) => runs.get(sessionIdArg(sessionId)));
   registrar.handle(IPC.invoke.modesRunControl, async (value: unknown) => {
@@ -196,15 +202,15 @@ export function registerModesIpc({ registrar, catalog, runs, openPath }: ModesIp
   registrar.handle(IPC.invoke.modesBundleWrite, async (value: unknown) => {
     const request = bundleWriteArg(value);
     const { id, ...contents } = request;
-    return catalog.writeBundle(id, contents);
+    return writeMode(catalog.writeBundle(id, contents));
   });
   registrar.handle(IPC.invoke.modesCopy, async (value: unknown) => {
     const { fromId, toId } = copyArg(value);
-    return catalog.copy(fromId, toId);
+    return writeMode(catalog.copy(fromId, toId));
   });
   registrar.handle(IPC.invoke.modesBundleSettings, async (value: unknown) => {
     const id = modeIdArg((value as Record<string, unknown> | null)?.id);
-    return saveModeBundleSettings(catalog, id, bundleSettingsArg(value));
+    return writeMode(saveModeBundleSettings(catalog, id, bundleSettingsArg(value)));
   });
   registrar.handle(IPC.invoke.modesSkills, async (id: unknown) => readModeSkillsState(catalog, modeIdArg(id)));
   registrar.handle(IPC.invoke.modesSkillsOpen, async (id: unknown) => {

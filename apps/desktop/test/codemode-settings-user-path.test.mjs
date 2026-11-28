@@ -68,11 +68,23 @@ window.codemodeSettingsProbe = async () => {
   flushSync(() => toggle().click());
   await settle();
   const offAfterSecondClick = toggle().getAttribute("aria-checked") === "false";
-  return { offByDefault, describesApprovals, onAfterClick, offAfterSecondClick, writes };
+  const cacheToggle = () => document.querySelector('[role="switch"][aria-label="Keep prompt cache warm (experimental)"]');
+  if (!cacheToggle()) throw new Error("the foreground cache warming switch is missing");
+  const cacheOffByDefault = cacheToggle().getAttribute("aria-checked") === "false";
+  flushSync(() => cacheToggle().click());
+  await settle();
+  const cacheOnAfterClick = cacheToggle().getAttribute("aria-checked") === "true";
+  flushSync(() => cacheToggle().click());
+  await settle();
+  const cacheOffAfterSecondClick = cacheToggle().getAttribute("aria-checked") === "false";
+  return {
+    offByDefault, describesApprovals, onAfterClick, offAfterSecondClick,
+    cacheOffByDefault, cacheOnAfterClick, cacheOffAfterSecondClick, writes,
+  };
 };
 `;
 
-test("the Codemode switch is off by default and persists codemodeEnabled", {
+test("Agent Behavior experiment switches default off and persist independently", {
   timeout: 60_000,
   skip:
     process.platform === "linux" && !process.env.DISPLAY
@@ -156,7 +168,13 @@ app.whenReady().then(async () => {
       describesApprovals: true,
       onAfterClick: true,
       offAfterSecondClick: true,
-      writes: [{ codemodeEnabled: true }, { codemodeEnabled: false }],
+      cacheOffByDefault: true,
+      cacheOnAfterClick: true,
+      cacheOffAfterSecondClick: true,
+      writes: [
+        { codemodeEnabled: true }, { codemodeEnabled: false },
+        { foregroundCacheWarmingEnabled: true }, { foregroundCacheWarmingEnabled: false },
+      ],
     });
   } finally {
     await rm(temp, { recursive: true, force: true });

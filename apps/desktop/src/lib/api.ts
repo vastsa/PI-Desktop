@@ -793,9 +793,10 @@ export const api = {
     /** Durable task timestamp used by Main to reject pre-dismissal replays. */
     createdAt?: string;
   }) => invoke<{ shown: boolean }>(IPC.invoke.notificationShowNative, input),
-  setNotificationViewingSession: (sessionId: string | null) =>
+  setNotificationViewingSession: (sessionId: string | null, cacheWarming = false) =>
     invoke<{ ok: boolean }>(IPC.invoke.notificationSetViewingSession, {
       sessionId,
+      cacheWarming,
     }),
   /**
    * Report the session on screen to the main process. Plugin

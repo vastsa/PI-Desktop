@@ -389,6 +389,7 @@ export type PluginHostServices = {
    * remove). Host should notify the renderer and refresh panel appearance.
    */
   onPluginThemesChanged?: (pluginId: string) => void;
+  onPluginSettingsChanged?: (pluginId: string) => void;
   showToast: (message: string, level?: "info" | "warn" | "error") => void;
   notify: (input: { title: string; body?: string }) => void;
   getNotificationPermission: () => PluginNotificationPermission | Promise<PluginNotificationPermission>;
@@ -5877,6 +5878,7 @@ export class PluginRuntime {
           const current = await this.hostApi(loaded).plugin.getSettings();
           const next = { ...current, ...partial };
           writeFileSync(join(dataPath(), "settings.json"), JSON.stringify(next, null, 2), "utf8");
+          if (JSON.stringify(current) !== JSON.stringify(next)) this.services.onPluginSettingsChanged?.(pluginId);
         },
         getDataPath: async () => dataPath(),
       },
