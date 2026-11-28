@@ -41,6 +41,12 @@ type RuntimeSession = {
   [key: string]: unknown;
 };
 
+function nativeTurnRunning(session: RuntimeSession): boolean {
+  const capabilities = session.capabilities;
+  return typeof capabilities === "object" && capabilities !== null &&
+    (capabilities as { canStop?: unknown }).canStop === true;
+}
+
 let scannedImportSessions = new Map<string, ExternalSessionSummary>();
 let scannedModelConfigs = new Map<string, ModelConfigImportDraft>();
 
@@ -226,7 +232,15 @@ export function registerSessionIpc({
       : { sessions: [] as RuntimeSession[] };
     return {
       ...result,
-      runningSessionIds: [...activeTurns.keys()],
+      // Native Pi turns run in the sidecar and are absent from activeTurns; a
+      // reloaded renderer must still see them as running to offer Stop.
+      runningSessionIds: [
+        ...activeTurns.keys(),
+        ...native.sessions.flatMap((session) =>
+          typeof session.id === "string" && !activeTurns.has(session.id) && nativeTurnRunning(session)
+            ? [session.id]
+            : []),
+      ],
       sessions: [
         ...result.sessions.map((session) => ({
           ...enrichSession(session, providers, defaults),

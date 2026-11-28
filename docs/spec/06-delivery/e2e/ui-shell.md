@@ -318,6 +318,30 @@
 - **Status**: Unit-covered (`user-select.test.mjs`, `thinking-ui.test.mjs`,
   `markdown-prose-style.test.mjs`); full visual scenario Draft
 
+## E2E-060d: Assistant markdown follows logical alignment and list gutters
+
+- **Preconditions**: A completed assistant answer that includes an Arabic-only
+  paragraph, an Arabic unordered list, and an ordinary LTR ordered list;
+  Chromium available for `scripts/e2e-bidi.mjs`.
+- **Steps**: 1) Render the answer in the chat transcript. 2) Inspect computed
+  `direction` and `text-align` on the Arabic paragraph, list items, and a
+  heading. 3) Measure glyph placement under an inherited `text-align: left`
+  ancestor. 4) Measure list gutter geometry for the RTL unordered list and
+  the LTR ordered list (use distinct list markers so CommonMark does not
+  merge them).
+- **Expected**: The Arabic paragraph, items, and heading compute
+  `direction: rtl` and `text-align: start` (used value `right`). Glyphs sit
+  on the right under a left-aligned ancestor. The RTL list gutter is on the
+  right; the LTR list gutter is on the left.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`markdown-bidi-alignment.test.mjs`,
+  `text-direction.test.mjs`); Chromium probe `scripts/e2e-bidi.mjs` covers
+  inherited-alignment glyph placement and RTL/LTR list gutters. The probe
+  applies `text-align: left` on its own ancestor and does not itself confirm
+  the reported Windows chat path in #2635.
+
 ## E2E-061: User message plaintext layout survives wrapping and reload
 
 - **Preconditions**: Provider configured; composer can accept multi-line input
