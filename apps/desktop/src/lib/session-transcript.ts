@@ -8,16 +8,7 @@ import {
   registerSessionMessageRewrite,
 } from "./session-transcript-updates";
 
-type OptimisticFileReference = {
-  size?: number;
-  localReference?: string;
-  path: string;
-  name: string;
-  kind?: "image" | "file" | "session" | "directory" | "agent";
-  mimeType?: string;
-  /** Large-text paste tokens travel inline in the text, not as attachments. */
-  token?: string;
-};
+import type { ComposerDraftFileReference } from "./composer-smart-stop";
 
 const OPTIMISTIC_USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_OPTIMISTIC_ECHO_DELAY_MS = 30_000;
@@ -32,14 +23,14 @@ const IMAGE_PATH_PATTERN = /\.(avif|bmp|gif|heic|jpe?g|png|tiff?|webp)$/i;
 export function optimisticUserMessage(
   id: string,
   content: string,
-  fileReferences: readonly OptimisticFileReference[] = [],
+  fileReferences: readonly ComposerDraftFileReference[] = [],
   createdAt: string = new Date().toISOString(),
 ): UiMessage {
   // A plain file chip travels as `@path` text and needs no attachment row, but
   // an image chip is one: it also records where its path sits, so the row shows
   // the image in place before the durable echo arrives (D288).
   const rendered = fileReferences.flatMap((reference) => {
-    if (reference.kind === "directory" || reference.kind === "agent") return [];
+    if (reference.kind === "directory" || reference.kind === "agent" || reference.kind === "skill") return [];
     const kind =
       reference.kind ??
       (IMAGE_PATH_PATTERN.test(reference.path) ? ("image" as const) : ("file" as const));

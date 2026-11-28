@@ -2004,6 +2004,11 @@ and host error, so one unclassifiable head cannot starve every session's writes
 (D656). A restarted host is a new generation and retries the head at once.
 Quarantined appends are never replayed automatically, and `session.delete`
 drops that session's quarantined appends too.
+Before archiving, the outbox saves the rejection reason, timestamp, and a
+unique transfer ID with the queued snapshot. It removes that snapshot only
+after the dead-letter file has been replaced successfully. On restart, a
+pending transfer finishes using the same ID, even without a host. A later
+enqueue with the same message key remains independent.
 Every outbox and dead-letter snapshot, including an empty array, is written
 to its sibling temporary file before replacing the committed file by rename.
 Interrupted writes leave the previous committed snapshot readable; a failed

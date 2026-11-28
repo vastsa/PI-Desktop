@@ -26,6 +26,9 @@ git history.
 
 | ID | Title | Status |
 |---|---|---|
+| lan-webui-code-pairing | [A one-time code pairs a LAN WebUI device directly](lan-webui-code-pairing.md) | Accepted |
+| lan-webui-project-access | [Device confirmation grants access to all local LAN WebUI projects](lan-webui-project-access.md) | Superseded |
+| lan-webui-session-model-selection | [Paired LAN WebUI devices can select a session model](lan-webui-session-model-selection.md) | Accepted |
 | codemode-sandbox-boundary | [Codemode sandbox execution boundary](codemode-sandbox-boundary.md) | Accepted |
 | mode-definitions | [User-definable modes as staged workflows](mode-definitions.md) | Proposed |
 | sidebar-layout-recovery | [Recover sidebar layout independently of Chromium storage](sidebar-layout-recovery.md) | Accepted |

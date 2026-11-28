@@ -1,14 +1,19 @@
 import type { UiMessage } from "@pi-desktop/shared";
 import {
+  buildDelegationReply,
   delegationChainMaps,
-  messageThinking,
-  type SubagentRunItem,
+  type AssistantTurnEntry,
 } from "./assistant-turns";
 import { isDelegationStartTool } from "./tool-display";
 import { delegationIdForMessage } from "./subagent-panel";
 
-/** One user/assistant exchange of a delegate session. */
-export type SubagentTranscriptTurn = { task: string; rows: SubagentRunItem[] };
+/** One exchange of the delegation chain, keyed by its original Task call. */
+export type SubagentTranscriptTurn = {
+  task: string;
+  call: UiMessage;
+  messages: UiMessage[];
+  reply: AssistantTurnEntry;
+};
 
 /**
  * A delegate's conversation as alternating turns: each Task call of the
@@ -65,10 +70,9 @@ function resumedCalls(
  * A Task call belongs to the delegation of `delegationId` when the call
  * identifies itself by that id — via its result payload, or via its own call
  * id when the runtime recorded none — or when it resumed another call of that
- * chain. Turns appear in session order; each turn's rows are the messages
- * whose `parentToolCallId` names that call, mapped exactly like the
- * delegation card's run grouping. Returns null when no Task call matches, so
- * the tab can show its unavailable state instead of an empty conversation.
+ * this chain. Turns appear in session order; each turn owns the messages
+ * whose `parentToolCallId` names that call. Returns null when it cannot be
+  * located in the loaded window, so the tab can show its unavailable state.
  */
 export function buildSubagentTranscript(
   messages: readonly UiMessage[],
@@ -141,26 +145,20 @@ export function buildSubagentTranscript(
     .find(Boolean);
   const agentName = runAgentName || requestedName;
 
+  const byCall = new Map<string, UiMessage[]>();
+  for (const message of messages) {
+    const owner = message.parentToolCallId;
+    if (!owner || !chain.has(owner)) continue;
+    const owned = byCall.get(owner);
+    if (owned) owned.push(message);
+    else byCall.set(owner, [message]);
+  }
   const turns: SubagentTranscriptTurn[] = [];
   for (const call of calls) {
-    const callId = call.toolCallId as string;
-    if (!chain.has(callId)) continue;
-    const rows: SubagentRunItem[] = [];
-    for (const message of messages) {
-      if (message.parentToolCallId !== callId) continue;
-      if (message.role === "tool") {
-        rows.push({ kind: "tool", message });
-        continue;
-      }
-      // A delegate turn can carry reasoning and text at once, and both are
-      // worth showing: the text is the only place its narration and report
-      // exist.
-      if (messageThinking(message)) rows.push({ kind: "thinking", message });
-      if ((message.content || "").trim() || message.error) {
-        rows.push({ kind: "answer", message });
-      }
-    }
-    turns.push({ task: delegateTaskDescription(call), rows });
+    const callId = call.toolCallId;
+    if (!callId || !chain.has(callId)) continue;
+    const owned = byCall.get(callId) ?? [];
+    turns.push({ task: delegateTaskDescription(call), call, messages: owned, reply: buildDelegationReply(callId, owned) });
   }
 
   return {

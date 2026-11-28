@@ -623,3 +623,38 @@ async fn completion_report_rpc_completed_keeps_command_gate_and_blocked_settles_
         .unwrap();
     assert_eq!(run.wire(), settled["run"]);
 }
+
+#[tokio::test]
+async fn guarded_model_change_refuses_stale_model_and_mode() {
+    let h = Harness::new("agent");
+    let before = h
+        .call("session.get", json!({ "id": h.session_id }))
+        .await
+        .unwrap();
+    let mut params = json!({
+        "id": h.session_id,
+        "mode": "agent",
+        "providerId": "local-ai",
+        "modelId": "steady-chat",
+        "expectedAgentModel": {
+            "projectPath": before["session"]["projectPath"],
+            "providerId": null,
+            "modelId": null,
+        },
+    });
+    let updated = h.call("session.configure", params.clone()).await.unwrap();
+    assert_eq!(updated["session"]["modelId"], "steady-chat");
+
+    params["modelId"] = json!("swift-chat");
+    let error = h
+        .call("session.configure", params.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error["data"]["errorCode"], "CONFLICT");
+
+    h.configure("plan", None).await.unwrap();
+    params["expectedAgentModel"]["providerId"] = json!("local-ai");
+    params["expectedAgentModel"]["modelId"] = json!("steady-chat");
+    let error = h.call("session.configure", params).await.unwrap_err();
+    assert_eq!(error["data"]["errorCode"], "CONFLICT");
+}

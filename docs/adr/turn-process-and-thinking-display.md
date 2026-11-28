@@ -59,8 +59,10 @@ reasoning; when off, rendered reasoning rows stay open. Each is a sub-row of the
 setting that gates it (`Show thinking`, and a non-flat `Transcript display`), and
 hiding a sub-row never writes a value, so the stored choice survives toggling the
 parent. The group no longer inherits open state from contained reasoning: closing
-hides expanded reasoning, reopening restores each row's own answer. Live work never
-folds — a running turn, or a group owning a running tool or delegation, stays open.
+hides expanded reasoning, reopening restores each row's own answer. Folding
+follows the group rather than the whole turn: once a group is no longer current
+and has no running tool, search or delegation, an untouched group can fold
+before the turn ends. Manual choices and reading protection still apply.
 A folded group is one line whose header states its composition: contained actions
 joined with the locale's list wording, capped at three plus "and more", then the
 call count as a separate token that ellipsizes last (`搜索并读取文件 · 12 次操作`).
