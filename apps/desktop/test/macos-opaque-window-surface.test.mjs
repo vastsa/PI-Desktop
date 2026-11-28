@@ -171,8 +171,8 @@ test("only macOS sidebar and splash surfaces receive the translucent glass treat
 
   const mainPaneBlock = styleBlock("\\.main-pane");
   const mainTitlebarBlock = styleBlock("\\.main-titlebar");
-  const conversationTopbarBlock = styleBlock("\\.conversation-topbar");
-  for (const block of [mainPaneBlock, mainTitlebarBlock, conversationTopbarBlock]) {
+  const conversationBackdropBlock = styleBlock("\\.conversation-topbar::before");
+  for (const block of [mainPaneBlock, mainTitlebarBlock, conversationBackdropBlock]) {
     assert.match(block, /background:\s*var\(--ds-bg-primary\)/);
     assert.doesNotMatch(block, /transparent/);
   }

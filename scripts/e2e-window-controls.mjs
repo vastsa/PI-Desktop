@@ -115,6 +115,41 @@ async function checkControls(label) {
   assert.ok(ok, label);
 }
 
+async function checkConversationTogglePaint() {
+  const selector = JSON.stringify('.session-pane[data-visible="true"] .thread-content');
+  await waitFor(() => evaluate(`document.querySelector(${selector})?.textContent.includes('A row of the scrolling conversation.')`),
+    "fixture conversation rendered");
+  const { x, width, y, below } = await evaluate(`(() => {
+    const content = document.querySelector(${selector});
+    const scroll = content.closest('.thread-scroll');
+    scroll.scrollTop = Math.floor(scroll.scrollHeight / 2);
+    const toggle = document.querySelector('.app-work-panel-toggle').getBoundingClientRect();
+    const bar = document.querySelector('.conversation-topbar').getBoundingClientRect();
+    const x = Math.ceil(toggle.left), right = Math.floor(toggle.right + 6);
+    const below = Math.ceil(bar.bottom) + 4;
+    const row = content.getBoundingClientRect();
+    if (!scroll.scrollTop || row.left > x || row.right < right || row.top > toggle.top || row.bottom < below + 2)
+      throw new Error('The scrolled transcript must reach behind the toggle and its trailing gap');
+    return { x, width: right - x, y: Math.floor(toggle.top + toggle.height / 2), below };
+  })()`);
+  const strip = async top => (await send("Page.captureScreenshot", {
+    format: "png", clip: { x, y: top, width, height: 2, scale: 1 },
+  })).data;
+  // Contrast the same two strips so a transparent gap cannot pass on a plain transcript.
+  const shots = [];
+  try {
+    for (const color of ["magenta", "lime"]) {
+      await evaluate(`document.querySelector(${selector}).style.backgroundColor = ${JSON.stringify(color)}`);
+      shots.push({ band: await strip(y), transcript: await strip(below) });
+    }
+    assert.notEqual(shots[0].transcript, shots[1].transcript, "the visible transcript must change below the titlebar");
+    assert.equal(shots[0].band, shots[1].band, "the transcript must not show through the toggle or its trailing gap");
+  } finally {
+    await evaluate(`document.querySelector(${selector}).style.removeProperty('background-color')`);
+  }
+  console.log("PASS scrolling content stays behind the work-panel toggle and its trailing gap");
+}
+
 async function checkConversationActionSpacing() {
   const platform = await evaluate("document.documentElement.dataset.platform");
   await send("Emulation.setDeviceMetricsOverride", {
@@ -155,12 +190,14 @@ async function checkConversationActionSpacing() {
     });`);
   try {
     await settle();
+    await checkConversationTogglePaint();
     for (const direction of ["in", "out"]) {
       const name = JSON.stringify(`work-panel-${direction}`);
       await click(".app-work-panel-toggle", false);
       await waitFor(() => evaluate(`!!window.__PI_TOPBAR_FRAMES__[${name}]`), `sample ${name}`);
       const frames = await evaluate(`window.__PI_TOPBAR_FRAMES__[${name}]`);
-      const failures = frames.filter(frame => frame.gap < 8 || !frame.reachable);
+      // Two DOMRect coordinates can round independently at fractional display scaling.
+      const failures = frames.filter(frame => frame.gap < 8 - 0.0001 || !frame.reachable);
       assert.equal(failures.length, 0, `807×567 win32 ${name}: ${JSON.stringify(failures)}`);
       await settle();
     }
@@ -302,6 +339,10 @@ try {
     await host.call("workspace.set", { path: temp });
     const { session } = await host.call("session.create", { title: "Window controls regression" });
     sessionId = session.id;
+    await host.call("session.appendMessage", { sessionId, message: {
+      id: "window-controls-transcript", role: "assistant", status: "complete",
+      createdAt: new Date().toISOString(), content: "A row of the scrolling conversation.\n\n".repeat(60),
+    } });
   } finally {
     await host.stop();
   }

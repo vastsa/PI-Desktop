@@ -3689,12 +3689,14 @@ PowerShell-launched fixture; activation must not restore the native outline.
   click Close with close-to-tray configured in the disposable profile. Also
   enter and leave native fullscreen with the panel open. Check the three controls
   with Chromium hit testing throughout, including light/dark Windows/Linux CSS.
-  At an 807×567 viewport with Windows renderer styles, sample the opening and
-  closing dock animations and hit-test both edges of each conversation action.
+  At an 807×567 viewport with Windows renderer styles, scroll a contrasting
+  transcript beneath the closed-panel toggle. Sample its painted strip, then
+  open and close the dock and hit-test both edges of each conversation action.
 - **Expected:** Windows/Linux minimize, maximize/restore, and close stay visible
   and hit-testable at the window edge. Native actions work with the panel open.
-  The New Task and Search buttons stay clickable across their width, with at
-  least 8px between the action group and the work-panel toggle in every frame.
+  Scrolling content remains visible below the titlebar but never through the
+  toggle or the gap beside it. New Task and Search stay clickable across their
+  width, with at least 8px between the action group and the toggle in every frame.
   Preview sidebar navigation remains clickable. On macOS no duplicate renderer
   window controls appear; the native traffic-light and fullscreen contracts stay
   unchanged. CSS emulation does not qualify another operating system's native UI.
