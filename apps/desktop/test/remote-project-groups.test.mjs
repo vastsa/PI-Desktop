@@ -35,6 +35,10 @@ const sidebarStyles = await readFile(
   new URL("../src/styles/sessions.css", import.meta.url),
   "utf8",
 );
+const remoteGroupsSource = await readFile(
+  new URL("../src/components/remote/RemoteProjectGroups.tsx", import.meta.url),
+  "utf8",
+);
 
 const project = {
   key: JSON.stringify(["ssh-fixture", "p7"]),
@@ -161,6 +165,24 @@ test("the new-task action stays on the header and never becomes the fold toggle"
     // The `+` action must survive a folded group: it is how a user creates the
     // first conversation in a project they just closed.
     assert.match(collapsed, /aria-label="New task: 713Air · mac-mini"/);
+  });
+});
+
+test("the group header rides the same rail as a local project group", async () => {
+  await withGroups(({ render }) => {
+    const html = render([session("s1", "Remote work")], false);
+    // The shared `.sidebar-session-group-title` box owns the header's padding
+    // and flex alignment. The generic Button variant adds `btn btn-ghost`,
+    // whose centered content and 12px padding shift the chevron and folder off
+    // the rail every local project group sits on.
+    assert.match(html, /class="sidebar-session-group-title project-toggle"/);
+    assert.doesNotMatch(html, /\bbtn(?:-ghost)?\b/);
+    // The trailing add action takes the same reveal + sizing class as the
+    // local header control instead of a bare icon button.
+    assert.match(html, /class="sidebar-session-group-add"/);
+    // Same primitive as `Sidebar.tsx`, not a hand-rolled button element.
+    assert.match(remoteGroupsSource, /<TooltipButton[\s\S]*?sidebar-session-group-title/);
+    assert.doesNotMatch(remoteGroupsSource, /<Button[\s>]/);
   });
 });
 
