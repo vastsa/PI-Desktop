@@ -5,52 +5,50 @@
 //! intended path instead of an opaque I/O error. They must not leak whether a
 //! sensitive or out-of-scope file exists, and they must not treat a legitimate
 //! missing filename as malformed.
-use super::ignore_rules;
-use super::write_scope::BoundWriteScope;
-use crate::workspace::simple_canonicalize;
-use std::path::Path;
+//!
+//! The heuristic is skipped unless the input has surrounding whitespace or a
+//! candidate junk suffix, so an ordinary Read/Edit of `src/main.rs` does not
+//! preflight existence. Authorization for a suggested path is decided by the
+//! caller (the same resolver the tool uses next), not an independent probe.
 
 /// Reject a Read/Edit path that looks like a real file plus trailing junk.
 ///
 /// Write (`creation`) is left alone: a path that does not exist is the normal
 /// shape of a create call, including names with surrounding whitespace.
 ///
-/// A literal path that already names an existing, allowed file is never
-/// rejected — even when the name has leading or trailing spaces. Surrounding
-/// whitespace is only treated as recoverable junk when the trimmed form points
-/// at an allowed file and the literal path does not.
-///
-/// Prefix cuts at whitespace or `:` (except a Windows drive-letter colon) are
-/// only used when the remainder looks like junk (`imma?`, `:{`), not like a
-/// missing filename (`foo bar.ts`).
+/// `allowed_existing` is called only when a hint might be emitted. A literal
+/// path that already names an existing, allowed file is never rejected —
+/// even when the name has leading or trailing spaces. Surrounding whitespace
+/// is only treated as recoverable junk when the trimmed form is allowed and
+/// the literal path is not. Prefix cuts at whitespace or `:` (except a
+/// Windows drive-letter colon) are only used when the remainder looks like
+/// junk (`imma?`, `:{`), not like a missing filename (`foo bar.ts`).
 pub(crate) fn malformed_tool_path(
-    root: &Path,
     path: &str,
     creation: bool,
-) -> Option<(String, String)> {
-    malformed_tool_path_in_scope(root, path, creation, None)
-}
-
-pub(crate) fn malformed_tool_path_in_scope(
-    root: &Path,
-    path: &str,
-    creation: bool,
-    scope: Option<&BoundWriteScope>,
+    allowed_existing: impl Fn(&str) -> bool,
 ) -> Option<(String, String)> {
     if creation {
         return None;
     }
-    // A literal path — including one with leading/trailing spaces — is legal
-    // whenever it names something that actually exists and is allowed.
-    if hint_target_exists(root, path, scope) {
+    let trimmed = path.trim();
+    let surrounding = trimmed != path;
+    let junk_heads: Vec<&str> = junk_prefixes(path)
+        .filter(|head| !head.is_empty() && is_junk_suffix(&path[head.len()..]))
+        .collect();
+    if !surrounding && junk_heads.is_empty() {
         return None;
     }
-    let trimmed = path.trim();
-    if trimmed != path {
+    // A literal path — including one with leading/trailing spaces — is legal
+    // whenever it names something that actually exists and is allowed.
+    if allowed_existing(path) {
+        return None;
+    }
+    if surrounding {
         // Surrounding whitespace is recoverable junk only when the trimmed
-        // path points at something real and allowed; otherwise the literal
-        // path is just a (missing) file with whitespace in its name.
-        if trimmed.is_empty() || !hint_target_exists(root, trimmed, scope) {
+        // path is allowed; otherwise the literal path is just a (missing)
+        // file with whitespace in its name.
+        if trimmed.is_empty() || !allowed_existing(trimmed) {
             return None;
         }
         return Some((
@@ -61,12 +59,8 @@ pub(crate) fn malformed_tool_path_in_scope(
             ),
         ));
     }
-    if !has_junk_boundary(path) {
-        return None;
-    }
-    for head in junk_prefixes(path) {
-        let suffix = &path[head.len()..];
-        if head.is_empty() || !is_junk_suffix(suffix) || !hint_target_exists(root, head, scope) {
+    for head in junk_heads {
+        if !allowed_existing(head) {
             continue;
         }
         return Some((
@@ -77,28 +71,6 @@ pub(crate) fn malformed_tool_path_in_scope(
         ));
     }
     None
-}
-
-/// Existence probe for suggested-path heuristics. Canonicalizes and requires
-/// the result to stay inside `root`, so `..` or symlink escapes never leak
-/// information from outside the workspace and never suggest a denied path.
-/// Sensitive and out-of-scope files are treated as absent, so a hint cannot
-/// reveal that they exist.
-fn hint_target_exists(root: &Path, rel: &str, scope: Option<&BoundWriteScope>) -> bool {
-    let Ok(root_canonical) = simple_canonicalize(root) else {
-        return false;
-    };
-    let candidate = root.join(rel);
-    let Ok(canonical) = simple_canonicalize(&candidate) else {
-        return false;
-    };
-    if !canonical.starts_with(&root_canonical) || !canonical.exists() {
-        return false;
-    }
-    if ignore_rules::is_sensitive_path(&canonical) {
-        return false;
-    }
-    scope.is_none_or(|scope| scope.contains_resolved(&canonical))
 }
 
 /// Whether `path` has a cut point that might be trailing junk, ignoring the
@@ -376,7 +348,12 @@ mod tests {
 
         // A Windows absolute path must not treat the drive letter as a junk
         // prefix, even when a workspace entry is named `C`.
-        assert_eq!(malformed_tool_path(ws.path(), r"C:\ext\a.txt", false), None);
+        assert_eq!(
+            malformed_tool_path(r"C:\ext\a.txt", false, |_| unreachable!(
+                "ordinary path must not preflight"
+            )),
+            None
+        );
         let result = execute_tool(
             Some(ws.path()),
             None,
@@ -390,6 +367,102 @@ mod tests {
             result.error_code.as_deref(),
             Some("INVALID_ARGUMENT"),
             "drive-letter path must not be reported as malformed: {result:?}"
+        );
+    }
+
+    #[test]
+    fn ordinary_paths_do_not_preflight_existence() {
+        let probes = std::cell::Cell::new(0);
+        let probe = |_: &str| {
+            probes.set(probes.get() + 1);
+            true
+        };
+        assert_eq!(malformed_tool_path("src/main.rs", false, probe), None);
+        assert_eq!(
+            probes.get(),
+            0,
+            "ordinary paths must not consult authorization or existence"
+        );
+        assert_eq!(malformed_tool_path("foo bar.ts", false, probe), None);
+        assert_eq!(
+            probes.get(),
+            0,
+            "a missing spaced filename is not a junk suffix"
+        );
+        assert_eq!(malformed_tool_path(r"C:\ext\a.txt", false, probe), None);
+        assert_eq!(probes.get(), 0, "a drive-letter path must not preflight");
+        assert_eq!(malformed_tool_path("src/main.rs", true, probe), None);
+        assert_eq!(probes.get(), 0, "Write must not preflight");
+    }
+
+    #[tokio::test]
+    async fn path_only_diagnostic_keeps_ordinary_results_and_hints_only_allowed_targets() {
+        let ws = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(ws.path().join("src")).unwrap();
+        std::fs::write(ws.path().join("src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(ws.path().join(".env"), "SECRET=1\n").unwrap();
+
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "src/main.rs" }),
+            5_000,
+        )
+        .await;
+        assert!(
+            result.ok,
+            "ordinary existing path must still read: {result:?}"
+        );
+
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "src/missing.rs" }),
+            5_000,
+        )
+        .await;
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("FILE_NOT_FOUND"));
+
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": "src/main.rs imma?" }),
+            5_000,
+        )
+        .await;
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("INVALID_ARGUMENT"));
+        let msg = result.content["error"].as_str().unwrap_or_default();
+        assert!(
+            msg.contains("\"src/main.rs\""),
+            "hint must name the allowed target: {msg}"
+        );
+
+        // A conflicting-looking suffix on a denylisted file must not emit a
+        // suggestion; the path-only diagnostic is only for allowed targets.
+        let result = execute_tool(
+            Some(ws.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": ".env imma?" }),
+            5_000,
+        )
+        .await;
+        assert!(!result.ok);
+        assert_ne!(
+            result.error_code.as_deref(),
+            Some("INVALID_ARGUMENT"),
+            "must not suggest a denylisted target: {result:?}"
+        );
+        let msg = result.content["error"].as_str().unwrap_or_default();
+        assert!(
+            !msg.contains("does not exist but")
+                && !msg.to_ascii_lowercase().contains("surrounding whitespace"),
+            "must not hint that the sensitive path exists: {msg}"
         );
     }
 }

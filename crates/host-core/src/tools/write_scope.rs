@@ -88,10 +88,6 @@ impl BoundWriteScope {
         check_binding(resolved).map_err(|_| denied(input))
     }
 
-    pub(crate) fn contains_resolved(&self, path: &Path) -> bool {
-        self.contains(path)
-    }
-
     fn contains(&self, path: &Path) -> bool {
         // Only regular workspace content belongs to a scoped delegate. In an
         // isolated worktree, `.git` is a link *file* into shared Git state.
