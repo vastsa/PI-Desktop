@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveComposerSmartStop } from "../src/lib/composer-smart-stop.ts";
+import {
+  appendComposerBlock,
+  resolveComposerSmartStop,
+} from "../src/lib/composer-smart-stop.ts";
 
 const message = (role, content = "", thinking) => ({ role, content, thinking });
 const draft = {
@@ -11,6 +14,13 @@ const draft = {
     { path: "/tmp/session scratch/index.ts", name: "index.ts" },
   ],
 };
+
+test("composer blocks append without changing the existing draft", () => {
+  assert.equal(appendComposerBlock("Keep this", "> quote"), "Keep this\n\n> quote");
+  assert.equal(appendComposerBlock("Keep this\n", "> quote"), "Keep this\n\n> quote");
+  assert.equal(appendComposerBlock("Keep this\n\n", "> quote"), "Keep this\n\n> quote");
+  assert.equal(appendComposerBlock("", "> quote"), "> quote");
+});
 
 test("unanswered stop restores the structured draft and removes its user row", () => {
   const previous = message("assistant", "previous answer");

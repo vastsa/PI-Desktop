@@ -476,6 +476,15 @@ may be retained while exactly one workspace supplies the visible shell context.
   flipping, and close on outside press, Escape, Tab, window blur, or a
   scroll of anything behind them. An empty item list never opens a
   surface.
+- The speaking-turn context menu offers Add to conversation, using the
+  selected excerpt inside that turn or the whole turn when no local selection
+  exists. Selecting text alone shows no floating control or toolbar
+  (ADR 0268). The composer shows the selection as a counted attachment
+  badge above the editable draft; opening it previews and can remove each
+  excerpt. Typed text and file references remain intact. Sending appends the
+  excerpts as quoted context after the typed prompt, with a blank line between
+  them, and a failed send restores the badge. The action never submits by
+  itself and never attaches to another conversation after navigation.
 
 ### 1.6 Local profile footer
 

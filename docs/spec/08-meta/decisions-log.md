@@ -4388,6 +4388,19 @@ See ADR 0178.
   and explicit binding overrides retain their existing precedence. See
   `03-runtime/13-model-catalog-and-selection.md` §11.3.
 
+## 2026-09-23 — Selected transcript text can enter the draft directly (selected-text reuse ADR)
+
+- Issue #921 adds Add to conversation to the speaking-turn right-click menu. It
+  attaches the live selection inside that turn, or the whole turn when the
+  selection is collapsed or outside it. After user review on 2026-09-24, the
+  composer presents selected text as a counted excerpt badge instead of
+  expanding a Markdown quote into the editable draft. Sending adds the excerpts
+  as quoted context; failed sends restore them. After maintainer review on
+  2026-11-22, the floating control beside a selection was dropped: it opened on
+  every selection and a right-click dismissed it, hiding the menu action. ADR
+  0268's retired selection toolbar, annotation system, side chats, and their
+  identifiers remain retired; no IPC or stored format changes.
+
 ## 2026-09-23 — Compact before the hard request budget (D623, issue #970)
 
 - D623 starts automatic session and subagent compaction at 90% of the derived

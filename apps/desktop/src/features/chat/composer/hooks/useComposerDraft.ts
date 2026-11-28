@@ -9,13 +9,17 @@ import {
   type SetStateAction,
 } from "react";
 import type { TFunction } from "i18next";
+import type { ComposerExcerpt } from "../../../../lib/composer-excerpts";
 import {
   rewriteIdeographicCommaTrigger,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../../../stores/app-store";
 import { sessionAllows } from "../../../../lib/remote-session-safety";
 import { api } from "../../../../lib/api";
-import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
+import {
+  appendComposerBlock,
+  type ComposerDraftSnapshot,
+} from "../../../../lib/composer-smart-stop";
 import {
   HOME_DRAFT_KEY,
   captureComposerDraft,
@@ -76,6 +80,8 @@ export type ComposerDraftController = {
   setInputFocused: Dispatch<SetStateAction<boolean>>;
   placeholderIndex: number;
   fileReferences: ComposerFileReference[];
+  excerpts: ComposerExcerpt[];
+  removeExcerpt: (id: string) => void;
   setFileReferences: Dispatch<SetStateAction<ComposerFileReference[]>>;
   activeFileReferences: ComposerFileReference[];
   referenceByToken: Map<string, ComposerFileReference>;
@@ -117,6 +123,8 @@ type UseComposerDraftOptions = {
     sessionId: string;
     text: string;
     fileReferences: ComposerDraftSnapshot["fileReferences"];
+    excerpts?: ComposerDraftSnapshot["excerpts"];
+    mode?: "replace" | "append";
   } | null;
   clearComposerPrefill: () => void;
   prefill?: ComposerPrefill | null;
@@ -157,6 +165,9 @@ export function useComposerDraft({
   const [fileReferences, setFileReferences] = useState<ComposerFileReference[]>(
     initialDraftState.references,
   );
+  const [excerpts, setExcerpts] = useState<ComposerExcerpt[]>(() => initialDraft?.excerpts ?? []);
+  const excerptVersion = useAppStore((state) => state.composerExcerptVersion);
+  const seenExcerptVersionRef = useRef(excerptVersion);
   const [cursor, setCursor] = useState(initialDraftState.text.length);
   // `onSelect` fires on every caret move; avoid re-rendering for an unchanged
   // cursor so autocomplete trigger detection stays quiet.
@@ -191,6 +202,8 @@ export function useComposerDraft({
   };
   const fileReferencesRef = useRef(fileReferences);
   fileReferencesRef.current = fileReferences;
+  const excerptsRef = useRef(excerpts);
+  excerptsRef.current = excerpts;
 
   // Expose React-compatible setters while recording only real content changes.
   const setDraftValue: Dispatch<SetStateAction<string>> = (action) => {
@@ -288,6 +301,7 @@ export function useComposerDraft({
       readLiveDraft(),
       fileReferencesRef.current,
       workspacePathRef.current,
+      excerptsRef.current,
     );
 
   const paintCurrentDraft = (element: HTMLElement, nextValue: string) => {
@@ -449,6 +463,7 @@ export function useComposerDraft({
       const nextDraftState = restoreDraftAttachments(nextDraft?.text ?? "", nextReferences);
       setValue(nextDraftState.text);
       setFileReferences(nextDraftState.references);
+      setExcerpts(nextDraft?.excerpts ?? []);
       setCursor(nextDraftState.text.length);
       return;
     }
@@ -457,13 +472,27 @@ export function useComposerDraft({
   }, [draftKey, referenceSessionId]);
 
   useEffect(() => {
+    if (seenExcerptVersionRef.current === excerptVersion) return;
+    seenExcerptVersionRef.current = excerptVersion;
+    setExcerpts(readComposerDraft(draftKey)?.excerpts ?? []);
+    requestAnimationFrame(() => {
+      if (draftKeyForSession(useAppStore.getState().activeSessionId) !== draftKey) return;
+      const element = ref.current;
+      if (!element) return;
+      element.focus();
+      setEditorCaret(element, readEditorValue(element).length);
+    });
+  }, [draftKey, excerptVersion]);
+
+  useEffect(() => {
     captureComposerDraft(
       draftKey,
       valueRef.current,
       fileReferences,
       workspacePath,
+      excerpts,
     );
-  }, [draftKey, fileReferences, referenceSessionId, workspacePath]);
+  }, [draftKey, fileReferences, referenceSessionId, workspacePath, excerpts]);
 
   useEffect(() => {
     pruneComposerDrafts([
@@ -557,20 +586,34 @@ export function useComposerDraft({
   }, [workspacePath]);
 
   useEffect(() => {
-    if (!composerPrefill || composerPrefill.sessionId !== activeSessionId) return;
+    if (!composerPrefill) return;
+    if (composerPrefill.sessionId !== activeSessionId) {
+      if (composerPrefill.mode === "append") clearComposerPrefill();
+      return;
+    }
     compositionRef.current = null;
     markComposerDraftEdited(draftKeyForSession(composerPrefill.sessionId));
-    const prefilledReferences = composerPrefill.fileReferences.map((fileReference) =>
-      createFileReferenceFromSnapshot(fileReference, composerPrefill.sessionId),
-    );
-    const prefilled = restoreDraftAttachments(composerPrefill.text, prefilledReferences);
-    setValue(prefilled.text);
-    setFileReferences((current) => [
-      ...current.filter(
-        (fileReference) => fileReference.sessionId !== composerPrefill.sessionId,
-      ),
-      ...prefilled.references,
-    ]);
+    if (composerPrefill.mode === "append") {
+      // A transcript excerpt keeps the typed draft verbatim and adds a block.
+      const nextValue = appendComposerBlock(readLiveDraft(), composerPrefill.text);
+      valueRef.current = nextValue;
+      pendingEditorCaretRef.current = nextValue.length;
+      setValue(nextValue);
+      setCursor(nextValue.length);
+    } else {
+      const prefilledReferences = composerPrefill.fileReferences.map((fileReference) =>
+        createFileReferenceFromSnapshot(fileReference, composerPrefill.sessionId),
+      );
+      const prefilled = restoreDraftAttachments(composerPrefill.text, prefilledReferences);
+      setValue(prefilled.text);
+      setExcerpts(composerPrefill.excerpts ?? []);
+      setFileReferences((current) => [
+        ...current.filter(
+          (fileReference) => fileReference.sessionId !== composerPrefill.sessionId,
+        ),
+        ...prefilled.references,
+      ]);
+    }
     clearComposerPrefill();
     requestAnimationFrame(() => {
       const element = ref.current;
@@ -689,9 +732,10 @@ export function useComposerDraft({
     // user has left this session and its newer draft now lives in the cache.
     if (submitted) {
       const current = currentKey === key && ref.current
-        ? snapshotComposerDraft(readLiveDraft(), fileReferencesRef.current, key)
+        ? snapshotComposerDraft(readLiveDraft(), fileReferencesRef.current, key, undefined, excerptsRef.current)
         : readComposerDraft(key);
       if (!current || current.text.trim() !== submitted.text ||
+        JSON.stringify(current.excerpts ?? []) !== JSON.stringify(submitted.excerpts ?? []) ||
         current.fileReferences.length !== submitted.fileReferences.length ||
         current.fileReferences.some((reference, index) =>
           !sameDraftFileReference(reference, submitted.fileReferences[index]))) return;
@@ -708,6 +752,8 @@ export function useComposerDraft({
     const remaining = fileReferencesRef.current.filter((reference) => reference.sessionId !== owner);
     fileReferencesRef.current = remaining;
     setFileReferences(remaining);
+    excerptsRef.current = [];
+    setExcerpts([]);
     setCursor(0);
   };
 
@@ -716,7 +762,7 @@ export function useComposerDraft({
     const currentKey = draftKeyForSession(currentActiveSessionId);
     if (currentKey !== key) {
       const cached = readComposerDraft(key);
-      if (!cached?.text && !cached?.fileReferences.length) {
+      if (!cached?.text && !cached?.fileReferences.length && !cached?.excerpts?.length) {
         markComposerDraftEdited(key);
         writeComposerDraft(key, snapshot);
       }
@@ -724,6 +770,7 @@ export function useComposerDraft({
     }
     if (valueRef.current.trim()) return;
     if (fileReferencesRef.current.some((reference) => reference.sessionId === (currentActiveSessionId ?? ""))) return;
+    if (excerptsRef.current.length) return;
     markComposerDraftEdited(key);
     const sessionId = currentActiveSessionId ?? "";
     const restoredReferences = snapshot.fileReferences.map((fileReference) =>
@@ -735,11 +782,13 @@ export function useComposerDraft({
       ...current.filter((fileReference) => fileReference.sessionId !== sessionId),
       ...restored.references,
     ]);
+    setExcerpts(snapshot.excerpts ?? []);
     setCursor(restored.text.length);
   };
 
   const draftSnapshot = (text: string): ComposerDraftSnapshot => ({
     text: text.trim(),
+    excerpts: excerptsRef.current.map((excerpt) => ({ ...excerpt })),
     fileReferences: activeFileReferences
       .filter(
         (fileReference) =>
@@ -750,6 +799,13 @@ export function useComposerDraft({
 
   return {
     imagePreview,
+    excerpts,
+    removeExcerpt: (id) => {
+      if (inputBlocked) return;
+      invalidateComposerTransforms();
+      markComposerDraftEdited(draftKeyRef.current);
+      setExcerpts((current) => current.filter((excerpt) => excerpt.id !== id));
+    },
     removeImage: (id) => {
       if (inputBlocked) return;
       invalidateComposerTransforms();

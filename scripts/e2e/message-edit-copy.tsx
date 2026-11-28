@@ -7,6 +7,7 @@ import { en } from "../../packages/i18n/src/index";
 import { MessageRow } from "../../apps/desktop/src/features/chat/transcript/MessageRow";
 import { TranscriptMenuProvider } from "../../apps/desktop/src/features/chat/transcript/TranscriptMenu";
 import { useAppStore } from "../../apps/desktop/src/stores/app-store";
+import { readComposerDraft, resetComposerDraftCache } from "../../apps/desktop/src/lib/composer-draft-cache";
 
 const check = (ok: boolean, label: string) => { if (!ok) throw new Error(label); };
 const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -53,9 +54,41 @@ Object.assign(globalThis, { messageEditCopyProbe: async () => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
+  useAppStore.setState({
+    activeSessionId: "message-session",
+    composerPrefill: null,
+    prepareUserMessageEdit: async () => ({
+      id: "message",
+      role: "user",
+      content: "Original saved message",
+      createdAt: "2026-09-21T00:00:00Z",
+    }),
+  });
+  resetComposerDraftCache();
   flushSync(() => root.render(<I18nextProvider i18n={i18n}><TranscriptMenuProvider>
     <MessageRow message={{ id: "message", role: "user", content: "Original saved message", createdAt: "2026-09-21T00:00:00Z" }} isRunning={false} />
   </TranscriptMenuProvider></I18nextProvider>));
+  const bubble = find(".message-bubble");
+  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+  let textNode: Node | null = null;
+  while ((textNode = walker.nextNode())) {
+    if (textNode.textContent?.includes("Original saved message")) break;
+  }
+  check(!!textNode, "Could not find the rendered message text");
+  const range = document.createRange();
+  range.setStart(textNode!, 9);
+  range.setEnd(textNode!, 14);
+  const selection = window.getSelection()!;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  await settle();
+  check(!document.querySelector('[data-selection-action="add-to-conversation"]'),
+    "Selecting message text opened a floating action without a right-click");
+  await menu(find('[role="article"]'));
+  await click('[data-context-menu-item="add-to-conversation"]');
+  check(readComposerDraft("message-session")?.excerpts?.[0]?.text === "saved",
+    "Add to conversation did not attach only the selected text");
+  selection.removeAllRanges();
   await menu(find('[role="article"]'));
   await click('[data-context-menu-item="edit"]');
   const editor = await waitForTextarea();
@@ -63,6 +96,13 @@ Object.assign(globalThis, { messageEditCopyProbe: async () => {
   editor.select();
   document.execCommand("insertText", false, "Fresh draft: ORANGE-927");
   await settle();
+  editor.setSelectionRange(13, 23);
+  await menu(editor);
+  await click('[data-context-menu-item="add-to-conversation"]');
+  check(
+    readComposerDraft("message-session")?.excerpts?.[1]?.text === "ORANGE-927",
+    "Add to conversation did not attach the selected draft text",
+  );
   editor.setSelectionRange(13, 23);
   await menu(editor);
   await click('[data-context-menu-item="copy"]');
@@ -87,5 +127,5 @@ Object.assign(globalThis, { messageEditCopyProbe: async () => {
   await click('[data-context-menu-item="copy"]');
   check(copied === "Original saved message", "Cancel changed the saved message");
   root.unmount();
-  return "PASS: partial draft copy, whole draft copy, select text, editing actions, cancel and saved-message copy";
+  return "PASS: selecting text opens no floating action, Add to conversation from the context menu attaches the selected text, selected draft text attaches to the draft, partial draft copy, whole draft copy, select text, editing actions, cancel and saved-message copy";
 } });

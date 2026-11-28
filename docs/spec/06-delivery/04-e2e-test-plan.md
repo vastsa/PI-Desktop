@@ -301,6 +301,8 @@ identify the platform validation still needed.
 | Quality (two-click delete) | E2E-SESSION-two-click-delete-arms-first |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection |
 | C — Conversation & stream (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| C — Conversation & stream (selected excerpt reuse) | E2E-CHAT-selection-action-921 |
+| Quality (selected excerpt reuse) | E2E-CHAT-selection-action-921 |
 | E — Tools & permissions (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | D (surfaces) / Quality — Remote-host Add and Pair form disclosure | E2E-REMOTE-HOST-settings-compact-inventory |
 | E — Tools & permissions (capability level move) | E2E-CAPABILITY-move-across-levels |
@@ -330,6 +332,7 @@ identify the platform validation still needed.
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |
 | M5 (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M5 (Composer deep file mentions) | E2E-COMPOSER-deep-file-mentions |
+| M5 (selected excerpt reuse) | E2E-CHAT-selection-action-921 |
 | M5 (Conversation MP4 attachments) | E2E-CHAT-mp4-attachment-opens-in-system-player |
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
