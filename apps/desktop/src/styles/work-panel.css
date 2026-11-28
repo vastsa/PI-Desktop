@@ -150,7 +150,6 @@
         var(--ds-work-panel-control-gap)
     )
     0 12px;
-  --window-drag-region: drag;
   -webkit-app-region: drag;
 }
 

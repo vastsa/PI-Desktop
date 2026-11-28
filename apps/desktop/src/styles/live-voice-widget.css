@@ -34,7 +34,6 @@ html[data-surface="live-voice-widget"] #root {
 .live-voice-widget {
   display: inline-flex;
   padding: 6px;
-  --window-drag-region: drag;
   -webkit-app-region: drag;
   app-region: drag;
   cursor: grab;
@@ -51,7 +50,6 @@ html[data-surface="live-voice-widget"] #root {
 
 .live-voice-widget .live-voice-call-bar button,
 .live-voice-widget .live-voice-call-bar code {
-  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }

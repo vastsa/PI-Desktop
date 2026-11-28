@@ -318,6 +318,30 @@
 - **Status**: Unit-covered (`user-select.test.mjs`, `thinking-ui.test.mjs`,
   `markdown-prose-style.test.mjs`); full visual scenario Draft
 
+## E2E-060d: Assistant markdown follows logical alignment and list gutters
+
+- **Preconditions**: A completed assistant answer that includes an Arabic-only
+  paragraph, an Arabic unordered list, and an ordinary LTR ordered list;
+  Chromium available for `scripts/e2e-bidi.mjs`.
+- **Steps**: 1) Render the answer in the chat transcript. 2) Inspect computed
+  `direction` and `text-align` on the Arabic paragraph, list items, and a
+  heading. 3) Measure glyph placement under an inherited `text-align: left`
+  ancestor. 4) Measure list gutter geometry for the RTL unordered list and
+  the LTR ordered list (use distinct list markers so CommonMark does not
+  merge them).
+- **Expected**: The Arabic paragraph, items, and heading compute
+  `direction: rtl` and `text-align: start` (used value `right`). Glyphs sit
+  on the right under a left-aligned ancestor. The RTL list gutter is on the
+  right; the LTR list gutter is on the left.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`markdown-bidi-alignment.test.mjs`,
+  `text-direction.test.mjs`); Chromium probe `scripts/e2e-bidi.mjs` covers
+  inherited-alignment glyph placement and RTL/LTR list gutters. The probe
+  applies `text-align: left` on its own ancestor and does not itself confirm
+  the reported Windows chat path in #2635.
+
 ## E2E-061: User message plaintext layout survives wrapping and reload
 
 - **Preconditions**: Provider configured; composer can accept multi-line input
@@ -2730,13 +2754,13 @@ and translucent windows: a 1440 DIP display's half-width minimum must allow a
 window below 800 DIP. Zoom/Restore must return the window to its original
 position and size, and AppKit must be able to resize its edges.
 `node scripts/e2e-window-controls.mjs`
-then covers the built shell: maximized caption regions must compute to no-drag,
-and a double-click must restore through the real preload/IPC and unlock the
-normal caption. Native fullscreen enter/exit must also leave renderer maximize
-state synchronized after the AppKit transition settles, including when the
-native event precedes the final maximize flag. `maximized-window-chrome.test.mjs`
-and `window-state-sync.test.mjs` cover late-query/event races, fullscreen
-resync, repeated clicks, no-drag controls and cleanup.
+checks the built shell's caption and button drag regions while zoomed. Starting
+from zoomed, non-fullscreen state, drag empty titlebar space down on the same
+display. Repeat across two displays and verify the window stays where it is
+dropped. With system titlebar double-click set to zoom, double-click to zoom
+and restore. Titlebar buttons remain clickable. Native fullscreen enter/exit
+must still report the settled maximize state when the native event precedes
+the final flag (`window-state-sync.test.mjs`).
 Windows covers maximize/restore with the same production guard; Linux keeps
 its compositor-owned geometry. Unit tests cover cancellable edge events and
 listener cleanup (`window-native-behavior.test.mjs`).

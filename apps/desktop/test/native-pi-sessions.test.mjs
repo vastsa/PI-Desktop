@@ -350,6 +350,49 @@ test("session list forwards local project paths to native discovery (#1732)", as
   assert.deepEqual(hostCalls.map((call) => call.method), ["projects.list", "session.list"]);
 });
 
+test("session list reports running native sessions so a reloaded renderer offers Stop (#2575)", async () => {
+  const { list } = forkHarness({
+    activeTurns: new Map([["desktop-1", "turn-1"]]),
+    host: () => ({
+      call: async (method) => {
+        if (method === "projects.list") return { projects: [{ path: "/work/demo" }] };
+        if (method === "session.list") {
+          return { sessions: [{ id: "desktop-1", updatedAt: "2026-09-14T00:00:01.000Z" }] };
+        }
+        return {};
+      },
+    }),
+    sidecar: () => ({
+      call: async () => ({
+        sessions: [
+          {
+            id: "native-pi:busy",
+            updatedAt: "2026-09-14T00:00:03.000Z",
+            source: "pi-native",
+            readOnlyReason: "busy",
+            capabilities: { canPrompt: false, canStop: true, canRefresh: true },
+          },
+          {
+            id: "native-pi:idle",
+            updatedAt: "2026-09-14T00:00:02.000Z",
+            source: "pi-native",
+            capabilities: { canPrompt: true, canStop: false, canRefresh: true },
+          },
+          {
+            id: "native-pi:locked",
+            updatedAt: "2026-09-14T00:00:01.500Z",
+            source: "pi-native",
+            readOnlyReason: "busy",
+            capabilities: { canPrompt: false, canStop: false, canRefresh: true },
+          },
+        ],
+      }),
+    }),
+  });
+  const result = await list();
+  assert.deepEqual(result.runningSessionIds, ["desktop-1", "native-pi:busy"]);
+});
+
 test("a failed projects.list keeps Desktop sessions and logs the skip (#1732)", async () => {
   const warnings = [];
   const original = console.warn;

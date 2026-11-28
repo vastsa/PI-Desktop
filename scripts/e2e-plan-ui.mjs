@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -18,6 +19,7 @@ const PERMISSIONS_ONLY = process.argv.includes("--permissions-only");
 const PERMISSION_CASE_ID = "E2E-106-session-permissions";
 const REQUIRED_CASE_IDS = PERMISSIONS_ONLY ? [PERMISSION_CASE_ID] : [
   "E2E-106-renderer",
+  "E2E-106-plan-revision",
   "E2E-111-renderer",
   "E2E-117-en",
   "E2E-117-zh-CN",
@@ -635,7 +637,7 @@ async function inspectUi(state) {
     const model = document.querySelector(".composer-model-thinking button");
     const mode = operatingModes[0];
     const permission = document.querySelector(".composer-permission button");
-    const send = document.querySelector(".composer-shell .send-btn");
+    const send = document.querySelector('.composer-shell .send-btn, [data-testid="send-plan-revision"]');
     const barText = text(bar);
     const bodyText = document.body?.innerText || "";
     const menuSelectedAsk = Boolean(
@@ -659,6 +661,7 @@ async function inspectUi(state) {
       permissionDisabled: permission ? Boolean(permission.disabled) : null,
       modelDisabled: model ? Boolean(model.disabled) : null,
       sendDisabled: send ? Boolean(send.disabled) : null,
+      sendLabel: label(send),
       promptReadOnly: prompt
         ? prompt.getAttribute("aria-readonly") === "true" ||
           prompt.getAttribute("contenteditable") === "false"
@@ -779,7 +782,7 @@ async function selectSession(state, sessionId) {
   );
 }
 
-async function submitComposerPrompt(state, prompt) {
+async function fillComposerPrompt(state, prompt) {
   const result = await state.cdp.evaluate(`(() => {
     const input = document.querySelector(".composer-input");
     if (!(input instanceof HTMLElement)) return { submitted: false, reason: "composer editor missing" };
@@ -801,6 +804,10 @@ async function submitComposerPrompt(state, prompt) {
     state,
     LIVE_TIMEOUT_MS,
   );
+}
+
+async function submitComposerPrompt(state, prompt) {
+  await fillComposerPrompt(state, prompt);
   await clickSelector(state, ".composer-shell .send-btn", "live Composer Send");
 }
 
@@ -1131,11 +1138,12 @@ function assertPendingUi(snapshot, locale, revision) {
     `Ask is not the default approval action: ${snapshot.bar.approveLabel}`,
   );
   assert(snapshot.bar.actionButtonCount === 3, `unexpected pending approval actions: ${snapshot.bar.actionButtonCount}`);
-  assert(snapshot.promptReadOnly === true && snapshot.promptAriaReadOnly === "true", "pending Plan prompt is not read-only");
+  assert(snapshot.promptReadOnly === false && snapshot.promptAriaReadOnly !== "true", "pending Plan revision input is read-only");
+  assert(snapshot.sendLabel === (locale === "zh-CN" ? "发送修改意见" : "Send revision request"), "pending Plan revision action missing");
   assert(snapshot.modelDisabled === true, "pending Plan model control is not gated");
   assert(snapshot.modeDisabled === true, "pending Plan mode control is not gated");
   assert(snapshot.permissionDisabled === true, "pending Plan permission control is not gated");
-  assert(snapshot.sendDisabled === true, "pending Plan send control is not gated");
+  assert(snapshot.sendDisabled === true, "empty Plan revision is sendable");
   assertNoLegacyUi(snapshot, `pending ${locale}`);
 }
 
@@ -1491,6 +1499,104 @@ async function runLiveAcceptance(state) {
   return `provider=${setup.providerId} model=${setup.modelId} runtime=${pendingRuntime.runtimeId} marker=${LIVE_MARKER} artifact=${artifact.artifactPath}`;
 }
 
+async function assertRevisionToolbarFits(state) {
+  const samples = await state.cdp.evaluate(`(() => {
+    const button = document.querySelector('[data-testid="send-plan-revision"]');
+    const stack = button.closest(".composer-stack");
+    const toolbar = button.closest(".composer-toolbar");
+    const saved = stack.style.cssText;
+    try {
+      stack.style.transition = "none";
+      stack.style.flex = "none";
+      return [450, 451, 480, 481, 560, 561, 640, 641, 768].map(width => {
+        stack.style.width = width + "px";
+        const row = toolbar.getBoundingClientRect();
+        const controls = [...toolbar.querySelectorAll("button")]
+          .map(node => ({ ...node.getBoundingClientRect().toJSON(), name: node.className })).filter(box => box.width && box.height)
+          .sort((a, b) => a.left - b.left);
+        const range = document.createRange();
+        range.selectNodeContents(button.querySelector("span"));
+        const icon = button.querySelector("svg").getBoundingClientRect();
+        return {
+          width, actual: stack.getBoundingClientRect().width, label: button.getAttribute("aria-label"),
+          height: button.getBoundingClientRect().height, lines: range.getClientRects().length,
+          iconWidth: icon.width, iconHeight: icon.height,
+          crowded: controls.filter((box, i) => box.left < row.left - 1 || box.right > row.right + 1 ||
+            (i && box.left < controls[i - 1].right - 1)).map(box => box.name),
+        };
+      });
+    } finally {
+      stack.style.cssText = saved;
+    }
+  })()`);
+  for (const sample of samples) {
+    const labelFits = sample.width <= 640
+      ? sample.iconWidth >= 14 && sample.iconWidth === sample.iconHeight && sample.lines === 0
+      : sample.iconWidth === 0 && sample.lines === 1;
+    assert(sample.label === "Enviar pedido de alteração" && sample.actual === sample.width &&
+      sample.height === 28 && labelFits && !sample.crowded.length,
+      `revision toolbar at ${sample.width}px: ${jsonText(samples)}`);
+  }
+}
+
+async function runRevisionAcceptance(state) {
+  const revision = "Remove deployment and keep only the installation steps.";
+  const revisedPlan = { title: "Installation", markdown: "# Installation\n\n- Install the app.", question: "Approve?" };
+  const firstPlan = { title: "Installation and deployment", markdown: "# Setup\n\n- Install and deploy.", question: "Approve?" };
+  const model = "plan-revision-fixture";
+  const server = createHttpServer(async (req, res) => {
+    if (req.url !== "/v1/chat/completions") return res.writeHead(404).end();
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw);
+    const lastUser = body.messages.findLast(message => message.role === "user");
+    const plan = JSON.stringify(lastUser?.content).includes(revision) ? revisedPlan : firstPlan;
+    const id = plan === revisedPlan ? "revised" : "initial";
+    const tool = { index: 0, id, type: "function", function: { name: "SubmitPlan", arguments: JSON.stringify(plan) } };
+    const frame = { id, model, created: 1, object: "chat.completion.chunk",
+      choices: [{ index: 0, delta: { role: "assistant", tool_calls: [tool] }, finish_reason: "tool_calls" }] };
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.end(`data: ${JSON.stringify(frame)}\n\ndata: [DONE]\n\n`);
+  });
+  await new Promise((resolve, reject) => server.once("error", reject).listen(0, "127.0.0.1", resolve));
+  try {
+    const { provider } = await getPreloadResult(state, "providersCreate", [{
+      name: "Plan revision fixture", vendorKey: "custom", type: "openai_compatible", protocol: "openai_compatible",
+      authKind: "none", apiStyle: "chat_completions", baseUrl: `http://127.0.0.1:${server.address().port}/v1`, defaultModelId: model,
+    }]);
+    const { session } = await getPreloadResult(state, "sessionCreate", [{
+      title: "Revise a plan", mode: "plan", projectPath: state.workspace, providerId: provider.id, modelId: model,
+    }]);
+    await setLanguage(state, "pt-BR");
+    await reloadRenderer(state);
+    await selectSession(state, session.id);
+    await submitComposerPrompt(state, "Plan installation and deployment.");
+    const first = await waitFor(() => getPendingPlan(state, session.id), "first plan", state);
+    await fillComposerPrompt(state, revision);
+    await assertRevisionToolbarFits(state);
+    assert((await getPendingPlan(state, session.id))?.id === first.id, "typing resolved the pending approval");
+    await clickSelector(state, '[data-testid="send-plan-revision"]', "send plan revision");
+    const revised = await waitFor(async () => {
+      const plan = await getPendingPlan(state, session.id);
+      return plan?.title === revisedPlan.title && plan.id !== first.id ? plan : null;
+    }, "revised plan", state);
+    const detail = await getSession(state, session.id);
+    assert(detail.mode === "plan" && detail.permissionMode === session.permissionMode, "revision changed the session mode or permission");
+    assert(detail.planHistory?.some(({ proposal }) => proposal.id === first.id && proposal.status === "rejected" && !proposal.executionId),
+      "first plan was not rejected without execution");
+    assert(detail.messages.filter(message => message.role === "user" && message.content === revision).length === 1, "expected one revision message");
+    await verifyArtifact(state, first, firstPlan);
+    await verifyArtifact(state, revised, revisedPlan);
+    assert(first.artifact.relativePath !== revised.artifact.relativePath, "revision reused the first artifact");
+    await clickSelector(state, ".plan-approval-reject", "dismiss second plan");
+    await setLanguage(state, "zh-CN");
+    record("E2E-106-plan-revision", true, "same-session revision produced a second immutable plan awaiting explicit approval");
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
 async function runAcceptance(state) {
   startElectron(state);
   await connectMain(state);
@@ -1669,6 +1775,8 @@ async function runAcceptance(state) {
   );
 
   await runPermissionAcceptance(state);
+
+  await runRevisionAcceptance(state);
 
   if (!LIVE_ENV_AVAILABLE) {
     console.log(
