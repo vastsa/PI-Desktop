@@ -73,6 +73,9 @@
         color: var(--muted);
       }
       .icon-btn:hover:not(:disabled) { background: color-mix(in oklab, var(--fg) 6%, transparent); }
+      .icon-btn[data-audible="true"], .icon-btn[aria-pressed="true"] { color: var(--fg); }
+      .icon-btn[aria-pressed="true"] { background: color-mix(in oklab, var(--fg) 12%, transparent); }
+      #mute[aria-pressed="true"] .mute-on, #mute:not([aria-pressed="true"]) .mute-off { display: none; }
       form.url {
         display: flex;
         flex: 1;
@@ -128,6 +131,9 @@
         <form class="url" id="form">
           <input id="url" spellcheck="false" autocapitalize="off" autocorrect="off" />
         </form>
+        <button type="button" class="icon-btn" id="mute" disabled aria-pressed="false" title="Mute tab" aria-label="Mute tab">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4z"/><path class="mute-on" d="M15.5 8.5a5 5 0 0 1 0 7"/><path class="mute-off" d="M16 9l5 6M21 9l-5 6"/></svg>
+        </button>
         <button type="button" class="icon-btn" id="external" disabled title="Open externally" aria-label="Open externally">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M5 9v10h10"/></svg>
         </button>
@@ -145,6 +151,7 @@
       const forward = document.getElementById("forward");
       const reload = document.getElementById("reload");
       const external = document.getElementById("external");
+      const mute = document.getElementById("mute");
       const form = document.getElementById("form");
       const input = document.getElementById("url");
       const guest = document.getElementById("guest");
@@ -153,6 +160,7 @@
       const emptyBody = document.getElementById("empty-body");
       let inputFocused = false;
       let started = false;
+      let muted = false;
       let locale = "en";
 
       const copy = {
@@ -162,6 +170,8 @@
           reload: "Reload",
           stop: "Stop",
           external: "Open externally",
+          mute: "Mute tab",
+          unmute: "Unmute tab",
           placeholder: "Search or enter a URL",
           loadingTitle: "Loading page…",
           loadingBody: "Waiting for the website to respond. You can stop or enter another address.",
@@ -179,6 +189,8 @@
           reload: "重新加载",
           stop: "停止",
           external: "在外部打开",
+          mute: "静音此标签页",
+          unmute: "取消静音",
           placeholder: "搜索或输入网址",
           loadingTitle: "正在加载网页…",
           loadingBody: "正在等待网站响应，可以停止加载或输入其他地址。",
@@ -197,7 +209,13 @@
       let navigationContext;
       const t = (key) => copy[locale]?.[key] ?? copy.en[key] ?? key;
 
+      const applyMuteCopy = () => {
+        mute.title = muted ? t("unmute") : t("mute");
+        mute.setAttribute("aria-label", mute.title);
+      };
+
       const applyCopy = () => {
+        applyMuteCopy();
         back.title = t("back");
         back.setAttribute("aria-label", t("back"));
         forward.title = t("forward");
@@ -240,6 +258,11 @@
         forward.disabled = !state?.canGoForward;
         reload.disabled = !started;
         external.disabled = !state?.url;
+        muted = state?.audioMuted === true;
+        mute.disabled = !state?.url;
+        mute.setAttribute("aria-pressed", String(muted));
+        mute.setAttribute("data-audible", String(state?.audible === true));
+        applyMuteCopy();
         reload.title = state?.isLoading ? t("stop") : t("reload");
         reload.setAttribute("aria-label", reload.title);
         if (contextChanged || !inputFocused) input.value = state?.url ?? "";
@@ -274,6 +297,9 @@
       forward.addEventListener("click", () => void bridge.invoke("browser.action", { action: "forward", ...navigationContext }));
       reload.addEventListener("click", () => {
         void bridge.invoke("browser.action", { action: reload.title === t("stop") ? "stop" : "reload", ...navigationContext });
+      });
+      mute.addEventListener("click", () => {
+        void bridge.invoke("browser.action", { action: muted ? "unmute" : "mute", ...navigationContext });
       });
       external.addEventListener("click", () => void bridge.invoke("browser.openExternal", navigationContext));
       input.addEventListener("focus", () => {
