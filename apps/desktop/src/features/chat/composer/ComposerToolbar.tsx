@@ -55,6 +55,8 @@ export type ComposerToolbarProps = {
   thinkingLabel: string;
   /** The selected model asks for OpenAI's priority tier (ADR 0334). */
   modelFastMode?: boolean;
+  /** Model-only block: a Host with an empty catalog has nothing to choose. */
+  modelControlsBlocked?: boolean;
   contextUsage: ContextUsage | null;
   value: string;
   modelReady: boolean;
@@ -97,6 +99,7 @@ export function ComposerToolbar({
   modelLabel,
   thinkingLabel,
   modelFastMode = false,
+  modelControlsBlocked,
   contextUsage,
   value,
   modelReady,
@@ -202,7 +205,7 @@ export function ComposerToolbar({
           thinkingLevel={thinkingLevel}
           selectedProviderId={providerId}
           selectedModelId={modelId}
-          controlsBlocked={controlsBlocked}
+          controlsBlocked={modelControlsBlocked ?? controlsBlocked}
           onCloseOtherMenus={() => setPermissionOpen(false)}
           onOpenModelSettings={() => useAppStore.getState().setSettingsTab("agent")}
         />

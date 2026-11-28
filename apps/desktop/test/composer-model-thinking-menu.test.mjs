@@ -124,10 +124,10 @@ test("the reasoning control aligns each label under its pill column", () => {
 test("opening the combined menu preloads model metadata before its submenu", () => {
   assert.match(
     composerSource,
-    /useEffect\(\(\) => \{\n    if \(!open\) return;\n    for \(const candidate of providers\)\s*\{/,
+    /useEffect\(\(\) => \{\n    if \(!open\) return;\n(?:    \/\/[^\n]*\n)*    if \(catalogProviders\) return;\n    for \(const candidate of providers\)\s*\{/,
   );
   assert.match(composerSource, /void loadProviderModels\(candidate\.id\);/);
-  assert.match(composerSource, /\}, \[loadProviderModels, open, providers\]\);/);
+  assert.match(composerSource, /\}, \[catalogProviders, loadProviderModels, open, providers\]\);/);
 });
 
 test("the combined chip and menu meet the compact accessible visual contract", () => {

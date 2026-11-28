@@ -15,6 +15,7 @@ import type {
   UiMessage,
   VoiceOrigin,
 } from "@pi-desktop/shared";
+import { SESSION_THINKING_LEVELS } from "@pi-desktop/shared";
 
 /** Rust host-core over stdio JSON-RPC, as the ports below need it. */
 export type HostRpc = {
@@ -32,6 +33,10 @@ export type HostSessionRecord = {
   mode?: string;
   permissionMode?: string;
   planningState?: string;
+  /** The Host's own provider/model binding, when the catalog predates it absent. */
+  providerId?: string;
+  modelId?: string;
+  thinkingLevel?: string;
   createdAt?: string;
   updatedAt?: string;
   messages?: UiMessage[];
@@ -73,6 +78,7 @@ export function toSessionSummary(record: HostSessionRecord): SessionSummary {
     record.planningState === "awaiting_approval"
       ? record.planningState
       : "inactive";
+  const thinkingLevel = SESSION_THINKING_LEVELS.find((level) => level === record.thinkingLevel);
   return {
     id: record.id,
     title: record.title ?? "",
@@ -82,6 +88,9 @@ export function toSessionSummary(record: HostSessionRecord): SessionSummary {
       ? { workspaceLabel: basename(record.projectPath) }
       : {}),
     mode,
+    ...(record.providerId ? { providerId: record.providerId } : {}),
+    ...(record.modelId ? { modelId: record.modelId } : {}),
+    ...(thinkingLevel ? { thinkingLevel } : {}),
     permissionMode,
     planningState,
     createdAt: record.createdAt ?? new Date(0).toISOString(),

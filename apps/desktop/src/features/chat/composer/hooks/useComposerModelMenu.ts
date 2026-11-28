@@ -1,5 +1,6 @@
 import type {
   Mode,
+  ModelInfo,
   ProviderPublic,
   SessionThinkingLevel,
 } from "@pi-desktop/shared";
@@ -55,6 +56,13 @@ type UseComposerModelMenuOptions = {
   configureActiveSession: (configuration: {
     mode: Mode; providerId?: string; modelId?: string; thinkingLevel: SessionThinkingLevel;
   }) => Promise<void>;
+  /**
+   * A paired Host's own catalog. Remote sessions must offer the models the
+   * Host can run, so the renderer passes them here instead of the local store;
+   * recent models stay local history and never appear for a remote session.
+   */
+  providers?: ProviderPublic[];
+  providerModels?: Record<string, ModelInfo[]>;
 };
 
 export function useComposerModelMenu({
@@ -66,16 +74,23 @@ export function useComposerModelMenu({
   thinkingLevel,
   controlsBlocked,
   configureActiveSession,
+  providers: catalogProviders,
+  providerModels: catalogProviderModels,
 }: UseComposerModelMenuOptions) {
-  const providers = useAppStore((s) => s.providers);
-  const recentModels = useAppStore((s) => s.recentModels);
+  const storeProviders = useAppStore((s) => s.providers);
+  const storeProviderModels = useAppStore((s) => s.providerModels);
+  const storeRecentModels = useAppStore((s) => s.recentModels);
+  const providers = catalogProviders ?? storeProviders;
+  // A remote session has no local recent history: the list would name models
+  // this Host cannot run.
+  const recentModels = catalogProviders ? undefined : storeRecentModels;
   const imageGeneration = useAppStore((s) => s.settings?.imageGeneration);
   const imageGenerationModels = useAppStore((s) => s.settings?.imageGenerationModels);
   const imageGenerationCandidates = useMemo(
     () => imageGenerationBindings(imageGenerationModels, imageGeneration),
     [imageGenerationModels, imageGeneration],
   );
-  const providerModels = useAppStore((s) => s.providerModels);
+  const providerModels = catalogProviderModels ?? storeProviderModels;
   const loadProviderModels = useAppStore((s) => s.loadProviderModels);
   const showToast = useAppStore((s) => s.showToast);
   const [open, setOpen] = useState(false);
@@ -252,12 +267,14 @@ export function useComposerModelMenu({
 
   useEffect(() => {
     if (!open) return;
+    // A Host catalog is delivered whole; there is nothing to discover locally.
+    if (catalogProviders) return;
     for (const candidate of providers) {
       if (isChatProviderReady(candidate)) {
         void loadProviderModels(candidate.id);
       }
     }
-  }, [loadProviderModels, open, providers]);
+  }, [catalogProviders, loadProviderModels, open, providers]);
 
   useEffect(() => {
     if (open) return;
@@ -286,11 +303,12 @@ export function useComposerModelMenu({
   const selectModel = async (candidate: ProviderPublic, nextModelId: string) => {
     thinkingQueueRef.current?.invalidate();
     await thinkingQueueRef.current?.idle();
-    // A pure image-generation endpoint cannot be selected for chat; a
+// A pure image-generation endpoint cannot be selected for chat; a
     // dual-capability model marked for image generation stays selectable
     // (#2253). The discovered row's modalities are the same answer session
-    // launch reads, so the menu cannot offer what launch would reject.
-    if (isImageOnlyChatModel(
+    // launch reads, so the menu cannot offer what launch would reject. A Host
+    // model is never redirected into this Desktop's image workflow.
+    if (!catalogProviders && isImageOnlyChatModel(
       imageGenerationCandidates,
       candidate.id,
       nextModelId,

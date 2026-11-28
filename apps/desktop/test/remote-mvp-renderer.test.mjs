@@ -57,7 +57,7 @@ function deferred() { let resolve; const promise = new Promise((done) => { resol
 function bridge(handler) {
   const calls = [];
   globalThis.window = { matchMedia: () => ({ matches: false }), piDesktop: { platform: "linux", on: () => () => {}, invoke: async (channel, ...args) => {
-    calls.push({ channel, input: args[0] }); return { ok: true, data: await handler(channel, args[0]) };
+    calls.push({ channel, input: args[0], args }); return { ok: true, data: await handler(channel, args[0]) };
   } } };
   return calls;
 }
@@ -128,14 +128,18 @@ test("reconnect failure remains visible; retry reloads inventory without resendi
 test("remote capabilities and workspace identity fail closed, local defaults stay enabled", async () => {
   initialize();
   assert.equal(sessionAllows(undefined, "canAttach"), true);
-  for (const key of ["canAttach", "canConfigureModel", "canSteer", "canEditMessages", "canUseLocalTools", "canUseTerminal"]) {
+  for (const key of ["canAttach", "canSteer", "canEditMessages", "canUseLocalTools", "canUseTerminal"]) {
     assert.equal(sessionAllows(session, key), false);
     assert.equal(sessionAllows({ ...session, capabilities: undefined }, key), false);
   }
+  // The Host owns the model binding, so a remote session may be reconfigured —
+  // but only when it actually declares that capability.
+  assert.equal(sessionAllows({ ...session, capabilities: { ...capabilities, canConfigureModel: true } }, "canConfigureModel"), true);
+  assert.equal(sessionAllows({ ...session, capabilities: undefined }, "canConfigureModel"), false);
   assert.equal(sessionMatchesProject({ ...session, projectPath: "/local/private" }, "/local/private"), false);
   assert.deepEqual(projectPathsForNewSessions([], [{ ...session, projectPath: "/srv/project" }]), []);
   assert.equal(safeSessionSummary({ ...session, projectPath: "/srv/project" }).projectPath, undefined);
-  const calls = bridge(() => ({}));
+  const calls = bridge((channel) => channel === IPC.invoke.sessionConfigure ? { session } : {});
   useAppStore.setState({ activeSessionId: session.id, sessions: [session], page: "chat" });
   await useAppStore.getState().configureActiveSession({ mode: "agent", providerId: "local-secret", modelId: "local-model" });
   await useAppStore.getState().forkSession(session.id);
@@ -146,9 +150,16 @@ test("remote capabilities and workspace identity fail closed, local defaults sta
   useAppStore.getState().openFileInWorkPanel("/local/private/secret");
   useAppStore.getState().openUrlInWorkPanel("https://example.test");
   assert.equal(calls.length, 0);
-  await assert.rejects(api.configureSession(session.id, { mode: "agent", modelId: "local" }), { code: "CAPABILITY_UNAVAILABLE" });
+  // The Host owns the model binding, so the direct entry point forwards it; the
+  // store above still refused because this session declares no such capability.
+  await api.configureSession(session.id, { mode: "agent", providerId: "host-provider", modelId: "host-model" });
+  assert.deepEqual(
+    calls.filter((call) => call.channel === IPC.invoke.sessionConfigure).map((call) => call.args),
+    [["remote:ssh-fixture:one", { mode: "agent", providerId: "host-provider", modelId: "host-model" }]],
+  );
+  const dispatched = calls.length;
   await assert.rejects(api.prompt({ sessionId: session.id, content: "attached", attachments: [{ path: "/local/private" }] }), { code: "CAPABILITY_UNAVAILABLE" });
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, dispatched);
   const html = await fixture.render("chat", { session });
   assert.match(html, /Remote project/);
   assert.match(html, /data-composer-dock="home"/);

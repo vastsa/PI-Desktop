@@ -204,6 +204,69 @@ pub fn record_usage(db: &Database, session_id: &str, turn_id: &str, usage: &Valu
     Ok(true)
 }
 
+/// Context occupancy of one session: the newest physical request the Host
+/// completed, never the turn aggregate.
+///
+/// A turn that called tools issued several requests. `usage_json` aggregates
+/// all of them, which is the billing total; only the last request's input plus
+/// output still occupies the model window (D355 / ADR 0193). The newest record
+/// of the newest completed turn is therefore the figure the Composer ring is
+/// drawn from.
+pub fn latest_request_usage(db: &Database, session_id: &str) -> Result<Option<Value>> {
+    let row: Option<(Option<String>, Option<String>, i64, i64, Option<String>)> = db
+        .conn()
+        .query_row(
+            "SELECT provider_id, model_id, input_tokens, output_tokens, usage_json
+             FROM turns
+             WHERE session_id = ?1 AND status = 'completed'
+               AND (usage_json IS NOT NULL OR input_tokens > 0 OR output_tokens > 0)
+             ORDER BY ended_at DESC, rowid DESC
+             LIMIT 1",
+            params![session_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    row.get::<_, Option<i64>>(3)?.unwrap_or(0),
+                    row.get(4)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((provider_id, model_id, input_tokens, output_tokens, usage_json)) = row else {
+        return Ok(None);
+    };
+    let usage = usage_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
+    let newest = usage.as_ref().and_then(|value| operations(value).pop());
+    let (input_tokens, output_tokens, cache_read, cache_write, reasoning) = match newest {
+        Some(record) => (
+            count(&record, "inputTokens"),
+            count(&record, "outputTokens"),
+            count(&record, "cacheReadTokens"),
+            count(&record, "cacheWriteTokens"),
+            count(&record, "reasoningTokens"),
+        ),
+        // Token-only legacy snapshots carry no per-request ledger.
+        None => (input_tokens.max(0), output_tokens.max(0), 0, 0, 0),
+    };
+    Ok(Some(json!({
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "cacheReadTokens": cache_read,
+        "cacheWriteTokens": cache_write,
+        "reasoningTokens": reasoning,
+        "totalTokens": input_tokens
+            .saturating_add(output_tokens)
+            .saturating_add(cache_read)
+            .saturating_add(cache_write),
+        "providerId": provider_id,
+        "modelId": model_id,
+    })))
+}
+
 #[derive(Default)]
 struct CostBucket {
     total: f64,
@@ -411,6 +474,79 @@ mod tests {
                 {"providerId": "api", "total": 0.25, "pricedRequests": 1, "reportedRequests": 1, "unpricedRequests": 1},
                 {"providerId": "sub", "total": 0.5, "pricedRequests": 1, "reportedRequests": 0, "unpricedRequests": 0},
             ])
+        );
+        drop(db);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn latest_request_usage_reports_the_newest_request_of_the_newest_turn() {
+        let dir = std::env::temp_dir().join(format!("pi-latest-usage-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Database::open(&dir.join("test.sqlite")).unwrap();
+        let session = super::super::create_session(&db, None, None, None, None, None).unwrap();
+        assert!(latest_request_usage(&db, &session.id).unwrap().is_none());
+
+        let first = super::super::begin_turn(&db, &session.id, None, None).unwrap();
+        record_usage(
+            &db,
+            &session.id,
+            &first,
+            &json!({"operationId": "a", "inputTokens": 100, "outputTokens": 10,
+                "cacheReadTokens": 900, "totalTokens": 1010}),
+        )
+        .unwrap();
+        record_usage(
+            &db,
+            &session.id,
+            &first,
+            &json!({"operationId": "b", "inputTokens": 40, "outputTokens": 4,
+                "cacheReadTokens": 250, "totalTokens": 294}),
+        )
+        .unwrap();
+        super::super::end_turn(&db, &first, "completed", None, None, false).unwrap();
+
+        let usage = latest_request_usage(&db, &session.id).unwrap().unwrap();
+        // The newest request, not the turn's 1304-token billing aggregate.
+        assert_eq!(usage["inputTokens"], 40);
+        assert_eq!(usage["outputTokens"], 4);
+        assert_eq!(usage["cacheReadTokens"], 250);
+        assert_eq!(usage["totalTokens"], 294);
+
+        // A still-running turn is not what the window already holds.
+        let running = super::super::begin_turn(&db, &session.id, None, None).unwrap();
+        record_usage(
+            &db,
+            &session.id,
+            &running,
+            &json!({"operationId": "c", "inputTokens": 7, "outputTokens": 1, "totalTokens": 8}),
+        )
+        .unwrap();
+        assert_eq!(
+            latest_request_usage(&db, &session.id).unwrap().unwrap()["totalTokens"],
+            294
+        );
+
+        // Another session never answers for this one; a token-only completed
+        // snapshot still reports its own counts.
+        let other = super::super::create_session(&db, None, None, None, None, None).unwrap();
+        let other_turn = super::super::begin_turn(&db, &other.id, None, None).unwrap();
+        super::super::end_turn(
+            &db,
+            &other_turn,
+            "completed",
+            None,
+            Some(&json!({"inputTokens": 5, "outputTokens": 1, "totalTokens": 6})),
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            latest_request_usage(&db, &session.id).unwrap().unwrap()["totalTokens"],
+            294
+        );
+        assert_eq!(
+            latest_request_usage(&db, &other.id).unwrap().unwrap()["totalTokens"],
+            6
         );
         drop(db);
         std::fs::remove_dir_all(dir).unwrap();

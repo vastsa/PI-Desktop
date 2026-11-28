@@ -131,4 +131,71 @@ describe("pi-host operations over host-core", () => {
     const diff = await operations.workspace.diff("s1");
     expect(diff.repo).toBe(false);
   });
+
+  it("publishes only runnable models and the window of the newest request", async () => {
+    const models = createHostOperations({
+      getHost: () => ({
+        async call<T>(method: string): Promise<T> {
+          switch (method) {
+            case "providers.list":
+              return { providers: [
+                {
+                  id: "p1", name: "DeepSeek", enabled: true, hasSecret: true, authKind: "api_key",
+                  contextWindow: 90_800,
+                  models: [
+                    { id: "deepseek-v4.1-flash", contextWindow: 90_800, thinkingLevels: ["off", "low"], fastModeAllowed: true },
+                    { id: "deepseek-v4.1", contextWindow: 0 },
+                  ],
+                },
+                { id: "p2", name: "No key", enabled: true, hasSecret: false, authKind: "api_key", models: [{ id: "hidden" }] },
+                { id: "p3", name: "Off", enabled: false, hasSecret: true, authKind: "api_key", models: [{ id: "off-model" }] },
+              ] } as T;
+            case "providers.listModels":
+              return { models: [
+                { providerId: "p1", modelId: "deepseek-v4.1", displayName: "DeepSeek V4.1", capabilities: ["tool_call"] },
+              ] } as T;
+            case "settings.get":
+              return { defaultProviderId: "p1", defaultModelId: "deepseek-v4.1-flash" } as T;
+            case "session.turnUsage":
+              return { usage: {
+                inputTokens: 40, outputTokens: 4, cacheReadTokens: 250, cacheWriteTokens: 0,
+                reasoningTokens: 2, totalTokens: 294, providerId: "p1", modelId: "deepseek-v4.1-flash",
+              } } as T;
+            default:
+              throw new Error(`unexpected ${method}`);
+          }
+        },
+      }),
+      runtime: { compact: async () => ({ accepted: true }), isBusy: () => false },
+    });
+
+    const catalog = await models.models!.list();
+    expect(catalog).toMatchObject({ defaultProviderId: "p1", defaultModelId: "deepseek-v4.1-flash" });
+    expect(catalog.models.map((row) => `${row.providerId}:${row.modelId}`)).toEqual([
+      "p1:deepseek-v4.1-flash", "p1:deepseek-v4.1",
+    ]);
+    // The alias/display name and catalog capability enrich the selected model;
+    // the provider-level window fills a binding that omits one.
+    expect(catalog.models[1]).toMatchObject({ displayName: "DeepSeek V4.1", contextWindow: 90_800, capabilities: ["tool_call"] });
+    expect(catalog.models[0]).toMatchObject({ displayName: "deepseek-v4.1-flash", contextWindow: 90_800, fastMode: true });
+
+    const usage = await models.usage!.read("s1");
+    expect(usage.contextWindow).toBe(90_800);
+    expect(usage.usage).toEqual({
+      inputTokens: 40, outputTokens: 4, cacheReadTokens: 250, reasoningTokens: 2, totalTokens: 294,
+    });
+  });
+
+  it("reports no usage for a session without a completed model request", async () => {
+    const models = createHostOperations({
+      getHost: () => ({
+        async call<T>(method: string): Promise<T> {
+          if (method === "session.turnUsage") return { usage: null } as T;
+          throw new Error(`unexpected ${method}`);
+        },
+      }),
+      runtime: { compact: async () => ({ accepted: true }), isBusy: () => false },
+    });
+    expect(await models.usage!.read("s1")).toEqual({});
+  });
 });

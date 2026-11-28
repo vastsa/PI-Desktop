@@ -228,6 +228,17 @@ export function createOperations(): Map<RacpOperation, OperationHandler> {
     const input = check(HistoryParams, params);
     return context.agentHost.history(context.principal, input);
   });
+  handlers.set("session/usage", async (context, params) => {
+    const input = check(SessionIdParams, params);
+    const report = context.operations.usage;
+    if (!report) throw new RacpError("CAPABILITY_UNAVAILABLE", "this Host does not report session usage");
+    return report.read(input.sessionId);
+  });
+  handlers.set("models/list", async (context) => {
+    const catalog = context.operations.models;
+    if (!catalog) throw new RacpError("CAPABILITY_UNAVAILABLE", "this Host publishes no model catalog");
+    return catalog.list();
+  });
 
   handlers.set("events/subscribe", async (context, params) => {
     const input = check(SubscribeParams, params);
