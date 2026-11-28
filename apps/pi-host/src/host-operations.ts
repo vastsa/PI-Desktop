@@ -14,7 +14,6 @@ import {
   collectWorkspaceDiff,
   listDir,
   readWorkspaceFile,
-  toSessionSummary,
   withSessionProjectIds,
   type HostRpc,
   type HostSessionRecord,

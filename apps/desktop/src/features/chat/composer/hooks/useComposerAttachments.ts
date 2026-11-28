@@ -21,7 +21,6 @@ import {
   hasComposerFileDrag,
   type ComposerDropItem,
 } from "../../../../lib/composer-drop";
-import type { ComposerDraftSnapshot } from "../../../../lib/composer-smart-stop";
 import {
   clipboardFiles,
   createFileReference,

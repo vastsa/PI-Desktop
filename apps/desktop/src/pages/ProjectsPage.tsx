@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { ProjectGroupRecord } from "@pi-desktop/shared";
 import { useAppStore } from "../stores/app-store";
 import { api } from "../lib/api";
-import { Button, TooltipButton, SegmentedControl, cx } from "../components/ui";
+import { Button, TooltipButton, SegmentedControl } from "../components/ui";
 import {
   IconArchive,
   IconArchiveRestore,

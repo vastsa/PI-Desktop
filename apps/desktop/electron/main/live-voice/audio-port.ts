@@ -1,4 +1,4 @@
-import { MessageChannelMain, type MessagePortMain, type WebFrameMain } from "electron";
+import { MessageChannelMain, type WebFrameMain } from "electron";
 import { randomUUID } from "node:crypto";
 import type { LivePlaybackCursor } from "@pi-desktop/shared";
 import { IPC } from "@pi-desktop/shared";

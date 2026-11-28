@@ -28,17 +28,13 @@ import type {
   AssistantActivityItem,
 } from "../../../lib/assistant-turns";
 import {
-  messageThinking as thinkingText,
   subagentRunsEqual,
 } from "../../../lib/assistant-turns";
 import {
-  delegationRoster,
-  delegationRosterSummary,
   collectDelegationStatuses,
   collectDelegationTimings,
   delegationTimingBounds,
   isDelegationActivityItem,
-  lifecycleKindOf,
   summarizeSubagentActivity,
   type SubagentOutcome,
   type SubagentTiming,
@@ -46,7 +42,6 @@ import {
 import {
   formatToolDuration,
   getToolAction,
-  getToolSummary,
 } from "../../../lib/tool-display";
 import { IconChevronRight, IconCircleAlert, IconSparkles, IconWorkflow } from "../../../components/icons";
 import {

@@ -44,7 +44,6 @@ import {
 } from "./slices/work-panel-slice";
 import {
   createInitialState,
-  initialSidebarPreferences,
 } from "./slices/initial-state";
 import { createSessionSlice } from "./slices/session-slice";
 import { createQueueSlice } from "./slices/queue-slice";
@@ -66,7 +65,6 @@ import {
   type InteractionRuntime,
 } from "./runtime/interaction-runtime";
 import {
-  isDefaultSessionTitle,
   untitledTaskTitle,
 } from "../lib/session-title-utils";
 import { createInteractivePromptNotifier } from "./runtime/notification-runtime";

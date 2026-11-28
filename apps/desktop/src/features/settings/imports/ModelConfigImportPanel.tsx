@@ -7,7 +7,6 @@ import { Badge } from "../../../components/ui";
 import {
   ImportGroup,
   ImportIdle,
-  ImportOption,
   ImportResults,
   ImportRow,
   ImportToolbar,

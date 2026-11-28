@@ -5,7 +5,6 @@ import type { ContextCompactionFallback, ContextCompactionMark, ContextCompactio
 import type { AgentStatus } from "./sessions.js";
 import type { MessageUsage, ToolTokenUsage, UiMessage, VoiceOrigin } from "./messages.js";
 import type { PermissionDecision, Risk } from "./permissions.js";
-import type { ThinkingLevel } from "./models.js";
 import type { RacpPermissionMode } from "../racp.js";
 
 export type AgentPromptRequest = {

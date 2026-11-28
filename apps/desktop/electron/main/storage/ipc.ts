@@ -1,4 +1,4 @@
-import { app, dialog } from "electron";
+import { dialog } from "electron";
 import { randomUUID } from "node:crypto";
 import { IPC, type StorageInfo } from "@pi-desktop/shared";
 import type { IpcRegistrar } from "../ipc/types";

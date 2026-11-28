@@ -2,10 +2,6 @@
    aliases never existed in tokens.css, so each value below used to fall back
    to a hardcoded literal that no contributed theme could reach. */
 
-.voice-active {
-  color: var(--ds-error) !important;
-}
-
 .voice-mic-active {
   animation: voice-pulse 1.2s ease-in-out infinite;
 }
@@ -13,54 +9,6 @@
 @keyframes voice-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
-}
-
-/* Voice overlay */
-.voice-overlay {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  padding: 0 8px 4px;
-  z-index: 10;
-  pointer-events: auto;
-}
-
-.voice-overlay-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  border-radius: var(--radius-xs);
-  background: var(--ds-bg-elevated-opaque);
-  border: 1px solid var(--ds-border-default);
-  font-size: var(--text-md);
-  gap: 12px;
-}
-
-.voice-overlay-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.voice-overlay-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.voice-recording-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-round);
-  background: var(--ds-error);
-  animation: voice-pulse 1.2s ease-in-out infinite;
-}
-
-.voice-duration {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.7;
 }
 
 .voice-spinner {
@@ -74,40 +22,6 @@
 
 @keyframes voice-spin {
   to { transform: rotate(360deg); }
-}
-
-.voice-volume-bar {
-  width: 80px;
-  height: 4px;
-  border-radius: var(--radius-3xs);
-  background: var(--ds-bg-active);
-  overflow: hidden;
-}
-
-.voice-volume-fill {
-  height: 100%;
-  background: var(--ds-accent);
-  border-radius: var(--radius-3xs);
-  transition: width 100ms ease-out;
-}
-
-.voice-cancel-btn {
-  padding: 2px 8px;
-  border-radius: var(--radius-3xs);
-  font-size: var(--text-sm);
-  background: transparent;
-  color: var(--ds-text-secondary);
-  border: 1px solid var(--ds-border-strong);
-  cursor: pointer;
-  transition: background 150ms;
-}
-
-.voice-cancel-btn:hover {
-  background: var(--ds-bg-hover);
-}
-
-.voice-error {
-  color: var(--ds-error);
 }
 
 /* ---- Voice settings: wider control column ---- */

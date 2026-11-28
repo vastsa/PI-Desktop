@@ -23,7 +23,7 @@ import {
   type ModeDefinition,
   type ModeDiagnostic,
 } from "@pi-desktop/shared";
-import { parseStrictModeYaml, splitModeDocument, type SplitDocument, type YamlResult } from "./mode-yaml.js";
+import { parseStrictModeYaml, splitModeDocument } from "./mode-yaml.js";
 export { parseStrictModeYaml, splitModeDocument } from "./mode-yaml.js";
 export type { SplitDocument, YamlResult } from "./mode-yaml.js";
 import {

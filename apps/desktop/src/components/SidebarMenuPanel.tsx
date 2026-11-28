@@ -23,7 +23,6 @@ import { IconChevronRight } from "./icons";
 import { portalToBody } from "../lib/portal-visibility";
 import type {
   SidebarMenuActionItem,
-  SidebarMenuGroupItem,
   SidebarMenuItem,
   SidebarMenuPanelContent,
   SidebarMenuSubmenuItem,

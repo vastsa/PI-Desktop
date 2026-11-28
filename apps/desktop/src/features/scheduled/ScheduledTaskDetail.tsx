@@ -12,7 +12,7 @@ import {
   formatScheduleClock,
 } from "./scheduled-format";
 import { resolveSelectedRun, runDurationMs } from "./scheduled-runs";
-import { cadenceHasClock, cadenceLabel, CADENCE_I18N_KEYS, RUN_STATUS_I18N_KEYS } from "./scheduled-labels";
+import { cadenceHasClock, cadenceLabel, RUN_STATUS_I18N_KEYS } from "./scheduled-labels";
 import { ScheduledRunHistory } from "./ScheduledRunHistory";
 import { ScheduledRunTranscript } from "./ScheduledRunTranscript";
 

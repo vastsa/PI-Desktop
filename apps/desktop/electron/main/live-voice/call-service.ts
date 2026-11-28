@@ -6,7 +6,6 @@ import {
   type LiveBindingReadiness,
   type LiveCallView,
   type LiveConnectRequest,
-  type LiveControlEvent,
   type LiveDelegationRequest,
   type LiveEndReason,
   type LiveEndRequest,
@@ -20,11 +19,9 @@ import {
   type LiveWorkOperationView,
   type LiveWorkStopOperationResult,
 } from "@pi-desktop/shared";
-import { LiveWorkFeedbackScheduler, liveWorkUnselectedSessionId, type LiveWorkIntent, type LiveWorkPendingQuestion } from "@pi-desktop/host-runtime";
+import { liveWorkUnselectedSessionId, type LiveWorkIntent, type LiveWorkPendingQuestion } from "@pi-desktop/host-runtime";
 import { LIVE_WORK_TOOL_NAME, parseLiveWorkArguments, type LiveWireEvent } from "@pi-desktop/voice-runtime/live";
-import { LiveAuthResolver } from "./auth-resolver";
-import type { LivePcmBridge } from "./audio-port";
-import type { LiveAdapter, LiveAdapterContext, LiveResolvedAuth } from "./types";
+import type { LiveAdapterContext, LiveResolvedAuth } from "./types";
 import { createLiveWorkProfile } from "./work-profile";
 import {
   AUTH_TIMEOUT_MS,

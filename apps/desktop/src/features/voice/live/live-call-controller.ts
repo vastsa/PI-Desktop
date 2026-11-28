@@ -336,7 +336,7 @@ export class LiveCallController {
     resources.peer = peer;
     const channel = peer.createDataChannel("oai-events");
     resources.channel = channel;
-    channel.onmessage = (event) => this.handleCodexData(callId, resources, event.data);
+    channel.onmessage = (event) => this.handleCodexData(callId, event.data);
     channel.onerror = () => void this.failActive(callId, liveError("LIVE_NETWORK_ERROR"));
     channel.onclose = () => {
       if (!resources.abort.signal.aborted) void this.failActive(callId, liveError("LIVE_NETWORK_ERROR"));
@@ -383,7 +383,7 @@ export class LiveCallController {
     ]);
   }
 
-  private handleCodexData(callId: string, resources: StartResources, raw: unknown): void {
+  private handleCodexData(callId: string, raw: unknown): void {
     if (typeof raw !== "string" || raw.length > 2 * 1024 * 1024) {
       void this.failActive(callId, liveError("LIVE_PROTOCOL_ERROR"));
       return;

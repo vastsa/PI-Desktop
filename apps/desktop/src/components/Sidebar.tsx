@@ -70,7 +70,7 @@ import {
   ProjectRunCount,
   ProjectRunRail,
 } from "./ProjectRunIndicator";
-import { ErrorCodes, formatSessionLink, sidebarModuleVisible } from "@pi-desktop/shared";
+import { formatSessionLink, sidebarModuleVisible } from "@pi-desktop/shared";
 import type { SessionSummary } from "@pi-desktop/shared";
 import type {
   ProjectMeta,

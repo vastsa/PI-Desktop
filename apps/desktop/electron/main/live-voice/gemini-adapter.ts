@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { LiveBinding } from "@pi-desktop/shared";
-import { geminiAudioEndMessage, geminiAudioMessage, geminiSetupMessage, geminiToolResponseMessage, geminiWorkFeedbackMessage, geminiWorkToolDeclaration, MAX_LIVE_AUDIO_BYTES, MAX_LIVE_JSON_BYTES, parseGeminiMessage, parseLiveWorkArguments, LIVE_WORK_TOOL_NAME } from "@pi-desktop/voice-runtime/live";
+import { geminiAudioEndMessage, geminiAudioMessage, geminiSetupMessage, geminiToolResponseMessage, geminiWorkFeedbackMessage, MAX_LIVE_AUDIO_BYTES, MAX_LIVE_JSON_BYTES, parseGeminiMessage, parseLiveWorkArguments, LIVE_WORK_TOOL_NAME } from "@pi-desktop/voice-runtime/live";
 import type { LiveAdapter, LiveAdapterContext, LiveReceiptDelivery } from "./types";
 import type { LiveWorkFeedback } from "@pi-desktop/shared";
 import { openLiveWebSocket } from "./websocket-transport";

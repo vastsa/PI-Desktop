@@ -7,7 +7,6 @@
 import {
   IPC,
   isModeId,
-  type ModeBundleSettingsRequest,
   type ModeBundleWriteRequest,
   type ModeControlAction,
   type ModeControlRequest,
