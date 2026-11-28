@@ -388,14 +388,12 @@ type PluginProviderModelContrib = {
  thinkingLevels?: string[];
  /** New sessions use this level when it is present in `thinkingLevels`. */
  defaultThinkingLevel?: string;
+ /** Chat Completions reasoning_effort support; omit to use host compatibility defaults. */
+ supportsReasoningEffort?: boolean;
  /** Preserve unsigned reasoning blocks when the Anthropic endpoint accepts them. */
  allowEmptyThinkingSignature?: boolean;
 };
 ```
-The opt-in is copied into the Host-owned model binding and survives provider
-reloads. It is only used when constructing Anthropic Messages requests;
-omitting it preserves the adapter default. Manifest validation rejects
-non-boolean values.
 To materialize these fields, the Host trims entries, drops unknown canonical
 names, removes duplicates, and preserves the remaining declaration order. An
 absent or unusable list becomes an empty binding. `defaultThinkingLevel` is kept
@@ -404,6 +402,15 @@ dropped and normal binding normalization selects the first available level.
 Manifest validation rejects a non-array `thinkingLevels`, any non-string entry, or
 an explicitly non-string `defaultThinkingLevel`; unknown string names are
 accepted and dropped during normalization.
+
+`supportsReasoningEffort` is an optional boolean copied into the model binding.
+It overrides the host's Chat Completions compatibility default for whether to
+send `reasoning_effort`; omission preserves that default. Non-boolean values
+are rejected. `thinkingLevels` alone does not declare wire-protocol support.
+
+`allowEmptyThinkingSignature` is an optional boolean copied into the model
+binding. It is only used when constructing Anthropic Messages requests;
+omitting it preserves the adapter default. Non-boolean values are rejected.
 
 ## 5. permissions enum
 

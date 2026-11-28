@@ -998,8 +998,18 @@ describe("contributes.providers", () => {
     ).toMatch(/without a valid id/);
   });
 
-  it("rejects malformed thinking-level field shapes", () => {
+  it("validates thinking-level fields and optional reasoning-effort support", () => {
     const perm = { ...base, permissions: ["provider.register"] };
+    for (const supportsReasoningEffort of [undefined, true, false]) {
+      expect(validateContributions({ providers: [{
+        ...provider,
+        models: [{ ...provider.models[0], supportsReasoningEffort }],
+      }] })).toBeUndefined();
+    }
+    expect(validateContributions({ providers: [{
+      ...provider,
+      models: [{ ...provider.models[0], supportsReasoningEffort: "true" as never }],
+    }] })).toMatch(/supportsReasoningEffort must be a boolean/);
     expect(
       validateManifest({
         ...perm,

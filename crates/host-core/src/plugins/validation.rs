@@ -274,6 +274,13 @@ pub(crate) fn validate_contributions(root: &Path, manifest: &PluginManifest) -> 
                         );
                     }
                 }
+                if let Some(support) = model.get("supportsReasoningEffort") {
+                    if !support.is_boolean() {
+                        bail!(
+                            "PLUGIN_INVALID: provider {id} model {model_id} supportsReasoningEffort must be a boolean"
+                        );
+                    }
+                }
                 if let Some(allow_empty_signature) = model.get("allowEmptyThinkingSignature") {
                     if !allow_empty_signature.is_boolean() {
                         bail!("PLUGIN_INVALID: provider {id} model {model_id} allowEmptyThinkingSignature must be a boolean");
