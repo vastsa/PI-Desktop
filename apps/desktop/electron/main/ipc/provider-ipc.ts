@@ -94,7 +94,6 @@ export function registerProviderIpc({
   enrichProvider,
   listRuntimeProviders,
   enrichProviderList,
-  bindingForModel,
   onProviderInvalidated,
 }: ProviderIpcDependencies): void {
   let host: HostProcess | null = null;

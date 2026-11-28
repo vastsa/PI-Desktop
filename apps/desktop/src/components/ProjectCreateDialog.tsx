@@ -42,7 +42,6 @@ function samePath(left: string, right: string) {
 // The create dialog mounts its content only while open: the blocking overlay
 // registers with that mounted subtree, and every reopen resets the form.
 export function ProjectCreateDialog() {
-  const { t } = useTranslation();
   const open = useAppStore((state) => state.createProjectDialogOpen);
   const initialRemoteHostKey = useAppStore((state) => state.createProjectDialogRemoteHostKey);
   if (open) {

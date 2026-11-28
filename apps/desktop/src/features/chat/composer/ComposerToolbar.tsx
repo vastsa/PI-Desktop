@@ -113,7 +113,6 @@ export function ComposerToolbar({
   abort,
   submit,
   workSessionId,
-  workSessionLabel,
 }: ComposerToolbarProps) {
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
   const steeringShortcut = keybindingDisplayParts("Alt+Enter", platform).join("+");

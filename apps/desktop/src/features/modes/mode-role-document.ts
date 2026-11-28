@@ -221,10 +221,3 @@ export function toggleRoleTool(tools: readonly string[], tool: string, on: boole
     ? SUBAGENT_ASSIGNABLE_TOOLS.filter((candidate) => candidate === tool || tools.includes(candidate))
     : tools.filter((candidate) => candidate !== tool);
 }
-
-/** A handle written into a new document's `name:` from the reference it will live at. */
-export function roleHandle(reference: string, fallback: string): string {
-  const segment = reference.split("/").pop() ?? reference;
-  const [stem] = segment.split(".");
-  return (stem || fallback).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-}

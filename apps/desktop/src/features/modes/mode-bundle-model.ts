@@ -22,7 +22,6 @@ import type {
   ModeCatalog,
   ModeCatalogEntry,
   ModeDocumentReadResult,
-  ModeSkillsResult,
 } from "@pi-desktop/shared";
 import { parseRoleDocument } from "./mode-role-document";
 
@@ -232,11 +231,6 @@ export function disabledSkillsAfterToggle(source: string, id: string, enabled: b
   return [...disabled];
 }
 
-/** Skills the Skills tab lists, with the toggle state the map produces. */
-export function skillRows(state: ModeSkillsResult | null): ModeSkillsResult["skills"] {
-  return state?.skills ?? [];
-}
-
 /**
  * What the mode selector offers: every mode the catalog can show, with the
  * reserved documents left out because they are reported, not loaded.
@@ -251,15 +245,6 @@ export function modeSelectorEntries(catalog: ModeCatalog | null | undefined): Mo
     .filter((entry) => entry.source === "user" && !entry.reserved)
     .sort((left, right) => left.id.localeCompare(right.id));
   return [...builtins, ...user];
-}
-
-/**
- * Label for the open document's file, or the id when the mode has no file yet.
- * The page shows this line so the user can see *which* file a save writes.
- */
-export function openDocumentLabel(document: { id: string; filePath?: string }, format: ModeDocumentFormat): string {
-  if (document.filePath) return document.filePath;
-  return format === "bundle" ? `${document.id}/mode.yaml` : `${document.id}/mode.md`;
 }
 
 /**
@@ -367,11 +352,6 @@ export function putRole(draft: ModeBundleDraft, reference: string, source: strin
     agents: { ...draft.agents, [reference]: source },
     source: setBundleList(draft.source, "subagents", next),
   };
-}
-
-/** Point `promptFile` at a document and store that document's text. */
-export function putPrompt(draft: ModeBundleDraft, reference: string, text: string): ModeBundleDraft {
-  return { ...draft, prompt: text, source: setBundleScalar(draft.source, "promptFile", reference) };
 }
 
 /**

@@ -4,7 +4,6 @@ import { liveError } from "./live-voice-api";
 
 const MAX_INPUT_CREDITS = 10;
 const MAX_PCM_FRAME_SAMPLES = 2400;
-const MAX_WORKLET_MESSAGE_SAMPLES = 48_000;
 
 export class LivePcmSession {
   private readonly callId: string;
@@ -23,7 +22,6 @@ export class LivePcmSession {
   private captureEpoch = 0;
   private muted = true;
   private readyResolve: (() => void) | null = null;
-  private readyReject: ((error: Error) => void) | null = null;
   private releasePromise: Promise<void> | null = null;
   private releaseSent = false;
   private disposed = false;
@@ -161,7 +159,6 @@ export class LivePcmSession {
         clearTimeout(timer);
         signal.removeEventListener("abort", onAbort);
         this.readyResolve = null;
-        this.readyReject = null;
       };
       const onAbort = () => {
         cleanup();
@@ -174,10 +171,6 @@ export class LivePcmSession {
       this.readyResolve = () => {
         cleanup();
         resolve();
-      };
-      this.readyReject = (error) => {
-        cleanup();
-        reject(error);
       };
       signal.addEventListener("abort", onAbort, { once: true });
       if (signal.aborted) onAbort();

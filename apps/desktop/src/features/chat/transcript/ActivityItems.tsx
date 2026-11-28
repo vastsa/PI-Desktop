@@ -38,7 +38,7 @@ type ActivityItemBlockProps = Omit<ActivityItemsProps, "items" | "delegateItems"
 };
 
 const ActivityItemBlock = memo(function ActivityItemBlock({
-  block, isActive, live, groupDelegates, topologyItem,
+  block, isActive, groupDelegates, topologyItem,
   delegateItems, delegationStatuses, delegationTimings, onUserInteraction,
   collapseThinking,
 }: ActivityItemBlockProps) {

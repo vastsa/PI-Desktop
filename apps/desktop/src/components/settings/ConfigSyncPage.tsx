@@ -405,7 +405,6 @@ export function ConfigSyncPage() {
   const stateReady = state !== null;
   const syncing = state?.status === "syncing";
   const controlsBusy = busy !== null || syncing;
-  const categories = selection;
   const connectionReady = Boolean(form.endpoint.trim() && form.region.trim() && form.bucket.trim() && form.accessKeyId.trim());
   const vaultPasswordReady =
     form.backupPassword.length === 0

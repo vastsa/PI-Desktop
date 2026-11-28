@@ -2,7 +2,6 @@ import {
   bindingSupportsImages,
   configuredChatModels,
   effectiveContextWindow,
-  isImageOnlyChatModel,
   type ImageGenerationBindings,
   modelMatchesFilter,
   modelWireIdsEqual,
@@ -30,21 +29,6 @@ export function composerModelMetadata(
 ): ModelInfo | undefined {
   if (!modelId) return undefined;
   return (discovered ?? []).find((model) => sameComposerModelId(model.modelId, modelId));
-}
-
-/**
- * One chat-eligibility answer everywhere: a model bound for image generation
- * stays chat-eligible unless its discovered metadata names no text output or
- * its id is a pure image-generation endpoint (#2253).
- */
-export function composerModelChatEligible(
-  imageGeneration: ImageGenerationBindings | null | undefined,
-  providerId: string | undefined,
-  modelId: string | undefined,
-  discovered?: readonly ModelInfo[],
-): boolean {
-  const metadata = composerModelMetadata(discovered, modelId);
-  return !isImageOnlyChatModel(imageGeneration, providerId, modelId, metadata);
 }
 
 /**

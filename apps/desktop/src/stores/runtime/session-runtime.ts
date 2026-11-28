@@ -8,7 +8,6 @@ import { api } from "../../lib/api";
 import { createNavigationIntentController } from "../../lib/navigation-intent";
 import {
   dedupeSessionMessages,
-  durableCoversLiveSessionMessages,
   mergeLiveSessionMessages,
   projectMessageEnd,
   removeLiveSessionMessage,
@@ -480,11 +479,4 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
     },
     planSyncGeneration: (sessionId) => planSyncGenerations.get(sessionId) ?? 0,
   };
-}
-
-export function sessionMessagesCoverLiveTail(
-  durable: UiMessage[],
-  live: UiMessage[] | undefined,
-): boolean {
-  return durableCoversLiveSessionMessages(durable, live);
 }

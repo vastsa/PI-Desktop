@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import {
   createModels,
   InMemoryModelsStore,
-  type Model as PiModel,
   type MutableModels,
   type ModelType,
   type ModelTypeMap,
@@ -1096,66 +1095,6 @@ function medianOf(values: readonly (number | undefined)[]): number | undefined {
 }
 
 /**
- * Record to borrow for an id the row's own catalog provider does not publish.
- *
- * models.dev indexes a gateway's copy of a model under the vendor that owns
- * the weights, so an endpoint serving `Vendor/Model` ids can have no record of
- * its own while several other publishers state the identical id. Borrowing
- * that record is what keeps such a model's context window, tool support and
- * vision visible instead of dropping the row to the generic 128k text-only
- * shape.
- *
- * Two rules keep the result honest about what the endpoint will accept:
- *
- * - Tool support follows the majority of the publishers that state it. One
- *   dissenting reseller must not decide the claim for a deployment it does not
- *   describe, and neither may one agreeing reseller: an id a relay lists can be
- *   stated by a hundred publishers, which is what left whole model lists on the
- *   generic seed before. An even split states no majority and claims nothing.
- * - Every other capability is the *intersection*, so the borrow may only
- *   under-claim. Reasoning, image input and image/PDF attachment are reported
- *   only when every publisher states them, and a user who knows the endpoint
- *   does more can still turn them on in Advanced. Limits are the medians the
- *   publishers state, so neither one host's cap nor one host's round-up
- *   decides them.
- */
-/**
- * Whether two ids name one model under different spellings.
- *
- * A publisher-prefixed copy (`anthropic/claude-sonnet-4-5` for
- * `claude-sonnet-4-5`, `mify/mimo-v2.5-pro-0731` for `mimo-v2.5-pro`) and a
- * dated or variant spelling of one id are the same model, so their records may
- * be compared with each other. Two unrelated routes that happen to share a leaf
- * (`provider-a/foo` vs `gateway/foo`) are not: that relation is a coincidence of
- * naming, and nothing may treat it as identity.
- *
- * `catalogModelIdsMatch` stays the matcher of record; this only decides which of
- * its matches a borrow without a provider identity may average.
- */
-function sameModelSpelling(catalogId: string, requested: string): boolean {
-  const left = catalogId.trim().toLowerCase();
-  const right = requested.trim().toLowerCase();
-  if (!left || !right) return false;
-  if (left === right) return true;
-  /*
-    Either side may carry a route prefix the other does not: a relay lists
-    `test/mimo-v2.5` where the catalog publishes `mimo-v2.5`, and a catalog that
-    publishes a routed copy answers for the bare id. Two *different* route paths
-    that merely share a leaf still never match.
-  */
-  if (left.endsWith(`/${right}`) || right.endsWith(`/${left}`)) return true;
-  const plain = (id: string) => stripReleaseSuffix(stripVariantSuffix(id));
-  const plainLeft = plain(left);
-  const plainRight = plain(right);
-  if (!plainLeft || !plainRight) return false;
-  return (
-    plainLeft === plainRight ||
-    plainLeft.endsWith(`/${plainRight}`) ||
-    plainRight.endsWith(`/${plainLeft}`)
-  );
-}
-
-/**
  * Which publisher's records answer for an id the row's own publisher lacks.
  *
  * Two preferences, in order. The app's supported publishers are read first:
@@ -1194,53 +1133,6 @@ function borrowPool(
   ];
   const pool = tiers.find((tier) => tier.length > 0) ?? [];
   return pool.map((entry) => entry.model);
-}
-
-/**
- * Markers a deployment appends to a published id to name its own variant of it:
- * a canary label, a context size, a preview channel. `test/mimo-v2.5-pro-test`
- * and `gemini-2.5-pro-1m` are the published models with such a marker appended.
- *
- * Only a marker on this list is read that way. `-asr`, `-pro` or `-mini` name
- * models of their own, so an unpublished id that carries one of those stays
- * unknown instead of borrowing a sibling model's limits.
- */
-const DEPLOYMENT_MARKER_SUFFIXES: ReadonlySet<string> = new Set([
-  "test",
-  "staging",
-  "canary",
-  "dev",
-  "alpha",
-  "beta",
-  "rc",
-  "exp",
-  "experimental",
-  "preview",
-  "free",
-  "trial",
-  "thinking",
-  "think",
-  "agent",
-  "latest",
-  "1k",
-  "2k",
-  "4k",
-  "32k",
-  "64k",
-  "128k",
-  "200k",
-  "256k",
-  "512k",
-  "1m",
-  "2m",
-  "4m",
-]);
-
-/** The id without one trailing deployment marker, or the id unchanged. */
-function dropDeploymentMarker(value: string): string {
-  const match = /^(.*)[-_:]([a-z0-9]+)$/i.exec(value);
-  if (!match) return value;
-  return DEPLOYMENT_MARKER_SUFFIXES.has(match[2].toLowerCase()) ? match[1] : value;
 }
 
 /** The last `/`-segment of a normalized id; the whole id when it has none. */
@@ -1323,24 +1215,6 @@ function relayNotationCandidates(requested: string): string[] {
     push(dashesToDots(base));
   }
   return out;
-}
-
-/**
- * Published ids to read when nothing the catalog publishes matches the id the
- * service serves: the id behind a route prefix, and that id without one
- * deployment marker. Each is looked up as a whole published id, so nothing here
- * follows a chain of aliases.
- */
-function fallbackLookupIds(requested: string): string[] {
-  const ids: string[] = [];
-  const push = (value: string) => {
-    if (value && value !== requested && !ids.includes(value)) ids.push(value);
-  };
-  const leaf = requested.slice(requested.lastIndexOf("/") + 1);
-  push(leaf);
-  push(dropDeploymentMarker(leaf));
-  push(dropDeploymentMarker(requested));
-  return ids;
 }
 
 /**

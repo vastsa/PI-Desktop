@@ -15,17 +15,13 @@ import {
   sessionWorkspaceIdentity,
   type LiveWorkOperationUpdate,
   type LiveWorkPort,
-  type LiveWorkCandidate,
   type LiveWorkContextMessage,
   type LocalReceiptDelivery,
   type ProviderReceipt,
   type LiveWorkPendingQuestion,
-  type WorkSnapshot,
 } from "@pi-desktop/host-runtime";
 import { buildSpokenAnswers, toPendingQuestion } from "./spoken-answer";
 import {
-  ErrorCodes,
-  IPC,
   OAUTH_AUTH_KIND,
   type RacpItemSummary,
   type LiveWorkBinding,

@@ -10,7 +10,7 @@ import type { AgentHostBridge } from "../agent-host-bridge";
 import { DESKTOP_PRINCIPAL } from "../agent-host-bridge";
 import type { BackendRouter, RemoteBackend } from "../remote/backend-router";
 import type { RemoteHostsBoot } from "../bootstrap/remote-hosts";
-import type { LiveWorkAdmission, LiveWorkPort, WorkSnapshot } from "@pi-desktop/host-runtime";
+import type { LiveWorkPort, WorkSnapshot } from "@pi-desktop/host-runtime";
 import { localNativeProjectPaths } from "../services/session-search";
 
 export type LiveWorkSessionRecord = {
@@ -141,12 +141,6 @@ function sessionStatus(status: AgentStatus, record: LiveWorkSessionRecord): Work
 export function createLiveWorkBackendPort(input: LiveWorkBackendPortOptions): Pick<LiveWorkPort,
   "snapshot" | "observeTurnTarget" | "lookupAdmission" | "submit" | "steer" | "enqueue" | "stop" | "cancelQueued"
 > {
-  const requireHost = (): HostRpc => {
-    const host = input.getHost();
-    if (!host) throw workError("LIVE_WORK_NOT_READY", "Local Host is unavailable.");
-    return host;
-  };
-
   return {
     async snapshot(sessionId) {
       const record = await input.requireSelectedSession(sessionId);
@@ -357,32 +351,4 @@ export function createLiveWorkBackendPort(input: LiveWorkBackendPortOptions): Pi
       return result.ok === true ? { status: "canceled" } : { status: "unknown" };
     },
   };
-}
-
-export function statusSnapshot(input: { sessionId: string; record: LiveWorkSessionRecord; status: AgentStatus; queue?: Array<{ id: string; position: number }> }): WorkSnapshot {
-  const state: WorkSnapshot["state"] = !input.status.isRunning
-    ? "idle"
-    : input.status.pendingToolConfirmations > 0 || input.record.status === "waiting_permission"
-      ? "waiting-permission"
-      : input.record.status === "waiting_input"
-        ? "waiting-input"
-        : "running";
-  return {
-    sessionId: input.sessionId,
-    mode: input.record.mode,
-    state,
-    ...(input.status.currentTurnId ? { activeTurnId: input.status.currentTurnId } : {}),
-    queue: (input.queue ?? []).map((entry) => ({ queueEntryId: entry.id, position: entry.position, summary: "" })),
-    observedAt: Date.now(),
-    source: input.record.source,
-    capabilities: {
-      steer: input.record.source === "desktop",
-      queue: input.record.source !== "pi-native",
-      cancelQueued: input.record.source !== "pi-native",
-    },
-  };
-}
-
-export function assertHostReady(host: HostRpc | null): HostRpc {
-  return host ?? (() => { throw workError("LIVE_WORK_NOT_READY", "Local Host is unavailable."); })();
 }

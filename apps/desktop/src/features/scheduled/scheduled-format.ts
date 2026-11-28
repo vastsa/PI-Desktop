@@ -1,4 +1,4 @@
-import type { ScheduledTask, ScheduledTaskSchedule } from "@pi-desktop/shared";
+import type { ScheduledTaskSchedule } from "@pi-desktop/shared";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -75,11 +75,6 @@ export function formatScheduleClock(
   const minute = Math.trunc(schedule.minute);
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-}
-
-/** The newest timestamp a task row can report as "last attempt". */
-export function lastAttemptAt(task: ScheduledTask): string | null {
-  return task.lastRunAt ?? null;
 }
 
 /**

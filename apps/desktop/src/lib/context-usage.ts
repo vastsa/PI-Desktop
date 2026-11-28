@@ -64,13 +64,6 @@ export function turnUsageBreakdown(usage?: MessageUsage): TurnUsageBreakdown {
   };
 }
 
-export function latestMessageUsage(messages: UiMessage[]): MessageUsage | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index].usage) return messages[index].usage;
-  }
-  return undefined;
-}
-
 function modelContextWindow(model: ModelInfo | undefined): number | undefined {
   const value = positiveTokenCount(model?.contextWindow);
   return value > 0 ? value : undefined;

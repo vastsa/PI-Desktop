@@ -21,12 +21,6 @@ export type ProjectRunSummary = {
   total: number;
 };
 
-export const EMPTY_PROJECT_RUN_SUMMARY: ProjectRunSummary = {
-  running: 0,
-  waiting: 0,
-  total: 0,
-};
-
 /** Minimal session shape needed to classify one row. */
 export type ProjectRunSession = { id: string };
 
