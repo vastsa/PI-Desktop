@@ -16,15 +16,54 @@ export function canUseFileLineView(loaded: LoadedPlugin | undefined): loaded is 
     loaded.permissions.has("fs.read") && loaded.permissions.has("ui.view");
 }
 
-type FileLineBridge = {
+export type FileManagerComposerContext = {
   plugins: Pick<PluginRuntime, "getLoaded">;
   pluginViews: Pick<PluginViewHost, "isVisibleViewSender">;
-  pluginSession: Pick<PluginSessionContext, "snapshot">;
+  pluginSession: Pick<PluginSessionContext, "snapshot" | "getSelectionRevision">;
   pluginActiveInProject: (pluginId: string, projectPath: string | null) => boolean;
   getHost: () => Pick<HostProcess, "call"> | null;
   getWorkspacePath: () => string | null;
+};
+
+type FileLineBridge = FileManagerComposerContext & {
   publish: (selection: { sessionId: string; reference: FileLineReference }) => void;
 };
+
+export function fileManagerComposerTarget(
+  bridge: FileManagerComposerContext,
+  senderId: number | undefined,
+  workspace: string,
+) {
+  const pluginId = "pi.file-manager";
+  const loaded = bridge.plugins.getLoaded(pluginId);
+  const selected = bridge.pluginSession.snapshot();
+  if (
+    !selected || !canUseFileLineView(loaded) ||
+    !bridge.pluginViews.isVisibleViewSender(senderId, FILE_LINES_VIEW_KEY) ||
+    !bridge.pluginActiveInProject(pluginId, selected.projectPath) ||
+    normalizeProjectPath(workspace) !== normalizeProjectPath(bridge.getWorkspacePath())
+  ) return null;
+  return { loaded, selected };
+}
+
+export async function checkFileManagerComposerRegistry(
+  bridge: FileManagerComposerContext,
+  loaded: LoadedPlugin,
+) {
+  const host = bridge.getHost();
+  if (!host) {
+    throw Object.assign(new Error("HOST_UNAVAILABLE: The Host is unavailable. Try again when it reconnects."), {
+      code: "HOST_UNAVAILABLE",
+    });
+  }
+  const registry = await host.call<{
+    plugins: Array<{ id: string; enabled: boolean; version: string }>;
+  }>("plugins.list", undefined, 5_000);
+  if (!registry?.plugins.some(item => item.id === "pi.file-manager" && item.enabled && item.version === loaded.manifest.version)) {
+    throw new Error("The File Manager is not enabled in the Host registry.");
+  }
+  return host;
+}
 
 export async function addFileLinesFromView(
   pluginId: string,
@@ -34,35 +73,16 @@ export async function addFileLinesFromView(
 ): Promise<{ ok: true }> {
   const reference = parseFileLineReference(payload);
   if (!reference) throw new Error("Invalid file line selection.");
-  const currentTarget = () => {
-    const loaded = bridge.plugins.getLoaded(pluginId);
-    const selected = bridge.pluginSession.snapshot();
-    if (
-      !selected || !canUseFileLineView(loaded) ||
-      !bridge.pluginViews.isVisibleViewSender(senderId, FILE_LINES_VIEW_KEY) ||
-      !bridge.pluginActiveInProject(pluginId, selected.projectPath) ||
-      normalizeProjectPath(reference.workspace) !== normalizeProjectPath(bridge.getWorkspacePath())
-    ) return null;
-    return { loaded, selected };
-  };
+  const currentTarget = () => pluginId === "pi.file-manager"
+    ? fileManagerComposerTarget(bridge, senderId, reference.workspace)
+    : null;
   const target = currentTarget();
   if (!target) throw new Error("The File Manager view or target session is no longer active.");
   if (!fileLinePathInProject(reference.path, target.selected.projectPath)) {
     throw new Error("The file selection is outside the active project.");
   }
 
-  const host = bridge.getHost();
-  if (!host) {
-    throw Object.assign(new Error("HOST_UNAVAILABLE: The Host is unavailable. Try adding the selection again when it reconnects."), {
-      code: "HOST_UNAVAILABLE",
-    });
-  }
-  const registry = await host.call<{
-    plugins: Array<{ id: string; enabled: boolean; version: string }>;
-  }>("plugins.list", undefined, 5_000);
-  if (!registry?.plugins.some(item => item.id === pluginId && item.enabled && item.version === target.loaded.manifest.version)) {
-    throw new Error("The File Manager is not enabled in the Host registry.");
-  }
+  const host = await checkFileManagerComposerRegistry(bridge, target.loaded);
   const current = currentTarget();
   if (
     bridge.getHost() !== host || !current || current.loaded !== target.loaded ||
@@ -77,12 +97,12 @@ export async function addFileLinesFromView(
   return { ok: true };
 }
 
-export function fileLinePathInProject(path: string, projectPath: string | null): boolean {
+export function fileLinePathInProject(path: string, projectPath: string | null, canonicalPath?: string): boolean {
   if (typeof path !== "string" || !isAbsolute(path) || path.length > 4096 || /[\0\r\n]/.test(path)) return false;
   const canonical = (value: string) => {
     try { return realpathSync(value); } catch { return value; }
   };
-  const target = canonical(path);
+  const target = canonicalPath ?? canonical(path);
   return projectFolderPaths(projectPath).some(root => {
     const contains = (base: string, candidate: string) => {
       const child = relative(base, candidate);

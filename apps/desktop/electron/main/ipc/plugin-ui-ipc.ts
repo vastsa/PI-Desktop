@@ -40,6 +40,7 @@ export type PluginUiIpcDependencies = {
    * draft could take the line.
    */
   settleComposerSuggestion: (answer: ComposerSuggestionAnswer) => boolean;
+  dropPluginFile: (payload: unknown) => Promise<import("@pi-desktop/shared").ComposerPastedFile | null>;
 };
 
 /** Register plugin panels, work-panel views, themes and services. */
@@ -55,10 +56,18 @@ export function registerPluginUiIpc({
   getPluginPanelTheme,
   setActivePluginSession,
   settleComposerSuggestion,
+  dropPluginFile,
 }: PluginUiIpcDependencies): void {
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, fn);
   };
+  registrar.handleWithEvent(IPC.invoke.composerDropPluginFile, async (event, payload: unknown) => {
+    registrar.assertMainWindowSender(event);
+    if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame) {
+      throw new Error("PERMISSION_DENIED: file drops require the main frame");
+    }
+    return dropPluginFile(payload);
+  });
   /**
    * The newest selection the shell reported, so a slower invoke that lands
    * after a newer one cannot restore a session the user already left.

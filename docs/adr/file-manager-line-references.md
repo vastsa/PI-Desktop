@@ -40,3 +40,19 @@ Line ranges coexist with native disk-file references in one prompt and input
 history. Each attachment has one reference kind: line selections retain their
 scoped Read path, while registered disk files retain metadata-only dispatch.
 Combining `lineRange` and `localReference` on one attachment is invalid.
+
+## Whole-file drag amendment
+
+The docked File Manager can start a reference drag during a trusted native
+dragstart. Electron Main binds a short-lived token to that view, local project,
+selected session and source path. The drag data carries only the token, along
+with any plugin-local drag data for tree moves.
+
+The trusted Composer frame redeems the token once on drop. Main verifies the
+live File Manager registration, grants, selected session, and lexical and
+canonical project containment. Host session metadata excludes remote and
+isolated worktree sessions, where the visible project folder is not the
+execution checkout. Main registers a regular file through the existing
+metadata-only disk-file reference store. Cancellation or a drop outside the
+Composer never redeems the token. Content reads remain subject to normal tool
+permissions.

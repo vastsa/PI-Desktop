@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { COMPOSER_FILE_DRAG_TYPE } from "@pi-desktop/shared/file-line-reference";
 import {
   PLUGIN_PANEL_TITLEBAR_HEIGHT,
   PLUGIN_PANEL_CHROME_META_NAME,
   PLUGIN_PANEL_CHROME_VERSION,
   PLUGIN_PANEL_CHROME_PAINT_THROUGH_VERSION,
   PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT,
+  PLUGIN_PANEL_COMPOSER_FILE_DRAG_CHANNEL,
   PLUGIN_PANEL_EMBEDDED_ARGUMENT,
   PLUGIN_PANEL_WIDGET_ARGUMENT,
   PLUGIN_PANEL_LAUNCH_EVENT,
@@ -40,10 +42,32 @@ ipcRenderer.on(`pi-plugin-panel-event:${PLUGIN_PANEL_LAUNCH_EVENT}`, (
     payload: incoming.payload,
   };
 });
+const composerFileLines = process.argv.includes(PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT);
+let composerDragStart: DragEvent | undefined;
+if (composerFileLines) {
+  window.addEventListener("dragstart", (event) => {
+    composerDragStart = event.isTrusted ? event : undefined;
+    // Clear after synchronous handlers even when the page never uses the bridge.
+    queueMicrotask(() => {
+      if (composerDragStart === event && event.eventPhase === Event.NONE) composerDragStart = undefined;
+    });
+  }, true);
+  window.addEventListener("dragend", () => { composerDragStart = undefined; }, true);
+}
 const bridge = {
-  ...(process.argv.includes(PLUGIN_PANEL_COMPOSER_FILE_LINES_ARGUMENT)
-    ? { capabilities: { composerFileLines: true } }
-    : {}),
+  ...(composerFileLines ? {
+    capabilities: { composerFileLines: true },
+    startComposerFileDrag: (payload: { workspace: string; path: string }): boolean => {
+      const event = composerDragStart;
+      if (!event?.eventPhase || !event.dataTransfer) return false;
+      composerDragStart = undefined;
+      // The native data store is writable only during this dragstart.
+      const token: unknown = ipcRenderer.sendSync(PLUGIN_PANEL_COMPOSER_FILE_DRAG_CHANNEL, payload);
+      if (typeof token !== "string") return false;
+      event.dataTransfer.setData(COMPOSER_FILE_DRAG_TYPE, token);
+      return true;
+    },
+  } : {}),
   invoke: async (channel: string, payload?: Record<string, unknown>) => {
     return ipcRenderer.invoke("pi-plugin-panel-invoke", channel, payload ?? {});
   },

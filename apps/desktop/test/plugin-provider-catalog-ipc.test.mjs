@@ -261,3 +261,31 @@ test("only the main shell can settle suggestion probes, without forwarding malfo
     { requestId: "offer", shown: false, reason: "draft-not-empty" },
   ]);
 });
+
+test("only the main shell's top frame can redeem a File Manager drag", async () => {
+  const handlers = new Map();
+  const mainFrame = {};
+  const sender = { id: 1, mainFrame };
+  const redeemed = [];
+  loadPluginUiIpc()({
+    registrar: {
+      handle() {},
+      handleWithEvent: (channel, handler) => handlers.set(channel, handler),
+      assertMainWindowSender: (event) => {
+        if (event.sender !== sender) throw new Error("not the main shell");
+      },
+    },
+    dropPluginFile: async (payload) => { redeemed.push(payload); return null; },
+  });
+  const drop = handlers.get(IPC.invoke.composerDropPluginFile);
+  const payload = { token: "opaque", sessionId: "current" };
+  await assert.rejects(drop({ sender: {}, senderFrame: mainFrame }, payload), /not the main shell/);
+  await assert.rejects(drop({ sender, senderFrame: {} }, payload), /require the main frame/);
+  await assert.rejects(drop({ sender: { ...sender, mainFrame: null }, senderFrame: null }, payload), /not the main shell/);
+  sender.mainFrame = null;
+  await assert.rejects(drop({ sender, senderFrame: null }, payload), /require the main frame/);
+  sender.mainFrame = mainFrame;
+  assert.deepEqual(redeemed, []);
+  assert.equal(await drop({ sender, senderFrame: mainFrame }, payload), null);
+  assert.deepEqual(redeemed, [payload]);
+});

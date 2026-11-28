@@ -1162,6 +1162,8 @@ export const api = {
     window.piDesktop?.getDroppedFilePath?.(file) ?? null,
   pickPhotos: () =>
     invoke<{ token: string | null; canceled?: boolean }>(IPC.invoke.composerPickPhotos),
+  dropPluginFile: (sessionId: string, token: string) =>
+    invoke<ComposerPastedFile | null>(IPC.invoke.composerDropPluginFile, { sessionId, token }),
   importFiles: (sessionId: string, token: string, reference = false) =>
     invoke<{ files: ComposerPastedFile[] }>(IPC.invoke.composerImportFiles, {
       sessionId,

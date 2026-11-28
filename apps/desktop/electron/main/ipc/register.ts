@@ -77,6 +77,7 @@ export type RegisterIpcDependencies = {
   ) => void;
   /** The shell's answer to a composer suggestion it was offered (ADR 0333). */
   settleComposerSuggestion: (answer: ComposerSuggestionAnswer) => boolean;
+  dropPluginFile: (payload: unknown) => Promise<import("@pi-desktop/shared").ComposerPastedFile | null>;
   activeUserSubagentDocuments: (...args: any[]) => Promise<any>;
   disabledBuiltinSubagents: () => Promise<string[]>;
   disabledBuiltinSkills: () => Promise<string[]>;
@@ -119,6 +120,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     setNotificationViewingSessionId,
     setActivePluginSession,
     settleComposerSuggestion,
+    dropPluginFile,
     getPluginLauncherWindow,
     togglePluginLauncher,
     openPluginMarket,
@@ -547,6 +549,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getPluginPanelTheme,
     setActivePluginSession,
     settleComposerSuggestion,
+    dropPluginFile,
   });
   registerPluginLauncherIpc({
     registrar,

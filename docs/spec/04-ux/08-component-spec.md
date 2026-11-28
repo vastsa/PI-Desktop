@@ -4977,6 +4977,13 @@ file at execution time, including for queued sends. Source views with no
 project file identity and clipboard data from another project use normal text
 copy/paste. See [File Manager line references ADR](../../adr/file-manager-line-references.md).
 
+With a compatible File Manager, drag a regular file from the local tree onto
+the active session's Composer. The drop adds a removable whole-file card to
+the current draft, preserving existing text. Sending remains a separate
+action. Directories, symbolic links and remote files have no Composer drag.
+An isolated worktree session does not accept a file from the project checkout.
+Dragging within the tree continues to use the plugin's normal move behavior.
+
 Line ranges coexist with native disk-file references in one prompt and input
 history. Each attachment has one reference kind: line selections retain their
 scoped Read path, while registered disk files retain metadata-only dispatch.
