@@ -25,9 +25,8 @@ const CRASH_COOLDOWN_MS = 2_000;
 /**
  * Consecutive crashes without a single successful load before recovery
  * gives up on reloading: a renderer that dies deterministically at startup
- * (GPU driver or cache corruption, issue #2595) makes every reload futile,
- * and the 2s cooldown alone just turns the crash into a visible infinite
- * loop. The caller decides what a trip means (GPU-fallback relaunch, then
+ * (issue #2595) makes every reload futile, and the 2s cooldown alone just
+ * turns the crash into a visible infinite loop. The caller decides what a trip means (GPU-fallback relaunch, then
  * a dialog); the counter resets on every successful load.
  */
 const CRASH_LOOP_THRESHOLD = 5;
@@ -48,9 +47,13 @@ export function _resetCooldownForTest(): void {
   crashLoopReported = false;
 }
 
-/** A renderer finished loading: the crash streak restarts from zero. */
+/**
+ * A renderer finished loading: the crash streak restarts from zero, and a
+ * breaker that tripped for an earlier renderer re-arms for this one.
+ */
 export function noteRendererLoaded(): void {
   consecutiveCrashesWithoutLoad = 0;
+  crashLoopReported = false;
 }
 
 /** Reload an unexpectedly exited renderer while its owning app window is live. */

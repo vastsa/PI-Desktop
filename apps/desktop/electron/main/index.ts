@@ -1,5 +1,4 @@
 import { createBackgroundContinuationCoordinator } from "./runtime/background-continuations";
-import { hasGpuFallbackMarker } from "./renderer-crash-loop";
 import {
   app,
   BrowserWindow,
@@ -187,11 +186,6 @@ const dataDir = storage.preferences.roots.data;
 // it as a parameter, and a profile split across two directories is the
 // divergence D236 closes.
 process.env.PI_DESKTOP_DATA_DIR = dataDir;
-// A spent GPU-fallback marker (#2595) also guards manual launches: crash
-// loops start before any window exists, and this must run before ready.
-if (hasGpuFallbackMarker(dataDir)) {
-  app.disableHardwareAcceleration();
-}
 
 // Agent extensions (D387/D388, ADR 0214): plugins contribute the modules,
 // the sidecar loads them; this bridge carries commands, diagnostics, and

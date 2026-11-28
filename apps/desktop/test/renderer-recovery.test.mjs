@@ -158,6 +158,35 @@ describe("recoverRendererAfterGone", () => {
     assert.equal(trips, 0);
   });
 
+  it("a load after a trip re-arms the breaker for the next renderer", () => {
+    mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    mock.timers.tick(10_000);
+
+    const details = { reason: "crashed", exitCode: 1 };
+    let trips = 0;
+    let reloads = 0;
+    const crash = () => {
+      const attempt = recovery({
+        onCrashLoopDetected: () => {
+          trips += 1;
+        },
+        reload: () => {
+          reloads += 1;
+        },
+      });
+      mock.timers.tick(3_000);
+      recoverRendererAfterGone(details, attempt.dependencies);
+    };
+
+    for (let i = 0; i < 5; i += 1) crash();
+    assert.equal(trips, 1);
+    noteRendererLoaded();
+    crash();
+    assert.equal(reloads, 5, "a crash after a successful load reloads again");
+    for (let i = 0; i < 4; i += 1) crash();
+    assert.equal(trips, 2);
+  });
+
   it("clean exits never count toward the breaker", () => {
     mock.timers.enable({ apis: ["Date", "setTimeout"] });
     mock.timers.tick(10_000);

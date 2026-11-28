@@ -1,15 +1,9 @@
-import { app, BrowserWindow, dialog, nativeTheme, screen, shell, type Tray } from "electron";
+import { app, BrowserWindow, nativeTheme, screen, type Tray } from "electron";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { getModuleDirectory } from "../module-path";
-import {
-  clearGpuFallbackMarker,
-  hasGpuFallbackMarker,
-  writeGpuFallbackMarker,
-} from "../renderer-crash-loop";
-import { noteRendererLoaded } from "../renderer-recovery";
+import { createWindowRendererCrashLoopFallback } from "./renderer-crash-loop-window";
 import {
   APP_NAME,
   builtinWindowBackground,
@@ -63,7 +57,7 @@ import {
   macosWindowSurfaceOptions,
   mainWindowBackgroundOptions,
 } from "../window-background";
-import { recoverRendererAfterGone } from "../renderer-recovery";
+import { noteRendererLoaded, recoverRendererAfterGone } from "../renderer-recovery";
 import { installWindowStateSync } from "../window-state-sync";
 
 function windowsIconPath(): string | undefined {
@@ -598,49 +592,12 @@ export async function createWindow({
     if (windowState.mainWindow === window) resetMenuRendererReady(window);
   });
   // A renderer that crashes before it ever finishes loading makes every
-  // reload futile: trip the breaker, spend this install's one GPU-fallback
-  // relaunch, and only talk to the user if even that did not help (#2595).
-  const showRendererCrashLoopDialog = async (): Promise<void> => {
-    const labels = catalogs[resolveLocale(app.getLocale())];
-    const { response } = await dialog.showMessageBox({
-      type: "error",
-      title: labels.rendererCrash.title,
-      message: labels.rendererCrash.body,
-      buttons: [labels.rendererCrash.openLogs, labels.tray.quit],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-    });
-    if (response !== 0) {
-      app.quit();
-      return;
-    }
-    const logs = join(dataDir, "logs");
-    mkdirSync(logs, { recursive: true });
-    await shell.openPath(logs);
-  };
-  const handleRendererCrashLoop = (): void => {
-    if (!hasGpuFallbackMarker(dataDir)) {
-      writeGpuFallbackMarker(dataDir);
-      logger.app("diagnostics", "warn", "renderer crash loop detected; relaunching without GPU acceleration", {
-        event: "rendererCrashLoop",
-        data: { action: "relaunch-disable-gpu" },
-      });
-      const args = process.argv.slice(1);
-      app.relaunch({
-        args: args.includes("--disable-gpu") ? args : [...args, "--disable-gpu"],
-      });
-      app.exit(0);
-      return;
-    }
-    logger.app("diagnostics", "warn", "renderer crash loop persists without GPU acceleration; stopping automatic reloads", {
-      event: "rendererCrashLoop",
-      data: { action: "dialog" },
-    });
-    void showRendererCrashLoopDialog();
-  };
+  // reload futile: the breaker hands over to a one-time fallback (#2595).
+  const crashLoopFallback = createWindowRendererCrashLoopFallback({ state: windowState, dataDir, logger });
+  window.on("closed", crashLoopFallback.dispose);
   window.webContents.on("render-process-gone", (_event, details) => {
     windowState.notificationViewingSessionId = null;
+    crashLoopFallback.rendererGone();
     recoverRendererAfterGone(details, {
       isCurrentWindow: windowState.mainWindow === window,
       quitting: windowState.quitting,
@@ -648,7 +605,7 @@ export async function createWindow({
       windowDestroyed: window.isDestroyed(),
       webContentsDestroyed: window.webContents.isDestroyed(),
       reload: () => window.webContents.reload(),
-      onCrashLoopDetected: handleRendererCrashLoop,
+      onCrashLoopDetected: crashLoopFallback.crashLoopDetected,
       log: (rendererDetails, reloaded) => {
         logger.app(
           "diagnostics",
@@ -731,9 +688,7 @@ export async function createWindow({
   window.webContents.on("did-finish-load", sendFullScreen);
   window.webContents.on("did-finish-load", () => {
     noteRendererLoaded();
-    // A session that stays up cleared the crash streak; give the machine its
-    // normal GPU path back on a later boot once the run looks stable.
-    setTimeout(() => clearGpuFallbackMarker(dataDir), 10 * 60_000);
+    crashLoopFallback.rendererLoaded();
   });
 
   const sendMaximized = () => {
