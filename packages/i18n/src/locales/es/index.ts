@@ -305,6 +305,8 @@ export const es = {
     "timeGroupOlder14d": "Anterior 14 dias",
     "timeGroupArchived": "Anterior",
     "loadMoreCount": "Cargar {{count}} más…",
+    "hiddenUnreadSessions": "{{count}} sin leer en las sesiones plegadas",
+    "scheduledUnread": "{{count}} resultados programados sin leer",
     "hoverCardSpace": "Espacio de trabajo",
     "hoverCardUpdatedAt": "Actualizado {{when}}",
     "hoverCardTemporarySpace": "Temporal",

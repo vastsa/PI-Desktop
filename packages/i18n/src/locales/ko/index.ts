@@ -314,6 +314,8 @@ export const ko = {
     timeGroupOlder14d: "최근 14일",
     timeGroupArchived: "이전",
     loadMoreCount: "{{count}}개 더 불러오기…",
+    hiddenUnreadSessions: "접힌 세션에 {{count}}개 읽지 않음",
+    scheduledUnread: "예약된 결과 {{count}}개 읽지 않음",
     hoverCardSpace: "작업 공간",
     hoverCardUpdatedAt: "{{when}} 업데이트됨",
     hoverCardTemporarySpace: "임시",

@@ -304,6 +304,8 @@ export const ptBR = {
     timeGroupOlder14d: "Últimos 14 dias",
     timeGroupArchived: "Mais antigos",
     loadMoreCount: "Carregar mais {{count}}…",
+    hiddenUnreadSessions: "{{count}} não lidos nas sessões recolhidas",
+    scheduledUnread: "{{count}} resultados agendados não lidos",
     hoverCardSpace: "Espaço de trabalho",
     hoverCardUpdatedAt: "Atualizado {{when}}",
     hoverCardTemporarySpace: "Temporário",
