@@ -26,7 +26,7 @@ export async function bidiDirectionProbe(i18n: ReturnType<typeof createInstance>
   const sessionId = "bidi-direction-probe";
   const messages = [
     message("bidi-user", "user", "hello English paragraph 123!\n\nپژگچ این پاراگراف فارسی است ؟"),
-    message("bidi-assistant", "assistant", "English **paragraph** 123!\n\nپژگچ **پاسخ** فارسی ؟ ؛\n\n- English item\n- پژگچ فارسی"),
+    message("bidi-assistant", "assistant", "English **paragraph** 123!\n\nپژگچ **پاسخ** فارسی ؟ ؛\n\n- English item\n- پژگچ فارسی\n\n# عنوان عربي"),
   ];
   try {
     useAppStore.setState({ activeSessionId: sessionId, page: "chat" });
@@ -114,6 +114,25 @@ export async function bidiDirectionProbe(i18n: ReturnType<typeof createInstance>
     assert(bubble.textContent === messages[0].content, "paragraph splitting changed user text");
     const rtlMarkdown = markdownParagraphs[1];
     assert(rtlMarkdown && glyph(rtlMarkdown, "؟") < glyph(rtlMarkdown, "پ"), "Markdown punctuation order is wrong");
+    const rtlAlign = getComputedStyle(rtlMarkdown).textAlign;
+    assert(
+      rtlAlign === "start" || rtlAlign === "right",
+      `RTL Markdown paragraph text-align was ${rtlAlign}`,
+    );
+    const rtlItem = [...host.querySelectorAll<HTMLElement>(".prose-chat li")]
+      .find((item) => item.dir === "rtl");
+    const itemAlign = rtlItem && getComputedStyle(rtlItem).textAlign;
+    assert(
+      itemAlign === "start" || itemAlign === "right",
+      `RTL Markdown list item text-align was ${itemAlign}`,
+    );
+    const heading = host.querySelector<HTMLElement>(".prose-chat h1");
+    assert(heading?.dir === "rtl", `Markdown heading dir was ${heading?.dir}`);
+    const headingAlign = heading && getComputedStyle(heading).textAlign;
+    assert(
+      headingAlign === "start" || headingAlign === "right",
+      `RTL Markdown heading text-align was ${headingAlign}`,
+    );
     assert(
       getComputedStyle(editor).unicodeBidi === "plaintext",
       `composer unicode-bidi was ${getComputedStyle(editor).unicodeBidi}`,
