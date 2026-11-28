@@ -77,7 +77,6 @@
   flex: 0 0 auto;
   /* The page sits under the absolute titlebar band, which is a native drag
      rectangle: without this the window moves instead of the button reacting. */
-  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -1486,7 +1485,6 @@
   align-items: center;
   gap: 12px;
   padding: 16px 16px 10px;
-  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -1732,7 +1730,6 @@
   padding: 16px 16px 10px;
   /* The head reaches the window's top edge, where the titlebar drag rectangle
      lives; its close button must take the click instead of moving the window. */
-  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }

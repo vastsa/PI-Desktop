@@ -12,7 +12,6 @@
   background: transparent;
   color: var(--gray-0);
   overflow: hidden;
-  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
 }
 
