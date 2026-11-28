@@ -10,6 +10,7 @@ import {
   sameComposerModelId,
 } from "../../../lib/composer-models";
 import { providerDisplayName } from "../../../lib/provider-display";
+import { PlanQuotaCompact } from "../../../components/settings/PlanQuotaBadge";
 import type { ComposerModelSection } from "./hooks/useComposerModelMenu";
 
 export type ComposerModelGroup = {
@@ -54,6 +55,7 @@ function ModelRow({ t, provider, model, index, highlighted, active, showProvider
           {alias || optionDisplayName}
         </span>
         <span className="composer-model-option-meta">
+          <PlanQuotaCompact provider={provider} />
           {showProvider ? (
             <span className="composer-model-option-provider">{providerDisplayName(provider)}</span>
           ) : (

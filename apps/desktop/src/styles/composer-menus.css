@@ -809,6 +809,15 @@
   white-space: nowrap;
 }
 
+/* The compact quota ("5H 95% · 周 5%") leads the trailing meta and never
+   yields width: it is the shortest string in the row, and truncating it
+   would drop the one figure the row exists to show. */
+.composer-model-quota {
+  flex: 0 0 auto;
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
 /* Capability markers are icons, not words: a row carries up to two of them, and
    the spelled-out labels were the widest thing in it. The accessible name stays
    the translated label, so nothing is lost to a screen reader. */
