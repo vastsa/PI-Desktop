@@ -17,7 +17,11 @@ import { RadialMenuSettings } from "../../../components/settings/RadialMenuSetti
 import { SidebarModulesSettings } from "../../../components/settings/SidebarModulesSettings";
 import { StartupAnimationRows } from "../../../components/settings/StartupAnimationRows";
 import { ThemeRow } from "../../../components/settings/ThemeRow";
-import { SettingsCard, SettingsRow } from "../primitives";
+import {
+  SettingsCard,
+  SettingsRow,
+  SidebarVisibleSessionCountRow,
+} from "../primitives";
 
 export function AppearanceSettings({
   settings,
@@ -88,6 +92,10 @@ export function AppearanceSettings({
             })}
           />
         </SettingsRow>
+        <SidebarVisibleSessionCountRow
+          settings={settings}
+          saveSettings={saveSettings}
+        />
       </SettingsCard>
 
       <SidebarModulesSettings settings={settings} saveSettings={saveSettings} />

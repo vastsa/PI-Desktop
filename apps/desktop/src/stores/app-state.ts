@@ -345,6 +345,7 @@ export type AppState = {
   restoreProjects: (paths: string[]) => void;
   archiveProject: (path: string) => void;
   setProjectCollapsed: (path: string, collapsed?: boolean) => void;
+  setProjectsCollapsed: (paths: string[], collapsed: boolean) => void;
   toggleProjectCollapsed: (path: string) => void;
   closeProject: (path: string) => Promise<void>;
   setProjectSort: (sort: ProjectSort) => void;

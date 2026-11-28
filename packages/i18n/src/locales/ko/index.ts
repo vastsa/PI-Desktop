@@ -243,6 +243,8 @@ export const ko = {
     home: "홈",
     newTask: "새 작업",
     newProject: "새 프로젝트",
+    collapseAllProjects: "모든 프로젝트 접기",
+    expandAllProjects: "모든 프로젝트 펼치기",
     projects: "프로젝트",
     remoteProjects: "원격",
     plugins: "확장 기능",
@@ -1109,6 +1111,10 @@ export const ko = {
     sidebarRunningBadge: "개수 배지",
     sidebarRunningRail: "활동 레일",
     sidebarSessionTime: "세션 시간",
+    sidebarVisibleSessionCount: "프로젝트당 세션 수",
+    sidebarVisibleSessionCountDesc:
+      "나머지 세션이 \"더 보기\" 뒤로 접히기 전에 각 프로젝트가 사이드바에 표시할 세션 수입니다 ({{min}}-{{max}}).",
+    sidebarVisibleSessionCountSaveError: "세션 수를 저장할 수 없습니다.",
     sidebarModules: "사이드바 모듈",
     sidebarModule: {
       newTask: "새 작업",

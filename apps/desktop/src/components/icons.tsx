@@ -20,6 +20,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  ChevronsDownUp,
+  ChevronsUpDown,
   CircleAlert,
   CircleCheck,
   CircleHelp,
@@ -167,6 +169,10 @@ export const IconNewSession = icon(MessageSquarePlus);
 export const IconFolder = icon(Folder);
 export const IconFolderOpen = icon(FolderOpen);
 export const IconNewProject = icon(FolderPlus);
+/** Folds every project group in the sidebar (#2584). */
+export const IconCollapseAll = icon(ChevronsDownUp);
+/** Reopens every folded project group in the sidebar (#2584). */
+export const IconExpandAll = icon(ChevronsUpDown);
 export const IconGripVertical = icon(GripVertical);
 export const IconFileText = icon(FileText);
 export const IconGlobe = icon(Globe2);

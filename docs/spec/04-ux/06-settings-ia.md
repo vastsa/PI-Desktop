@@ -204,6 +204,13 @@ D684.
   their stored value, so re-enabling the master restores the previous choice
   instead of resetting it. The affordances themselves are described in
   [01-ui-ia.md §3.2](01-ui-ia.md#32-sidebar-project-groups).
+  The card also carries a **Sessions per project** number row: how many
+  conversations a project group lists before its **Load N more…** control
+  (`AppSettings.sidebarVisibleSessionCount`, issue #2584). The value is an
+  integer from 1 to 20; absent means 10, zero is not a supported count, and
+  out-of-range input falls back to the stored value instead of being written.
+  The renderer's settings write guard rejects any other value with
+  `INVALID_PARAMS`.
 - **Sidebar modules** card: one switch per hideable sidebar module, in sidebar
   order — **New task**, **Scheduled**, **Plugin marketplace**, **Pinned
   sessions**, **Sessions** (nested: **Sort button**, **New session button**),

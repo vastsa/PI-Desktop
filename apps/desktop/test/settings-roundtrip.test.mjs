@@ -215,3 +215,38 @@ test("settings write round-trips command folding through the preload boundary", 
     else globalThis.window = previousWindow;
   }
 });
+
+test("the sidebar session count survives the settings guard only inside 1-20", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { piDesktop: { platform: "win32" } };
+  try {
+    const base = { defaultMode: "agent", theme: "light", enterToSend: true };
+    for (const count of [1, 5, 10, 20]) {
+      const written = renderer.validateSettingsWrite({
+        ...base,
+        sidebarVisibleSessionCount: count,
+      });
+      assert.equal(written.sidebarVisibleSessionCount, count);
+      assert.equal(
+        main.validateSettingsWrite(structuredClone(written)).sidebarVisibleSessionCount,
+        count,
+      );
+    }
+    // Zero is not a supported count, and neither is an out-of-range, fractional
+    // or stringified one: the sidebar always has to show at least one session.
+    for (const count of [0, -1, 21, 2.5, "10", null, true]) {
+      assert.throws(
+        () => renderer.validateSettingsWrite({ ...base, sidebarVisibleSessionCount: count }),
+        /sidebarVisibleSessionCount is invalid/,
+      );
+    }
+    // Absent keeps the release default unset, so the sidebar resolves ten.
+    assert.equal(
+      renderer.validateSettingsWrite(base).sidebarVisibleSessionCount,
+      undefined,
+    );
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});

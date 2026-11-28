@@ -12,6 +12,11 @@ import {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { resolveContextUsageDisplay } from "../../lib/context-usage";
+import {
+  MAX_VISIBLE_PROJECT_SESSION_COUNT,
+  MIN_VISIBLE_PROJECT_SESSION_COUNT,
+  normalizeVisibleProjectSessionCount,
+} from "../../lib/sidebar-project-sessions";
 import { HelpIcon, Input, SegmentedControl } from "../../components/ui";
 import { SettingsMenuSelect } from "../../components/settings/SettingsMenuSelect";
 import { useAppStore } from "../../stores/app-store";
@@ -350,6 +355,82 @@ export function LargePasteThresholdRow({
           inputMode="numeric"
           value={draft}
           aria-label={t("settings.largePasteThreshold")}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </div>
+    </SettingsRow>
+  );
+}
+
+/**
+ * Sessions listed per project group before the rest fold behind "load more"
+ * (#2584). Out-of-range input is rejected on commit and the field falls back to
+ * the stored value, the same contract as the large-paste threshold row.
+ */
+export function SidebarVisibleSessionCountRow({
+  settings,
+  saveSettings,
+}: {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const currentCount = normalizeVisibleProjectSessionCount(
+    settings.sidebarVisibleSessionCount,
+  );
+  const [draft, setDraft] = useState(String(currentCount));
+  const showToast = useAppStore((state) => state.showToast);
+
+  useEffect(() => {
+    setDraft(String(currentCount));
+  }, [currentCount]);
+
+  const commit = async () => {
+    const parsed = Number(draft.trim());
+    const next =
+      Number.isInteger(parsed) &&
+      parsed >= MIN_VISIBLE_PROJECT_SESSION_COUNT &&
+      parsed <= MAX_VISIBLE_PROJECT_SESSION_COUNT
+        ? parsed
+        : currentCount;
+    setDraft(String(next));
+    if (next === currentCount) {
+      return;
+    }
+    try {
+      await saveSettings({ sidebarVisibleSessionCount: next });
+    } catch {
+      setDraft(String(currentCount));
+      showToast(t("settings.sidebarVisibleSessionCountSaveError"), {
+        variant: "error",
+      });
+    }
+  };
+
+  return (
+    <SettingsRow
+      title={t("settings.sidebarVisibleSessionCount")}
+      description={t("settings.sidebarVisibleSessionCountDesc", {
+        min: MIN_VISIBLE_PROJECT_SESSION_COUNT,
+        max: MAX_VISIBLE_PROJECT_SESSION_COUNT,
+      })}
+    >
+      <div className="settings-number-control">
+        <Input
+          type="number"
+          min={MIN_VISIBLE_PROJECT_SESSION_COUNT}
+          max={MAX_VISIBLE_PROJECT_SESSION_COUNT}
+          step={1}
+          inputMode="numeric"
+          value={draft}
+          aria-label={t("settings.sidebarVisibleSessionCount")}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={() => void commit()}
           onKeyDown={(event) => {

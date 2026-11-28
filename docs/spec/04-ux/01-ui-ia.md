@@ -217,8 +217,10 @@ destination, chat as the home surface, tools and permissions inline.
   list chrome so section creation stays discoverable
   without extra chrome. Its list shows at most five compact rows (146px) before
   scrolling internally, so standalone work stays visible without displacing
-  project navigation. The following `Projects` heading exposes the
-  folder-picker action; retained project groups use the remaining height and
+  folder-picker action; the same toolbar carries the group-wide collapse-all
+  control described in
+  [09-interaction-patterns.md §1.6](09-interaction-patterns.md#16-sidebar-project-and-conversation-organization);
+  retained project groups use the remaining height and
   scroll independently. Connected-host groups follow the local ones under their
   own `Remote` heading, emitted only while at least one host group is visible,
   so a host project never reads as a retained local one.

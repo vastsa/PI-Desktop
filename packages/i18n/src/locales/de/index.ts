@@ -234,6 +234,8 @@ export const de = {
     "home": "Startseite",
     "newTask": "Neue Aufgabe",
     "newProject": "Neues Projekt",
+    "collapseAllProjects": "Alle Projekte einklappen",
+    "expandAllProjects": "Alle Projekte ausklappen",
     "projects": "Projekte",
     "remoteProjects": "Remote",
     "plugins": "Erweiterungen",
@@ -1102,6 +1104,10 @@ export const de = {
     "sidebarRunningBadge": "Anzahl-Badge",
     "sidebarRunningRail": "Aktivitätsschiene",
     sidebarSessionTime: "Sitzungszeit",
+    "sidebarVisibleSessionCount": "Sitzungen pro Projekt",
+    "sidebarVisibleSessionCountDesc":
+      "Wie viele Sitzungen jedes Projekt in der Seitenleiste auflistet, bevor der Rest hinter „Mehr laden“ verschwindet ({{min}}-{{max}}).",
+    "sidebarVisibleSessionCountSaveError": "Sitzungsanzahl konnte nicht gespeichert werden.",
     sidebarModules: "Seitenleistenmodule",
     sidebarModule: {
       newTask: "Neue Aufgabe",

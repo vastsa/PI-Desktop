@@ -233,6 +233,8 @@ export const ptBR = {
     home: "Início",
     newTask: "Nova tarefa",
     newProject: "Novo projeto",
+    collapseAllProjects: "Recolher todos os projetos",
+    expandAllProjects: "Expandir todos os projetos",
     projects: "Projetos",
     remoteProjects: "Remoto",
     plugins: "Extensões",
@@ -1099,6 +1101,10 @@ export const ptBR = {
     sidebarRunningBadge: "Selo de contagem",
     sidebarRunningRail: "Trilho de atividade",
     sidebarSessionTime: "Horário da sessão",
+    sidebarVisibleSessionCount: "Sessões por projeto",
+    sidebarVisibleSessionCountDesc:
+      "Quantas sessões cada projeto lista na barra lateral antes de o restante ser recolhido em «Carregar mais» ({{min}}-{{max}}).",
+    sidebarVisibleSessionCountSaveError: "Não foi possível salvar o número de sessões.",
     sidebarModules: "Módulos da barra lateral",
     sidebarModule: {
       newTask: "Nova tarefa",
