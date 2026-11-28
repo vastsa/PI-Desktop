@@ -250,6 +250,7 @@ export type AppState = {
     targetSessionId?: string,
     onAccepted?: (sessionId: string) => void,
   ) => Promise<boolean>;
+  sendPlanRevision: (proposal: PlanProposal, content: string, draft?: ComposerDraftSnapshot) => Promise<boolean>;
   steerPrompt: (content: string, draft?: ComposerDraftSnapshot) => Promise<boolean>;
   enqueuePrompt: (
     content: string,

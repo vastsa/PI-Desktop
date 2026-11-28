@@ -58,6 +58,7 @@ export type ComposerToolbarProps = {
   contextUsage: ContextUsage | null;
   value: string;
   modelReady: boolean;
+  revisingPlan?: boolean;
   sendBlocked: boolean;
   composerTransforms: PluginComposerTransformMeta[];
   activeTransformKey: string | null;
@@ -100,6 +101,7 @@ export function ComposerToolbar({
   contextUsage,
   value,
   modelReady,
+  revisingPlan,
   sendBlocked,
   composerTransforms,
   activeTransformKey,
@@ -255,6 +257,18 @@ export function ComposerToolbar({
             })}
           >
             <IconStop size={14} />
+          </TooltipButton>
+        ) : revisingPlan ? (
+          <TooltipButton
+            type="button"
+            className="btn btn-primary composer-plan-revision"
+            tooltip={t("plan.sendRevision")}
+            data-testid="send-plan-revision"
+            disabled={!hasDraftContent || sendBlocked || !modelReady}
+            onClick={() => void submit()}
+          >
+            <span>{t("plan.sendRevision")}</span>
+            <IconArrowUp size={16} aria-hidden="true" />
           </TooltipButton>
         ) : (
           <TooltipButton

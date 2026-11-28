@@ -2067,8 +2067,14 @@ Single message render — either user (plaintext) or assistant (markdown streami
   text: a drag across the plate selects the URL with its surrounding prose,
   and copying that selection keeps the URL, even though the link is a button
   and chrome buttons are otherwise unselectable.
-- Assistant: transparent surface, left-aligned, markdown rendered at full
-  content width. Workspace file paths in that markdown are previewable:
+- Assistant: transparent surface, left-aligned in the transcript column,
+  markdown rendered at full content width. That row placement is physical.
+  Inside the markdown, paragraphs, lists, headings, and blockquotes use
+  `text-align: start` and a majority-script `dir`, so Arabic-only replies
+  align to the right even under an inherited `text-align: left`. List
+  containers carry the same `dir` so `padding-inline-start` gutters follow
+  the list rather than the surrounding paragraph. Workspace file paths in
+  that markdown are previewable:
   inline code, markdown links, and bare path tokens (with a known
   extension) complete and open like a chip against every folder of the open
   project (ADR 0263): the resolved file in the bundled
@@ -3355,7 +3361,8 @@ reasoning-level control.
 | Context checkpoint | Same as Running until durable checkpoint completion; intermediate `turn_end` does not reactivate controls. A retained-tail fallback remains Running and shows a warning toast | Same single-slot Stop/Send behavior as Running |
 | Permission pending | textarea disabled (per [03-permission-ux.md](03-permission-ux.md) §7) | Send disabled; Stop remains active whenever the running empty-draft condition is met |
 | Plan / Goal / planning | textarea active while idle; contract badge and permission chip visible; mode chip pulses while the live turn projects `planning` | inspect, send, or submit a contract |
-| Plan / Goal / awaiting approval | approval surface shows only the title and artifact opener for the exact `.pi/<kind>/*.md` approval; draft is preserved read-only and composer controls remain blocked for that session | approve or reject |
+| Local Plan awaiting approval | Chat input accepts revision instructions when the displayed proposal matches the session's pending Plan. The card shows the title and artifact opener. Configuration controls stay locked. | Send revision request, approve, or reject. An empty composer keeps Stop available while the original turn finishes. |
+| Legacy Goal or remote approval | Draft remains read-only while the approval is pending. | Approve or reject |
 | Plan / queued or running | Agent badge remains selected; queue/running state is visible; draft and next-turn controls remain editable | Stop; Send queues the next prompt; no replay control |
 | Plan / Goal / planning after rejected, expired, or interrupted proposal | contract chip remains visible and editable | send a later prompt; submit a new contract; no execution action |
 | No workspace | textarea active, warning banner "No project — tools limited" | Send enabled |

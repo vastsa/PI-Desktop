@@ -239,7 +239,7 @@ test("mode commands configure the active session instead of only changing defaul
   assert.match(modeCommandBlock, /else if \(store\.settings\)/);
 });
 
-test("pending approval keeps the draft while gating every composer control", () => {
+test("pending approval retains the draft and gates configuration controls", () => {
   assert.match(composerSource, /contentEditable=\{!inputBlocked\}/);
   assert.match(composerSource, /aria-readonly=\{inputBlocked\}/);
   assert.match(composerSource, /enabled: !inputBlocked/);
@@ -248,7 +248,7 @@ test("pending approval keeps the draft while gating every composer control", () 
     composerSource,
     /const controlsBlocked = approvalPending \|\| nativeSession \|\| !sessionAllows\(capabilitySession, "canConfigureModel"\);/,
   );
-  assert.match(composerSource, /const sendBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
+  assert.match(composerSource, /const sendBlocked = inputBlocked/);
   assert.match(storeSource, /if \(get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"\) return/);
 });
 
