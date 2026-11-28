@@ -227,6 +227,7 @@ identify the platform validation still needed.
 | C / F / Quality — Desktop automations | E2E-SCHEDULED-desktop-automation-lifecycle |
 | F / Security / Quality — Portable configuration sync | E2E-CONFIG-SYNC-s3-portable-configuration |
 | A / C — Unicode stdio framing | E2E-RPC-unicode-separators |
+| A / C / Quality — Oversized Host RPC response isolation | E2E-RPC-oversized-response-keeps-connection-readable |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |
 | C / D / Quality — Sidebar lists at high zoom | E2E-LAYOUT-sidebar-height |
