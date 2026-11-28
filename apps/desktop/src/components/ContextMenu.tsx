@@ -28,7 +28,8 @@ import {
   type RefObject,
   type ReactNode,
 } from "react";
-import { portalToBody } from "../lib/portal-visibility";
+import { createPortal } from "react-dom";
+import { portalToBody, visiblePortalContent } from "../lib/portal-visibility";
 import { IconCheck, IconChevronRight } from "./icons";
 import {
   placeContextMenu,
@@ -207,9 +208,15 @@ export function useContextMenu() {
 export function ContextMenu({
   state,
   onClose,
+  container,
 }: {
   state: ContextMenuState | null;
   onClose: () => void;
+  /**
+   * Portal target. Defaults to `<body>`; a modal `<dialog>` must pass itself,
+   * because content outside the top layer is inert while the dialog is open.
+   */
+  container?: HTMLElement | null;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
@@ -373,7 +380,8 @@ export function ContextMenu({
 
   if (!state || typeof document === "undefined") return null;
 
-  return portalToBody(
+  return portalToContainer(
+    container,
     <div
       ref={menuRef}
       className={`context-menu${state.density === "compact" ? " is-compact" : ""}${placement ? " is-open" : ""}`}
@@ -457,6 +465,7 @@ export function ContextMenu({
                 selection={state.selection}
                 onClose={onClose}
                 onCloseSubmenu={closeSubmenu}
+                container={container}
               />
             ) : null}
           </Fragment>
@@ -475,6 +484,7 @@ function ContextMenuSubmenu({
   onClose,
   onCloseSubmenu,
   compact,
+  container,
 }: {
   anchorRef: RefObject<HTMLButtonElement | null>;
   menuRef: RefObject<HTMLDivElement | null>;
@@ -484,6 +494,7 @@ function ContextMenuSubmenu({
   onClose: () => void;
   onCloseSubmenu: () => void;
   compact: boolean;
+  container?: HTMLElement | null;
 }) {
   const [placement, setPlacement] = useState<ContextMenuPlacement | null>(null);
   const measure = useCallback(() => {
@@ -547,7 +558,8 @@ function ContextMenuSubmenu({
     buttons[next]?.focus();
   };
 
-  return portalToBody(
+  return portalToContainer(
+    container,
     <div
       ref={menuRef}
       className={`context-menu context-menu-submenu${compact ? " is-compact" : ""}${placement ? " is-open" : ""}`}
@@ -592,4 +604,8 @@ function ContextMenuSubmenu({
       ))}
     </div>,
   );
+}
+
+function portalToContainer(container: HTMLElement | null | undefined, node: ReactNode) {
+  return container ? createPortal(visiblePortalContent(node), container) : portalToBody(node);
 }
