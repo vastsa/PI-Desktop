@@ -2067,8 +2067,14 @@ Single message render — either user (plaintext) or assistant (markdown streami
   text: a drag across the plate selects the URL with its surrounding prose,
   and copying that selection keeps the URL, even though the link is a button
   and chrome buttons are otherwise unselectable.
-- Assistant: transparent surface, left-aligned, markdown rendered at full
-  content width. Workspace file paths in that markdown are previewable:
+- Assistant: transparent surface, left-aligned in the transcript column,
+  markdown rendered at full content width. That row placement is physical.
+  Inside the markdown, paragraphs, lists, headings, and blockquotes use
+  `text-align: start` and a majority-script `dir`, so Arabic-only replies
+  align to the right even under an inherited `text-align: left`. List
+  containers carry the same `dir` so `padding-inline-start` gutters follow
+  the list rather than the surrounding paragraph. Workspace file paths in
+  that markdown are previewable:
   inline code, markdown links, and bare path tokens (with a known
   extension) complete and open like a chip against every folder of the open
   project (ADR 0263): the resolved file in the bundled
