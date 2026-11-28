@@ -3340,6 +3340,11 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       dismiss: "Kapat",
     },
   },
+  rendererCrash: {
+    title: "PI-Desktop başlatılamadı",
+    body: "Arayüz işlemi başlangıçta sürekli çöktüğü için otomatik yeniden denemeler durduruldu. Ayrıntılar günlük klasöründe; sorun sürerse lütfen günlükleri bizimle paylaşın.",
+    openLogs: "Günlük klasörünü aç",
+  },
 } satisfies EnglishCatalog;
 
 export default tr;

@@ -3306,7 +3306,12 @@ sklm: {
       "continue": "Weiter",
       "dismiss": "Verwerfen"
     }
-  }
+  },
+  rendererCrash: {
+    title: "PI-Desktop konnte nicht starten",
+    body: "Die Oberfläche stürzte beim Start wiederholt ab, daher wurden die automatischen Versuche gestoppt. Der Protokollordner enthält Details; falls das Problem bestehen bleibt, teile uns die Protokolle bitte mit.",
+    openLogs: "Protokollordner öffnen",
+  },
 } satisfies EnglishCatalog;
 
 export default de;

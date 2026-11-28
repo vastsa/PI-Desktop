@@ -3274,7 +3274,12 @@ export const ptBR = {
       continue: "Continuar",
       dismiss: "Dispensar"
     }
-  }
+  },
+  rendererCrash: {
+    title: "O PI-Desktop não pôde ser iniciado",
+    body: "A interface continuava falhando na inicialização, então as tentativas automáticas foram interrompidas. A pasta de registros tem os detalhes; se o problema persistir, compartilhe os registros conosco.",
+    openLogs: "Abrir pasta de registros",
+  },
 } satisfies EnglishCatalog;
 
 export default ptBR;

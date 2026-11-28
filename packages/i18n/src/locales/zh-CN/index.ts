@@ -3379,6 +3379,11 @@ sklm: {
       dismiss: "关闭",
     },
   },
+  rendererCrash: {
+    title: "PI-Desktop 无法启动",
+    body: "界面进程在启动时反复崩溃，已停止自动重试。日志文件夹中有详细信息；若问题持续，请将日志反馈给我们。",
+    openLogs: "打开日志文件夹",
+  },
 } satisfies EnglishCatalog;
 
 export default zhCN;

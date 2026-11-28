@@ -3304,7 +3304,12 @@ sklm: {
       "continue": "Continuar",
       "dismiss": "Descartar"
     }
-  }
+  },
+  rendererCrash: {
+    title: "PI-Desktop no pudo iniciarse",
+    body: "La interfaz fallaba repetidamente al iniciarse, así que se detuvieron los reintentos automáticos. La carpeta de registros contiene los detalles; si el problema continúa, compártenos los registros.",
+    openLogs: "Abrir carpeta de registros",
+  },
 } satisfies EnglishCatalog;
 
 export default es;

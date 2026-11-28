@@ -3304,7 +3304,12 @@ sklm: {
       "continue": "Continuer",
       "dismiss": "Ignorer"
     }
-  }
+  },
+  rendererCrash: {
+    title: "PI-Desktop n'a pas pu démarrer",
+    body: "L'interface plantait de façon répétée au démarrage : les tentatives automatiques ont été arrêtées. Le dossier des journaux contient les détails ; si le problème persiste, partagez-les avec nous.",
+    openLogs: "Ouvrir le dossier des journaux",
+  },
 } satisfies EnglishCatalog;
 
 export default fr;

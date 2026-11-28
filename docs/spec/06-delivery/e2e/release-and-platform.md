@@ -1349,3 +1349,20 @@
 ## E2E-ISSUE-1707
 
 Use synthetic Darwin x64/arm64 uname responses through production SSH bootstrap, serialize its code/details as IPC does, and resolve the renderer error. The platform explanation appears, no checksum or upload occurs. Linux and other bootstrap failures keep existing messages. Coverage: remote-host-ssh-bootstrap.test.mjs and remote-host-errors.test.mjs.
+
+## E2E-RENDERER-crash-loop-fallback
+
+- **Preconditions:** Built desktop, isolated data directory and Chromium
+  profile, candidate host-core via `PI_DESKTOP_HOST_BIN`. No user instance.
+- **Steps:** Run `node scripts/e2e-renderer-crash-loop.mjs`. Launch 1 makes
+  every main-window load crash before `did-finish-load`. Launch 2 repeats on
+  the same profile. Launch 3 boots normally and stays loaded. `app.relaunch`
+  and `dialog.showMessageBox` are intercepted in Main.
+- **Expected:** Launch 1 persists `<userData>/renderer-crash-loop.json`, logs
+  `relaunch-disable-gpu`, and exits through the ordered shutdown. Launch 2
+  boots without hardware acceleration, never relaunches, shows the terminal
+  dialog once, and quits from it; the marker survives. Launch 3 clears the
+  marker after continuous healthy uptime of one renderer.
+- **Coverage:** `renderer-crash-loop.test.mjs`, `renderer-recovery.test.mjs`.
+- **Qualification:** Forced renderer crashes reproduce the reload loop, not the
+  #2595 Windows trigger, whose cause is unconfirmed.

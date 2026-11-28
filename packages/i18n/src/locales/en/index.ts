@@ -3449,6 +3449,11 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       dismiss: "Dismiss",
     },
   },
+  rendererCrash: {
+    title: "PI-Desktop could not start",
+    body: "The interface kept crashing on startup, so automatic retries were stopped. The log folder has the details; if this keeps happening, please share the logs with us.",
+    openLogs: "Open log folder",
+  },
 } as const;
 
 type DeepStringify<T> = {
