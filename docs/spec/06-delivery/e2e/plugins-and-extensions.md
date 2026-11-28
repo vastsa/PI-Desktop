@@ -3562,12 +3562,15 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 ## E2E-PLUGIN-cancel-during-download-installs-nothing: Cancelling during the download stops the install, leaves nothing installed, and closes the dialog without an error
 
 - **Preconditions**: An official-channel install of a package large enough or a mirror slow enough that the download phase lasts, a way to answer `market.cancelInstall`, and a view of the plugin directory, the install cache, and the Installed list.
-- **Steps**: 1) Start the install and wait for the download phase. 2) Press the cancel action in the dialog. 3) Watch the dialog and capture the RPC answer. 4) Inspect the plugin directory, the install cache, and the Installed list after the install ends. 5) Send `market.cancelInstall` again for the same id, for an install that is not running, and once after the download has finished.
-- **Expected**: The cancel call answers `{ cancelled: true, id }` for the running install, and the install fails with `PLUGIN_CANCELLED` (JSON-RPC code 1019); the dialog closes without reporting an error; nothing is installed — no plugin directory, no installed row, no enabled plugin — and no partial package survives in the cache; the second call for the same id, the call for an install that is not running, and a call after the download finished answer `{ cancelled: false, id }` and change nothing, so a cancel can never interrupt the write of the plugin directory.
+- **Steps**: 1) Start the install and hold the mirror response at zero bytes after entering the download phase. 2) Send `market.cancelInstall` for a different plugin, then press Cancel in the dialog without releasing the mirror response. 3) Watch the dialog and capture the RPC answer. 4) Inspect the plugin directory, the install cache, and the Installed list after the install ends. 5) Send `market.cancelInstall` again for the same id, for an install that is not running, and once after a separate install enters the `install` phase.
+- **Expected**: The wrong id returns `{ cancelled: false, id }` and leaves the active download alone. The matching call promptly answers `{ cancelled: true, id }` while the mirror is still stalled, and the install fails with `PLUGIN_CANCELLED` (JSON-RPC code 1019). The dialog closes quietly; no installed row, plugin directory, or partial package is left behind. A duplicate, inactive, or late call returns `{ cancelled: false, id }` and changes nothing.
 - **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2, ADR 0276 §7
 - **Acceptance**: G (remote marketplace source) + Security
 - **Milestone**: M6+
-- **Status**: Draft
+- **Status**: Partially automated by `cargo test -p host-core marketplace_rpc_tests`.
+  The HTTP fixture sends only headers; the host test checks that a wrong id
+  leaves the socket open, a matching id disconnects it, and no plugin row or
+  directory is created. This test does not exercise the desktop dialog.
 
 ## E2E-PLUGIN-failed-install-lists-tried-mirrors: A failed install keeps the dialog open and lists the mirrors it tried with a copy action
 

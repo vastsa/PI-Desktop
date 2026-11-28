@@ -153,12 +153,14 @@ carries `error`. Reports are throttled to at most one per 200 ms, plus one per
 phase change and the terminal report, so byte progress cannot flood the
 interface.
 
-`market.cancelInstall { id }` answers `{ cancelled, id }` and cancels only an
-install that is running right now. Only a download can actually be interrupted:
-the request is honoured while bytes arrive, before each mirror is tried, and at
-the last safe point before the package is written. A cancelled install fails
-with `PLUGIN_CANCELLED` (JSON-RPC code 1019), and the dialog closes quietly
-instead of reporting an error.
+`market.cancelInstall { id }` answers `{ cancelled, id }` without waiting for a
+running download to release the Host state lock. It signals only an active
+install for that plugin in the authenticated Host, including while the download
+waits for its first byte. The install checks the signal before trying another
+mirror and before the package is written. After it starts writing the plugin,
+or after a cancellation is accepted, a further cancel returns `false`. A
+cancelled install fails with `PLUGIN_CANCELLED` (JSON-RPC code 1019), and the
+dialog closes quietly instead of reporting an error.
 
 The dialog opens for a manual install or update, never for a background
 auto-update. It shows the current phase, `mirror n/N · name`, a determinate bar
