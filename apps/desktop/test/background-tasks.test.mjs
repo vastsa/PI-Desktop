@@ -144,32 +144,52 @@ test("the running/stopped/failed/exited labels are translated", () => {
   assert.match(i18nEn, /backgroundTasks: \{[^}]*running: "Running"/);
 });
 
-test("the container shows only live work: a finished row expires and can be removed", async () => {
+test("the container shows only live work: a finished row leaves as soon as it ends", async () => {
   const visibility = await readFile(
     new URL("../src/features/chat/background-tasks/bar-visibility.ts", import.meta.url),
     "utf8",
   );
-  // The grace window is a named constant, not a magic number in the component.
-  assert.match(visibility, /export const ENDED_VISIBLE_MS = 10_000;/);
-  assert.match(controller, /selectVisibleTasks\(visibility, sessionTasks, clock, expandedId\)/);
-  assert.match(controller, /observeTasks\(current, result\.tasks, observedAt\)/);
+  // Live means running, or a continuation decision still pending; the row
+  // being read is the only ended row that stays (#2632).
+  assert.match(visibility, /task\.state === "running"/);
+  assert.match(visibility, /task\.continuation === "pending"/);
+  assert.match(visibility, /task\.id === pinnedId/);
+  assert.match(controller, /selectVisibleTasks\(sessionTasks, expandedId\)/);
+  // The pin on a row being read ends when its preview leaves the screen —
+  // collapse, or a switch to a Todo panel that is actually visible — unless
+  // the task still runs, whose preview survives the switch and picks up the
+  // same read on return (#2634). The panel that resolves decides, not the
+  // remembered choice: a remembered Todo whose side emptied has already
+  // fallen back to Tasks.
+  assert.match(controller, /const reading = isReading\(dock, sides, expandedId\)/);
+  assert.match(controller, /if \(expandedId === null \|\| reading\) return;/);
+  assert.match(controller, /if \(pinnedTask\?\.state !== "running"\) setExpandedId\(null\)/);
+  // The effect re-runs on every session task snapshot: that is what closes
+  // the pin when a running task ends while its panel is hidden.
+  assert.match(controller, /\}, \[reading, expandedId, sessionTasks\]\)/);
+  // A session switch closes the preview too.
+  assert.match(controller, /useEffect\(\(\) => \{\n    setExpandedId\(null\);\n  \}, \[sessionId\]\)/);
   // Removal is refused for a live task in the state layer, not just by hiding
   // the control.
-  assert.match(visibility, /task\.state === "running" \|\| task\.continuation === "pending"\) return state;/);
   assert.match(controller, /if \(!task \|\| task\.state === "running" \|\| task\.continuation === "pending"\)/);
-  assert.match(controller, /dismissTask\(current, task\)/);
   // A finished row offers removal instead of stopping.
   assert.match(bar, /\{t\("backgroundTasks\.dismiss"\)\}/);
   assert.match(bar, /onClick=\{\(\) => onRemove\(task\.id\)\}/);
 });
 
-test("the container filters to the active session and badges new work", () => {
+test("the container filters to the active session and badges its running work", () => {
   assert.match(controller, /task\.sessionId === sessionId/);
   // The wire contract stays session-agnostic.
   assert.match(controller, /api\.backgroundTasksList\(\)/);
-  // The badge clears only when the user enters the tasks tab.
-  assert.match(controller, /const openTasksTab = useCallback/);
-  assert.match(controller, /clearBadge\(selectTab\(current, sessionId, "tasks"\), sessionId\)/);
+  // The badge is the running-row count, derived from the rows — never view
+  // state a tab click can clear (#2632).
+  assert.match(controller, /const badge = sides\.runningTasks/);
+  // Both sides and the panel rule come from dock-state, so the render rule,
+  // the badge rule, and the preview rule share one tab decision.
+  assert.match(controller, /import \{[\s\S]*?sidesFor,[\s\S]*?visibleDockTab,[\s\S]*?\} from "\.\/dock-state"/);
+  // A row being read keeps the tasks panel on screen: the auto tab rule does
+  // not switch to Todo underneath an open preview (#2634).
+  assert.match(controller, /visibleDockTab\(dock, sides, reading\)/);
 });
 
 test("deleting a session signals its tasks from the shared cleanup path only", () => {

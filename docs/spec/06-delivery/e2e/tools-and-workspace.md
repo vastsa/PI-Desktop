@@ -1271,8 +1271,14 @@ journeys cover successful reads, saves and directory browsing.
   The task header stays on one line. The expanded row shows the complete
   command above the output, preserving whitespace and wrapping to fit even
   before the task produces any output.
-  An ended task keeps its row only for a short grace window and can be closed
-  from the bar, so finished commands do not accumulate above the composer.
+  An ended task's row leaves the bar as soon as its end state arrives — only
+  the row whose output preview is open stays (the auto tab rule never switches
+  the panel away from an open read), and the pin ends when its preview leaves
+  the screen — collapse, or a switch to Todo — unless the task still runs: a
+  running task's preview survives the switch, while a task that ends while
+  hidden takes its row with it — and the tab badge falls with
+  the running count, so finished commands do not accumulate above the
+  composer (#2632, #2634).
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md` (§5),
   `03-runtime/06-host-rpc-protocol.md` (§4)
 - **Acceptance criterion**: C, E, F
@@ -1285,9 +1291,9 @@ journeys cover successful reads, saves and directory browsing.
   and 390px widths. Host tests cover exit-before-drain and shutdown under output
   lock contention. The full agent-to-Desktop journey and an 83-minute paced
   100,000-line soak remain manual; the automated volume test is accelerated.
-  Renderer visibility (grace window, close action, pinned output preview) is
-  covered by `apps/desktop/test/background-tasks-bar-visibility.test.mjs` with a
-  controlled clock; the multi-second hand-off itself is not timed in Electron.)
+  Renderer visibility (live rows, close action, pinned output preview) is
+  covered by `apps/desktop/test/background-tasks-bar-visibility.test.mjs`; the
+  multi-second hand-off itself is not timed in Electron.)
 
 ## E2E-REVIEW-append-state: Rolling back a historical tool card does not rewrite its session
 

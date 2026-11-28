@@ -5,6 +5,7 @@ export const trEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Aynı yerel ağdaki bir telefon, tablet veya bilgisayarı eşleştirerek masaüstü sohbetlerine tarayıcıdan devam edin, projelere göz atın ve oturum modelini değiştirin.",
       "Dosya Yöneticisi bir kez açıldığında aynı projedeki diğer oturumlara da sekmesi eklenir. Sekmeyi kapatmak veya yan paneli açmak yalnızca geçerli oturumu etkiler.",
       "İleti alanında satır sonları artık fazladan boş satır veya görünmez karakter eklemiyor. Geri al, silinen son boş satırı geri getiriyor.",
       "/ menüsünden seçilen beceriler ileti alanında ayrı etiketler olarak görünür.",

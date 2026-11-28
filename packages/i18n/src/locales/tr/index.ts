@@ -845,7 +845,6 @@ export const tr = {
     title: "Yapılacaklar ve arka plan görevleri",
     tabTodo: "Yapılacaklar",
     tabTasks: "Arka plan görevleri",
-    newTasks: "{{count}} yeni görev",
     runningCount: "{{count}} çalışıyor",
     expand: "{{label}} genişlet",
     collapse: "{{label}} daralt",

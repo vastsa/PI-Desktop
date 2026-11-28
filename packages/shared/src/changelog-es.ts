@@ -5,6 +5,7 @@ export const esEntries: ChangelogEntry[] = [
     version: "0.24.0",
     date: "2026-11-24",
     highlights: [
+      "Vincula un móvil, una tableta o un ordenador en la misma red local para continuar chats de escritorio, explorar proyectos y cambiar el modelo de la sesión desde el navegador.",
       "Abre el gestor de archivos una vez para añadir su pestaña a las demás sesiones del proyecto. Cerrar la pestaña o abrir el panel lateral solo afecta a la sesión actual.",
       "Los saltos de línea ya no añaden líneas ni caracteres invisibles de más. Deshacer restaura la última línea vacía eliminada.",
       "Las habilidades seleccionadas en el menú / aparecen como etiquetas individuales en el editor.",

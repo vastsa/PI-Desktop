@@ -836,7 +836,6 @@ export const es = {
     title: "Pendientes y tareas en segundo plano",
     tabTodo: "Pendientes",
     tabTasks: "Tareas en segundo plano",
-    newTasks: "{{count}} tareas nuevas",
     runningCount: "{{count}} en ejecución",
     expand: "Expandir {{label}}",
     collapse: "Contraer {{label}}",

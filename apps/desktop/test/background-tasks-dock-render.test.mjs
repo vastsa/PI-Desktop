@@ -12,11 +12,11 @@ import { fileURLToPath } from "node:url";
  * What the shared container shows once a task is over.
  *
  * host-core keeps a finished task in its registry so its output stays readable
- * and the renderer can show the exit code for the grace window; the entry is
- * not deleted when the row leaves the container. The container must therefore
- * answer to the rows it can render, never to the registry's full session list —
- * otherwise a stopped or self-exited command leaves a permanent
- * "1 background tasks" header with no row to stop, dismiss, or read.
+ * by id; the entry is not deleted when the row leaves the container. The
+ * container must therefore answer to the rows it can render, never to the
+ * registry's full session list — otherwise a stopped or self-exited command
+ * leaves a permanent "1 background tasks" header with no row to stop, dismiss,
+ * or read.
  *
  * Rendered through the real container, store, and locale with the task data
  * layer stubbed, so the assertion is what the user actually sees.
@@ -146,10 +146,17 @@ test("an expanded task shows the complete multiline command above its output", a
   });
 });
 
-test("a finished row inside its grace window still counts", async () => {
+test("a finished row the container still shows raises no live count", async () => {
   await withDockRender(({ render }) => {
+    // The hook keeps an ended row only while its output is being read (#2632);
+    // the container renders whatever rows it is given with no rule of its own.
     const finished = task("t-grace", "exited", 0);
-    const html = render({ tasks: [finished], sessionTasks: [finished, task("t-hidden", "stopped")] });
+    const html = render({
+      tasks: [finished],
+      sessionTasks: [finished],
+      expandedId: "t-grace",
+      output: { id: "t-grace", stdout: "", stderr: "", truncated: false },
+    });
     assert.match(html, /1 background tasks/);
     assert.doesNotMatch(html, /running/, "a finished row raises no live count");
     assert.match(html, /pnpm dev t-grace/);
