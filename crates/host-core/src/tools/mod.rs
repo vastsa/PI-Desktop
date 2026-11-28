@@ -4429,6 +4429,17 @@ mod tests {
         std::fs::write(dir.path().join(".env.example"), "SECRET_TOKEN=needle\n").unwrap();
         std::fs::write(dir.path().join("server.pem"), "needle\n").unwrap();
         std::fs::write(dir.path().join(".npmrc"), "//registry/:_authToken=needle\n").unwrap();
+        std::fs::write(
+            dir.path().join(".git-credentials"),
+            "https://user:needle@example.com\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join(".aws")).unwrap();
+        std::fs::write(
+            dir.path().join(".aws/credentials"),
+            "[default]\naws_secret_access_key=needle\n",
+        )
+        .unwrap();
         std::fs::write(dir.path().join("notes.txt"), "needle\n").unwrap();
 
         let read = execute_tool(
@@ -4474,6 +4485,34 @@ mod tests {
         assert!(!npmrc.ok);
         assert_eq!(npmrc.error_code.as_deref(), Some("WORKSPACE_PATH_DENIED"));
 
+        let git_credentials = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": ".git-credentials" }),
+            5_000,
+        )
+        .await;
+        assert!(!git_credentials.ok);
+        assert_eq!(
+            git_credentials.error_code.as_deref(),
+            Some("WORKSPACE_PATH_DENIED")
+        );
+
+        let aws_credentials = execute_tool(
+            Some(dir.path()),
+            None,
+            "Read",
+            &serde_json::json!({ "path": ".aws/credentials" }),
+            5_000,
+        )
+        .await;
+        assert!(!aws_credentials.ok);
+        assert_eq!(
+            aws_credentials.error_code.as_deref(),
+            Some("WORKSPACE_PATH_DENIED")
+        );
+
         let example = execute_tool(
             Some(dir.path()),
             None,
@@ -4509,6 +4548,8 @@ mod tests {
         assert!(!shown.contains("\".env\""), "{shown}");
         assert!(!shown.contains("server.pem"), "{shown}");
         assert!(!shown.contains(".npmrc"), "{shown}");
+        assert!(!shown.contains(".git-credentials"), "{shown}");
+        assert!(!shown.contains(".aws"), "{shown}");
 
         let glob = execute_tool(
             Some(dir.path()),
@@ -4523,6 +4564,8 @@ mod tests {
         assert!(!shown.contains("server.pem"), "{shown}");
         assert!(!shown.contains("\".env\""), "{shown}");
         assert!(!shown.contains(".npmrc"), "{shown}");
+        assert!(!shown.contains(".git-credentials"), "{shown}");
+        assert!(!shown.contains(".aws"), "{shown}");
     }
 
     #[tokio::test]
@@ -5064,6 +5107,94 @@ mod tests {
         .await;
         assert_eq!(limited.content["count"].as_u64(), Some(5));
         assert_eq!(limited.content["truncated"].as_bool(), Some(true));
+    }
+
+    #[tokio::test]
+    async fn security_denylist_hides_credentials_on_rg_and_walker_paths() {
+        // Mixed-case names prove the exclusions stay case-insensitive on the
+        // real subprocess, not only in the in-process output filter.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".AWS")).unwrap();
+        std::fs::write(dir.path().join(".AWS/Credentials"), "needle aws\n").unwrap();
+        std::fs::write(dir.path().join(".AWS/credentials.bak"), "needle backup\n").unwrap();
+        std::fs::create_dir_all(dir.path().join(".KUBE")).unwrap();
+        std::fs::write(dir.path().join(".KUBE/config"), "needle kube\n").unwrap();
+        std::fs::write(dir.path().join(".KUBE/config.yaml"), "needle kube near\n").unwrap();
+        std::fs::write(dir.path().join(".GIT-CREDENTIALS"), "needle git\n").unwrap();
+        std::fs::write(dir.path().join("_NETRC"), "needle netrc\n").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "needle notes\n").unwrap();
+
+        fn match_paths(value: &serde_json::Value) -> Vec<String> {
+            value["matches"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|hit| hit["path"].as_str().map(str::to_string))
+                .collect()
+        }
+
+        fn assert_denylist_parity(label: &str, value: &serde_json::Value) {
+            let listed = match_paths(value);
+            let has = |suffix: &str| listed.iter().any(|path| path.ends_with(suffix));
+            assert!(
+                has("notes.txt"),
+                "{label}: allowed file missing: {listed:?}"
+            );
+            assert!(
+                has("credentials.bak"),
+                "{label}: allowed near miss missing: {listed:?}"
+            );
+            assert!(
+                has("config.yaml"),
+                "{label}: allowed near miss missing: {listed:?}"
+            );
+            for denied in ["Credentials", "config", ".GIT-CREDENTIALS", "_NETRC"] {
+                assert!(
+                    !has(denied),
+                    "{label}: denied {denied} leaked into results: {listed:?}"
+                );
+            }
+        }
+
+        async fn run(root: &Path, args: serde_json::Value) -> serde_json::Value {
+            let result = execute_tool(Some(root), None, "Grep", &args, 5_000).await;
+            assert!(result.ok, "grep failed: {:?}", result.content);
+            result.content
+        }
+
+        async fn assert_near_miss(label: &str, root: &Path, path: &str, near: &str) {
+            let result = run(
+                root,
+                serde_json::json!({ "pattern": "needle", "path": path }),
+            )
+            .await;
+            let listed = match_paths(&result);
+            assert_eq!(
+                listed.len(),
+                1,
+                "{label}: named denied directory must only return the near miss: {listed:?}"
+            );
+            assert!(
+                listed[0].ends_with(near),
+                "{label}: unexpected near-miss path: {listed:?}"
+            );
+        }
+
+        // In-process walker path first, while no test ripgrep is installed.
+        let walker_unscoped = run(dir.path(), serde_json::json!({ "pattern": "needle" })).await;
+        assert_denylist_parity("walker unscoped", &walker_unscoped);
+        assert_near_miss("walker", dir.path(), ".AWS", "credentials.bak").await;
+        assert_near_miss("walker", dir.path(), ".KUBE", "config.yaml").await;
+
+        // Same searches through the real ripgrep binary.
+        let Some(rg) = super::shell::find_user_program("rg") else {
+            return;
+        };
+        let _guard = grep_rg::install_test_rg(rg);
+        let rg_unscoped = run(dir.path(), serde_json::json!({ "pattern": "needle" })).await;
+        assert_denylist_parity("rg unscoped", &rg_unscoped);
+        assert_near_miss("rg", dir.path(), ".AWS", "credentials.bak").await;
+        assert_near_miss("rg", dir.path(), ".KUBE", "config.yaml").await;
     }
 
     #[tokio::test]

@@ -20,11 +20,33 @@ use std::path::{Path, PathBuf};
 pub const WORKSPACE_IGNORE_FILE: &str = ".pi-desktopignore";
 
 /// Exact file names on the security denylist (spec 15 §3).
-const SENSITIVE_FILE_NAMES: &[&str] =
-    &["id_rsa", "id_ed25519", "credentials.json", ".env", ".npmrc"];
+const SENSITIVE_FILE_NAMES: &[&str] = &[
+    "id_rsa",
+    "id_ed25519",
+    "id_ecdsa",
+    "id_dsa",
+    "credentials.json",
+    ".env",
+    ".npmrc",
+    ".yarnrc.yml",
+    ".netrc",
+    "_netrc",
+    ".git-credentials",
+    ".pypirc",
+    ".pgpass",
+    ".htpasswd",
+];
 
 /// File-name suffixes on the security denylist (spec 15 §3).
-const SENSITIVE_SUFFIXES: &[&str] = &[".pem", ".key", ".p12", ".pfx"];
+const SENSITIVE_SUFFIXES: &[&str] = &[".pem", ".key", ".p12", ".pfx", ".ppk", ".jks", ".keystore"];
+
+/// `parent/name` component pairs on the security denylist. These credential
+/// stores keep a generic file name, so the name alone cannot identify them.
+const SENSITIVE_PATH_SUFFIXES: &[(&str, &str)] = &[
+    (".aws", "credentials"),
+    (".docker", "config.json"),
+    (".kube", "config"),
+];
 
 /// `.env.*` variants that document configuration instead of holding it and
 /// therefore stay readable (`.env.example`, `.env.sample`, `.env.template`).
@@ -74,14 +96,27 @@ pub fn is_sensitive_file_name(name: &str) -> bool {
         .any(|suffix| lower.ends_with(suffix) && lower.len() > suffix.len())
 }
 
-/// Whether a resolved path is blocked by the security denylist: either its
-/// file name matches, or it lives under a `.git/objects` tree.
+/// Whether a `parent/name` pair is on the always-on security denylist.
+fn is_sensitive_path_suffix(parent: &str, name: &str) -> bool {
+    SENSITIVE_PATH_SUFFIXES
+        .iter()
+        .any(|(dir, file)| dir.eq_ignore_ascii_case(parent) && file.eq_ignore_ascii_case(name))
+}
+
+/// Whether a resolved path is blocked by the security denylist: its file name
+/// matches, it ends in a denied `parent/name` credential store, or it lives
+/// under a `.git/objects` tree.
 pub fn is_sensitive_path(path: &Path) -> bool {
-    if path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(is_sensitive_file_name)
-    {
+    let name = path.file_name().and_then(|name| name.to_str());
+    if name.is_some_and(is_sensitive_file_name) {
+        return true;
+    }
+    if name.is_some_and(|name| {
+        path.parent()
+            .and_then(Path::file_name)
+            .and_then(|parent| parent.to_str())
+            .is_some_and(|parent| is_sensitive_path_suffix(parent, name))
+    }) {
         return true;
     }
     let mut previous_was_git = false;
@@ -160,6 +195,15 @@ pub fn configure_walker(walker: &mut WalkBuilder, ignore_root: &Path, scoped: bo
         if is_sensitive_file_name(name) {
             return false;
         }
+        if entry
+            .path()
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|parent| parent.to_str())
+            .is_some_and(|parent| is_sensitive_path_suffix(parent, name))
+        {
+            return false;
+        }
         if scoped {
             return true;
         }
@@ -170,16 +214,28 @@ pub fn configure_walker(walker: &mut WalkBuilder, ignore_root: &Path, scoped: bo
 /// Extra `rg` arguments implementing the same layers. `.env.*` is left to the
 /// post-filter (`is_sensitive_path`) because an rg include glob would switch
 /// the whole run into whitelist mode.
+///
+/// The security denylist uses `--iglob` so the subprocess never reads a denied
+/// file whose spelling differs only in case: `is_sensitive_path` and the walker
+/// match case-insensitively, while rg applies `--glob` case-sensitively. User
+/// includes and the default ignore layers keep `--glob`, so their case
+/// behaviour does not change.
 pub fn rg_args(ignore_root: &Path, scoped: bool) -> Vec<String> {
     let mut args = Vec::new();
     for name in SENSITIVE_FILE_NAMES {
-        args.push("--glob".into());
+        args.push("--iglob".into());
         args.push(format!("!{name}"));
     }
     for suffix in SENSITIVE_SUFFIXES {
-        args.push("--glob".into());
+        args.push("--iglob".into());
         args.push(format!("!*{suffix}"));
     }
+    for (directory, file) in SENSITIVE_PATH_SUFFIXES {
+        args.push("--iglob".into());
+        args.push(format!("!**/{directory}/{file}"));
+    }
+    // Left case-sensitive on purpose: `is_sensitive_path` matches `.git` and
+    // `objects` with exact equality, so rg and the walker stay in parity.
     args.push("--glob".into());
     args.push("!.git/objects".into());
     if scoped {
@@ -246,21 +302,80 @@ mod tests {
     }
 
     #[test]
+    fn denylist_matches_git_and_cloud_credential_stores() {
+        for name in [
+            ".netrc",
+            "_netrc",
+            ".git-credentials",
+            ".pypirc",
+            ".pgpass",
+            ".htpasswd",
+            ".yarnrc.yml",
+            "id_ecdsa",
+            "id_dsa",
+            "store.ppk",
+            "signing.jks",
+            "signing.keystore",
+        ] {
+            assert!(is_sensitive_file_name(name), "{name} must be denied");
+        }
+        for name in ["id_ecdsa.pub", "notes.netrc.md", "config", "config.json"] {
+            assert!(!is_sensitive_file_name(name), "{name} must stay readable");
+        }
+    }
+
+    #[test]
+    fn cloud_credential_paths_are_denied_by_trailing_components() {
+        for path in [
+            "/ws/.aws/credentials",
+            "/ws/.docker/config.json",
+            "/ws/.kube/config",
+            "/ws/sub/dir/.AWS/Credentials",
+        ] {
+            assert!(is_sensitive_path(Path::new(path)), "{path} must be denied");
+        }
+        for path in [
+            "/ws/.aws/credentials.md",
+            "/ws/.aws/credentials.bak",
+            "/ws/src/.kube/config.yaml",
+            "/ws/aws/credentials",
+            "/ws/.docker/config.yaml",
+        ] {
+            assert!(
+                !is_sensitive_path(Path::new(path)),
+                "{path} must stay readable"
+            );
+        }
+    }
+
+    #[test]
     fn git_objects_tree_is_denied_by_path() {
         assert!(is_sensitive_path(Path::new("/ws/.git/objects/ab/cdef")));
         assert!(!is_sensitive_path(Path::new("/ws/.git/HEAD")));
         assert!(!is_sensitive_path(Path::new("/ws/src/objects/index.ts")));
     }
 
+    fn has_arg_pair(args: &[String], flag: &str, value: &str) -> bool {
+        args.windows(2)
+            .any(|pair| pair[0] == flag && pair[1] == value)
+    }
+
     #[test]
     fn rg_args_keep_only_denylist_when_scoped() {
         let scoped = rg_args(Path::new("/nonexistent"), true);
-        assert!(scoped.contains(&"!*.pem".to_string()));
-        assert!(scoped.contains(&"!.npmrc".to_string()));
+        // Denylist exclusions follow `is_sensitive_path`, so they stay
+        // case-insensitive on every platform instead of inheriting rg's
+        // case-sensitive glob default.
+        assert!(has_arg_pair(&scoped, "--iglob", "!*.pem"));
+        assert!(has_arg_pair(&scoped, "--iglob", "!.npmrc"));
+        assert!(has_arg_pair(&scoped, "--iglob", "!.git-credentials"));
+        assert!(has_arg_pair(&scoped, "--iglob", "!**/.aws/credentials"));
+        assert!(has_arg_pair(&scoped, "--iglob", "!**/.docker/config.json"));
+        assert!(has_arg_pair(&scoped, "--iglob", "!**/.kube/config"));
         assert!(!scoped.contains(&"!node_modules".to_string()));
         let unscoped = rg_args(Path::new("/nonexistent"), false);
-        assert!(unscoped.contains(&"!node_modules".to_string()));
-        assert!(unscoped.contains(&"!*.log".to_string()));
-        assert!(unscoped.contains(&"!.npmrc".to_string()));
+        assert!(has_arg_pair(&unscoped, "--glob", "!node_modules"));
+        assert!(has_arg_pair(&unscoped, "--glob", "!*.log"));
+        assert!(has_arg_pair(&unscoped, "--iglob", "!.npmrc"));
     }
 }

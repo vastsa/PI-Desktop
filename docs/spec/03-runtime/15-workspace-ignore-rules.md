@@ -31,11 +31,15 @@ user. An implicit recursive walk never gains outside-workspace access.
 Also deny inside workspace (and inside the scratch or an approved external
 root) for:
 - `.git/objects/**`
-- private key patterns: `*.pem`, `*.key`, `id_rsa`, `id_ed25519`
+- private key patterns and stores: `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.ppk`,
+  `*.jks`, `*.keystore`, `id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa`
 - `.env`, `.env.*` — except the documentation variants `.env.example`,
   `.env.sample`, and `.env.template`, which hold no secrets and are what a
   coding task usually needs
-- credential files: `*.p12`, `*.pfx`, `credentials.json` (Google), `.npmrc` with tokens (best-effort)
+- credential files: `credentials.json` (Google), `.npmrc` and `.yarnrc.yml` with
+  tokens, `.netrc`, `_netrc`, `.git-credentials`, `.pypirc`, `.pgpass`,
+  `.htpasswd`, and the fixed cloud credential stores `.aws/credentials`,
+  `.docker/config.json`, and `.kube/config` (best-effort)
 
 File-name matching is case-insensitive. `Glob` and `Grep` drop matching files
 from their results silently; an explicit `Read`, `Write`, or `Edit` (including

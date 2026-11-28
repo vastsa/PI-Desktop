@@ -2194,21 +2194,23 @@ are withdrawn with ADR 0165.
 ## E2E-234: Workspace security denylist and ignore layers
 
 - **Preconditions**: A project containing `.env`, `.env.example`,
-  `server.pem`, `.npmrc`, `keys/id_rsa`, `notes.txt`,
-  `node_modules/pkg/index.js`, `generated/out.txt`, `debug.log`, and a root
-  `.pi-desktopignore` with `generated/`. Every file contains the word `needle`.
-  The session is Agent in `auto` permission mode.
+  `server.pem`, `.npmrc`, `.git-credentials`, `.aws/credentials`,
+  `keys/id_rsa`, `notes.txt`, `node_modules/pkg/index.js`, `generated/out.txt`,
+  `debug.log`, and a root `.pi-desktopignore` with `generated/`. Every file
+  contains the word `needle`. The session is Agent in `auto` permission mode.
 - **Steps**: 1) Ask for `Read` of `.env`, then of `.env.example`. 2) Ask for
   `Write` to `keys/id_rsa`. 3) Run an unscoped `Grep` and `Glob` for `needle`.
   4) Run `Grep` with `path: node_modules/pkg` and with `path: generated`.
   5) Repeat step 1 with a system `rg` installed and with
   `PI_DESKTOP_DISABLE_RG=1`.
 - **Expected**: Steps 1 and 2 fail with `WORKSPACE_PATH_DENIED`, the
-  `.env.example` read succeeds, and no `keys/id_rsa` file is created. The
-  unscoped search lists `notes.txt` and `.env.example` only: `.env`,
-  `server.pem`, `.npmrc`, `node_modules`, `generated`, and `debug.log` are
-  absent. The explicit-path searches return one hit each. The in-process
-  walker and the `rg` fast path produce the same file set.
+  `.env.example` read succeeds, and no `keys/id_rsa` file is created. Reads of
+  `.git-credentials` and `.aws/credentials` fail the same way. The unscoped
+  search lists `notes.txt` and `.env.example` only: `.env`, `server.pem`,
+  `.npmrc`, `.git-credentials`, `.aws/credentials`, `node_modules`,
+  `generated`, and `debug.log` are absent. The explicit-path searches return
+  one hit each. The in-process walker and the `rg` fast path produce the same
+  file set.
 - **Specs linked**: `03-runtime/15-workspace-ignore-rules.md`,
   `03-runtime/08-error-codes.md` §3.3, D032
 - **Acceptance**: B (workspace tools), Security
