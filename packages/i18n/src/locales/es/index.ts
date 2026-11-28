@@ -853,6 +853,8 @@ export const es = {
     "planning": "Planificación",
     "approvalRegion": "Aprobación del plan",
     "readyAnnouncement": "Plan listo. El plan está abierto en el Panel de Trabajo.",
+    "revisionPrompt": "¿Qué te gustaría cambiar?",
+    "sendRevision": "Enviar cambios solicitados",
     "chooseApprovalMode": "Elegir modo de aprobación",
     "ask": "Preguntar",
     "acceptEdits": "Aceptar ediciones",
@@ -3302,7 +3304,12 @@ sklm: {
       "continue": "Continuar",
       "dismiss": "Descartar"
     }
-  }
+  },
+  rendererCrash: {
+    title: "PI-Desktop no pudo iniciarse",
+    body: "La interfaz fallaba repetidamente al iniciarse, así que se detuvieron los reintentos automáticos. La carpeta de registros contiene los detalles; si el problema continúa, compártenos los registros.",
+    openLogs: "Abrir carpeta de registros",
+  },
 } satisfies EnglishCatalog;
 
 export default es;

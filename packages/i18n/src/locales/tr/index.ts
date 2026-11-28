@@ -862,6 +862,8 @@ export const tr = {
     planning: "Planlanıyor",
     approvalRegion: "Plan onayı",
     readyAnnouncement: "Plan hazır. Çalışma panelinde açık.",
+    revisionPrompt: "Neyi değiştirmek istersiniz?",
+    sendRevision: "Değişiklik isteğini gönder",
     chooseApprovalMode: "Onay kipini seçin",
     ask: "Sor",
     acceptEdits: "Düzenlemeleri kabul et",
@@ -3337,6 +3339,11 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       continue: "Devam et",
       dismiss: "Kapat",
     },
+  },
+  rendererCrash: {
+    title: "PI-Desktop başlatılamadı",
+    body: "Arayüz işlemi başlangıçta sürekli çöktüğü için otomatik yeniden denemeler durduruldu. Ayrıntılar günlük klasöründe; sorun sürerse lütfen günlükleri bizimle paylaşın.",
+    openLogs: "Günlük klasörünü aç",
   },
 } satisfies EnglishCatalog;
 

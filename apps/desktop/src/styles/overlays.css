@@ -203,7 +203,6 @@
   actions from competing for the same screen space.
 */
 .update-notice {
-  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   pointer-events: auto;
   position: absolute;
@@ -509,7 +508,6 @@
 }
 
 .toast {
-  --window-drag-region: no-drag;
   -webkit-app-region: no-drag;
   pointer-events: auto;
   display: flex;

@@ -107,7 +107,7 @@ errors remain readable instead of becoming replacement characters.
 
 | Crash | Policy |
 |---|---|
-| Renderer crash | reload the current window after an unexpected renderer exit, unless the window is closing or the app is quitting; keep host/agent processes; same-host reload restores only live pending Plan/Goal approvals and their deadlines, not terminal cards |
+| Renderer crash | reload the current window after an unexpected renderer exit, unless the window is closing or the app is quitting; keep host/agent processes; same-host reload restores only live pending Plan/Goal approvals and their deadlines, not terminal cards. Five consecutive unexpected exits with no successful load in between stop the reloads: the first time, write `<userData>/renderer-crash-loop.json` and relaunch once without hardware acceleration through the confirmed-quit shutdown; when the marker already exists or cannot be written, show a localized dialog (open log folder / quit). While the marker exists, boot disables hardware acceleration before `ready`; a single renderer that stays loaded for 10 minutes clears it |
 | Rust host crash | mark app degraded, interrupt pending/queued/running approval work, keep pending sessions in their contract mode (Plan or Goal) and already-approved sessions in Agent, attempt restart host, and fail active sessions closed |
 | Node agent crash | abort active turns and live approval waiters/queue entries, keep pending sessions in their contract mode, preserve already-approved Agent mode in Rust, restart sidecar, and never replay an execution; the sidecar's stderr tail is classified at exit — a V8 heap-exhaustion banner settles the owning turn as `AGENT_SIDECAR_OOM`, any other unexpected exit as `AGENT_SIDECAR_CRASHED` (issue #1077) |
 | Electron main crash | full app exit |
@@ -262,6 +262,16 @@ unexpected sidecar exit takes the same recovery path immediately: the last
 checkpoint of every running session is flushed and `session.endTurn` is asked
 to `recoverInflight`, so the streamed text becomes the turn's `aborted` row
 instead of vanishing with the process.
+
+On an unexpected sidecar exit, Electron Main cancels the affected sessions'
+extension prompts and plugin tools. After checkpoint recovery it records the
+classified error as an assistant transcript row and publishes a terminal
+renderer event for each turn that still owns its session. Foreground and
+background sessions clear their running state and settle live tool rows.
+Agent Host closes the turn as interrupted with the same error code before
+queued work can resume. Turn finalization waits for the Host to acknowledge
+the crash row. If the Host cannot accept the row, the persistence outbox
+spools it before finalization releases the queue.
 
 Minimizing the main window is a resident-shell action, not an application
 shutdown. On Windows/Linux, explicit application minimize actions use the

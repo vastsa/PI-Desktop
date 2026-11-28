@@ -52,7 +52,7 @@ test("each pending proposal follows its owning session's effective permission", 
   assert.doesNotMatch(approvalBar, /rememberPlanApprovalMode|planApprovalPermissionMode/);
 });
 
-test("pending input is retained but every composer/model mutation control is gated", () => {
+test("only a local Plan exposes revision input while approval gates configuration", () => {
   assert.match(composer, /contentEditable=\{!inputBlocked\}/);
   assert.match(composer, /aria-readonly=\{inputBlocked\}/);
   assert.match(composer, /enabled: !inputBlocked/);
@@ -61,7 +61,7 @@ test("pending input is retained but every composer/model mutation control is gat
     composer,
     /const controlsBlocked = approvalPending \|\| nativeSession \|\| !sessionAllows\(capabilitySession, "canConfigureModel"\);/,
   );
-  assert.match(composer, /const sendBlocked = approvalPending \|\| pasting \|\| nativeInputBlocked;/);
+  assert.match(composer, /pendingRevisionPlan\(activeSessionSummary, planCheckpoint, pendingPlan\)/);
   assert.match(store, /pendingPlans\[sessionId\]\?\.status === "pending"/);
   assert.match(store, /pendingPlans\[resolution\.sessionId\]/);
 });

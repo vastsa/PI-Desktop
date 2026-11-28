@@ -858,6 +858,8 @@ deleteRunningSessionBlocked: "请先停止运行中的会话，再删除它。",
     planning: "正在规划",
     approvalRegion: "规划审批",
     readyAnnouncement: "规划已就绪，已在工作面板中打开。",
+    revisionPrompt: "想调整哪里？",
+    sendRevision: "发送修改意见",
     chooseApprovalMode: "选择批准权限",
     ask: "每次询问",
     acceptEdits: "自动接受编辑",
@@ -3376,6 +3378,11 @@ sklm: {
       continue: "继续",
       dismiss: "关闭",
     },
+  },
+  rendererCrash: {
+    title: "PI-Desktop 无法启动",
+    body: "界面进程在启动时反复崩溃，已停止自动重试。日志文件夹中有详细信息；若问题持续，请将日志反馈给我们。",
+    openLogs: "打开日志文件夹",
   },
 } satisfies EnglishCatalog;
 

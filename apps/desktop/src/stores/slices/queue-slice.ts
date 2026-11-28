@@ -8,6 +8,7 @@ import type {
   QueuedTurnSummary,
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { pendingRevisionPlan } from "../../lib/plan-mode-state";
 import { isRemoteSession, sessionAllows } from "../../lib/remote-session-safety";
 import {
   enqueueQueuedPrompt,
@@ -75,6 +76,7 @@ export function createQueueSlice({
   | "refreshQueuedPrompts"
   | "applyQueueChanged"
   | "sendPrompt"
+  | "sendPlanRevision"
   | "steerPrompt"
 > {
   const queuedDrafts = new Map<string, ComposerDraftSnapshot>();
@@ -380,6 +382,30 @@ export function createQueueSlice({
           { variant: "error" },
         );
         return false;
+      }
+    },
+
+    sendPlanRevision: async (proposal, content, draft) => {
+      const { id, sessionId, turnId, toolCallId, version } = proposal;
+      const session = get().sessions.find((row) => row.id === sessionId);
+      const key = `revision:${id}`;
+      const current = pendingRevisionPlan(session, get().planCheckpoints[sessionId], get().pendingPlans[sessionId]);
+      if (current?.id !== id || !content.trim()) return false;
+      if (draft?.fileReferences.length && !sessionAllows(session, "canAttach")) return false;
+      if (get().runningSessions[sessionId] || pendingSubmissions.has(key)) return false;
+      pendingSubmissions.add(key);
+      try {
+        const result = await get().resolvePlan({ proposalId: id, sessionId, turnId, toolCallId, version, action: "reject" });
+        // A concurrent approval can win the shared resolution request.
+        if (result.proposal.status !== "rejected" || result.state !== "planning") return false;
+        if (get().runningSessions[sessionId] || get().planCheckpoints[sessionId]?.id !== id ||
+            get().sessions.find((row) => row.id === sessionId)?.mode !== "plan") return false;
+        return await get().sendPrompt(content, draft, sessionId);
+      } catch (error) {
+        get().showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
+        return false;
+      } finally {
+        pendingSubmissions.delete(key);
       }
     },
 

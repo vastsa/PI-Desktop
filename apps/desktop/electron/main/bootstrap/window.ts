@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { getModuleDirectory } from "../module-path";
+import { createWindowRendererCrashLoopFallback } from "./renderer-crash-loop-window";
 import {
   APP_NAME,
   builtinWindowBackground,
@@ -56,7 +57,7 @@ import {
   macosWindowSurfaceOptions,
   mainWindowBackgroundOptions,
 } from "../window-background";
-import { recoverRendererAfterGone } from "../renderer-recovery";
+import { noteRendererLoaded, recoverRendererAfterGone } from "../renderer-recovery";
 import { installWindowStateSync } from "../window-state-sync";
 
 function windowsIconPath(): string | undefined {
@@ -590,8 +591,13 @@ export async function createWindow({
     windowState.notificationViewingSessionId = null;
     if (windowState.mainWindow === window) resetMenuRendererReady(window);
   });
+  // A renderer that crashes before it ever finishes loading makes every
+  // reload futile: the breaker hands over to a one-time fallback (#2595).
+  const crashLoopFallback = createWindowRendererCrashLoopFallback({ state: windowState, dataDir, logger });
+  window.on("closed", crashLoopFallback.dispose);
   window.webContents.on("render-process-gone", (_event, details) => {
     windowState.notificationViewingSessionId = null;
+    crashLoopFallback.rendererGone();
     recoverRendererAfterGone(details, {
       isCurrentWindow: windowState.mainWindow === window,
       quitting: windowState.quitting,
@@ -599,6 +605,7 @@ export async function createWindow({
       windowDestroyed: window.isDestroyed(),
       webContentsDestroyed: window.webContents.isDestroyed(),
       reload: () => window.webContents.reload(),
+      onCrashLoopDetected: crashLoopFallback.crashLoopDetected,
       log: (rendererDetails, reloaded) => {
         logger.app(
           "diagnostics",
@@ -679,6 +686,10 @@ export async function createWindow({
     scheduleWorkPanelReservation();
   });
   window.webContents.on("did-finish-load", sendFullScreen);
+  window.webContents.on("did-finish-load", () => {
+    noteRendererLoaded();
+    crashLoopFallback.rendererLoaded();
+  });
 
   const sendMaximized = () => {
     if (window.isDestroyed() || window.webContents.isDestroyed()) return;

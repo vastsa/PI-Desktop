@@ -95,6 +95,28 @@ export function projectMessageEnd(
     : upsertLiveSessionMessage(next, event.message);
 }
 
+export function settleTranscriptAfterError(
+  messages: UiMessage[],
+  aborted: boolean,
+): UiMessage[] {
+  return messages
+    .filter((message) => !(
+      message.role === "assistant" &&
+      message.status === "aborted" &&
+      !message.content.trim() &&
+      !(message.thinking || "").trim()
+    ))
+    .map((message) => {
+      if (message.role === "tool" && message.toolStatus === "running") {
+        return { ...message, toolStatus: "error", status: "error", isError: true };
+      }
+      if (message.role === "assistant" && message.status === "streaming") {
+        return { ...message, status: aborted ? "aborted" : "error" };
+      }
+      return message;
+    });
+}
+
 /**
  * Collapse repeated transcript rows by their canonical message id.
  *

@@ -862,6 +862,8 @@ export const ko = {
     planning: "계획 중",
     approvalRegion: "계획 승인",
     readyAnnouncement: "계획이 준비되었습니다. 작업 패널에서 계획을 열었습니다.",
+    revisionPrompt: "어떤 부분을 수정할까요?",
+    sendRevision: "수정 요청 보내기",
     chooseApprovalMode: "승인 모드 선택",
     ask: "묻기",
     acceptEdits: "편집 허용",
@@ -3344,6 +3346,11 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
       continue: "계속",
       dismiss: "닫기",
     },
+  },
+  rendererCrash: {
+    title: "PI-Desktop를 시작할 수 없습니다",
+    body: "인터페이스가 시작 시 반복해서 충돌하여 자동 재시도를 중지했습니다. 자세한 내용은 로그 폴더에 있습니다. 문제가 계속되면 로그를 공유해 주세요.",
+    openLogs: "로그 폴더 열기",
   },
 } satisfies EnglishCatalog;
 

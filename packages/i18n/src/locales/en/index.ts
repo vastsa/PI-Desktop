@@ -865,6 +865,8 @@ deleteRunningSessionBlocked: "Stop the running session before deleting it.",
     planning: "Planning",
     approvalRegion: "Plan approval",
     readyAnnouncement: "Plan ready. The plan is open in the Work Panel.",
+    revisionPrompt: "What would you like to change?",
+    sendRevision: "Send revision request",
     chooseApprovalMode: "Choose approval mode",
     ask: "Ask",
     acceptEdits: "Accept edits",
@@ -3446,6 +3448,11 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       continue: "Continue",
       dismiss: "Dismiss",
     },
+  },
+  rendererCrash: {
+    title: "PI-Desktop could not start",
+    body: "The interface kept crashing on startup, so automatic retries were stopped. The log folder has the details; if this keeps happening, please share the logs with us.",
+    openLogs: "Open log folder",
   },
 } as const;
 

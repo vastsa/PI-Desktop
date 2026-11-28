@@ -2,6 +2,7 @@ import { app } from "electron";
 import { APP_ID, APP_NAME } from "@pi-desktop/shared";
 import { applyDevelopmentUserData, desktopDataDir } from "./data-paths";
 import { ignoreBrokenStdio } from "./logger";
+import { hasGpuFallbackMarker } from "./renderer-crash-loop";
 import { installMainProcessErrorHandlers } from "./main-process-errors";
 
 // Complete identity and locking synchronously, before the ready promise or any writer.
@@ -21,3 +22,6 @@ if (!hasSingleInstanceLock) app.quit();
 
 // Preserve the existing Chromium accessibility crash workaround before ready.
 app.commandLine.appendSwitch("disable-renderer-accessibility");
+// A spent renderer crash-loop fallback (#2595) also covers manual launches;
+// hardware acceleration can only be disabled before ready.
+if (hasGpuFallbackMarker(app.getPath("userData"))) app.disableHardwareAcceleration();

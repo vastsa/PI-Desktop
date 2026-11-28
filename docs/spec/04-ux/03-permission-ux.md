@@ -120,10 +120,9 @@ Session grants are unchanged and still per `toolName` per session: a delegate's
 - user may continue editing text
 - sending another prompt or changing active-session mode/provider/model/permission
   is blocked while a `pending` Plan or Goal approval exists
-- For a pending Plan or Goal proposal specifically, the existing draft is preserved and
-  the prompt becomes read-only. Composer mode, thinking, permission, model, and
-  send controls are disabled; the approval surface's Approve and Reject actions
-  remain enabled.
+- A local Plan keeps the draft editable for the revision flow in §9. For legacy
+  Goal and remote proposals the draft stays read-only. Mode, thinking, permission,
+  and model controls stay disabled while the card offers Approve and Reject.
 - the left-of-input Composer Agent/Plan/Goal chip and Composer model × reasoning
   picker re-enable when the
   host closes the approval as rejected, expired, or interrupted; terminal
@@ -161,6 +160,12 @@ approval validity/deadline. It offers only:
   the Session's execution permission when approval succeeds.
 - **Reject**, which stops the run and leaves the contract state active; a later
   turn must submit a new complete snapshot/artifact
+
+For a pending local Plan, the existing chat input accepts revision instructions.
+Typing preserves the pending approval. Send revision request (or the configured
+send shortcut) rejects that exact proposal, then submits the draft as a new
+planning turn in the same session. If rejection or delivery fails, the draft
+remains available. Only explicit approval can start execution.
 
 The card has distinct `pending`, `resolving`, `approved`, `queued`, `running`,
 `rejected`, `expired`, and `interrupted` states. Approval is enabled only for a
