@@ -126,4 +126,37 @@ describe("readNdjsonLines", () => {
       expect(input.listenerCount(event)).toBe(0);
     }
   });
+
+  it("detaches on close while discarding an oversized line", () => {
+    const input = new FakeNdjsonInput();
+    const failures: unknown[] = [];
+    const lines: string[] = [];
+    readNdjsonLines(input, (line) => lines.push(line), {
+      maxLineBytes: 8,
+      onFrameError: (error) => failures.push(error),
+    });
+    input.write("123456789");
+    input.destroy();
+    input.finish("discarded\nvalid\n");
+    expect(failures).toHaveLength(1);
+    expect(lines).toEqual([]);
+    for (const event of ["data", "end", "close"] as const) {
+      expect(input.listenerCount(event)).toBe(0);
+    }
+  });
+
+  it("counts a split surrogate pair as four bytes", () => {
+    const input = new FakeNdjsonInput();
+    const lines: string[] = [];
+    const errors: unknown[] = [];
+    readNdjsonLines(input, (line) => lines.push(line), {
+      maxLineBytes: 5,
+      onFrameError: (error) => errors.push(error),
+    });
+    input.write("\ud83d");
+    input.write("");
+    input.finish("\ude42\n");
+    expect(lines).toEqual(["🙂"]);
+    expect(errors).toEqual([]);
+  });
 });

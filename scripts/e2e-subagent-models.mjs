@@ -116,8 +116,13 @@ const lines = readNdjsonLines(child.stdout, (line) => {
       send(params.key === "fixture/dynamic" && dynamicEnabled
         ? { id: message.id, result: model("dynamic") }
         : { id: message.id, error: { code: -32000, message: "model is not enabled for delegation" } });
+    } else if (method === "session.get") {
+      const rows = histories.get(params.id) ?? [];
+      const messageEnd = Math.min(params.messageBefore ?? rows.length, rows.length);
+      const messageStart = Math.max(0, messageEnd - params.messageLimit);
+      send({ id: message.id, result: { session: { messages: rows.slice(messageStart, messageEnd), messageStart, messageEnd, hasMoreBefore: messageStart > 0 } } });
     } else {
-      send({ id: message.id, result: method === "session.get" ? { session: { messages: histories.get(params.id) ?? [] } } : {} });
+      send({ id: message.id, result: method === "session.restoreContext" ? { session: { messages: histories.get(params.id) ?? [], overflow: false, omittedMessages: 0, readBytes: 128 } } : {} });
     }
   } else if (message.id != null) {
     const entry = pending.get(message.id);

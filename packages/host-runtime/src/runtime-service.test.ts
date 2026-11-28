@@ -172,7 +172,10 @@ describe("RuntimeService manual compaction against a lost reply (#795)", () => {
       host.session = { ...host.session, compaction: record("c-new") };
     };
     await expect(service.compact("s1")).resolves.toEqual({ accepted: true });
-    expect(host.calls.filter((call) => call.method === "session.get")).toHaveLength(2);
+    expect(host.calls.filter((call) => call.method === "session.get").map((call) => call.params)).toEqual([
+      { id: "s1", messageLimit: 1, contentLimit: 1 },
+      { id: "s1", messageLimit: 1, contentLimit: 1 },
+    ]);
     expect(logs).toContainEqual({
       level: "warn",
       message: "manual compaction outlived its transport deadline; the checkpoint landed",
@@ -184,7 +187,10 @@ describe("RuntimeService manual compaction against a lost reply (#795)", () => {
     host.session = { ...host.session, compaction: record("c-old") };
     sidecar.compactError = timeout();
     await expect(service.compact("s1")).rejects.toThrow("sidecar RPC timeout: agent.compact");
-    expect(host.calls.filter((call) => call.method === "session.get")).toHaveLength(2);
+    expect(host.calls.filter((call) => call.method === "session.get").map((call) => call.params)).toEqual([
+      { id: "s1", messageLimit: 1, contentLimit: 1 },
+      { id: "s1", messageLimit: 1, contentLimit: 1 },
+    ]);
   });
 
   it("does not reconcile a sidecar verdict with a checkpoint from another attempt", async () => {
@@ -497,11 +503,15 @@ describe("RuntimeService prompt lifecycle", () => {
   });
 
   it("steers only the live turn and refuses once it ended", async () => {
-    const { sidecar, service } = build();
+    const { host, sidecar, service } = build();
     await service.prompt({ sessionId: "s1", content: "hello", effectivePermissionMode: "ask", principal: owner });
     expect(await service.steer({ sessionId: "s1", turnId: "turn-1", content: "also", principal: owner })).toEqual({ accepted: true });
     expect(sidecar.calls.at(-1)?.params).toMatchObject({ expectedTurnId: "turn-1", content: "also" });
     expect(await service.steer({ sessionId: "s1", turnId: "turn-9", content: "no", principal: owner })).toEqual({ accepted: false });
+    expect(host.calls.filter((call) => call.method === "session.get").map((call) => call.params)).toEqual([
+      { id: "s1", messageLimit: 1, contentLimit: 1 },
+      { id: "s1", messageLimit: 1, contentLimit: 1 },
+    ]);
   });
 
   it("refuses native Pi sessions and attachments the headless runtime cannot serve", async () => {

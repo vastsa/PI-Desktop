@@ -232,6 +232,9 @@ import {
 } from "./context-budget.js";
 import { PathMutex } from "./path-lock.js";
 import { DelegationChainRegistry } from "./delegation-chain.js";
+import { retainedTailForContext } from "./checkpoint-retained-tail.js";
+import { readArchivedTaskRows } from "./session-history-archive.js";
+import { installRestoredContextRecovery } from "./session-context-recovery.js";
 import {
   extractReadFiles,
   isReadOnlyToolName,
@@ -315,7 +318,6 @@ import {
 import {
   CHECKPOINT_TRUNCATION_MARKER,
   COMPACTION_RETAINED_TAIL_SHAPE,
-  replayRetainedTail,
   selectRecentTail,
 } from "./compaction-tail.js";
 import {
@@ -1157,6 +1159,10 @@ export type AgentRuntimeOptions = {
   /** Persisted transcript to seed the agent with (session isolation: each
    * session's agent carries only its own history). */
   history?: UiMessage[];
+  /** Restore overflow is explicit and must checkpoint before a model request. */
+  historyRecovery?: { omittedMessages: number; previousSummary?: string };
+  /** Older delegation history remains on disk until a task tool needs it. */
+  archivedHistory?: boolean;
   /** Latest host-owned checkpoint used only to rebuild model context. */
   compaction?: ContextCompactionRecord;
   compactionSettings?: ContextCompactionSettings;
@@ -1342,46 +1348,6 @@ type CheckpointBuildFailure = {
 
 type CheckpointBuild = CheckpointBuildSuccess | CheckpointBuildFailure;
 
-function compactionRetentionMode(details: unknown): CompactionRetentionMode {
-  // Checkpoints written before the task-boundary fix did not record whether
-  // their retained users belonged to an in-progress turn. Treat those
-  // records as active, but still reduce them to one latest user message so a
-  // restart cannot restore a sequence of executable-looking old requests.
-  return isRecord(details) && details.retainedTailMode === "completed_turn"
-    ? "completed_turn"
-    : "active_turn";
-}
-
-/**
- * The messages a stored checkpoint replays as real context after its summary.
- *
- * A checkpoint that recorded {@link COMPACTION_RETAINED_TAIL_SHAPE} keeps the
- * whole window it stored: it is a failed compaction's only record of the range
- * behind it, so narrowing the tail back to one user message would reinstate
- * exactly the amnesia the window fixes (#827). Records written before that
- * marker existed — and every successful checkpoint — keep the older
- * normalization: at most the latest user message, and none at all once the turn
- * is complete, so a restart cannot restore a sequence of executable-looking old
- * requests.
- */
-function retainedTailForContext(
-  value: unknown,
-  details?: unknown,
-): AgentMessage[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  if (
-    isRecord(details) &&
-    details.retainedTailShape === COMPACTION_RETAINED_TAIL_SHAPE
-  ) {
-    return replayRetainedTail(value) ?? [];
-  }
-  const messages = value
-    .filter(isRecord)
-    .filter((message) => message.role === "user") as unknown as AgentMessage[];
-  if (compactionRetentionMode(details) === "completed_turn") return [];
-  const latestUser = messages.at(-1);
-  return latestUser ? [latestUser] : [];
-}
 
 function safeJson(value: unknown): string {
   try {
@@ -1974,6 +1940,9 @@ export class DesktopAgentRuntime {
   /** Transcript rows used to rebuild a resumed delegate's context (ADR 0279):
    * the seed history at launch plus every row this session's delegates emit. */
   private readonly transcriptHistory: UiMessage[];
+  private historyRecovery?: AgentRuntimeOptions["historyRecovery"];
+  private archivedHistory = false;
+  private archiveLoad?: Promise<void>;
   /** Row ids already in `transcriptHistory` from live delegate events, so a
    * retried stream appends once. */
   private readonly appendedDelegationRowIds = new Set<string>();
@@ -2239,6 +2208,8 @@ export class DesktopAgentRuntime {
     const runtimeApiKey = providerRequestKey(this.provider);
 
     this.transcriptHistory = [...(opts.history ?? [])];
+    this.historyRecovery = opts.historyRecovery;
+    this.archivedHistory = opts.archivedHistory === true;
     this.fullEntries = this.historyToEntries(this.transcriptHistory, opts.compaction?.throughMessageId);
     this.uniqueToolCalls = createToolCallIdentity(this.fullEntries.map((entry) => entry.message));
     this.activeCompaction = opts.compaction;
@@ -5277,6 +5248,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         if (resume && modelOverride) return fail("Resuming a subagent cannot change its model. Omit `model` or start a new delegation.");
         const parsedScope = parseWriteScope(args.scope);
         if (parsedScope.kind === "invalid") return fail(parsedScope.reason);
+        if (resume || args.userRequest !== undefined) await this.loadArchivedTaskHistory();
+        if (cancelled()) return fail(parentEnded);
         const resumeLookup = resume ? this.resolveResumeChain(resume, definition.name) : undefined;
         if (resumeLookup && !resumeLookup.ok) return fail(resumeLookup.message);
         const resumedChain = resumeLookup?.chain;
@@ -6328,6 +6301,39 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     });
   }
 
+  private async loadArchivedTaskHistory(): Promise<void> {
+    if (!this.archivedHistory) return;
+    await (this.archiveLoad ??= (async () => {
+      const rows = await readArchivedTaskRows(this.host, this.sessionId);
+      if (this.disposed || this.runCancelled) throw turnAbortedError("Archived history load aborted");
+      const liveIds = new Set(this.transcriptHistory.map(row => row.id));
+      this.transcriptHistory.unshift(...rows.filter(row => !liveIds.has(row.id)));
+      this.delegationChains.hydrateMissing(rebuildChainsFromTranscript(this.transcriptHistory));
+      this.archivedHistory = false;
+    })().catch(error => { this.archiveLoad = undefined; throw error; }));
+  }
+
+  private async recoverRestoredContext(): Promise<void> {
+    const recovery = this.historyRecovery;
+    if (!recovery) return;
+    if (!this.compactionEnabled) throw Object.assign(new Error("Active history exceeds the restore budget while automatic context recovery is disabled"), { errorCode: "CONTEXT_TOO_LARGE" });
+    const recovered = await installRestoredContextRecovery({
+      history: this.transcriptHistory,
+      recovery,
+      provider: this.provider,
+      model: this.model,
+      host: this.host,
+      sessionId: this.sessionId,
+      cancelled: () => this.runCancelled || this.disposed,
+    });
+    this.activeCompaction = recovered;
+    this.fullEntries = this.historyToEntries(this.transcriptHistory, recovered.throughMessageId);
+    this.setAgentMessages(this.liveSessionContext().messages);
+    this.historyRecovery = undefined;
+    this.emit({ type: "compaction_end", reason: "threshold", ok: true, tokensBefore: recovered.tokensBefore,
+      firstKeptMessageId: recovered.firstKeptMessageId, willRetry: false, fallback: "retained_tail", mark: contextCompactionMark(recovered) });
+  }
+
   /** `TaskList`: report on the session's delegations (ADR 0089). */
   private buildSubagentListTool(): AgentTool {
     return {
@@ -6338,6 +6344,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       parameters: Type.Object({}),
       executionMode: "sequential",
       execute: async () => {
+        await this.loadArchivedTaskHistory();
         const delegations = [...this.delegations.values()].sort(
           (left, right) => left.startedAt - right.startedAt,
         );
@@ -8245,6 +8252,13 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
 
     this.activeCompaction = checkpoint;
+    const boundary = this.fullEntries.findIndex(entry => entry.id === checkpoint.throughMessageId);
+    if (boundary >= 0) this.fullEntries = this.fullEntries.slice(Math.max(0, boundary - 1)).map((entry, seq) => ({ ...entry, seq }));
+    const keptIds = new Set(this.fullEntries.map(entry => entry.id));
+    const keptRows = this.transcriptHistory.filter(row => keptIds.has(row.id));
+    this.transcriptHistory.splice(0, this.transcriptHistory.length, ...keptRows);
+    this.archivedHistory = true;
+    this.archiveLoad = undefined;
     // A new window means both reminders are available again, matching Codex
     // resetting its `claim_*` flags when the context window turns over.
     this.contextReminderClaimed = false;
@@ -8758,6 +8772,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   }
 
   async compactManually(): Promise<void> {
+    if (this.historyRecovery) throw Object.assign(new Error("Continue the session to install its bounded recovery checkpoint before manual compaction"), { errorCode: "CONTEXT_TOO_LARGE" });
     if (this.disposed) throw new Error("runtime disposed");
     if (this.agent.state.isStreaming || this.compactionInProgress) {
       throw Object.assign(new Error("session already has an active turn"), {
@@ -9583,9 +9598,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         errorCode: "TURN_NOT_FOUND",
       });
     }
-    return this.trackTurnOperation(durableTurnId, () =>
-      this.executeApprovedPlanTurn(execution, durableTurnId),
-    );
+    return this.trackTurnOperation(durableTurnId, async () => {
+      await this.recoverRestoredContext();
+      return this.executeApprovedPlanTurn(execution, durableTurnId);
+    });
   }
 
   private async executeApprovedPlanTurn(
@@ -9821,6 +9837,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       // must include capability negotiation, not observe a falsely idle turn.
       await this.batchPlanner.negotiate(Boolean(this.remoteWorkspace));
       if (this.runCancelled || this.disposed) throw turnAbortedError("Turn aborted during Host capability negotiation");
+      await this.recoverRestoredContext();
       // The run context decides this turn's policy level, CompleteStage and
       // the stage brief, so it is applied before the tools are rebuilt.
       const modeTurn = typeof input === "string" ? undefined : input.modeTurn;
@@ -10199,6 +10216,8 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     const closingExtensions = runner?.dispose();
     this.streamSink.dispose();
     this.disposed = true;
+    this.archiveLoad = undefined;
+    this.historyRecovery = undefined;
     this.acceptingSteering = false;
     this.runCancelled = true;
     this.steeringWaitAbort?.abort();

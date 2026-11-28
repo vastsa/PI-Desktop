@@ -36,7 +36,7 @@ test("the computer-use switch reaches the Agent tool catalog and retires a stale
   lines.on("line", (line) => {
     const value = JSON.parse(line);
     if (value.method === "host.proxy") {
-      if (value.params.method === "session.get") send({ id: value.id, result: { session: { messages: [] } } });
+      if (value.params.method === "session.restoreContext") send({ id: value.id, result: { session: { messages: [], overflow: false, omittedMessages: 0, readBytes: 0 } } });
       else if (value.params.method === "tools.fileBatchCapabilities") send({ id: value.id, result: { version: 1, supported: false } });
       else send({ id: value.id, result: null });
     } else if (value.id && responses.has(value.id)) {

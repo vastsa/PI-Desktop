@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import {
   ErrorCodes,
   MAX_HOST_STDIN_LINE_BYTES,
+  MAX_HOST_STDOUT_LINE_BYTES,
+  type NdjsonFrameError,
   PROTOCOL_VERSION,
   readNdjsonLines,
   rpcTimeoutMs,
@@ -37,6 +39,8 @@ export type HostProcessOptions = {
    * (D340); entries here are applied on top.
    */
   env?: Record<string, string | undefined>;
+  /** Optional lower cap for a single host stdout frame. */
+  maxResponseLineBytes?: number;
   /** Receives raw stderr text as it arrives; the embedding host owns redaction and logging. */
   onStderr: StderrHandler;
   /**
@@ -57,6 +61,13 @@ function isHostOverloaded(error: unknown): boolean {
     candidate?.errorCode === ErrorCodes.HOST_OVERLOADED ||
     candidate?.data?.errorCode === ErrorCodes.HOST_OVERLOADED
   );
+}
+
+function responseIdFromPrefix(prefix: string): string | undefined {
+  // Host emits the ID immediately after jsonrpc. Match only a complete,
+  // top-level ID at the start of the response envelope.
+  const header = /^[ \t\r]*\{[ \t\r]*(?:"jsonrpc"[ \t\r]*:[ \t\r]*"2\.0"[ \t\r]*,[ \t\r]*)?"id"[ \t\r]*:[ \t\r]*"([0-9a-f-]{36})"[ \t\r]*(?=[,}])/;
+  return header.exec(prefix)?.[1];
 }
 
 /**
@@ -139,9 +150,10 @@ export class HostProcess {
       if (this.exitObserved) this.cleanupProcessListeners();
     });
 
-    this.stdoutReader = readNdjsonLines(this.child.stdout, (line) =>
-      this.onLine(line),
-    );
+    this.stdoutReader = readNdjsonLines(this.child.stdout, (line) => this.onLine(line), {
+      maxLineBytes: options.maxResponseLineBytes ?? MAX_HOST_STDOUT_LINE_BYTES,
+      onFrameError: (failure) => this.onResponseFrameError(failure),
+    });
   }
 
   private closeTransport(error: Error) {
@@ -218,6 +230,21 @@ export class HostProcess {
     if (this.closed) return () => undefined;
     this.exitHandlers.add(handler);
     return () => this.exitHandlers.delete(handler);
+  }
+
+  private onResponseFrameError({ kind, prefix, observedBytes, limitBytes }: NdjsonFrameError) {
+    const id = responseIdFromPrefix(prefix);
+    const pending = id === undefined ? undefined : this.pending.get(id);
+    const message = kind === "limit"
+      ? "Host response exceeds the stdout line byte limit"
+      : "Host response line could not be assembled";
+    const errorCode = kind === "limit" ? ErrorCodes.LIMIT_EXCEEDED : ErrorCodes.INTERNAL;
+    pending?.reject(Object.assign(new Error(message), {
+      code: kind === "limit" ? 1002 : 1000,
+      errorCode,
+      data: { errorCode, scope: "host-response", observedBytes, limitBytes },
+    }));
+    console.warn(`[RPC] ${message} (${observedBytes} bytes observed, limit ${limitBytes})`);
   }
 
   private onLine(line: string) {

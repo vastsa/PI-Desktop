@@ -47,29 +47,92 @@ describe("host ports", () => {
     });
   });
 
-  it("pages history backwards from an item id", async () => {
-    const messages = ["m1", "m2", "m3", "m4"].map((id) => ({
-      id,
-      role: "assistant" as const,
-      content: id,
-      createdAt: "2026-09-18T00:00:00.000Z",
-      status: "complete" as const,
-    }));
+  it("fetches the newest and older history windows, keeping item cursors exclusive per session", async () => {
+    const calls: Array<Record<string, unknown>> = [];
     const port = createHostSessionPort(() => ({
-      async call<T>() {
-        return { session: { id: "s1", messages } } as T;
+      async call<T>(method: string, params: Record<string, unknown> = {}) {
+        expect(method).toBe("session.historyPage");
+        calls.push(params);
+        const { id, messageLimit, beforeItemId } = params;
+        const ids = id === "s1" ? ["m1", "m2", "m3", "shared", "m5"] : ["x1", "shared", "x3"];
+        const anchor = typeof beforeItemId === "string" ? ids.indexOf(beforeItemId) : -1;
+        const end = anchor === -1 ? ids.length : anchor;
+        const start = Math.max(0, end - Number(messageLimit));
+        const messages = ids.slice(start, end).map((id) => ({
+          id, role: "assistant", content: `資料 ${id} 🧭`, createdAt: "2026-09-18T00:00:00.000Z", status: "complete",
+        }));
+        return { messages, hasMoreBefore: start > 0 } as T;
       },
     }));
-    const page = await port.history("s1", { limit: 2, beforeItemId: "m4" });
+    const tail = await port.history("s1", { limit: 2 });
+    expect(tail.items.map((item) => item.id)).toEqual(["shared", "m5"]);
+    expect(tail.hasMore).toBe(true);
+    expect(tail.items[0]?.content).toMatchObject({ content: "資料 shared 🧭" });
+    const page = await port.history("s1", { limit: 2, beforeItemId: "shared" });
     expect(page.items.map((item) => item.id)).toEqual(["m2", "m3"]);
     expect(page.hasMore).toBe(true);
-    const tail = await port.history("s1", { limit: 10 });
-    expect(tail.items.map((item) => item.id)).toEqual(["m1", "m2", "m3", "m4"]);
-    expect(tail.hasMore).toBe(false);
+    const first = await port.history("s1", { limit: 2, beforeItemId: "m2" });
+    expect(first.items.map((item) => item.id)).toEqual(["m1"]);
+    expect(first.hasMore).toBe(false);
+    await expect(port.history("s1", { limit: 2, beforeItemId: "m1" })).resolves.toEqual({ items: [], hasMore: false });
+    const other = await port.history("s2", { limit: 2, beforeItemId: "shared" });
+    expect(other.items.map((item) => item.id)).toEqual(["x1"]);
+    expect(other.hasMore).toBe(false);
+    await expect(port.history("s1", { limit: 2, beforeItemId: "deleted" })).resolves.toEqual(tail);
+    expect(calls).toEqual([
+      { id: "s1", messageLimit: 2 },
+      { id: "s1", messageLimit: 2, beforeItemId: "shared" },
+      { id: "s1", messageLimit: 2, beforeItemId: "m2" },
+      { id: "s1", messageLimit: 2, beforeItemId: "m1" },
+      { id: "s2", messageLimit: 2, beforeItemId: "shared" },
+      { id: "s1", messageLimit: 2, beforeItemId: "deleted" },
+    ]);
     expect(await createHostSessionPort(() => null).get("s1")).toBeNull();
   });
 
-  it("bounds the transcript read for metadata lookups but not for history pages", async () => {
+  it("walks one-item logical pages using first position and the newest payload", async () => {
+    const pages = new Map([
+      [undefined, { id: "D", content: "D", hasMore: true }],
+      ["D", { id: "C", content: "C", hasMore: true }],
+      ["C", { id: "B", content: "Bnew", hasMore: true }],
+      ["B", { id: "A", content: "A", hasMore: false }],
+    ]);
+    const port = createHostSessionPort(() => ({
+      async call<T>(method: string, { id, messageLimit, beforeItemId }: Record<string, unknown> = {}) {
+        expect(method).toBe("session.historyPage");
+        expect(id).toBe("s1");
+        expect(messageLimit).toBe(1);
+        const page = pages.get(typeof beforeItemId === "string" ? beforeItemId : undefined);
+        if (!page) throw new Error("Unexpected history cursor");
+        return { messages: [{ id: page.id, role: "assistant", content: page.content }], hasMoreBefore: page.hasMore } as T;
+      },
+    }));
+    let beforeItemId: string | undefined;
+    for (const content of ["D", "C", "Bnew", "A"]) {
+      const page = await port.history("s1", { limit: 1, beforeItemId });
+      expect(page).toMatchObject({ items: [{ content: { content } }], hasMore: content !== "A" });
+      beforeItemId = page.items[0]?.id;
+    }
+  });
+
+  it("shrinks an oversize history page without clipping an item's content", async () => {
+    const content = "資料 🧭".repeat(100);
+    const port = createHostSessionPort(() => ({
+      async call<T>(_method: string, params: Record<string, unknown> = {}) {
+        expect(_method).toBe("session.historyPage");
+        expect(params).not.toHaveProperty("contentLimit");
+        if (params.messageLimit !== 1) throw Object.assign(new Error("response too large"), { errorCode: "LIMIT_EXCEEDED" });
+        return {
+          messages: [{ id: "latest", role: "assistant", content, createdAt: "2026-09-18T00:00:00.000Z", status: "complete" }],
+          hasMoreBefore: true,
+        } as T;
+      },
+    }));
+    const page = await port.history("s1", { limit: 2 });
+    expect(page).toMatchObject({ items: [{ id: "latest", content: { content } }], hasMore: true });
+  });
+
+  it("bounds both the message count and message content for metadata lookups", async () => {
     const calls: Array<Record<string, unknown> | undefined> = [];
     const port = createHostSessionPort(() => ({
       async call<T>(_method: string, params?: Record<string, unknown>) {
@@ -78,8 +141,7 @@ describe("host ports", () => {
       },
     }));
     await port.get("s1");
-    await port.history("s1", { limit: 10 });
-    expect(calls).toEqual([{ id: "s1", messageLimit: 1 }, { id: "s1" }]);
+    expect(calls).toEqual([{ id: "s1", messageLimit: 1, contentLimit: 1 }]);
   });
 
   it("decorates the attach summary with the project id resolved from the project path", async () => {

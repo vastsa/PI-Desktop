@@ -9,6 +9,7 @@ import type {
   SessionSummary,
 } from "@pi-desktop/agent-host";
 import { RacpError } from "@pi-desktop/agent-host";
+import { ErrorCodes } from "@pi-desktop/shared";
 import type {
   RacpItemSummary,
   RacpPermissionMode,
@@ -152,50 +153,47 @@ export async function withSessionProjectIds(
 
 type ProjectRow = { id: number; path: string; name?: string };
 
-/** Session metadata and transcript pages straight from host `session.get`. */
-export function createHostSessionPort(
-  getHost: () => HostRpc | null,
-): SessionPort {
-  // `messageLimit` bounds the transcript read; metadata lookups need no messages.
-  async function fetchSession(
-    sessionId: string,
-    messageLimit?: number,
-  ): Promise<HostSessionRecord | null> {
-    const host = getHost();
-    if (!host) return null;
-    const result = await host.call<{ session?: HostSessionRecord | null }>(
-      "session.get",
-      {
-        id: sessionId,
-        ...(messageLimit === undefined ? {} : { messageLimit }),
-      },
-    );
-    return result.session ?? null;
-  }
+/** Limit only the message projection; launch settings and checkpoint data are unchanged. */
+const SESSION_METADATA_WINDOW = { messageLimit: 1, contentLimit: 1 } as const;
+
+type HostHistoryPage = { messages: UiMessage[]; hasMoreBefore: boolean };
+
+/** Session metadata and logical history pages from host-core. */
+export function createHostSessionPort(getHost: () => HostRpc | null): SessionPort {
   return {
     async get(sessionId) {
-      const record = await fetchSession(sessionId, 1);
+      const host = getHost();
+      if (!host) return null;
+      const { session: record } = await host.call<{ session?: HostSessionRecord | null }>(
+        "session.get",
+        { id: sessionId, ...SESSION_METADATA_WINDOW },
+      );
       if (!record) return null;
       // Attach consumers replace their cached summary with this one, so the
-      // project id must survive the same decoration as `session/list` (the
-      // renderer groups rows by it; a bare record drops the row from its
-      // project group).
-      const host = getHost();
-      if (!host) return toSessionSummary(record);
+      // project id must survive the same decoration as `session/list`.
       return (await withSessionProjectIds(host, [record]))[0] ?? null;
     },
     async history(sessionId, { limit, beforeItemId }) {
-      const record = await fetchSession(sessionId);
-      const messages = record?.messages ?? [];
-      const end = beforeItemId
-        ? messages.findIndex((message) => message.id === beforeItemId)
-        : messages.length;
-      const cut = end === -1 ? messages.length : end;
-      const start = Math.max(0, cut - limit);
-      return {
-        items: messages.slice(start, cut).map(toRacpItem),
-        hasMore: start > 0,
-      };
+      const host = getHost();
+      if (!host) return { items: [], hasMore: false };
+
+      let messageLimit = Number.isFinite(limit) ? Math.max(1, Math.min(1_000, Math.floor(limit))) : 1;
+      for (;;) {
+        try {
+          const page = await host.call<HostHistoryPage>("session.historyPage", {
+            id: sessionId,
+            messageLimit,
+            ...(beforeItemId !== undefined ? { beforeItemId } : {}),
+          });
+          return { items: page.messages.map(toRacpItem), hasMore: page.hasMoreBefore };
+        } catch (error) {
+          const failure = error as { errorCode?: unknown; data?: { errorCode?: unknown } } | null;
+          if ((failure?.data?.errorCode ?? failure?.errorCode) !== ErrorCodes.LIMIT_EXCEEDED || messageLimit === 1) {
+            throw error;
+          }
+          messageLimit = Math.max(1, Math.floor(messageLimit / 2));
+        }
+      }
     },
   };
 }

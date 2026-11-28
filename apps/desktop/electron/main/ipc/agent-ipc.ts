@@ -177,7 +177,7 @@ export function registerAgentIpc({
       context.supportsVision, steerContent,
     );
     const session = await host.call<{ session?: { messages?: UiMessage[] } }>("session.get", {
-      id: req.sessionId, messageLimit: 1,
+      id: req.sessionId, messageLimit: 1, contentLimit: 1,
     });
     const message: UiMessage = {
       id: durableUserMessageId(req.messageId, session.session?.messages ?? []),
@@ -279,7 +279,7 @@ export function registerAgentIpc({
     const settings = await host.call<any>("settings.get");
     const sessionResult = await host.call<{ session?: any }>("session.get", {
       id: req.sessionId,
-      messageLimit: 1,
+      messageLimit: 1, contentLimit: 1,
     });
     let session = sessionResult.session;
     if (!session) {
@@ -376,7 +376,7 @@ export function registerAgentIpc({
       }
       const refreshed = await host.call<{ session?: any }>("session.get", {
         id: req.sessionId,
-        messageLimit: 1,
+        messageLimit: 1, contentLimit: 1,
       });
       session = refreshed.session ?? session;
     }
@@ -754,7 +754,7 @@ export function registerAgentIpc({
       }
       const settings = await host.call<any>("settings.get");
       detail = await host.call<{ session?: any }>("session.get", {
-        id: req.sessionId,
+        id: req.sessionId, messageLimit: 1, contentLimit: 1,
       });
       if (!detail.session) {
         throw Object.assign(new Error("Session not found"), {
@@ -786,7 +786,7 @@ export function registerAgentIpc({
       } catch (error) {
         if (!isRpcTimeoutError(error)) throw error;
         const settled = await host.call<{ session?: unknown }>("session.get", {
-          id: req.sessionId,
+          id: req.sessionId, messageLimit: 1, contentLimit: 1,
         });
         const landed = compactionRecordId(settled.session);
         if (landed === startedWith) throw error;

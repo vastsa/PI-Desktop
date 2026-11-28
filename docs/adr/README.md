@@ -430,3 +430,5 @@ git history.
 | plugin-transcript-selection-views | [Docked views can accept transcript selections](plugin-transcript-selection-views.md) | Accepted (issue #2395) |
 | opt-in-background-job-continuation | [Opt-in background job continuation](opt-in-background-job-continuation.md) | Proposed (#2143) |
 | plugin-turn-observation-model-context-and-suggestion-targets | [Publish turn observations, scoped model context, and Composer suggestion targets](plugin-turn-observation-model-context-and-suggestion-targets.md) | Accepted (#2470) |
+
+| bounded-session-context-restoration | [Bounded session context restoration](bounded-session-context-restoration.md) | Accepted |

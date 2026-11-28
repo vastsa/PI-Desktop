@@ -43,6 +43,18 @@ export async function createProductionWorkHarness(t, server, options = {}) {
         if (terminalSeen) historyReadsAfterTerminal += 1;
         return { session: sessionRecord() };
       }
+      if (method === "session.historyPage") {
+        assert.equal(params.id, WORK_SESSION_ID);
+        assert.ok(Number.isInteger(params.messageLimit) && params.messageLimit > 0);
+        if (terminalSeen) historyReadsAfterTerminal += 1;
+        const messages = sessionRecord().messages;
+        const cursor = params.beforeItemId === undefined
+          ? messages.length
+          : messages.findIndex(message => message.id === params.beforeItemId);
+        const end = cursor < 0 ? messages.length : cursor;
+        const start = Math.max(0, end - params.messageLimit);
+        return { messages: messages.slice(start, end), hasMoreBefore: start > 0 };
+      }
       if (method === "settings.get") return {};
       if (method === "session.beginTurn") return { turnId: `durable-turn-${++durableTurnSequence}` };
       if (method === "session.appendMessage") { persistedMessages.push(params.message); return {}; }

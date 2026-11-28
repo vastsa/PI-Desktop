@@ -35,6 +35,7 @@ const [
   contextBudget,
   delegationHistory,
   compactionTail,
+  checkpointRetainedTail,
 ] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
   readSharedTypesSource(),
@@ -58,6 +59,7 @@ const [
   read("../../../packages/agent-runtime/src/context-budget.ts"),
   read("../../../packages/agent-runtime/src/delegation-history.ts"),
   read("../../../packages/agent-runtime/src/compaction-tail.ts"),
+  read("../../../packages/agent-runtime/src/checkpoint-retained-tail.ts"),
 ]);
 
 test("context compaction is wired through protocol v11 and the manual IPC path", () => {
@@ -329,8 +331,10 @@ test("a failed compaction checkpoint still restores a non-empty context", () => 
   );
   // The shape marker is what keeps a rebuild from narrowing the window back to
   // one user message, so the read gate has to test it.
+  assert.match(runtime, /import \{ retainedTailForContext \} from "\.\/checkpoint-retained-tail\.js"/);
+  assert.match(runtime, /retainedTailForContext\(checkpoint\.retainedTail, checkpoint\.details\)/);
   assert.match(
-    runtime,
+    checkpointRetainedTail,
     /details\.retainedTailShape === COMPACTION_RETAINED_TAIL_SHAPE/,
   );
   // Only a range the planner cannot split falls back at all; a prompt that is
