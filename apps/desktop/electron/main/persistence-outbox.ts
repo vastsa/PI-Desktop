@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { link, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { decodeBinaryStorage, encodeBinaryStorage } from "@pi-desktop/host-runtime";
@@ -20,7 +21,10 @@ type MessageAppend = {
 type QuarantinedAppend = MessageAppend & {
   quarantinedAt: string;
   reason: string;
+  quarantineId?: string;
 };
+
+type PendingQuarantine = QuarantinedAppend & { pendingQuarantineId: string };
 
 type OutboxLogger = (level: "warn" | "error", message: string, data?: unknown) => void;
 
@@ -91,7 +95,7 @@ export class PersistenceOutbox {
     getHost: () => HostProcess | null,
   ): Promise<void> {
     await this.loaded;
-    const existing = this.entries.findIndex((item) => item.key === entry.key);
+    const existing = this.entries.findIndex((item) => item.key === entry.key && !isPendingQuarantine(item));
     if (existing >= 0) this.entries[existing] = entry;
     else {
       if (this.entries.length >= MAX_ENTRIES) await this.flush(getHost);
@@ -107,7 +111,9 @@ export class PersistenceOutbox {
       this.entries.push(entry);
     }
     await this.persist();
-    void this.flush(getHost);
+    void this.flush(getHost).catch((error: unknown) => {
+      this.logger("error", "session persistence background flush failed", String(error));
+    });
   }
 
   async flush(getHost: () => HostProcess | null): Promise<void> {
@@ -133,6 +139,7 @@ export class PersistenceOutbox {
     if (!entriesChanged && !deadLettersChanged) return;
     this.entries = next;
     this.deadLetters = nextDeadLetters;
+    if (this.headRetry?.entry.sessionId === sessionId) this.headRetry = null;
     if (entriesChanged) await this.persist();
     if (deadLettersChanged) await this.persistDeadLetters();
   }
@@ -179,6 +186,10 @@ export class PersistenceOutbox {
   private async flushLoop(getHost: () => HostProcess | null): Promise<void> {
     while (this.entries.length > 0) {
       const current = this.entries[0];
+      if (isPendingQuarantine(current)) {
+        await this.finishQuarantine(current);
+        continue;
+      }
       const currentHost = getHost();
       if (!currentHost || !currentHost.isAvailable()) return;
       // Bounded backoff: a head that just failed is not retried on every
@@ -231,6 +242,8 @@ export class PersistenceOutbox {
             data: String(error),
           });
         } else {
+          // A deleted session can be enqueued under the same key before its old call settles.
+          if (this.entries[0] !== current && this.headRetry?.entry !== current) continue;
           const attempts = this.noteTransientFailure(current, currentHost);
           if (attempts < MAX_TRANSIENT_ATTEMPTS) {
             // Transient failure (host busy/overloaded/pipe dead). Keep the head
@@ -248,7 +261,7 @@ export class PersistenceOutbox {
           // An error the outbox cannot classify as permanent or as a
           // duplicate recurs on every retry. Quarantine the head instead of
           // blocking the whole application queue behind it forever (#1560).
-          await this.quarantine(current, attempts, error);
+          this.stageQuarantine(current, error);
           continue;
         }
       }
@@ -268,33 +281,51 @@ export class PersistenceOutbox {
     return attempts;
   }
 
-  /** Move a head the host keeps refusing into the dead-letter file. */
-  private async quarantine(entry: MessageAppend, attempts: number, error: unknown): Promise<void> {
-    this.deadLetters.push({
+  private stageQuarantine(entry: MessageAppend, error: unknown): void {
+    const pending: PendingQuarantine = {
       ...entry,
+      pendingQuarantineId: randomUUID(),
       quarantinedAt: new Date(this.now()).toISOString(),
       reason: String(error),
-    });
-    while (this.deadLetters.length > this.maxDeadLetters) {
-      const dropped = this.deadLetters.shift();
-      this.logger("warn", "session persistence outbox dead letter discarded", {
-        key: dropped?.key,
-        sessionId: dropped?.sessionId,
-        max: this.maxDeadLetters,
-        file: this.deadLetterPath,
-      });
+    };
+    if (this.entries[0] === entry) {
+      this.entries[0] = pending;
+    } else {
+      // Keep the newer snapshot that replaced this one during the host call.
+      this.entries.unshift(pending);
     }
+    this.headRetry = null;
+  }
+
+  private async finishQuarantine(entry: PendingQuarantine): Promise<void> {
+    // Commit the decision and its identity in the source before touching the archive.
+    // A restart can then resume the transfer without sending this snapshot to the host.
+    await this.persist();
+    if (this.entries[0] !== entry) return; // The session was deleted during the write.
+    const { pendingQuarantineId, ...letter } = entry;
+    if (!this.deadLetters.some((item) => item.quarantineId === pendingQuarantineId)) {
+      this.deadLetters.push({ ...letter, quarantineId: pendingQuarantineId });
+      while (this.deadLetters.length > this.maxDeadLetters) {
+        const dropped = this.deadLetters.shift();
+        this.logger("warn", "session persistence outbox dead letter discarded", {
+          key: dropped?.key,
+          sessionId: dropped?.sessionId,
+          max: this.maxDeadLetters,
+          file: this.deadLetterPath,
+        });
+      }
+    }
+    // An earlier archive write may have failed after updating the in-memory list.
+    await this.persistDeadLetters();
+    if (this.entries[0] !== entry) return;
+    await this.persist(entry);
     this.logger("error", "session persistence flush quarantined entry", {
       key: entry.key,
       sessionId: entry.sessionId,
-      attempts,
+      attempts: MAX_TRANSIENT_ATTEMPTS,
       file: this.deadLetterPath,
-      data: String(error),
+      data: entry.reason,
     });
-    if (this.entries[0] === entry) this.entries.shift();
-    this.headRetry = null;
-    await this.persist();
-    await this.persistDeadLetters();
   }
 
   private async load(): Promise<void> {
@@ -399,11 +430,10 @@ export class PersistenceOutbox {
       if (!Array.isArray(parsed)) throw new Error("Invalid session persistence dead letters: expected an array");
       this.deadLetters = parsed.map((value) => {
         const entry = decodeAppend(value);
-        if (!("quarantinedAt" in entry) || typeof entry.quarantinedAt !== "string" ||
-            !("reason" in entry) || typeof entry.reason !== "string") {
+        if (!isDeadLetter(entry)) {
           throw new Error("Invalid session persistence dead letter entry");
         }
-        return entry as QuarantinedAppend;
+        return entry;
       });
     } catch (error: unknown) {
       if (!isMissingFile(error)) {
@@ -413,11 +443,14 @@ export class PersistenceOutbox {
     }
   }
 
-  private async persist(): Promise<void> {
+  private async persist(archived?: PendingQuarantine): Promise<void> {
     const write = this.persistChain.then(async () => {
       await mkdir(dirname(this.path), { recursive: true });
-      await writeFile(this.tempPath, `${JSON.stringify(this.entries.map(encodeBinaryStorage))}\n`, "utf8");
+      const entries = archived ? this.entries.filter((entry) => entry !== archived) : this.entries;
+      await writeFile(this.tempPath, `${JSON.stringify(entries.map(encodeBinaryStorage))}\n`, "utf8");
       await rename(this.tempPath, this.path);
+      // Keep a failed cleanup visible to a later flush or session deletion.
+      if (archived && this.entries[0] === archived) this.entries.shift();
     });
     this.persistChain = write.catch(() => undefined);
     await write;
@@ -432,6 +465,15 @@ export class PersistenceOutbox {
     this.persistChain = write.catch(() => undefined);
     await write;
   }
+}
+
+function isDeadLetter(entry: MessageAppend): entry is QuarantinedAppend {
+  return "quarantinedAt" in entry && typeof entry.quarantinedAt === "string" &&
+    "reason" in entry && typeof entry.reason === "string";
+}
+
+function isPendingQuarantine(entry: MessageAppend): entry is PendingQuarantine {
+  return "pendingQuarantineId" in entry && typeof entry.pendingQuarantineId === "string" && isDeadLetter(entry);
 }
 
 function isDuplicateMessageIdError(error: unknown): boolean {

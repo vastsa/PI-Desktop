@@ -685,23 +685,34 @@ Host execution baseline:
   remembered tab whose side has become empty falls back to the other side. The
   container gates on an active session that allows local tools, the same
   condition the todo dock already used.
-- **A newly started task never steals the tab.** While the tasks panel is not the
-  one on screen, new tasks raise a count badge on its tab; entering that tab
-  clears the badge. Clicking a tab while collapsed also expands the container,
-  because otherwise the click would appear to do nothing.
-- A finished background task is not permanent furniture. Its row lives for a
-  10-second grace window after the renderer observed the task end, so the exit
-  code stays readable, then it leaves the container. A task that had already
-  finished when the renderer first loaded is registry history and never appears.
-  An open output preview pins its row so a log being read cannot vanish
-  underneath it.
+- **A newly started task never steals the tab.** The tasks tab carries a count
+  badge that mirrors the session's live work: it rises when a task starts and
+  falls as tasks end, hiding at zero; entering a tab, collapsing the container,
+  or switching to Todo never changes it (#2632). Clicking a tab while collapsed
+  also expands the container, because otherwise the click would appear to do
+  nothing.
+- A finished background task leaves the container as soon as its end state
+  arrives: the badge falls and the row goes, with no post-exit grace window.
+  Only the row whose output preview is open stays on screen, so a log being read
+  cannot vanish underneath it — and the auto tab rule never switches the panel
+  away from an open read (#2632, #2634). The preview pin ends when its preview
+  leaves the screen — collapse, or the panel on screen becoming Todo — unless
+  the task still runs: a running task's preview survives the switch, so coming
+  back to the tasks tab picks up the same read; a task that ends while hidden
+  takes its pin with it, so a finished row cannot reappear later with no output
+  on screen. The panel that resolves decides, not the remembered choice: a
+  remembered Todo whose side emptied has already fallen back to Tasks, and a
+  read opened there is a visible read that survives the task ending. A task
+  that had already finished when the renderer first loaded is registry history
+  and never appears.
 - **Removal is a view action with a live-task guard.** Only a terminal task
-  (`exited`, `failed`, `stopped`) can be removed; a running task — including one
-  already sent a stop signal, which stays `running` until the supervisor settles
-  it — refuses removal in the state layer, not merely by hiding the control. The
-  host task, its output, and its id are untouched, so the record stays readable
-  by id until the host's own retention drops it. Removal is remembered per
-  session and is not persisted.
+  (`exited`, `failed`, `stopped`) can be removed — in practice the expanded row
+  of a task that just ended, the only ended row the container still shows; a
+  running task — including one already sent a stop signal, which stays
+  `running` until the supervisor settles it — refuses removal in the state
+  layer, not merely by hiding the control. Removing the row closes the open
+  preview. The host task, its output, and its id are untouched, so the record
+  stays readable by id until the host's own retention drops it.
 - **Deleting a session stops its running background tasks.** Archiving does not:
   archiving is a reversible marker, so killing its processes would be a
   destructive side effect. Deletion signals stop and returns — the deletion does

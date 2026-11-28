@@ -65,6 +65,10 @@ fn redact_value_internal(value: Value, depth: usize) -> Value {
                     || key_l.contains("authorization")
                     || key_l.contains("token")
                     || key_l.contains("password")
+                    || key_l.contains("cookie")
+                    || key_l.contains("credential")
+                    || key_l.contains("private_key")
+                    || key_l.contains("privatekey")
                 {
                     out.insert(k, Value::String("***REDACTED***".into()));
                 } else if is_path_key(&key_l) {
@@ -247,6 +251,21 @@ mod tests {
         assert!(!detail.contains("access_token=secret-value"));
         assert!(!detail.contains("sk-proj-abcdefghijklmnopqrstuvwxyz"));
         assert_eq!(value["apiKey"], "***REDACTED***");
+    }
+
+    #[test]
+    fn redacts_spec_named_credential_keys() {
+        let value = redact_value(json!({
+            "cookie": "session=abc123",
+            "credentials": "user:pass",
+            "privateKey": "-----BEGIN PRIVATE KEY-----",
+            "private_key": "-----BEGIN PRIVATE KEY-----",
+            "sessionId": "keep-me",
+        }));
+        for key in ["cookie", "credentials", "privateKey", "private_key"] {
+            assert_eq!(value[key], "***REDACTED***", "{key} must be redacted");
+        }
+        assert_eq!(value["sessionId"], "keep-me");
     }
 
     #[test]

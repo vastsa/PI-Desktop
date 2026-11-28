@@ -1,56 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type BackgroundTaskOutput, type BackgroundTaskSummary } from "../../../lib/api";
+import { selectVisibleTasks } from "./bar-visibility";
 import {
-  type BarVisibility,
-  EMPTY_VISIBILITY,
-  dismissTask,
-  nextExpiryAt,
-  observeTasks,
-  selectVisibleTasks,
-} from "./bar-visibility";
-import {
-  type DockSides,
   EMPTY_DOCK_VIEW,
   type DockTab,
   type DockViewState,
   badgeLabel,
-  clearBadge,
-  observeSessionTasks,
+  isReading,
   pruneDockView,
-  resolveDockTabFor,
   selectTab,
   sessionDockState,
-  tasksPanelVisible,
+  sidesFor,
   toggleCollapsed,
+  visibleDockTab,
 } from "./dock-state";
 import type { SessionTodo } from "@pi-desktop/shared";
 
 const REFRESH_MS = 1_000;
 type Failure = "load" | "output" | "stop" | "remove";
 
-/**
- * Both sides of the container, described the way the tab rule expects.
- *
- * The task side describes the rows the container can render, and the todo side
- * comes from the caller, which owns that read. Both the render rule and the
- * badge rule consume this one description, so they cannot disagree about which
- * panel is on screen.
- */
-function sidesFor(
-  rows: readonly BackgroundTaskSummary[],
-  todos: readonly SessionTodo[],
-): DockSides {
-  let runningTasks = 0;
-  for (const task of rows) {
-    if (task.state === "running") runningTasks += 1;
-  }
-  return {
-    hasTodo: todos.length > 0,
-    hasTasks: rows.length > 0,
-    runningTasks,
-    inProgressTodos: todos.filter((todo) => todo.status === "in_progress").length,
-  };
-}
 /**
  * Background tasks for one session, plus the shared container's view state.
  *
@@ -66,9 +34,7 @@ export function useBackgroundTasks(
   const [allTasks, setAllTasks] = useState<BackgroundTaskSummary[]>([]);
   // Renderer-local view state: which tasks the container may show. The registry
   // in host-core stays the source of truth for the processes themselves.
-  const [visibility, setVisibility] = useState<BarVisibility>(EMPTY_VISIBILITY);
   const [dockView, setDockView] = useState<DockViewState>(EMPTY_DOCK_VIEW);
-  const [clock, setClock] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [output, setOutput] = useState<BackgroundTaskOutput | null>(null);
   const [stoppingIds, setStoppingIds] = useState<Set<string>>(() => new Set());
@@ -76,9 +42,6 @@ export function useBackgroundTasks(
   const mounted = useRef(false);
   const pendingStops = useRef(new Set<string>());
   const refreshList = useRef<(() => void) | null>(null);
-  // Ids already folded into the badge, per session, so a re-read of the same
-  // snapshot cannot count the same task twice.
-  const knownIds = useRef(new Map<string, Set<string>>());
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
 
@@ -99,30 +62,7 @@ export function useBackgroundTasks(
       try {
         const result = await api.backgroundTasksList();
         if (disposed) return;
-        const observedAt = Date.now();
         setAllTasks(result.tasks);
-        setVisibility((current) => observeTasks(current, result.tasks, observedAt));
-        setClock(observedAt);
-
-        // Fold the snapshot into the badge for the session on screen. A task is
-        // "new" only while the tasks panel is not the one being looked at.
-        const currentSession = sessionIdRef.current;
-        if (currentSession) {
-          const sessionTasks = result.tasks.filter((task) => task.sessionId === currentSession);
-          const seen = knownIds.current.get(currentSession) ?? new Set<string>();
-          setDockView((current) => {
-            const state = sessionDockState(current, currentSession);
-            // The same description the render path uses: the rows the container
-            // can actually show decide whether its tasks panel is on screen.
-            const tasksVisible = tasksPanelVisible(state, sidesRef.current);
-            const folded = observeSessionTasks(current, currentSession, sessionTasks, {
-              knownIds: seen,
-              tasksVisible,
-            });
-            knownIds.current.set(currentSession, folded.knownIds);
-            return folded.view;
-          });
-        }
 
         setError((current) => current === "load" ? null : current);
         pollAgain = result.tasks.some((task) => task.state === "running");
@@ -164,26 +104,16 @@ export function useBackgroundTasks(
     [allTasks, sessionId],
   );
 
-  // Keep the per-session maps bounded as sessions come and go.
+  // Keep the per-session view entries bounded as sessions come and go.
   useEffect(() => {
     const live = new Set(allTasks.map((task) => task.sessionId));
     if (sessionId) live.add(sessionId);
     setDockView((current) => pruneDockView(current, live));
-    for (const id of knownIds.current.keys()) {
-      if (!live.has(id)) knownIds.current.delete(id);
-    }
   }, [allTasks, sessionId]);
 
-  // Only what the container should render: running tasks, a finished task during
-  // its post-exit grace window, and the row whose output the user is reading.
-  const visibleTasks = selectVisibleTasks(visibility, sessionTasks, clock, expandedId);
-
-  useEffect(() => {
-    const expiry = nextExpiryAt(visibility, sessionTasks, clock, expandedId);
-    if (expiry === null) return;
-    const timer = setTimeout(() => setClock(Date.now()), Math.max(0, expiry - clock));
-    return () => clearTimeout(timer);
-  }, [visibility, sessionTasks, clock, expandedId]);
+  // Only what the container should render: the session's live tasks, plus the
+  // row whose output the user is reading (#2632).
+  const visibleTasks = selectVisibleTasks(sessionTasks, expandedId);
 
   const selectedState = sessionTasks.find((task) => task.id === expandedId)?.state;
   useEffect(() => {
@@ -222,14 +152,13 @@ export function useBackgroundTasks(
   }, []);
 
   /**
-   * Enter the tasks tab: this is the only path that clears the badge.
-   *
-   * `selectTab` also expands the container, so a click on a tab while collapsed
-   * lands on a visible panel instead of appearing to do nothing.
+   * Enter the tasks tab. `selectTab` also expands the container, so a click on
+   * a tab while collapsed lands on a visible panel instead of appearing to do
+   * nothing. The badge is derived from the rows, so no view action clears it.
    */
   const openTasksTab = useCallback(() => {
     if (!sessionId) return;
-    setDockView((current) => clearBadge(selectTab(current, sessionId, "tasks"), sessionId));
+    setDockView((current) => selectTab(current, sessionId, "tasks"));
   }, [sessionId]);
 
   const openTodoTab = useCallback(() => {
@@ -244,7 +173,7 @@ export function useBackgroundTasks(
   }, []);
 
   /**
-   * Remove a row from the container.
+   * Close the row the user removed.
    *
    * The task is looked up here rather than trusting the caller's snapshot: a
    * running task — including one already stopping — is refused with `false` so
@@ -256,7 +185,6 @@ export function useBackgroundTasks(
       setError("remove");
       return false;
     }
-    setVisibility((current) => dismissTask(current, task));
     setExpandedId((current) => current === id ? null : current);
     return true;
   }, [sessionTasks]);
@@ -294,22 +222,46 @@ export function useBackgroundTasks(
   // The tab and badge rules see the rows the container can render, so a task
   // that already left it cannot decide which panel is on screen.
   const sides = sidesFor(visibleTasks, todos);
-  const activeTab: DockTab = resolveDockTabFor(dock, sides);
-  // The poll loop outlives a render, so it reads the container's description of
-  // itself through a ref rather than capturing one snapshot of it.
-  const sidesRef = useRef(sides);
-  sidesRef.current = sides;
+  // Whether the output preview is on screen. The panel that resolves decides,
+  // not the remembered choice: a remembered Todo whose side emptied has
+  // already fallen back to Tasks, and a read on that panel is a visible read.
+  // A tab the container chose on its own never takes the panel away from an
+  // open preview, so a read cannot be cut short by the last running task
+  // ending (#2634).
+  const reading = isReading(dock, sides, expandedId);
+  const activeTab: DockTab = visibleDockTab(dock, sides, reading);
+  // The badge mirrors the session's live work: it rises when a task starts and
+  // falls as tasks end, and no view action can change it (#2632).
+  const badge = sides.runningTasks;
+
+  // The pin on a row being read ends when its preview leaves the screen —
+  // collapse, or the panel on screen becoming Todo — so a finished row cannot
+  // reappear later with no output on screen (#2634). A running task keeps its
+  // preview across the switch: the row itself is live work and stays, so
+  // coming back to the tasks tab picks up the same read; if the task ends
+  // while hidden, the pin goes with it.
+  useEffect(() => {
+    if (expandedId === null || reading) return;
+    const pinnedTask = sessionTasks.find((task) => task.id === expandedId);
+    if (pinnedTask?.state !== "running") setExpandedId(null);
+  }, [reading, expandedId, sessionTasks]);
+
+  // A preview belongs to the session it was opened in; a session switch
+  // closes it.
+  useEffect(() => {
+    setExpandedId(null);
+  }, [sessionId]);
 
   return {
-    /** The session's rows the container may render: live, in grace, or pinned. */
+    /** The session's rows the container may render: live, or being read. */
     tasks: visibleTasks,
     activeTab,
     openTasksTab,
     openTodoTab,
     collapsed: dock.collapsed,
     setCollapsed,
-    badge: dock.newCount,
-    badgeText: badgeLabel(dock.newCount),
+    badge,
+    badgeText: badgeLabel(badge),
     expandedId,
     output,
     stoppingIds,

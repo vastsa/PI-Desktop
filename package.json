@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "private": true,
-  "version": "0.24.0-beta.2",
+  "version": "0.24.0-beta.6",
   "description": "Local-first AI coding agent desktop client",
   "packageManager": "pnpm@12.8.1+sha512.f64ba907507f5ceafe06c8d38e6052d0179444580ec1279ddd5bfc11cb48aa8a2644b66598e07e761da84872a9fc57d5f902b87fa49d024198d558612aabbe45",
   "engines": {
@@ -42,6 +42,7 @@
     "test:e2e:composer-occlusion": "node scripts/e2e-theme-surfaces.mjs --dock-mask-only",
     "test:e2e:composer-autocomplete": "node scripts/e2e-composer-autocomplete.mjs",
     "test:e2e:composer-ime-slash": "node scripts/e2e-composer-ime-stack.mjs",
+    "test:e2e:composer-tail-line": "node scripts/e2e-composer-tail-line.mjs",
     "test:e2e:model-discovery-state": "node scripts/e2e-model-discovery-state.mjs",
     "test:e2e:composer-model-selection": "node scripts/e2e-composer-model-selection.mjs",
     "test:e2e:composer-paste": "node scripts/e2e-composer-paste.mjs",
@@ -119,6 +120,7 @@
     "test:e2e:remote-file-manager": "node scripts/e2e-remote-file-manager.mjs",
     "test:e2e:remote-mvp": "node scripts/e2e-remote-mvp.mjs",
     "test:e2e:remote-mvp-ui": "node scripts/e2e-remote-mvp-ui.mjs",
+    "test:e2e:lan-webui": "node --test apps/desktop/test/lan-webui-browser-user-path.e2e.mjs",
     "test:e2e:shortcut-settings": "node scripts/test-shortcut-settings.mjs",
     "test:e2e:dialog-overflow": "node scripts/test-dialog-overflow.mjs",
     "test:e2e:overlay-selection": "node scripts/test-overlay-selection.mjs",

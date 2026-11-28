@@ -363,6 +363,17 @@ describe("agent mentions (ADR 0346)", () => {
     expect(serializeComposerFileReferences("hi", [{ path: "explorer", kind: "agent" }])).toBe("hi");
   });
 
+  it("serializes adjacent Skill chips as separate canonical mentions, never trailing paths", () => {
+    const refs = [
+      { kind: "skill", path: "plugin/review", token: "\ue001" },
+      { kind: "skill", path: "review", token: "\ue002" },
+      { kind: "skill", path: "removed" },
+    ];
+    const text = serializeComposerFileReferences("go\ue002\ue001now", refs);
+    expect(text).toBe("go /skill:review /skill:plugin/review now");
+    expect(findSkillMentions(text, new Map([["skill:review", "review"]])).map(m => m.id)).toEqual(["review"]);
+  });
+
   it("keeps the file serialization byte-for-byte unchanged", () => {
     const file = { path: "src/a.ts", kind: "file", token: "\ue011" };
     expect(serializeInlineComposerFileReferences("see\ue011now", [file])).toBe("see@src/a.ts now");

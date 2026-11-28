@@ -1,4 +1,5 @@
 import type { BackgroundTaskSummary } from "../../../lib/api";
+import type { SessionTodo } from "@pi-desktop/shared";
 
 /**
  * View state for the shared Todo/background-task container.
@@ -18,14 +19,12 @@ export type DockTab = "todo" | "tasks";
 export type DockSessionState = {
   /** Tab the user last chose, or `null` while nothing was chosen yet. */
   readonly chosenTab: DockTab | null;
-  /** New tasks counted since the tasks tab was last entered (the badge). */
-  readonly newCount: number;
   /** Container-wide collapse; both tabs share it. */
   readonly collapsed: boolean;
 };
 
 export type DockViewState = Readonly<{
-  /** Per-session entry: the tab choice and the badge. */
+  /** Per-session entry: the remembered tab choice. */
   sessions: Readonly<Record<string, DockSessionState>>;
   /** Container-wide collapse; independent of whichever session is on screen. */
   collapsed: boolean;
@@ -36,7 +35,6 @@ export const EMPTY_DOCK_VIEW: DockViewState = { sessions: {}, collapsed: true };
 
 export const EMPTY_SESSION_DOCK: DockSessionState = {
   chosenTab: null,
-  newCount: 0,
   collapsed: EMPTY_DOCK_VIEW.collapsed,
 };
 
@@ -62,7 +60,7 @@ function withSession(
 ): DockViewState {
   const current = sessionDockState(view, sessionId);
   const session = { ...current, ...patch, collapsed: view.collapsed };
-  if (session.chosenTab === current.chosenTab && session.newCount === current.newCount) {
+  if (session.chosenTab === current.chosenTab) {
     return view;
   }
   return { ...view, sessions: { ...view.sessions, [sessionId]: session } };
@@ -101,6 +99,30 @@ export type DockSides = {
   inProgressTodos: number;
 };
 
+/**
+ * Both sides of the container, described the way the tab rule expects.
+ *
+ * The task side describes the rows the container can render, and the todo side
+ * comes from the caller, which owns that read. The render rule and the badge
+ * rule consume this one description, so they cannot disagree about which tasks
+ * are live in the session.
+ */
+export function sidesFor(
+  rows: readonly BackgroundTaskSummary[],
+  todos: readonly SessionTodo[],
+): DockSides {
+  let runningTasks = 0;
+  for (const task of rows) {
+    if (task.state === "running") runningTasks += 1;
+  }
+  return {
+    hasTodo: todos.length > 0,
+    hasTasks: rows.length > 0,
+    runningTasks,
+    inProgressTodos: todos.filter((todo) => todo.status === "in_progress").length,
+  };
+}
+
 export function resolveDockTabFor(state: DockSessionState, sides: DockSides): DockTab {
   return resolveDockTab(
     state,
@@ -112,56 +134,39 @@ export function resolveDockTabFor(state: DockSessionState, sides: DockSides): Do
 }
 
 /**
- * Whether the background-task panel is the one on screen, which is the only
- * condition under which a new task needs no badge. A collapsed container shows
- * no panel at all, so it never counts as looking at the tasks.
+ * The tab actually on screen.
  *
- * Shared with the hook so the badge rule has one definition instead of a copy
- * that drifts from the render rule.
+ * A row being read keeps the tasks panel on screen: the auto tab rule does not
+ * switch to Todo underneath an open preview, so the last running task ending
+ * mid-read does not pull the panel away. A user tab choice still decides —
+ * choosing Todo is what ends a read (#2634).
  */
-export function tasksPanelVisible(state: DockSessionState, sides: DockSides): boolean {
-  return !state.collapsed && resolveDockTabFor(state, sides) === "tasks";
+export function visibleDockTab(
+  state: DockSessionState,
+  sides: DockSides,
+  reading: boolean,
+): DockTab {
+  if (reading) return "tasks";
+  return resolveDockTabFor(state, sides);
 }
 
 /**
- * Record a task list snapshot for one session.
+ * Whether the output preview is on screen: a row is open, the container is
+ * expanded, and the panel on screen is Tasks.
  *
- * The badge counts tasks that appear for the first time while the tasks panel is
- * not the one on screen: while it is visible a new row needs no announcement,
- * and a collapsed container hides it too, so that case does count.
+ * The resolved panel, not the remembered choice, decides: choosing Todo ends a
+ * read only while the Todo side still has content, so clearing every todo —
+ * which falls back to Tasks without changing the choice — leaves the read
+ * alive (#2634). A tab the container chose on its own never interrupts the
+ * read either, because `visibleDockTab` keeps Tasks on screen for it.
  */
-export function observeSessionTasks(
-  view: DockViewState,
-  sessionId: string,
-  tasks: readonly BackgroundTaskSummary[],
-  options: {
-    /** Task ids this session had already seen, before this snapshot. */
-    knownIds: ReadonlySet<string>;
-    /** Whether the tasks panel is currently the visible one. */
-    tasksVisible: boolean;
-  },
-): { view: DockViewState; knownIds: Set<string> } {
-  const knownIds = new Set<string>();
-  let added = 0;
-  for (const task of tasks) {
-    knownIds.add(task.id);
-    if (options.knownIds.has(task.id)) continue;
-    if (task.state !== "running") continue;
-    if (!options.tasksVisible) added += 1;
-  }
-  if (added === 0) return { view, knownIds };
-  const current = sessionDockState(view, sessionId);
-  return {
-    view: withSession(view, sessionId, { newCount: current.newCount + added }),
-    knownIds,
-  };
-}
-
-/** The user entered the tasks tab: the badge has been seen. */
-export function clearBadge(view: DockViewState, sessionId: string): DockViewState {
-  const current = sessionDockState(view, sessionId);
-  if (current.newCount === 0) return view;
-  return withSession(view, sessionId, { newCount: 0 });
+export function isReading(
+  state: DockSessionState,
+  sides: DockSides,
+  expandedId: string | null,
+): boolean {
+  if (expandedId === null || state.collapsed) return false;
+  return resolveDockTabFor(state, sides) === "tasks" || state.chosenTab === null;
 }
 
 /**

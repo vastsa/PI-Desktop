@@ -4,138 +4,146 @@ import test from "node:test";
 
 /*
  * Background-tasks bar visibility. The registry in host-core keeps finished
- * tasks as history; the bar must not turn that history into permanent rows
- * above the composer. These tests pin the renderer-side rule with a controlled
- * clock, so "did this row disappear yet" is decided by explicit timestamps
- * instead of wall time.
+ * tasks as history; the bar answers only to live work — a running task, or a
+ * continuation decision still pending — plus the single row whose output the
+ * user is reading, so an open log cannot vanish underneath it (#2632).
  */
 
 register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
-const {
-  ENDED_VISIBLE_MS,
-  EMPTY_VISIBILITY,
-  canDismiss,
-  dismissTask,
-  nextExpiryAt,
-  observeTasks,
-  selectVisibleTasks,
-} = await import("../src/features/chat/background-tasks/bar-visibility.ts");
+const { selectVisibleTasks } = await import("../src/features/chat/background-tasks/bar-visibility.ts");
+const { isReading, sidesFor, visibleDockTab } = await import("../src/features/chat/background-tasks/dock-state.ts");
 
-const task = (id, state, exitCode) => ({
+const task = (id, state, extra = {}) => ({
   id,
   sessionId: "session-1",
   command: `cmd ${id}`,
   commandShellId: "bash",
   state,
   elapsedMs: 1_000,
-  exitCode,
+  ...extra,
 });
 
 const ids = (tasks) => tasks.map((entry) => entry.id);
 
-test("a task that is already finished when first observed never gets a row", () => {
-  const finished = [task("xcodebuild", "exited", 0), task("go-vet", "exited", 0)];
-  const state = observeTasks(EMPTY_VISIBILITY, finished, 1_000);
-
-  assert.deepEqual(selectVisibleTasks(state, finished, 1_000), []);
-  assert.equal(nextExpiryAt(state, finished, 1_000), null);
+test("a task that is already finished when first listed never gets a row", () => {
+  const finished = [task("xcodebuild", "exited", { exitCode: 0 }), task("go-vet", "failed", { exitCode: 1 })];
+  assert.deepEqual(selectVisibleTasks(finished), []);
 });
 
-test("a task observed running shows, keeps a grace window after exit, then leaves", () => {
-  const running = [task("a", "running")];
-  let state = observeTasks(EMPTY_VISIBILITY, running, 1_000);
-  assert.deepEqual(ids(selectVisibleTasks(state, running, 1_000)), ["a"]);
+test("a running task keeps its row, and leaves as soon as its end state arrives", () => {
+  const running = task("a", "running");
+  assert.deepEqual(ids(selectVisibleTasks([running])), ["a"]);
 
-  const ended = [task("a", "exited", 0)];
-  state = observeTasks(state, ended, 5_000);
-  assert.deepEqual(ids(selectVisibleTasks(state, ended, 5_000)), ["a"]);
-  assert.deepEqual(ids(selectVisibleTasks(state, ended, 5_000 + ENDED_VISIBLE_MS - 1)), ["a"]);
-  assert.deepEqual(selectVisibleTasks(state, ended, 5_000 + ENDED_VISIBLE_MS), []);
+  // No post-exit grace window: the row goes the moment the registry reports
+  // the task ended, even though the registry keeps it as history.
+  const ended = { ...running, state: "exited", exitCode: 0 };
+  assert.deepEqual(selectVisibleTasks([ended]), []);
 });
 
-test("a row the user removed stays removed across later snapshots", () => {
-  let state = observeTasks(EMPTY_VISIBILITY, [task("a", "running")], 0);
-  const ended = [task("a", "exited", 0)];
-  state = observeTasks(state, ended, 100);
-  assert.equal(selectVisibleTasks(state, ended, 100).length, 1);
+test("a pending continuation keeps its row until the decision is made", () => {
+  const pending = task("a", "exited", { exitCode: 0, continuation: "pending" });
+  assert.deepEqual(ids(selectVisibleTasks([pending])), ["a"]);
 
-  state = dismissTask(state, ended[0]);
-  assert.deepEqual(selectVisibleTasks(state, ended, 100), []);
-  state = observeTasks(state, ended, 200);
-  assert.deepEqual(selectVisibleTasks(state, ended, 200), []);
+  const settled = { ...pending, continuation: "started" };
+  assert.deepEqual(selectVisibleTasks([settled]), []);
 });
 
-test("the row whose output is open is not pulled away by the grace window", () => {
-  let state = observeTasks(EMPTY_VISIBILITY, [task("a", "running")], 0);
-  const ended = [task("a", "exited", 0)];
-  state = observeTasks(state, ended, 100);
-  const muchLater = 100 + ENDED_VISIBLE_MS * 3;
-
-  assert.deepEqual(ids(selectVisibleTasks(state, ended, muchLater, "a")), ["a"]);
-  assert.equal(nextExpiryAt(state, ended, muchLater, "a"), null);
+test("the row whose output is being read stays until the reader closes it", () => {
+  const ended = task("a", "exited", { exitCode: 0 });
+  assert.deepEqual(ids(selectVisibleTasks([ended], "a")), ["a"]);
+  // A different task's open preview does not pin this one.
+  assert.deepEqual(selectVisibleTasks([ended], "b"), []);
 });
 
-test("running tasks never expire, and a running task cannot be removed", () => {
-  const running = [task("server", "running")];
-  const state = observeTasks(EMPTY_VISIBILITY, running, 0);
-  assert.equal(nextExpiryAt(state, running, 10 * ENDED_VISIBLE_MS), null);
-
-  // Removal is a view action but must not make a live task unreachable: the
-  // state layer refuses it, so the row stays.
-  const afterRefusal = dismissTask(state, running[0]);
-  assert.equal(afterRefusal, state, "a refused removal must not change state");
-  assert.deepEqual(ids(selectVisibleTasks(afterRefusal, running, 0)), ["server"]);
+test("a running task is visible whether or not its output is open", () => {
+  const running = task("a", "running");
+  assert.deepEqual(ids(selectVisibleTasks([running])), ["a"]);
+  assert.deepEqual(ids(selectVisibleTasks([running], "a")), ["a"]);
 });
 
-test("removal is refused while a stopped task is still settling", () => {
-  // A task that has been signalled keeps `running` until the supervisor records
-  // the terminal state, so it must stay out of removal during that window.
-  const settling = [task("server", "running")];
-  const state = observeTasks(EMPTY_VISIBILITY, settling, 0);
-  assert.equal(canDismiss(state, settling[0]), false);
-  assert.equal(dismissTask(state, settling[0]), state);
+/*
+ * The pin on a row being read, driven the way the hook composes it: the rows
+ * carry the pin, the sides describe them, `isReading` says whether the preview
+ * is on screen, and `visibleDockTab` keeps the tasks panel under it. When the
+ * preview leaves the screen the hook closes the pin — unless the task is
+ * still running, whose preview survives the switch and picks up the same
+ * read when the user returns (#2634).
+ */
+
+test("regression: the row being read stays while its preview is on screen", () => {
+  // start → open output: the task finishes while the user reads it.
+  const running = task("a", "running");
+  const dock = { chosenTab: "tasks", collapsed: false };
+  const rows = selectVisibleTasks([running], "a");
+  const sides = sidesFor(rows, []);
+  assert.equal(visibleDockTab(dock, sides, isReading(dock, sides, "a")), "tasks");
+
+  const ended = { ...running, state: "exited", exitCode: 0 };
+  assert.deepEqual(ids(selectVisibleTasks([ended], "a")), ["a"]);
+  // The pinned row keeps the tasks side non-empty, so the panel — and the
+  // read — survives the task ending underneath it.
+  const pinnedSides = sidesFor(selectVisibleTasks([ended], "a"), []);
+  assert.equal(visibleDockTab(dock, pinnedSides, isReading(dock, pinnedSides, "a")), "tasks");
 });
 
-test("expiry reports the earliest deadline among the rows still visible", () => {
-  let state = observeTasks(EMPTY_VISIBILITY, [task("a", "running"), task("b", "running")], 0);
-  state = observeTasks(state, [task("a", "exited", 0), task("b", "running")], 1_000);
-  const both = [task("a", "exited", 0), task("b", "exited", 0)];
-  state = observeTasks(state, both, 2_000);
+test("regression: the auto tab rule does not take the panel from an open read", () => {
+  // A user who never chose a tab, with an in-progress todo, reads the only
+  // running task's output; the task ends mid-read.
+  const todos = [{ status: "in_progress" }];
+  const dock = { chosenTab: null, collapsed: false };
+  const running = task("a", "running");
+  assert.equal(visibleDockTab(dock, sidesFor([running], todos), false), "tasks");
 
-  assert.equal(nextExpiryAt(state, both, 2_000), 1_000 + ENDED_VISIBLE_MS);
-  assert.deepEqual(ids(selectVisibleTasks(state, both, 1_000 + ENDED_VISIBLE_MS)), ["b"]);
-  assert.equal(nextExpiryAt(state, both, 1_000 + ENDED_VISIBLE_MS), 2_000 + ENDED_VISIBLE_MS);
+  const ended = { ...running, state: "exited", exitCode: 0 };
+  const rows = selectVisibleTasks([ended], "a");
+  const sides = sidesFor(rows, todos);
+  assert.equal(isReading(dock, sides, "a"), true);
+  // The panel stays on the tasks tab, so the row being read stays too.
+  assert.equal(visibleDockTab(dock, sides, isReading(dock, sides, "a")), "tasks");
+  // Choosing Todo — the one user action that ends the read — still does.
+  assert.equal(isReading({ ...dock, chosenTab: "todo" }, sides, "a"), false);
 });
 
-test("bookkeeping is pruned when the registry drops a task, so it cannot grow", () => {
-  let state = observeTasks(EMPTY_VISIBILITY, [task("a", "running"), task("b", "running")], 0);
-  // A terminal row may be removed; that is what puts an id into `dismissed`.
-  state = dismissTask(state, task("a", "exited", 0));
-  assert.deepEqual([...state.seenRunning].sort(), ["a", "b"]);
-  assert.deepEqual([...state.dismissed], ["a"]);
+test("regression: a finished row whose preview left the screen cannot reappear", () => {
+  const todos = [{ status: "in_progress" }];
+  const started = task("a", "running");
+  const dock = { chosenTab: "tasks", collapsed: false };
 
-  state = observeTasks(state, [task("b", "running")], 10);
-  assert.deepEqual([...state.seenRunning], ["b"]);
-  assert.deepEqual([...state.dismissed], []);
-  assert.equal(state.endedAt.size, 0);
+  // start → open output: the preview is on screen, the row is pinned.
+  const rows = selectVisibleTasks([started], "a");
+  const sides = sidesFor(rows, todos);
+  assert.equal(isReading(dock, sides, "a"), true);
+
+  // → collapse (or switch to Todo): the preview is no longer on screen, so
+  // the hook closes the pin — the running task's pin survives, but it goes
+  // as soon as the task ends while hidden. That the hook closes it is pinned
+  // by the source contract test in background-tasks.test.mjs.
+  assert.equal(isReading({ ...dock, collapsed: true }, sides, "a"), false);
+  assert.equal(isReading({ ...dock, chosenTab: "todo" }, sides, "a"), false);
+
+  // → finish while hidden, then reopen: the ended row must not reappear.
+  const ended = { ...started, state: "exited", exitCode: 0 };
+  assert.deepEqual(selectVisibleTasks([ended], null), []);
 });
 
-test("an unchanged snapshot keeps the previous state object", () => {
-  const running = [task("a", "running")];
-  const state = observeTasks(EMPTY_VISIBILITY, running, 0);
-  assert.equal(observeTasks(state, running, 500), state);
-});
+test("regression: a running task's preview survives switching away and back", () => {
+  // The E2E scenario E2E-TASK-DOCK-tab-content-isolation: open a running
+  // task's log, switch to Todo and back — the read picks up where it left
+  // off (#2634).
+  const started = task("a", "running");
+  const todos = [{ status: "in_progress" }];
+  const dock = { chosenTab: "tasks", collapsed: false };
+  const sides = sidesFor(selectVisibleTasks([started], "a"), todos);
+  assert.equal(isReading(dock, sides, "a"), true);
 
+  // Switch to Todo: the preview leaves the screen, but the task runs, so the
+  // hook keeps the pin.
+  assert.equal(isReading({ ...dock, chosenTab: "todo" }, sides, "a"), false);
+  assert.equal(started.state, "running");
 
-test("a pending continuation remains visible and cancellable after the process ends, including after reload", () => {
-  const pending = { id: "pending", sessionId: "s", state: "exited", continuation: "pending" };
-  const state = observeTasks(EMPTY_VISIBILITY, [pending], 0);
-  assert.deepEqual(selectVisibleTasks(state, [pending], ENDED_VISIBLE_MS * 10), [pending]);
-  assert.equal(canDismiss(state, pending), false);
-  assert.equal(dismissTask(state, pending), state);
-  assert.equal(nextExpiryAt(state, [pending], ENDED_VISIBLE_MS * 10), null);
-  const cancelled = { ...pending, continuation: "cancelled" };
-  const after = observeTasks(state, [cancelled], ENDED_VISIBLE_MS * 10);
-  assert.equal(canDismiss(after, cancelled), true);
-  assert.deepEqual(selectVisibleTasks(after, [cancelled], ENDED_VISIBLE_MS * 12), []);
+  // Switch back: the preview is on screen again, the row is live, and the
+  // same read continues.
+  const rows = selectVisibleTasks([started], "a");
+  assert.deepEqual(ids(rows), ["a"]);
+  assert.equal(visibleDockTab(dock, sides, isReading(dock, sides, "a")), "tasks");
 });

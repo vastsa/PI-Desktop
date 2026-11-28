@@ -58,7 +58,7 @@ function TaskDockPanel({ sessionId }: { sessionId: string }) {
 
   // The container owns the todo read, so it hands the hook the todo side it
   // cannot read itself: one tab rule then decides both the visible panel and
-  // whether a new task needs a badge.
+  // the badge on the tasks tab.
   const {
     tasks,
     activeTab,
@@ -79,8 +79,8 @@ function TaskDockPanel({ sessionId }: { sessionId: string }) {
   } = useBackgroundTasks(sessionId, todos);
 
   // Presence, the live count, and the header count describe the rows the
-  // container can render. Host-core keeps a finished task in its registry after
-  // the row's grace window closes, so deriving them from the session's full
+  // container can render. Host-core keeps a finished task in its registry as
+  // history after its row leaves, so deriving them from the session's full
   // task list would leave a permanent "1 background tasks" header with no row
   // to stop, dismiss, or read.
   const hasTasks = tasks.length > 0;
@@ -167,7 +167,7 @@ function TaskDockPanel({ sessionId }: { sessionId: string }) {
               {badge > 0 ? (
                 <span
                   className="dock-tab-badge"
-                  aria-label={t("taskDock.newTasks", { count: badge })}
+                  aria-label={t("taskDock.runningCount", { count: badge })}
                 >
                   {badgeText}
                 </span>

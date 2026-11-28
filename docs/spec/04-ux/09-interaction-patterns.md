@@ -553,6 +553,13 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 ### 1.8 Work panel entry and resources (D128, D142, D154, D173, D179, D207, D221)
 
+- Opening the bundled File Manager opts the project into a default tab for this
+  renderer lifetime. Each existing or new local project session receives one plain
+  entry, without opening its dock, replacing a selection, or copying a file location.
+  Closing that entry (including bulk close) opts out only that session until it
+  reopens the view itself. Closing the last tab does not reset the project default.
+  Temporary sessions, remote sessions, and other projects do not inherit the tab.
+
 - The shell starts without a visible work panel. The viewport-fixed toggle and
   `Cmd/Ctrl + J` both toggle the active session's panel: they reveal the
   retained context without creating a resource tab, and collapse the visible
@@ -2059,4 +2066,4 @@ command is visible as soon as the row expands, even when output is empty.
 
 ## Background completion continuation
 
-Agent behavior → Execution offers a default-off “Continue after background jobs” switch. Enabling it permits the assistant to arrange follow-up using the current permission mode, without separate per-job approval. The task dock labels running intents “Continue when finished” and finished intents “Waiting to resume”. Pending rows survive expiry and reload and expose “Cancel continuation”; they cannot be dismissed while still pending. Cancellation withdraws only continuation, leaving the process and log accessible. Other states distinguish started, received, cancelled and failed. Completion never switches the active conversation or steals focus.
+Agent behavior → Execution offers a default-off “Continue after background jobs” switch. Enabling it permits the assistant to arrange follow-up using the current permission mode, without separate per-job approval. The task dock labels running intents “Continue when finished” and finished intents “Waiting to resume”. Pending rows survive reload and expose “Cancel continuation”; they cannot be dismissed while still pending. Cancellation withdraws only continuation, leaving the process and log accessible. Other states distinguish started, received, cancelled and failed. Completion never switches the active conversation or steals focus.

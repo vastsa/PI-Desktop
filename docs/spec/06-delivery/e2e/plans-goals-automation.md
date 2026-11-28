@@ -20,6 +20,17 @@
 5. Order two model candidates on one private role. A provider failure switches
    the same child to its configured alternative without repeating a completed
    write. Selecting a different primary pin requires per-invocation authorization.
+6. Send a prompt in both a simple YAML mode and a staged YAML mode, including
+   a bundle with no private roles or skills. Each reaches the runtime with
+   its prompt and permissions; the staged mode retains its claimed stage.
+   Remove an active run whose return mode is a YAML mode. The running turn
+   releases its run context and applies the return mode's execution definition;
+   the Host retains the full return-mode snapshot, including bundle metadata.
+7. In Settings → Modes, open an item from the built-in or custom group. The
+   detail replaces the catalog. Definition, Prompt, Subagents and Skills
+   switch the working pane without clearing the draft. Open a role; its
+   editor replaces the role list. Check the role sections, return to the list,
+   then return to the catalog with and without unsaved edits.
 
 ## E2E-SCHEDULED-independent-loading-and-route-return
 

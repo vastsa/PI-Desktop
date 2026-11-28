@@ -3,6 +3,16 @@
 > Part of the [E2E test plan](../04-e2e-test-plan.md). Visual shell scenarios (US-UI), sidebar, settings, task dock, and work panel.
 > Scenario template, gates, and traceability live in the plan.
 
+## E2E-PROJECT-FILE-MANAGER-TAB — A shared entry without a shared dock (#2607)
+
+- Leave Review selected and the dock collapsed in B. Open File Manager from the
+  launcher in same-project A. Return to B: the dock stays collapsed; expanding it
+  shows both tabs with Review still selected. No second launcher pick is needed.
+- Close the entry locally and switch twice: it stays closed there, not elsewhere.
+  Close the final entry in A. A fresh same-project C still gets the tab with a
+  collapsed dock; a session in another project does not.
+- Automated path: `node scripts/e2e-project-file-manager-tab.mjs`.
+
 ## E2E-SIDEBAR-upgrade-layout-recovery
 
 - In an isolated profile, retain two synthetic Projects and organize metadata.
@@ -22,13 +32,19 @@
 - **Preconditions:** Isolated Electron renderer with synthetic todos and a running
   task; production TaskDock, hook and store, with only host IPC stubbed.
 - **Steps:** Expand the dock, select Todo, select Background tasks, open its log,
-  switch to Todo and back. Repeat with completed todos.
+  switch to Todo and back. Repeat with completed todos. Then choose Todo, remove
+  every todo so the panel falls back to Background tasks without changing the
+  choice, open the log, and let the running task finish.
 - **Expected:** Only the selected panel appears. Todo contains no task rows,
   Stop control or log; Background tasks contains no checklist. The shared live
   count remains visible, switching never sends Stop, and the open log survives.
+  A read opened on the panel a remembered Todo fell back to stays a visible
+  read: the log stays on screen through the task ending instead of being
+  dropped mid-read.
 - **Entry:** `node scripts/e2e-task-dock-tabs.mjs`.
 - **Specs:** `03-runtime/03-tools-and-permissions.md`, shared task container.
-- **Acceptance:** Both switch directions preserve task state and log selection.
+- **Acceptance:** Both switch directions preserve task state and log selection,
+  and a fallback-panel read survives the task ending.
 - **Milestone:** Maintenance. **Status:** Automated renderer interaction test.
 
 ## E2E-SETTINGS-ai-tab-pickers-use-in-app-menus

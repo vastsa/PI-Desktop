@@ -80,7 +80,7 @@ test("composer renders atomic inline chips and serializes paths on send", () => 
   // A file chip's title is its path; a plugin mark's is its plugin.
   assert.match(
     composer,
-    /isPluginMark\(reference\)\s*\? \(reference\.plugin\?\.pluginId \?\? ""\)\s*: reference\.kind === "agent"\s*\? `@\$\{reference\.path\}`\s*: reference\.path/,
+    /isPluginMark\(reference\)\s*\? \(reference\.plugin\?\.pluginId \?\? ""\)\s*: composerMentionText\(reference\) \?\? reference\.path/,
   );
   assert.match(composer, /chip\.title = origin/);
   assert.match(

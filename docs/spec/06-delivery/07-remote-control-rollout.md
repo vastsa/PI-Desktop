@@ -29,8 +29,8 @@ around transport breadth:
 - issue #100 asks for task completion and approval notifications on
   Telegram, WeChat, Slack, or a webhook, plus simple commands back, which is
   an outbound integration beside the Host; and
-- no recorded request asks for a browser or phone client of the desktop, so
-  the Gateway and browser milestones are unscheduled.
+- at the time of D375 there was no recorded request for a browser or phone
+  client of the desktop, so the Gateway and browser milestones were left unscheduled.
 
 The scheduled order is R0, R1, R2, R3. Milestones marked unscheduled keep
 their specifications so the contract does not drift, and they are scheduled
@@ -255,6 +255,11 @@ both `RACP-WS` and SSE. Before it is scheduled, the browser client's first
 needs are already covered by the remote-host profile (`session/configure`,
 history, workspace reads); a Host-issued session cookie for Gateway-less use
 still needs a specification clause. Exit criteria remain those of E2E-228.
+
+The [LAN WebUI MVP proposal](../01-product/03-lan-webui-mvp.md) records a new,
+direct-to-desktop use case: manage existing projects and sessions from a browser
+on the same LAN. Its acceptance gates do not schedule the general
+browser or Gateway milestone or change the SSH/loopback security profiles.
 
 ### Reserved — gRPC binding (formerly R5)
 

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
 import * as workPanelResize from "../src/lib/work-panel-resize.ts";
+import * as fileManagerDefaults from "../src/lib/project-file-manager-tab.ts";
 import * as workPanelTabs from "../src/lib/work-panel-tabs.ts";
 
 const STORAGE_KEY = "pi.desktop.workPanel";
@@ -22,6 +23,7 @@ function loadSlice() {
     "../../lib/api": { api: {} },
     "../../lib/remote-session-safety": { isRemoteSession: () => false },
     "../../lib/work-panel-tabs": workPanelTabs,
+    "../../lib/project-file-manager-tab": fileManagerDefaults,
     "../../lib/work-panel-resize": workPanelResize,
   };
   const module = { exports: {} };
