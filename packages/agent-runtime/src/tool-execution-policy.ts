@@ -1,19 +1,13 @@
 /** Logical tool policy. Only Host can prove that file resources are independent. */
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import specs from "@pi-desktop/shared/tool-execution-spec.json" with { type: "json" };
 
-export type ToolExecutionSpec = { mode: "parallel" | "sequential"; file?: true };
-export const TOOL_EXECUTION_SPECS: Readonly<Record<string, ToolExecutionSpec>> = {
-  Read: { mode: "parallel", file: true },
-  Glob: { mode: "parallel", file: true },
-  Grep: { mode: "parallel", file: true },
-  Write: { mode: "parallel", file: true },
-  Edit: { mode: "parallel", file: true },
-  Task: { mode: "parallel" },
-};
+type ToolExecutionSpec = { file: boolean; parallel: boolean; requiresFileBatch: boolean };
+export const TOOL_EXECUTION_SPECS: Readonly<Record<string, ToolExecutionSpec | undefined>> = specs;
 
 export function toolExecutionMode(name: string, hostFileBatches = false): "parallel" | "sequential" {
-  if (!hostFileBatches && (name === "Write" || name === "Edit")) return "sequential";
-  return TOOL_EXECUTION_SPECS[name]?.mode ?? "sequential";
+  const spec = TOOL_EXECUTION_SPECS[name];
+  return spec?.parallel && (!spec.requiresFileBatch || hostFileBatches) ? "parallel" : "sequential";
 }
 
 export function resolveBatchExecutionMode(message: AssistantMessage): "parallel" | "sequential" | undefined {

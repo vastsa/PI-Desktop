@@ -1,0 +1,9 @@
+{
+  "Read":  { "file": true,  "parallel": true,  "requiresFileBatch": false, "hostBudget": "read" },
+  "Glob":  { "file": true,  "parallel": true,  "requiresFileBatch": false, "hostBudget": "read" },
+  "Grep":  { "file": true,  "parallel": true,  "requiresFileBatch": false, "hostBudget": "read" },
+  "Write": { "file": true,  "parallel": true,  "requiresFileBatch": true,  "hostBudget": "mutation" },
+  "Edit":  { "file": true,  "parallel": true,  "requiresFileBatch": true,  "hostBudget": "mutation" },
+  "Bash":  { "file": false, "parallel": false, "requiresFileBatch": false, "hostBudget": "shell" },
+  "Task":  { "file": false, "parallel": true,  "requiresFileBatch": false, "hostBudget": null }
+}
